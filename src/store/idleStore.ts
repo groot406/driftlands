@@ -1,4 +1,6 @@
 import {reactive, watch} from 'vue';
+import {weightedTerrainChoice} from '../core/terrain';
+import type {TerrainKey} from '../core/terrainDefs';
 
 // README-inspired idle hex frontier POC store
 export type IdleTaskType = 'EXPLORE' | 'MINE' | 'BUILD' | 'DEFEND';
@@ -45,14 +47,14 @@ export interface Road {
     b: string; // tile id
 }
 
-export type Terrain = 'forest' | 'mine' | 'water' | 'ruin' | 'plains' | 'mountain' | 'towncenter';
+export type Terrain = TerrainKey;
 export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
 
 export interface Tile {
     id: string;
     q: number;
     r: number;
-    terrain: Terrain;
+    terrain: Terrain | null;
     discovered: boolean;
     resourceRichness: number;
     task?: ActiveIdleTask;
@@ -74,7 +76,6 @@ interface IdleState {
     inventory: Inventory;
     tick: number;
     running: boolean;
-    lastSaved: number;
     roads: Road[]; // added
 }
 
@@ -85,7 +86,8 @@ const TASK_DEFS: IdleTaskDef[] = [
     {type: 'DEFEND', baseSeconds: 25, primaryStat: 'defense'}
 ];
 
-const terrains: Terrain[] = ['forest', 'mine', 'ruin', 'water', 'plains', 'mountain'];
+// Replace plain tiles array with reactive array for proper reactivity when pushing
+const tiles = reactive<Tile[]>([]);
 
 function randName(): string {
     const names = ['Astra', 'Bram', 'Cora', 'Dune', 'Eira'];
@@ -107,25 +109,6 @@ function seedHeroes(): IdleHero[] {
 function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
-
-
-function isNeighbor(q1: number, r1: number, q2: number, r2: number): boolean {
-    const dq = q2 - q1;
-    const dr = r2 - r1;
-    return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) === 1;
-}
-
-function getNeighbors(q: number, r: number): {q:number,r:number}[] {
-    return [
-        {q: q + 1, r: r    },
-        {q: q - 1, r: r    },
-        {q: q    , r: r + 1},
-        {q: q    , r: r - 1},
-        {q: q + 1, r: r - 1},
-        {q: q - 1, r: r + 1},
-    ];
-}
-export { getNeighbors }; // export for components
 
 function synergyMultiplier(count: number): number {
     return 1 + 0.25 * (count - 1);
@@ -166,41 +149,28 @@ function loadState(): IdleState | null {
     }
 }
 
-function saveState(state: IdleState) {
-    //localStorage.setItem(LOCAL_KEY, serial);
+function saveState(_state: IdleState) {
+    // Persist current state (basic implementation)
+    try {
+        // localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
+    } catch {
+        // ignore quota/security errors
+    }
 }
 
 const initial: IdleState = loadState() ?? {
     radius: 4,
-    tiles: generateWorld(40, 39),
+    tiles: generateWorld(20),
     heroes: seedHeroes(),
     inventory: {wood: 0, ore: 0, stone: 0, food: 0, crystal: 0, artifact: 0},
     tick: 0,
     running: false,
-    lastSaved: Date.now(),
     roads: [], // initialize roads
 };
 
 export const idleStore = reactive(initial);
 
-function fastForward(elapsedMs: number) {
-    // approximate progress advancement
-    const dt = elapsedMs / 1000; // seconds offline
-    idleStore.heroes.forEach(hero => {
-        if (hero.task && !hero.task.completed) {
-            hero.task.progress = Math.min(hero.task.required, hero.task.progress + dt);
-            if (hero.task.progress >= hero.task.required) completeTask(hero.task);
-        }
-    });
-}
-
-if (loadState()) {
-    const elapsed = Date.now() - idleStore.lastSaved;
-    fastForward(elapsed);
-}
-
 watch(idleStore, () => {
-    idleStore.lastSaved = Date.now();
     saveState(idleStore);
 }, {deep: true});
 
@@ -273,17 +243,19 @@ export function taskPercent(task?: ActiveIdleTask): number {
 function roadCanonical(a: string, b: string): string {
     return a < b ? `${a}__${b}` : `${b}__${a}`;
 }
+
 export function hasRoad(a: string, b: string): boolean {
-    const id = roadCanonical(a,b);
+    const id = roadCanonical(a, b);
     return idleStore.roads.some(r => r.id === id);
 }
+
 export function addRoad(a: string, b: string) {
     if (a === b) return;
     const tileA = idleStore.tiles.find(t => t.id === a);
     const tileB = idleStore.tiles.find(t => t.id === b);
     if (!tileA || !tileB) return;
     if (!tileA.discovered || !tileB.discovered) return;
-    const id = roadCanonical(a,b);
+    const id = roadCanonical(a, b);
     if (idleStore.roads.find(r => r.id === id)) return; // already
     idleStore.roads.push({id, a, b});
 }
@@ -293,63 +265,11 @@ function isInRadius(q: number, r: number, radius: number): boolean {
 }
 
 
-// Weighted terrain generator: pass in neighbor terrains
-function getRandomTerrain(neighborTerrains: Terrain[] = []): Terrain {
-    // Base weights
-    const weights: Record<Terrain, number> = {
-        water: 2,
-        plains: 4,
-        forest: 3,
-        mountain: 2,
-        mine: 1,
-        ruin: 1,
-        towncenter: 0 // never randomly generated
-    };
-
-    for (const t of neighborTerrains) {
-        switch (t) {
-            case 'water':
-                weights.water += 5;
-                weights.plains += 2;
-                break;
-            case 'plains':
-                weights.forest += 1;
-                weights.plains += 2;
-                break;
-            case 'forest':
-                weights.forest += 4;
-                weights.plains += 1;
-                break;
-            case 'mountain':
-                weights.mountain += 2;
-                weights.mine += 2;
-                weights.ruin -= 0.5;
-                break;
-            case 'mine':
-                weights.mine = 0;
-                weights.mountain += 1;
-                break;
-            case 'ruin':
-                weights.forest += 2;
-                weights.ruin = 0;
-                break;
-        }
-    }
-
-    // Build selection pool excluding towncenter
-    const entries = Object.entries(weights).filter(([k]) => k !== 'towncenter') as [Terrain, number][];
-    const total = entries.reduce((acc, [, w]) => acc + w, 0);
-    let roll = Math.random() * total;
-    for (const [terrain, w] of entries) {
-        if (roll < w) return terrain;
-        roll -= w;
-    }
-    return 'plains';
-}
-
 // Updated world generation to use neighbor-informed terrain
-function generateWorld(radius: number, discoveredRadius: number): Tile[] {
-    const tiles: Tile[] = [];
+function generateWorld(radius: number, discoveredRadius: null | number = null): Tile[] {
+    if (discoveredRadius === undefined || discoveredRadius === null) {
+        discoveredRadius = radius - 1
+    }
     for (let q = -radius; q <= radius; q++) {
         for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
             const id = axialKey(q, r);
@@ -364,40 +284,71 @@ function generateWorld(radius: number, discoveredRadius: number): Tile[] {
                 });
                 continue;
             }
-            // Collect already-generated neighbor terrains
-            const neighborTerrains = getNeighbors(q, r)
-                .map(n => tiles.find(t => t.q === n.q && t.r === n.r))
-                .filter(Boolean)
-                .map(t => t!.terrain)
-                .filter(t => t !== 'towncenter'); // towncenter does not bias
-            const terrain = getRandomTerrain(neighborTerrains as Terrain[]);
-            tiles.push({
-                id,
-                q,
-                r,
-                terrain,
-                discovered: isInRadius(q, r, discoveredRadius),
-                resourceRichness: 1 + Math.random() * 0.5
-            });
+
+            let tile = tiles.find(t => t.id === id);
+            if (!tile) {
+                tile = {
+                    id,
+                    q,
+                    r,
+                    terrain: null,
+                    discovered: false,
+                    resourceRichness: 1 + Math.random() * 0.5
+                }
+                tiles.push(tile);
+            }
+
+            if (isInRadius(q, r, discoveredRadius)) {
+                discoverTile(tile)
+            }
         }
     }
     return tiles;
 }
 
+function getNeighbors(q: number, r: number, radius: number = 1): { q: number, r: number }[] {
+    const results: { q: number, r: number }[] = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+        for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+            if (dq === 0 && dr === 0) continue;
+            results.push({q: q + dq, r: r + dr});
+        }
+    }
+    return results;
+}
+
+function getNeighborTerrains(tile: Tile, radius: number = 1): Array<TerrainKey> {
+    return getNeighbors(tile.q, tile.r, radius)
+        .map(n => tiles.find(t => t.q === n.q && t.r === n.r && t.discovered))
+        .filter(Boolean)
+        .map((t): TerrainKey => t!.terrain ?? 'plains')
+        .filter(t => t !== 'towncenter');
+}
+
 // Updated discoverTile to use weighted generation
 export function discoverTile(tile: Tile) {
-    const neighborTerrains = getNeighbors(tile.q, tile.r)
-        .map(n => idleStore.tiles.find(t => t.q === n.q && t.r === n.r && t.discovered))
-        .filter(Boolean)
-        .map(t => t!.terrain)
-        .filter(t => t !== 'towncenter');
-    tile.terrain = getRandomTerrain(neighborTerrains as Terrain[]);
+    const neighborTerrains = getNeighborTerrains(tile);
+    let generated = weightedTerrainChoice(neighborTerrains as Terrain[], getNeighborTerrains(tile, 3));
+    // Guard: only allow a single towncenter at origin
+    if (generated === 'towncenter' && !(tile.q === 0 && tile.r === 0)) {
+        generated = 'plains';
+    }
+    tile.terrain = generated;
     tile.discovered = true;
-    const neighbors = getNeighbors(tile.q, tile.r);
-    neighbors.forEach(n => {
+
+    // Dev: detect accidental duplicates
+    if (generated === 'towncenter') {
+        const count = tiles.filter(t => t.terrain === 'towncenter').length;
+        if (count > 1) {
+            // eslint-disable-next-line no-console
+            console.warn('Duplicate towncenter detected, count=', count);
+        }
+    }
+
+    getNeighbors(tile.q, tile.r).forEach(n => {
         const key = axialKey(n.q, n.r);
-        if (!idleStore.tiles.find(t => t.id === key)) {
-            idleStore.tiles.push({
+        if (!tiles.find(t => t.id === key)) {
+            tiles.push({
                 id: key,
                 q: n.q,
                 r: n.r,
