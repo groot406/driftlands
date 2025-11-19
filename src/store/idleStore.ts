@@ -88,6 +88,9 @@ const TASK_DEFS: IdleTaskDef[] = [
 
 // Replace plain tiles array with reactive array for proper reactivity when pushing
 const tiles = reactive<Tile[]>([]);
+// O(1) lookup index for tiles to avoid repeated linear scans
+const tileIndex: Record<string, Tile> = {};
+function indexTile(t: Tile) { tileIndex[t.id] = t; }
 
 function randName(): string {
     const names = ['Astra', 'Bram', 'Cora', 'Dune', 'Eira'];
@@ -160,7 +163,7 @@ function saveState(_state: IdleState) {
 
 const initial: IdleState = loadState() ?? {
     radius: 4,
-    tiles: generateWorld(20),
+    tiles: generateWorld(200),
     heroes: seedHeroes(),
     inventory: {wood: 0, ore: 0, stone: 0, food: 0, crystal: 0, artifact: 0},
     tick: 0,
@@ -169,6 +172,10 @@ const initial: IdleState = loadState() ?? {
 };
 
 export const idleStore = reactive(initial);
+// Ensure tileIndex populated for preloaded tiles (e.g., loaded from storage)
+if (idleStore.tiles.length) {
+    idleStore.tiles.forEach(t => { if (!tileIndex[t.id]) indexTile(t); });
+}
 
 watch(idleStore, () => {
     saveState(idleStore);
@@ -268,24 +275,13 @@ function isInRadius(q: number, r: number, radius: number): boolean {
 // Updated world generation to use neighbor-informed terrain
 function generateWorld(radius: number, discoveredRadius: null | number = null): Tile[] {
     if (discoveredRadius === undefined || discoveredRadius === null) {
-        discoveredRadius = radius - 1
+        discoveredRadius = radius - 1;
     }
+    // Pre-pass: ensure all axial coordinates within radius exist
     for (let q = -radius; q <= radius; q++) {
         for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
             const id = axialKey(q, r);
-            if (q === 0 && r === 0) {
-                tiles.push({
-                    id,
-                    q,
-                    r,
-                    terrain: 'towncenter',
-                    discovered: true,
-                    resourceRichness: 1.5
-                });
-                continue;
-            }
-
-            let tile = tiles.find(t => t.id === id);
+            let tile = tileIndex[id];
             if (!tile) {
                 tile = {
                     id,
@@ -294,16 +290,46 @@ function generateWorld(radius: number, discoveredRadius: null | number = null): 
                     terrain: null,
                     discovered: false,
                     resourceRichness: 1 + Math.random() * 0.5
-                }
+                };
                 tiles.push(tile);
+                indexTile(tile);
             }
-
-            if (isInRadius(q, r, discoveredRadius)) {
-                discoverTile(tile)
+            if (q === 0 && r === 0) {
+                tile.terrain = 'towncenter';
+                tile.discovered = true;
+            } else if (isInRadius(q, r, discoveredRadius) && !tile.discovered) {
+                // Defer discovery assignment to batch post pass for better neighbor context
+                // We'll mark discovered now to allow neighbor-based weighting; terrain assigned later.
+                tile.discovered = true;
             }
         }
     }
+    // Second pass: assign terrain to all discovered tiles without terrain (excluding towncenter)
+    // Build quick neighbor terrain cache to avoid repeated computation where possible.
+    for (const tile of tiles) {
+        if (!tile.discovered || tile.terrain) continue; // skip undiscovered or already assigned
+        const neighborTerrains = getNeighborTerrainsFast(tile, 1);
+        const biomeSample = getNeighborTerrainsFast(tile, 3);
+        let generated = weightedTerrainChoice(neighborTerrains as Terrain[], biomeSample as Terrain[]);
+        if (generated === 'towncenter') generated = 'plains'; // guard
+        tile.terrain = generated;
+    }
     return tiles;
+}
+// Fast neighbor terrain fetch using tileIndex (discovered tiles only)
+function getNeighborTerrainsFast(tile: Tile, radius: number = 1): TerrainKey[] {
+    const results: TerrainKey[] = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+        for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+            if (dq === 0 && dr === 0) continue;
+            const id = axialKey(tile.q + dq, tile.r + dr);
+            const nt = tileIndex[id];
+            if (nt && nt.discovered && nt.terrain && nt.terrain !== 'towncenter') {
+                results.push(nt.terrain);
+            }
+        }
+    }
+    return results;
 }
 
 function getNeighbors(q: number, r: number, radius: number = 1): { q: number, r: number }[] {
@@ -319,8 +345,8 @@ function getNeighbors(q: number, r: number, radius: number = 1): { q: number, r:
 
 function getNeighborTerrains(tile: Tile, radius: number = 1): Array<TerrainKey> {
     return getNeighbors(tile.q, tile.r, radius)
-        .map(n => tiles.find(t => t.q === n.q && t.r === n.r && t.discovered))
-        .filter(Boolean)
+        .map(n => tileIndex[axialKey(n.q, n.r)])
+        .filter(t => t && t.discovered)
         .map((t): TerrainKey => t!.terrain ?? 'plains')
         .filter(t => t !== 'towncenter');
 }
@@ -329,14 +355,12 @@ function getNeighborTerrains(tile: Tile, radius: number = 1): Array<TerrainKey> 
 export function discoverTile(tile: Tile) {
     const neighborTerrains = getNeighborTerrains(tile);
     let generated = weightedTerrainChoice(neighborTerrains as Terrain[], getNeighborTerrains(tile, 3));
-    // Guard: only allow a single towncenter at origin
     if (generated === 'towncenter' && !(tile.q === 0 && tile.r === 0)) {
         generated = 'plains';
     }
     tile.terrain = generated;
     tile.discovered = true;
-
-    // Dev: detect accidental duplicates
+    if (!tileIndex[tile.id]) indexTile(tile);
     if (generated === 'towncenter') {
         const count = tiles.filter(t => t.terrain === 'towncenter').length;
         if (count > 1) {
@@ -344,18 +368,19 @@ export function discoverTile(tile: Tile) {
             console.warn('Duplicate towncenter detected, count=', count);
         }
     }
-
     getNeighbors(tile.q, tile.r).forEach(n => {
         const key = axialKey(n.q, n.r);
-        if (!tiles.find(t => t.id === key)) {
-            tiles.push({
+        if (!tileIndex[key]) {
+            const newTile: Tile = {
                 id: key,
                 q: n.q,
                 r: n.r,
-                terrain: 'plains', // placeholder until discovered
+                terrain: 'plains',
                 discovered: false,
                 resourceRichness: 1 + Math.random() * 0.5
-            });
+            };
+            tiles.push(newTile);
+            indexTile(newTile);
         }
     });
 }
