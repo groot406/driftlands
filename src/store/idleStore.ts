@@ -54,6 +54,7 @@ export interface Tile {
     id: string;
     q: number;
     r: number;
+    biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
     resourceRichness: number;
@@ -97,7 +98,7 @@ function indexTile(t: Tile) { tileIndex[t.id] = t; }
 // Chunk (block) based lazy generation -------------------------------------------------
 // Each chunk is a rectangular axial coordinate span of size CHUNK_SIZE in q and r.
 // We only generate chunks that come into (or neighbor) the camera view.
-const CHUNK_SIZE = 100; // user-requested ~50x50 blocks
+const CHUNK_SIZE = 10; // user-requested ~50x50 blocks
 interface WorldChunkMeta { id: string; cq: number; cr: number; generated: boolean; }
 // Simple reactive registry (object map for reactivity friendliness)
 const chunkRegistry: Record<string, WorldChunkMeta> = reactive({});
@@ -156,14 +157,12 @@ export function ensureChunksInView(qMin: number, qMax: number, rMin: number, rMa
     const { cq: cqMax } = chunkIndexFor(qMax, 0);
     const { cr: crMin } = chunkIndexFor(0, rMin);
     const { cr: crMax } = chunkIndexFor(0, rMax);
-    for (let cq = cqMin - 1; cq <= cqMax + 1; cq++) {
-        for (let cr = crMin - 1; cr <= crMax + 1; cr++) {
+    for (let cq = cqMin; cq <= cqMax; cq++) {
+        for (let cr = crMin; cr <= crMax; cr++) {
             generateChunk(cq, cr);
         }
     }
 }
-// Optional: export chunk size for camera computations.
-export const WORLD_CHUNK_SIZE = CHUNK_SIZE;
 
 function randName(): string {
     const names = ['Astra', 'Bram', 'Cora', 'Dune', 'Eira'];
@@ -242,7 +241,7 @@ const initial: IdleState = loadState() ?? {
     radius: 4,
     // Seed a modest starting area instead of massive upfront generation.
     // We'll call generateWorld with a small radius (e.g., 20) to get initial discovered terrain diversity.
-    tiles: generateWorld(50),
+    tiles: [{q: 0, r: 0, terrain: 'towncenter' , discovered: true, id: axialKey(0, 0)}],
     heroes: seedHeroes(),
     inventory: {wood: 0, ore: 0, stone: 0, food: 0, crystal: 0, artifact: 0},
     tick: 0,
@@ -350,47 +349,7 @@ function isInRadius(q: number, r: number, radius: number): boolean {
     return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) <= radius;
 }
 
-// Updated world generation to use neighbor-informed terrain
-function generateWorld(radius: number): Tile[] {
-    // Pre-pass: ensure all axial coordinates within radius exist
-    for (let q = -radius; q <= radius; q++) {
-        for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
-            const id = axialKey(q, r);
-            let tile = tileIndex[id];
-            if (!tile) {
-                tile = {
-                    id,
-                    q,
-                    r,
-                    terrain: null,
-                    discovered: false,
-                    resourceRichness: 1 + Math.random() * 0.5
-                };
-                tiles.push(tile);
-                indexTile(tile);
-            }
-            if (q === 0 && r === 0) {
-                tile.terrain = 'towncenter';
-                tile.discovered = true;
-            } else if (isInRadius(q, r, discoveredRadiusCache) && !tile.discovered) {
-                // Defer discovery assignment to batch post pass for better neighbor context
-                // We'll mark discovered now to allow neighbor-based weighting; terrain assigned later.
-                tile.discovered = true;
-            }
-        }
-    }
-    // Second pass: assign terrain to all discovered tiles without terrain (excluding towncenter)
-    // Build quick neighbor terrain cache to avoid repeated computation where possible.
-    for (const tile of tiles) {
-        if (!tile.discovered || tile.terrain) continue; // skip undiscovered or already assigned
-        const neighborTerrains = getNeighborTerrainsFast(tile, 1);
-        const biomeSample = getNeighborTerrainsFast(tile, 3);
-        let generated = weightedTerrainChoice(neighborTerrains as Terrain[], biomeSample as Terrain[]);
-        if (generated === 'towncenter') generated = 'plains'; // guard
-        tile.terrain = generated;
-    }
-    return tiles;
-}
+
 // Fast neighbor terrain fetch using tileIndex (discovered tiles only)
 function getNeighborTerrainsFast(tile: Tile, radius: number = 1): TerrainKey[] {
     const results: TerrainKey[] = [];
@@ -427,36 +386,12 @@ function getNeighborTerrains(tile: Tile, radius: number = 1): Array<TerrainKey> 
 }
 
 // Updated discoverTile to use weighted generation
-export function discoverTile(tile: Tile, createNeighbors: boolean = true) {
+export function discoverTile(tile: Tile) {
     const neighborTerrains = getNeighborTerrains(tile);
-    let generated = weightedTerrainChoice(neighborTerrains as Terrain[], getNeighborTerrains(tile, 3));
-    if (generated === 'towncenter' && !(tile.q === 0 && tile.r === 0)) {
-        generated = 'plains';
-    }
-    tile.terrain = generated;
+
+    const generated = weightedTerrainChoice(neighborTerrains as Terrain[], neighborTerrains);
+    tile.biome = generated.biome;
+    tile.terrain = generated.terrain;
     tile.discovered = true;
     if (!tileIndex[tile.id]) indexTile(tile);
-    if (generated === 'towncenter') {
-        const count = tiles.filter(t => t.terrain === 'towncenter').length;
-        if (count > 1) {
-            // eslint-disable-next-line no-console
-            console.warn('Duplicate towncenter detected, count=', count);
-        }
-    }
-
-    // getNeighbors(tile.q, tile.r).forEach(n => {
-    //     const key = axialKey(n.q, n.r);
-    //     if (!tileIndex[key]) {
-    //         const newTile: Tile = {
-    //             id: key,
-    //             q: n.q,
-    //             r: n.r,
-    //             terrain: 'plains',
-    //             discovered: false,
-    //             resourceRichness: 1 + Math.random() * 0.5
-    //         };
-    //         tiles.push(newTile);
-    //         indexTile(newTile);
-    //     }
-    // });
 }

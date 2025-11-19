@@ -5,6 +5,7 @@
         <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
         <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
         <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
+        {{ visibleTiles.length }}
       </div>
       <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none">
@@ -13,7 +14,8 @@
             <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
                  :class="tile.discovered ? '' : 'opacity-50'"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
-                 @click="clickTile(tile)"></div>
+                 @click="clickTile(tile)">
+            </div>
           </div>
         </div>
       </div>
@@ -45,6 +47,7 @@ const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 20, innerR
 // Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
 const viewport = reactive({ w: 0, h: 0, cx: 0, cy: 0 });
+
 function measure() {
   const el = mapEl.value;
   if (!el) return;
@@ -80,13 +83,14 @@ function getPixel(tile: Tile) {
   }
   return cached;
 }
+
 // Cache for style opacity per tile id for last camera position hash
 let lastCamKey = '';
 const opacityCache = new Map<string, number>();
 
 // Optimized visible tiles: iterate axial coords within camera radius instead of filtering all tiles
 const visibleTiles = computed(() => {
-  const radius = camera.radius;
+  const radius = camera.radius + 4;
   const cq = camera.q;
   const cr = camera.r;
   const minQ = Math.floor(cq - radius);

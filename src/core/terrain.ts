@@ -1,10 +1,10 @@
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
-import { detectBiome, applyBiomeModifiers } from './biomes';
+import {applyBiomeModifiers, detectBiome} from './biomes';
 
 export {TERRAIN_DEFS};
 
-export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[]): TerrainKey {
+export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[]): {biome: string|null, terrain: TerrainKey} {
     const weights: Record<TerrainKey, number> = {
         forest: TERRAIN_DEFS.forest.baseWeight,
         plains: TERRAIN_DEFS.plains.baseWeight,
@@ -27,11 +27,11 @@ export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerra
     const entries = (Object.entries(weights) as [TerrainKey, number][]) // exclude towncenter by weight
         .filter(([k, w]) => k !== 'towncenter' && w > 0 && w !== Infinity && !Number.isNaN(w));
     const total = entries.reduce((acc, [, w]) => acc + w, 0);
-    if (total <= 0) return 'plains';
+    if (total <= 0) return {biome, terrain: 'plains'};
     let roll = Math.random() * total;
     for (const [terrain, w] of entries) {
-        if (roll < w) return terrain;
+        if (roll < w) return {biome, terrain};
         roll -= w;
     }
-    return 'plains';
+    return {biome, terrain: 'plains'};
 }
