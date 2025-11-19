@@ -76,14 +76,19 @@ const worldStyle = computed(() => {
 function tileStyle(tile: Tile): CSSProperties {
   const p = axialToPixel(tile.q, tile.r, HEX_SIZE);
   const dist = hexDistance(camera, tile);
-  const fade = 1 - Math.max(0, (dist - camera.innerRadius) / (camera.radius - camera.innerRadius));
-  const eased = Math.max(0, fade * fade);
+  const span = Math.max(0.0001, (camera.radius - camera.innerRadius));
+  let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+  // Ensure fade never exceeds 1 or drops below 0
+  fade = Math.min(1, Math.max(0, fade));
+  // Use slightly stronger falloff for towncenter so it's not visually exempt
+  const falloff = (tile.terrain === 'towncenter') ? (fade * fade * 0.9) : (fade * fade);
+  const opacity = falloff;
   return {
     width: `${HEX_SIZE*2 - HEX_SPACE}px`,
     height: `${HEX_SIZE*2 - HEX_SPACE}px`,
     transform: `translate(${p.x - HEX_SIZE}px, ${p.y - HEX_SIZE}px)`,
-    opacity: eased,
-    pointerEvents: eased <= 0 ? 'none' : 'auto'
+    opacity,
+    pointerEvents: opacity <= 0 ? 'none' : 'auto'
   };
 }
 
