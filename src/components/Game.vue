@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getTile } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getTile, ensureChunksInView } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -40,7 +40,7 @@ const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reus
 const HEX_Y_FACTOR = HEX_SIZE * 3/2;
 
 // Camera state (smoothed position with separate targets)
-const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 15, innerRadius: 7 });
+const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 20, innerRadius: 10 });
 
 // Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
@@ -89,16 +89,17 @@ const visibleTiles = computed(() => {
   const radius = camera.radius;
   const cq = camera.q;
   const cr = camera.r;
-  const results: Tile[] = [];
-  // Determine integer bounding box of axial coordinates in radius
   const minQ = Math.floor(cq - radius);
   const maxQ = Math.ceil(cq + radius);
+  const rMinGlobal = Math.floor(cr - radius);
+  const rMaxGlobal = Math.ceil(cr + radius);
+  // Ensure chunks before collecting tiles
+  ensureChunksInView(minQ, maxQ, rMinGlobal, rMaxGlobal);
+  const results: Tile[] = [];
   for (let q = minQ; q <= maxQ; q++) {
-    // For each q, r must satisfy hex distance <= radius
-    const minR = Math.floor(cr - radius);
-    const maxR = Math.ceil(cr + radius);
+    const minR = rMinGlobal;
+    const maxR = rMaxGlobal;
     for (let r = minR; r <= maxR; r++) {
-      // Quick hex distance rejection before lookup
       const dq = Math.abs(q - cq);
       const dr = Math.abs(r - cr);
       const ds = Math.abs((-q - r) - (-cq - cr));
@@ -259,6 +260,10 @@ onBeforeUnmount(() => {
   inset: 0;
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   transition: filter 0.15s, opacity 0.3s;
+}
+.hex-tile.opacity-50 { /* fog-of-war */
+  background: linear-gradient(145deg,#334155,#1e293b);
+  box-shadow: inset 0 0 4px #0f172a;
 }
 .hex-tile:hover { filter: brightness(1.15); }
 
