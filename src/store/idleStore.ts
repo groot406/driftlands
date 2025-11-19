@@ -112,6 +112,10 @@ function seedHeroes(): IdleHero[] {
 function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
+// Fast O(1) tile lookup by axial coordinates (exported for performance-sensitive views)
+export function getTile(q: number, r: number): Tile | undefined {
+    return tileIndex[axialKey(q, r)];
+}
 
 function synergyMultiplier(count: number): number {
     return 1 + 0.25 * (count - 1);
@@ -163,7 +167,7 @@ function saveState(_state: IdleState) {
 
 const initial: IdleState = loadState() ?? {
     radius: 4,
-    tiles: generateWorld(200),
+    tiles: generateWorld(2000),
     heroes: seedHeroes(),
     inventory: {wood: 0, ore: 0, stone: 0, food: 0, crystal: 0, artifact: 0},
     tick: 0,

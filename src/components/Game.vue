@@ -12,7 +12,7 @@
           <div v-for="tile in visibleTiles" :key="tile.id" :style="tileStyle(tile)" class="absolute group">
             <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
                  :class="tile.discovered ? '' : 'opacity-50'"
-                 :style="{ background: tile.discovered ? getTileBackground(tile) : fogColor }"
+                 :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
                  @click="clickTile(tile)"></div>
           </div>
         </div>
@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getTile } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -34,10 +34,13 @@ import { computed, reactive, onMounted, onBeforeUnmount, ref, type CSSProperties
 
 const HEX_SIZE = 32;
 const HEX_SPACE = 4;
-const fogColor = '#475569';
+// Precompute constants used in axialToPixel for speed
+const SQRT3 = Math.sqrt(3);
+const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
+const HEX_Y_FACTOR = HEX_SIZE * 3/2;
 
 // Camera state (smoothed position with separate targets)
-const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 20, innerRadius: 10 });
+const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 15, innerRadius: 7 });
 
 // Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
@@ -51,9 +54,9 @@ function measure() {
   viewport.cy = viewport.h / 2;
 }
 
-function axialToPixel(q: number, r: number, size: number) {
-  const x = (size + (HEX_SIZE * 0.155)) * Math.sqrt(3) * (q + r / 2);
-  const y = size * 3/2 * r;
+function axialToPixel(q: number, r: number) {
+  const x = HEX_X_FACTOR * (q + r / 2);
+  const y = HEX_Y_FACTOR * r;
   return { x, y };
 }
 
@@ -64,32 +67,89 @@ function hexDistance(a: {q: number; r: number}, b: {q: number; r: number}): numb
   return Math.max(dq, dr, ds);
 }
 
-// Visible tiles within camera radius (use smoothed camera directly)
-const visibleTiles = computed(() => store.tiles.filter(t => hexDistance(camera, t) <= camera.radius));
+// Cache for pixel positions per tile id to avoid recalculation every frame
+const pixelCache = new Map<string, {x: number; y: number}>();
+// Reusable style object cache (static size + transform per tile)
+const styleCache = new Map<string, CSSProperties>();
+const baseTileSize = `${HEX_SIZE*2 - HEX_SPACE}px`;
+function getPixel(tile: Tile) {
+  let cached = pixelCache.get(tile.id);
+  if (!cached) {
+    cached = axialToPixel(tile.q, tile.r);
+    pixelCache.set(tile.id, cached);
+  }
+  return cached;
+}
+// Cache for style opacity per tile id for last camera position hash
+let lastCamKey = '';
+const opacityCache = new Map<string, number>();
+
+// Optimized visible tiles: iterate axial coords within camera radius instead of filtering all tiles
+const visibleTiles = computed(() => {
+  const radius = camera.radius;
+  const cq = camera.q;
+  const cr = camera.r;
+  const results: Tile[] = [];
+  // Determine integer bounding box of axial coordinates in radius
+  const minQ = Math.floor(cq - radius);
+  const maxQ = Math.ceil(cq + radius);
+  for (let q = minQ; q <= maxQ; q++) {
+    // For each q, r must satisfy hex distance <= radius
+    const minR = Math.floor(cr - radius);
+    const maxR = Math.ceil(cr + radius);
+    for (let r = minR; r <= maxR; r++) {
+      // Quick hex distance rejection before lookup
+      const dq = Math.abs(q - cq);
+      const dr = Math.abs(r - cr);
+      const ds = Math.abs((-q - r) - (-cq - cr));
+      if (Math.max(dq, dr, ds) > radius) continue;
+      const tile = getTile(q, r);
+      if (tile) results.push(tile);
+    }
+  }
+  return results;
+});
 
 // Single world transform keeps camera centered
 const worldStyle = computed(() => {
-  const camPx = axialToPixel(camera.q, camera.r, HEX_SIZE);
+  const camPx = axialToPixel(camera.q, camera.r);
   return { transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)` };
 });
 
 function tileStyle(tile: Tile): CSSProperties {
-  const p = axialToPixel(tile.q, tile.r, HEX_SIZE);
-  const dist = hexDistance(camera, tile);
-  const span = Math.max(0.0001, (camera.radius - camera.innerRadius));
-  let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-  // Ensure fade never exceeds 1 or drops below 0
-  fade = Math.min(1, Math.max(0, fade));
-  // Use slightly stronger falloff for towncenter so it's not visually exempt
-  const falloff = (tile.terrain === 'towncenter') ? (fade * fade * 0.9) : (fade * fade);
-  const opacity = falloff;
-  return {
-    width: `${HEX_SIZE*2 - HEX_SPACE}px`,
-    height: `${HEX_SIZE*2 - HEX_SPACE}px`,
-    transform: `translate(${p.x - HEX_SIZE}px, ${p.y - HEX_SIZE}px)`,
-    opacity,
-    pointerEvents: opacity <= 0 ? 'none' : 'auto'
-  };
+  const camKey = `${camera.q.toFixed(3)}:${camera.r.toFixed(3)}:${camera.radius}:${camera.innerRadius}`;
+  const px = getPixel(tile);
+  // Fetch or create static style object for this tile
+  let style = styleCache.get(tile.id);
+  if (!style) {
+    style = {
+      width: baseTileSize,
+      height: baseTileSize,
+      transform: `translate(${px.x - HEX_SIZE}px, ${px.y - HEX_SIZE}px)`,
+      opacity: 1,
+      pointerEvents: 'auto'
+    };
+    styleCache.set(tile.id, style);
+  }
+  let opacity: number;
+  if (camKey === lastCamKey && opacityCache.has(tile.id)) {
+    opacity = opacityCache.get(tile.id)!;
+  } else {
+    const dist = hexDistance(camera, tile);
+    const span = Math.max(0.0001, (camera.radius - camera.innerRadius));
+    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+    fade = Math.min(1, Math.max(0, fade));
+    opacity = (tile.terrain === 'towncenter') ? (fade * fade * 0.9) : (fade * fade);
+    if (camKey !== lastCamKey) {
+      if (opacityCache.size > 0) opacityCache.clear();
+      lastCamKey = camKey;
+    }
+    opacityCache.set(tile.id, opacity);
+  }
+  // Mutate dynamic parts
+  style.opacity = opacity;
+  style.pointerEvents = opacity <= 0 ? 'none' : 'auto';
+  return style;
 }
 
 function getTileBackground(tile: Tile) { return `url(${getTileImage(tile)}) center/cover`; }
@@ -115,46 +175,80 @@ function clickTile(tile: Tile) {
   }
 }
 
-function handleKey(e: KeyboardEvent) {
-  let dq = 0, dr = 0;
-  if (e.key === 'ArrowUp' || e.key === 'w') { dr = -1; dq = 0.5; }
-  else if (e.key === 'ArrowDown' || e.key === 's') { dr = 1; dq = -0.5; }
-  else if (e.key === 'ArrowLeft' || e.key === 'a') dq = -1;
-  else if (e.key === 'ArrowRight' || e.key === 'd') dq = 1;
-  else if (e.key === '+') camera.radius = Math.min(30, camera.radius + 1);
-  else if (e.key === '-' || e.key === '_') camera.radius = Math.max(camera.innerRadius + 1, camera.radius - 1);
-  if (dq !== 0 || dr !== 0) {
-    camera.targetQ += dq;
-    camera.targetR += dr;
+// Continuous input tracking for smoother movement
+const heldKeys = new Set<string>();
+const MOVE_SPEED = 20; // tiles per second when holding a direction
+let lastTime = performance.now();
+
+function keyDown(e: KeyboardEvent) {
+  // Movement keys: add to held set (prevent repeat lag)
+  if (['ArrowUp','w','ArrowDown','s','ArrowLeft','a','ArrowRight','d'].includes(e.key)) {
+    heldKeys.add(e.key);
+    e.preventDefault();
+  } else if (e.key === '+' ) {
+    camera.radius = Math.min(30, camera.radius + 1);
+  } else if (e.key === '-' || e.key === '_') {
+    camera.radius = Math.max(camera.innerRadius + 1, camera.radius - 1);
+  }
+}
+function keyUp(e: KeyboardEvent) {
+  if (heldKeys.has(e.key)) {
+    heldKeys.delete(e.key);
+    e.preventDefault();
   }
 }
 
 // Smooth camera animation loop
 let rafId: number | null = null;
 function animateCamera() {
-  // Distance-adaptive easing: faster when far, slower when close
+  const now = performance.now();
+  const dt = (now - lastTime) / 1000; // seconds
+  lastTime = now;
+
+  // Aggregate movement directions from held keys
+  let dqInput = 0, drInput = 0;
+  for (const k of heldKeys) {
+    if (k === 'ArrowUp' || k === 'w') { drInput += -1; dqInput += 0.5; }
+    else if (k === 'ArrowDown' || k === 's') { drInput += 1; dqInput += -0.5; }
+    else if (k === 'ArrowLeft' || k === 'a') { dqInput += -1; }
+    else if (k === 'ArrowRight' || k === 'd') { dqInput += 1; }
+  }
+  // Normalize diagonal to avoid faster speed (simple scale if both components non-zero)
+  if (dqInput !== 0 || drInput !== 0) {
+    const mag = Math.sqrt(dqInput * dqInput + drInput * drInput);
+    if (mag > 0) {
+      dqInput /= mag;
+      drInput /= mag;
+    }
+    camera.targetQ += dqInput * MOVE_SPEED * dt;
+    camera.targetR += drInput * MOVE_SPEED * dt;
+  }
+
+  // Distance-adaptive easing for camera follow
   const dq = camera.targetQ - camera.q;
   const dr = camera.targetR - camera.r;
   const dist = Math.sqrt(dq * dq + dr * dr);
-  const baseMin = 0.28; // was 0.15
-  const baseMax = 0.55; // upper bound for very large distances
+  const baseMin = 0.08;
+  const baseMax = 0.55;
   const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
-  // Snap when very close to avoid jitter
   if (Math.abs(dq) < 0.005) camera.q = camera.targetQ; else camera.q += dq * lerp;
   if (Math.abs(dr) < 0.005) camera.r = camera.targetR; else camera.r += dr * lerp;
+
   rafId = requestAnimationFrame(animateCamera);
 }
 
 onMounted(() => {
   measure();
   window.addEventListener('resize', measure);
-  window.addEventListener('keydown', handleKey);
+  window.addEventListener('keydown', keyDown);
+  window.addEventListener('keyup', keyUp);
   animateCamera();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', measure);
-  window.removeEventListener('keydown', handleKey);
+  window.removeEventListener('keydown', keyDown);
+  window.removeEventListener('keyup', keyUp);
   if (rafId) cancelAnimationFrame(rafId);
 });
 </script>
