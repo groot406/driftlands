@@ -194,7 +194,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     running: false,
 };
 export const idleStore = reactive(initial);
-seedInitialWorld(2500);
+seedInitialWorld(100);
 
 watch(idleStore, () => {
     saveState(idleStore);
