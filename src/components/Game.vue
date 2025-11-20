@@ -4,24 +4,8 @@
       <!-- Extracted map component -->
       <HexMap />
 
-      <!-- Loading overlay -->
-      <div v-if="generationInProgress"
-           class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
-        <div
-            class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 border border-slate-700 shadow-xl drop-shadow-md opacity-80 backdrop:blur-lg">
-          <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">World Generation</div>
-          <div class="text-xs text-slate-400" role="status">{{ generationStatus }}</div>
-          <div class="flex items-center justify-between text-xs text-slate-400">
-            <div>Tiles: {{ generationCompleted }} / {{ generationTotal }}</div>
-            <div>{{ (generationProgress * 100).toFixed(1) }}%</div>
-          </div>
-          <div class="h-3 rounded-md overflow-hidden bg-slate-700/60">
-            <div class="h-full bg-emerald-500 transition-all"
-                 :style="{ width: (generationProgress * 100) + '%' }"></div>
-          </div>
-          <div v-if="generationProgress >= 1" class="text-emerald-300 text-xs">Finalizing world...</div>
-        </div>
-      </div>
+      <!-- Loading overlay component -->
+      <LoadingOverlay />
 
     </div>
   </div>
@@ -38,9 +22,10 @@
 
 <script setup lang="ts">
 import { startIdle, idleStore as store } from '../store/idleStore';
-import { startWorldGeneration, generationInProgress, generationStatus, generationCompleted, generationTotal, generationProgress } from '../core/world';
+import { startWorldGeneration } from '../core/world';
 import { centerCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
+import LoadingOverlay from './LoadingOverlay.vue';
 
 const WORLD_SIZE = 6;
 const LARGE_WORLD_SIZE = 200;
