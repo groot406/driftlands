@@ -14,13 +14,12 @@
             v-for="tile in visibleTiles"
             :key="tile.id"
             :style="tileStyle(tile)"
-            :class="['absolute group', 'tile-fade-in']"
+            class="absolute group"
           >
             <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
                  :class="tile.discovered ? 'opacity-100' : 'opacity-50'"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
                  @click="clickTile(tile)">
-              {{ tile.biome }}
             </div>
           </div>
         </div>
@@ -38,10 +37,10 @@ import water from '../assets/tiles/water.png';
 import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
-import { computed, reactive, onMounted, onBeforeUnmount, ref, type CSSProperties } from 'vue';
+import { computed, reactive, onMounted, onBeforeUnmount, ref, type CSSProperties, shallowRef } from 'vue';
 
 const CAMERA_RADIUS = 20;
-const CAMERA_INNER_RADIUS = 10;
+const CAMERA_INNER_RADIUS = 5;
 
 const HEX_SIZE = 32;
 const HEX_SPACE = 4;
@@ -56,6 +55,14 @@ const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: CAMERA_RAD
 // Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
 const viewport = reactive({ w: 0, h: 0, cx: 0, cy: 0 });
+
+// Remove computed visibleTiles; use manual shallowRef to avoid dependency on large reactive arrays
+const visibleTiles = shallowRef<Tile[]>([]);
+function updateVisibleTiles() {
+  const cq = Math.round(camera.q);
+  const cr = Math.round(camera.r);
+  visibleTiles.value = getTilesInRadius(cq, cr, camera.radius + 2);
+}
 
 function measure() {
   const el = mapEl.value;
@@ -97,23 +104,6 @@ function getPixel(tile: Tile) {
 // Cache for style opacity per tile id for last camera position hash
 let lastCamKey = '';
 const opacityCache = new Map<string, number>();
-
-const visibleTiles = computed(() => {
-  const radius = camera.radius;
-  const cq = Math.round(camera.q);
-  const cr = Math.round(camera.r);
-
-  // depend on worldVersion for reactivity
-  const worldVersion = store.worldVersion;
-
-  const tilesInRadius = getTilesInRadius(cq, cr, radius + 2);
-  const results: Tile[] = [];
-  for (const t of tilesInRadius) {
-    results.push(t);
-  }
-
-  return results;
-});
 
 // Single world transform keeps camera centered
 const worldStyle = computed(() => {
@@ -179,18 +169,17 @@ function clampCameraTargets() {
 function clickTile(tile: Tile) {
   if (!tile.discovered) {
     discoverTile(tile);
-    clampCameraTargets();
     return;
   }
+  // TODO: ease camera to tile on click
   camera.targetQ = tile.q;
   camera.targetR = tile.r;
-  clampCameraTargets();
 }
 
 // Movement/input state declarations (placed before animateCamera usage)
 let lastTime = performance.now();
 const heldKeys = new Set<string>();
-const MOVE_SPEED = 20;
+const MOVE_SPEED = 35;
 let rafId: number | null = null;
 
 function keyDown(e: KeyboardEvent) {
@@ -237,18 +226,19 @@ function animateCamera() {
   const dq = camera.targetQ - camera.q;
   const dr = camera.targetR - camera.r;
   const dist = Math.sqrt(dq * dq + dr * dr);
-  const baseMin = 0.08;
-  const baseMax = 0.55;
+  const baseMin = 0.05;
+  const baseMax = 0.1;
   const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
-  if (Math.abs(dq) < 0.02) camera.q = camera.targetQ; else camera.q += dq * lerp;
-  if (Math.abs(dr) < 0.02) camera.r = camera.targetR; else camera.r += dr * lerp;
+  if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
+  if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
   clampCameraTargets();
-
+  updateVisibleTiles();
   rafId = requestAnimationFrame(animateCamera);
 }
 
 onMounted(() => {
   measure();
+  updateVisibleTiles();
   window.addEventListener('resize', measure);
   window.addEventListener('keydown', keyDown);
   window.addEventListener('keyup', keyUp);
@@ -270,18 +260,9 @@ onBeforeUnmount(() => {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   transition: filter 0.15s, opacity 0.3s;
 }
-.hex-tile.opacity-50 { /* fog-of-war */
-  background: linear-gradient(145deg,#334155,#1e293b);
-  box-shadow: inset 0 0 4px #0f172a;
+.hex-tile.opacity-50 {
+  background: #334155;
 }
-.hex-tile:hover { filter: brightness(1.15); }
+.hex-tile:hover { filter: brightness(1.25); }
 
-/* Fade-in animation for new tiles (wrapper div) */
-@keyframes tileFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.tile-fade-in {
-  animation: tileFadeIn 0.2s ease-in;
-}
 </style>

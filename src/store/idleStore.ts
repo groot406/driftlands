@@ -1,4 +1,4 @@
-import {reactive, watch} from 'vue';
+import {ref, watch} from 'vue';
 import {weightedTerrainChoice} from '../core/terrain';
 import type {TerrainKey} from '../core/terrainDefs';
 
@@ -68,11 +68,13 @@ interface IdleState {
 }
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
+const INITIAL_WORLD_SIZE = 300;
 
-export const tiles = reactive<Tile[]>([]);
+const tiles: Tile[] = [];
 const tileIndex: Record<string, Tile> = {};
 // Cached axial radius offset lists to avoid recomputing loops every frame
 const radiusOffsetCache = new Map<number, Array<[number, number]>>();
+export const worldVersion = ref(0);
 
 let minQ: number = 0;
 let maxQ: number = 0;
@@ -132,8 +134,9 @@ export function discoverTile(tile: Tile) {
         return;
     }
 
-    let neighborTerrains = getNeighborTerrains(tile);
-    const generated = weightedTerrainChoice(neighborTerrains, neighborTerrains);
+    const neighborTerrains = getNeighborTerrains(tile);
+    const biomeTerrains = getNeighborTerrains(tile, 2);
+    const generated = weightedTerrainChoice(neighborTerrains, biomeTerrains);
 
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
@@ -141,7 +144,8 @@ export function discoverTile(tile: Tile) {
     if (!tileIndex[tile.id]) indexTile(tile);
 
     ensureTileNeighbors(tile);
-    idleStore.worldVersion++;
+
+    worldVersion.value++;
 }
 
 function axialKey(q: number, r: number) {
@@ -194,12 +198,13 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     tiles: tiles,
     tick: 0,
     running: false,
-    worldVersion: 0,
+    worldVersion: worldVersion
 };
-export const idleStore = reactive(initial);
-seedInitialWorld(5);
+export const idleStore = initial;
+seedInitialWorld(INITIAL_WORLD_SIZE);
 
-watch(idleStore, () => {
+watch(worldVersion, () => {
+    console.log('save');
     saveState(idleStore);
 }, {deep: true});
 
@@ -243,7 +248,7 @@ export function seedInitialWorld(discoverRadius: number = 1) {
         }
     }
 
-    idleStore.worldVersion++;
+    worldVersion.value++;
 }
 
 export function hexDistance(q: number, r: number): number {
