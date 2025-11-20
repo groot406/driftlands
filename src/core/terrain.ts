@@ -20,6 +20,7 @@ export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerra
             if (delta !== undefined) weights[key] += delta;
         }
     });
+
     // Detect biome from neighbors and apply biome modifiers
     const biome = detectBiome(biomeTerrains);
     applyBiomeModifiers(biome, weights);

@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, watch} from 'vue';
+import {ref, type Ref, watch} from 'vue';
 import {type ResourceType, worldVersion} from '../core/world';
 import ResourceBubble from './ResourceBubble.vue';
 import {idleStore as store} from '../store/idleStore';
@@ -17,7 +17,13 @@ interface ResMeta {
   icon: string;
 }
 
-const resources = ref({});
+interface Resource {
+  key: ResourceType;
+  label: string;
+  icon: string;
+  value: number;
+}
+const resources:Ref<Resource[]> = ref([]);
 
 watch(worldVersion, () => {
   const counts: Record<ResourceType, number> = {
