@@ -1,20 +1,21 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100">
     <div class="flex-1 p-4 overflow-hidden w-full h-full">
-      <div class="flex items-center justify-between mb-4 absolute">
+      <div class="flex items-center justify-between mb-4 absolute gap-4">
         <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
         <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
         <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
-        {{ visibleTiles.length }}
+        {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
       </div>
       <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none">
         <div class="absolute inset-0" :style="worldStyle">
           <div v-for="tile in visibleTiles" :key="tile.id" :style="tileStyle(tile)" class="absolute group">
             <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
-                 :class="tile.discovered ? '' : 'opacity-50'"
+                 :class="tile.discovered ? 'opacity-100' : 'opacity-50'"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
                  @click="clickTile(tile)">
+              {{ tile.biome }}
             </div>
           </div>
         </div>
@@ -24,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getTile, ensureChunksInView } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -75,6 +76,7 @@ const pixelCache = new Map<string, {x: number; y: number}>();
 // Reusable style object cache (static size + transform per tile)
 const styleCache = new Map<string, CSSProperties>();
 const baseTileSize = `${HEX_SIZE*2 - HEX_SPACE}px`;
+
 function getPixel(tile: Tile) {
   let cached = pixelCache.get(tile.id);
   if (!cached) {
@@ -88,30 +90,27 @@ function getPixel(tile: Tile) {
 let lastCamKey = '';
 const opacityCache = new Map<string, number>();
 
-// Optimized visible tiles: iterate axial coords within camera radius instead of filtering all tiles
 const visibleTiles = computed(() => {
-  const radius = camera.radius + 4;
+  let timer = performance.now();
+  const radius = camera.radius;
   const cq = camera.q;
   const cr = camera.r;
-  const minQ = Math.floor(cq - radius);
-  const maxQ = Math.ceil(cq + radius);
-  const rMinGlobal = Math.floor(cr - radius);
-  const rMaxGlobal = Math.ceil(cr + radius);
-  // Ensure chunks before collecting tiles
-  ensureChunksInView(minQ, maxQ, rMinGlobal, rMaxGlobal);
   const results: Tile[] = [];
-  for (let q = minQ; q <= maxQ; q++) {
-    const minR = rMinGlobal;
-    const maxR = rMaxGlobal;
-    for (let r = minR; r <= maxR; r++) {
-      const dq = Math.abs(q - cq);
-      const dr = Math.abs(r - cr);
-      const ds = Math.abs((-q - r) - (-cq - cr));
-      if (Math.max(dq, dr, ds) > radius) continue;
-      const tile = getTile(q, r);
-      if (tile) results.push(tile);
+  const added = new Set<string>();
+
+  // Filter discovered tiles by distance
+  for (const t of store.tiles) {
+    const dq = Math.abs(t.q - cq);
+    const dr = Math.abs(t.r - cr);
+    const ds = Math.abs((-t.q - t.r) - (-cq - cr));
+    const dist = Math.max(dq, dr, ds);
+    if (dist <= radius) {
+      results.push(t); added.add(t.id);
     }
   }
+
+  console.log(`Visible tiles computed in ${(performance.now() - timer).toFixed(2)} ms (${results.length} tiles)`);
+
   return results;
 });
 
@@ -154,6 +153,7 @@ function tileStyle(tile: Tile): CSSProperties {
   // Mutate dynamic parts
   style.opacity = opacity;
   style.pointerEvents = opacity <= 0 ? 'none' : 'auto';
+
   return style;
 }
 
@@ -170,41 +170,42 @@ function getTileImage(tile: Tile) {
     default: return plains;
   }
 }
+function clampCameraTargets() {
+  const b = getWorldBounds(1);
+  camera.targetQ = Math.min(b.maxQ, Math.max(b.minQ, camera.targetQ));
+  camera.targetR = Math.min(b.maxR, Math.max(b.minR, camera.targetR));
+}
 function clickTile(tile: Tile) {
-  if (hexDistance(camera, tile) > camera.radius) return;
   if (!tile.discovered) {
     discoverTile(tile);
-  } else {
-    camera.targetQ = tile.q;
-    camera.targetR = tile.r;
+    clampCameraTargets();
+    return;
   }
+  camera.targetQ = tile.q;
+  camera.targetR = tile.r;
+  clampCameraTargets();
 }
 
-// Continuous input tracking for smoother movement
-const heldKeys = new Set<string>();
-const MOVE_SPEED = 20; // tiles per second when holding a direction
+// Movement/input state declarations (placed before animateCamera usage)
 let lastTime = performance.now();
+const heldKeys = new Set<string>();
+const MOVE_SPEED = 20;
+let rafId: number | null = null;
 
 function keyDown(e: KeyboardEvent) {
-  // Movement keys: add to held set (prevent repeat lag)
-  if (['ArrowUp','w','ArrowDown','s','ArrowLeft','a','ArrowRight','d'].includes(e.key)) {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d'].includes(e.key)) {
     heldKeys.add(e.key);
     e.preventDefault();
-  } else if (e.key === '+' ) {
-    camera.radius = Math.min(30, camera.radius + 1);
+  } else if (e.key === '+' || e.key === '=') {
+    camera.radius = Math.min(40, camera.radius + 1);
   } else if (e.key === '-' || e.key === '_') {
-    camera.radius = Math.max(camera.innerRadius + 1, camera.radius - 1);
+    camera.radius = Math.max(camera.innerRadius + 2, camera.radius - 1);
   }
 }
 function keyUp(e: KeyboardEvent) {
-  if (heldKeys.has(e.key)) {
-    heldKeys.delete(e.key);
-    e.preventDefault();
-  }
+  if (heldKeys.delete(e.key)) e.preventDefault();
 }
 
-// Smooth camera animation loop
-let rafId: number | null = null;
 function animateCamera() {
   const now = performance.now();
   const dt = (now - lastTime) / 1000; // seconds
@@ -218,6 +219,7 @@ function animateCamera() {
     else if (k === 'ArrowLeft' || k === 'a') { dqInput += -1; }
     else if (k === 'ArrowRight' || k === 'd') { dqInput += 1; }
   }
+
   // Normalize diagonal to avoid faster speed (simple scale if both components non-zero)
   if (dqInput !== 0 || drInput !== 0) {
     const mag = Math.sqrt(dqInput * dqInput + drInput * drInput);
@@ -227,6 +229,7 @@ function animateCamera() {
     }
     camera.targetQ += dqInput * MOVE_SPEED * dt;
     camera.targetR += drInput * MOVE_SPEED * dt;
+    clampCameraTargets();
   }
 
   // Distance-adaptive easing for camera follow
@@ -236,8 +239,9 @@ function animateCamera() {
   const baseMin = 0.08;
   const baseMax = 0.55;
   const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
-  if (Math.abs(dq) < 0.005) camera.q = camera.targetQ; else camera.q += dq * lerp;
-  if (Math.abs(dr) < 0.005) camera.r = camera.targetR; else camera.r += dr * lerp;
+  if (Math.abs(dq) < 0.02) camera.q = camera.targetQ; else camera.q += dq * lerp;
+  if (Math.abs(dr) < 0.02) camera.r = camera.targetR; else camera.r += dr * lerp;
+  clampCameraTargets();
 
   rafId = requestAnimationFrame(animateCamera);
 }
