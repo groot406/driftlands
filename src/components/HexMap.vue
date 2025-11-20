@@ -2,16 +2,16 @@
   <div ref="mapEl" class="w-full h-full relative map-container">
     <div class="absolute inner inset-0 text-[9px] font-mono" :style="worldStyle">
       <div
-        v-for="tile in visibleTiles"
-        :key="tile.id"
-        :style="tileStyle(tile)"
-        class="absolute"
+          v-for="tile in visibleTiles"
+          :key="tile.id"
+          :style="tileStyle(tile)"
+          class="absolute"
       >
         <div
-          class="hex-tile cursor-pointer"
-          :class="!tile.discovered ? 'opacity-50' : ''"
-          :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
-          @click="clickTile(tile)"
+            class="hex-tile cursor-pointer"
+            :class="!tile.discovered ? 'opacity-50' : ''"
+            :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
+            @click="clickTile(tile)"
         ></div>
       </div>
     </div>
@@ -19,19 +19,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, reactive, ref, shallowRef, watch, type CSSProperties } from 'vue';
-import type { Tile } from '../core/world';
-import { discoverTile, worldVersion, getTilesInRadius } from '../core/world';
+import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch} from 'vue';
+import type {Tile} from '../core/world';
+import {getTilesInRadius, worldVersion} from '../core/world';
 import {
+  animateCamera,
+  axialToPixel,
   camera,
+  createPointerHandlers,
   HEX_SIZE,
   HEX_SPACE,
-  axialToPixel,
   hexDistance,
-  createPointerHandlers,
   keyDown,
   keyUp,
-  animateCamera,
   stopCameraAnimation
 } from '../core/camera';
 
@@ -43,10 +43,15 @@ import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
 
+const emit = defineEmits<{
+  (e: 'tile-click', tile: Tile): void;
+  (e: 'tile-doubleclick', tile: Tile): void;
+}>();
+
 const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}`;
 const mapEl = ref<HTMLElement | null>(null);
 const mouseDown = ref(false);
-const viewport = reactive({ w: 0, h: 0, cx: 0, cy: 0 });
+const viewport = reactive({w: 0, h: 0, cx: 0, cy: 0});
 const visibleTiles = shallowRef<Tile[]>([]);
 
 function measure() {
@@ -66,7 +71,7 @@ function getPixel(tile: Tile) {
 
 const worldStyle = computed(() => {
   const camPx = axialToPixel(camera.q, camera.r);
-  return { transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)` };
+  return {transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`};
 });
 
 function tileStyle(tile: Tile): CSSProperties {
@@ -89,18 +94,25 @@ function getTileBackground(tile: Tile) {
 
 function getTileImage(tile: Tile) {
   switch (tile.terrain) {
-    case 'towncenter': return towncenter;
-    case 'forest': return forest;
-    case 'mountain': return mountain;
-    case 'water': return water;
-    case 'mine': return mine;
-    case 'ruin': return ruin;
+    case 'towncenter':
+      return towncenter;
+    case 'forest':
+      return forest;
+    case 'mountain':
+      return mountain;
+    case 'water':
+      return water;
+    case 'mine':
+      return mine;
+    case 'ruin':
+      return ruin;
     case 'plains':
-    default: return plains;
+    default:
+      return plains;
   }
 }
 
-function updateVisibleTiles() {
+async function updateVisibleTiles() {
   const cq = Math.round(camera.q);
   const cr = Math.round(camera.r);
   visibleTiles.value = getTilesInRadius(cq, cr, camera.radius + 2);
@@ -108,20 +120,18 @@ function updateVisibleTiles() {
 
 let lastClickTime = 0;
 function clickTile(tile: Tile) {
-  if (!tile.discovered) {
-    discoverTile(tile);
-    return;
-  }
   const now = performance.now();
   if (now - lastClickTime < 300) {
-    camera.targetQ = tile.q;
-    camera.targetR = tile.r;
+    emit('tile-doubleclick', tile);
+    return;
   }
+
   lastClickTime = now;
+  emit('tile-click', tile);
 }
 
 // Setup pointer handlers
-const { pointerDown, pointerMove, pointerUp, pointerCancel } = createPointerHandlers(mouseDown);
+const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandlers(mouseDown);
 
 onMounted(() => {
   measure();
@@ -131,11 +141,11 @@ onMounted(() => {
   window.addEventListener('keyup', keyUp);
   const el = mapEl.value;
   if (el) {
-    el.addEventListener('pointerdown', pointerDown, { passive: false });
-    el.addEventListener('pointermove', pointerMove, { passive: false });
-    el.addEventListener('pointerup', pointerUp, { passive: false });
-    el.addEventListener('pointercancel', pointerCancel, { passive: false });
-    el.addEventListener('pointerleave', pointerUp, { passive: false });
+    el.addEventListener('pointerdown', pointerDown, {passive: false});
+    el.addEventListener('pointermove', pointerMove, {passive: false});
+    el.addEventListener('pointerup', pointerUp, {passive: false});
+    el.addEventListener('pointercancel', pointerCancel, {passive: false});
+    el.addEventListener('pointerleave', pointerUp, {passive: false});
   }
   animateCamera();
 });
@@ -165,8 +175,20 @@ watch([worldVersion, camera], () => requestAnimationFrame(updateVisibleTiles));
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   background: #334155;
 }
-.hex-tile:hover { filter: brightness(1.25); }
-.map-container { touch-action: none; -webkit-user-select: none; user-select: none; overscroll-behavior: contain; }
-.map-container:active { cursor: grabbing; }
+
+.hex-tile:hover {
+  filter: brightness(1.25);
+}
+
+.map-container {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: contain;
+}
+
+.map-container:active {
+  cursor: grabbing;
+}
 </style>
 

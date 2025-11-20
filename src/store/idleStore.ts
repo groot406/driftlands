@@ -51,7 +51,7 @@ export function startIdle() {
     loop();
 }
 
-function loop() {
+async function loop() {
     if (!idleStore.running) return;
     idleStore.tick++;
 
