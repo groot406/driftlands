@@ -217,30 +217,30 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
     requestAnimationFrame(step);
 }
 
-const WORLD_SIZE = 1; // previous seed constant
-export function startWorldGeneration(radius: number = WORLD_SIZE, loadedTiles ?: Tile[]) {
-    if (loadedTiles && loadedTiles.length > 0) {
-        tiles.length = 0;
-        tileIndex = {};
-        for (const t of loadedTiles ?? []) {
-            tiles.push(t);
-            indexTile(t);
-        }
-    } else {
-        generationInProgress.value = false;
-        generationProgress.value = 0;
-        tiles.length = 0;
-        tileIndex = {};
+function clearWorld() {
+    generationInProgress.value = false;
+    generationProgress.value = 0;
+    tiles.length = 0;
+    tileIndex = {};
 
-        minQ = 0;
-        maxQ = 0;
-        minR = 0;
-        maxR = 0;
-        maxRadiusByQ.clear();
-        maxRadiusByR.clear();
+    minQ = 0;
+    maxQ = 0;
+    minR = 0;
+    maxR = 0;
+    maxRadiusByQ.clear();
+    maxRadiusByR.clear();
+}
 
-        generateInitialWorld(radius);
-    }
-
+export function startWorldGeneration(radius: number) {
+    clearWorld();
+    generateInitialWorld(radius);
     store.tiles = tiles;
+}
+
+export function loadWorld(tileData: Tile[]) {
+    clearWorld()
+    for (const t of tileData ?? []) {
+        tiles.push(t);
+        indexTile(t);
+    }
 }
