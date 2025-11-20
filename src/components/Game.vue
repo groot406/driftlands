@@ -18,10 +18,17 @@
             :style="tileStyle(tile)"
             class="absolute group"
           >
-            <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
+            <div class="hex-tile flex flex-col items-center justify-center cursor-pointer text-[9px] font-mono"
                  :class="tile.discovered ? 'opacity-100' : 'opacity-50'"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
                  @click="clickTile(tile)">
+
+              <!-- biome border overlay -->
+              <svg v-if="showBiomeBorders && tile.discovered && tile.biome" class="hex-border" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <g :stroke="biomeColor(tile.biome)"  :stroke-width="BIOME_BORDER_SIZE" stroke-linejoin="round" stroke-linecap="round" :fill="biomeColor(tile.biome)" >
+                  <path v-for="edge in getBorderEdges(tile)" :key="edge" :d="edge" />
+                </g>
+              </svg>
             </div>
           </div>
         </div>
@@ -56,7 +63,9 @@ import {
   generationProgress,
   generationCompleted,
   generationTotal,
-  getMaxRadiusFor
+  getMaxRadiusFor,
+  tileIndex,
+  axialKey
 } from '../core/world';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
@@ -70,9 +79,11 @@ import { computed, reactive, onMounted, onBeforeUnmount, ref, type CSSProperties
 const CAMERA_RADIUS = 20;
 const CAMERA_INNER_RADIUS = 5;
 
-const HEX_SIZE = 32;
+const HEX_SIZE = 35;
 const HEX_SPACE = 3;
+const BIOME_BORDER_SIZE = 10;
 const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}px`;
+const showBiomeBorders = false;
 
 // Precompute constants used in axialToPixel for speed
 const SQRT3 = Math.sqrt(3);
@@ -247,7 +258,7 @@ function animateCamera() {
     if (mag > 0) { dqInput /= mag; drInput /= mag; }
     camera.targetQ += dqInput * MOVE_SPEED * dt;
     camera.targetR += drInput * MOVE_SPEED * dt;
-    clampCameraTargets(camera);
+    clampCameraTargets();
   }
   const dq = camera.targetQ - camera.q;
   const dr = camera.targetR - camera.r;
@@ -257,9 +268,61 @@ function animateCamera() {
   const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
   if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
   if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
-  clampCameraTargets(camera);
+  clampCameraTargets();
   updateVisibleTiles();
   rafId = requestAnimationFrame(animateCamera);
+}
+
+// ---------------- Biome cluster border helpers ----------------
+// Hex vertices (pointy-top) normalized to 0..100
+const HEX_VERTS: [number, number][] = [
+  [50, 0],   // v0 top
+  [100, 25], // v1 top-right
+  [100, 75], // v2 bottom-right
+  [50, 100], // v3 bottom
+  [0, 75],   // v4 bottom-left
+  [0, 25]    // v5 top-left
+];
+// Each direction mapping to axial offset and edge between vertex indices
+interface HexEdgeDef { dq: number; dr: number; verts: [number, number]; }
+// Direction order chosen to match axial: NE(+1,-1), E(+1,0), SE(0,+1), SW(-1,+1), W(-1,0), NW(0,-1)
+// Mapped to edges: 0: v0-v1 (NE), 1: v1-v2 (E), 2: v2-v3 (SE), 3: v3-v4 (SW), 4: v4-v5 (W), 5: v5-v0 (NW)
+const EDGE_DEFS: HexEdgeDef[] = [
+  { dq: 1, dr: -1, verts: [0,1] },
+  { dq: 1, dr: 0, verts: [1,2] },
+  { dq: 0, dr: 1, verts: [2,3] },
+  { dq: -1, dr: 1, verts: [3,4] },
+  { dq: -1, dr: 0, verts: [4,5] },
+  { dq: 0, dr: -1, verts: [5,0] }
+];
+
+function biomeColor(biome: string | null): string {
+  switch (biome) {
+    case 'forest': return '#16a34a';
+    case 'mountain': return '#64748b';
+    case 'lake': return '#0ea5e9';
+    case 'coast': return '#14b8a6';
+    case 'plains': return '#facc15';
+    default: return '#94a3b8';
+  }
+}
+
+function getBorderEdges(tile: Tile): string[] {
+  if (!tile.biome) return [];
+  const result: string[] = [];
+  for (const edge of EDGE_DEFS) {
+    const nq = tile.q + edge.dq;
+    const nr = tile.r + edge.dr;
+    const neighbor = tileIndex[axialKey(nq, nr)];
+    const sameBiome = neighbor && neighbor.discovered && neighbor.biome === tile.biome;
+    if (!sameBiome) {
+      const [aIndex, bIndex] = edge.verts;
+      const [ax, ay] = HEX_VERTS[aIndex]!;
+      const [bx, by] = HEX_VERTS[bIndex]!;
+      result.push(`M${ax},${ay} L${bx},${by}`);
+    }
+  }
+  return result;
 }
 
 onMounted(() => {
@@ -286,9 +349,16 @@ onBeforeUnmount(() => {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   transition: filter 0.15s, opacity 0.3s;
 }
+body {
+  image-rendering: high-quality;
+}
 .hex-tile.opacity-50 {
   background: #334155;
 }
-.hex-tile:hover { filter: brightness(1.25); }
-
+.hex-tile:hover { filter: brightness(1.25);}
+.hex-border {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 </style>

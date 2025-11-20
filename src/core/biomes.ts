@@ -3,7 +3,7 @@
 // Threshold-based heuristic; can evolve later.
 import type { TerrainKey } from './terrainDefs';
 
-export type BiomeKey = 'forest' | 'mountain' | 'lake' | 'coast' | 'plains';
+export type BiomeKey = 'forest' | 'mountain' | 'lake' | 'plains';
 
 export interface BiomeDef {
   // Optional restriction list: only these terrains can spawn inside biome
@@ -30,11 +30,6 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
     weightAdjust: { water: 2, plains: 1, forest: 0.5 },
     weightMultiplier: 1.1,
   },
-  coast: {
-    allowedTerrains: ['water', 'plains', 'forest', 'ruin'],
-    weightAdjust: { water: 1.6, plains: 2, forest: 0.5, ruin: 0.1 },
-    weightMultiplier: 1.0,
-  },
   plains: {
     allowedTerrains: ['plains', 'forest', 'mountain', 'water', 'ruin'],
     weightAdjust: { plains: 3 },
@@ -51,8 +46,6 @@ export function detectBiome(neighborTerrains: TerrainKey[]): BiomeKey | null {
   // Wasteland: ruins cluster or ruin + mine presence
   if (get('forest') >= 4) return 'forest';
     if (get('mountain') >= 4) return 'mountain';
-    // Coast if mix of water and plains/forest
-    if (get('water') >= 3 && (get('plains') >= 3 || get('forest') >= 2)) return 'coast';
     if (get('plains') >= 4) return 'plains';
     if (get('water') >= 5) return 'lake';
     return null;

@@ -65,10 +65,6 @@ interface IdleState {
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
 
-// Removed duplicated world data structures now sourced from world.ts
-// export const worldOuterRadius = ref(0);
-// Removed axis radius caches and indexing functions
-
 function loadState(): IdleState | null {
     try {
         const raw = localStorage.getItem(LOCAL_KEY);
@@ -97,7 +93,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
 };
 export const idleStore = initial;
 // Start async generation
-startWorldGeneration(100);
+startWorldGeneration(10);
 
 watch(worldVersion, () => {
     console.log('save');
