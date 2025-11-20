@@ -30,16 +30,16 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
     color: '#16a34a',
     baseWeight: 40,
     adjacency: {
-      water: 20,
+      water: 10,
       forest: 10,
-      plains: 20,
+      plains: 40,
     },
   },
   water: {
     color: '#0ea5e9',
-    baseWeight: 20,
+    baseWeight: 30,
     adjacency: {
-      water: 100,
+      water: 60,
       plains: 20,
     },
   },

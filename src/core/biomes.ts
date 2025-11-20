@@ -27,12 +27,12 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
   },
   lake: {
     allowedTerrains: ['water', 'plains', 'forest'],
-    weightAdjust: { water: 6, plains: 1, forest: 0.5 },
+    weightAdjust: { water: 2, plains: 1, forest: 0.5 },
     weightMultiplier: 1.1,
   },
   coast: {
     allowedTerrains: ['water', 'plains', 'forest', 'ruin'],
-    weightAdjust: { water: 2, plains: 2, forest: 0.5, ruin: 0.1 },
+    weightAdjust: { water: 1.6, plains: 2, forest: 0.5, ruin: 0.1 },
     weightMultiplier: 1.0,
   },
   plains: {
@@ -50,12 +50,12 @@ export function detectBiome(neighborTerrains: TerrainKey[]): BiomeKey | null {
 
   // Wasteland: ruins cluster or ruin + mine presence
   if (get('forest') >= 4) return 'forest';
-  if (get('water') >= 3) return 'lake';
-  // Coast if mix of water and plains/forest
-  if (get('water') >= 2 && (get('plains') >= 2 || get('forest') >= 1)) return 'coast';
-  if (get('mountain') >= 3) return 'mountain';
-  if (get('plains') >= 4) return 'plains';
-  return null;
+    if (get('mountain') >= 4) return 'mountain';
+    // Coast if mix of water and plains/forest
+    if (get('water') >= 3 && (get('plains') >= 3 || get('forest') >= 2)) return 'coast';
+    if (get('plains') >= 4) return 'plains';
+    if (get('water') >= 5) return 'lake';
+    return null;
 }
 
 export function applyBiomeModifiers(
