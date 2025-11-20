@@ -55,7 +55,8 @@ export function hexDistance(a: { q: number; r: number }, b: { q: number; r: numb
 }
 
 // Internal drag & throw tracking
-let dragging = false;
+export let dragging = false;
+export let dragged = false;
 let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0;
 const samples: { t: number; x: number; y: number }[] = [];
 
@@ -104,7 +105,9 @@ function computeThrowVelocity() {
 export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     function pointerDown(e: PointerEvent) {
         if (e.pointerType === 'mouse' && e.button !== 0) return; // only left button
+
         mouseDownRef.value = true;
+        dragged = false;
         dragging = false;
         dragStartX = lastX = e.clientX;
         dragStartY = lastY = e.clientY;
@@ -119,6 +122,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
         if (!dragging) {
             const dist2 = (e.clientX - dragStartX) ** 2 + (e.clientY - dragStartY) ** 2;
             if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) dragging = true;
+            if (dragging) dragged = true;
         }
         if (dragging) {
             const {dq, dr} = pixelDeltaToAxial(dx, dy);
@@ -138,6 +142,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 
     function pointerUp() {
         if (dragging) computeThrowVelocity();
+
         dragging = false;
         samples.length = 0;
         mouseDownRef.value = false;

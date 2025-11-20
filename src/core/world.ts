@@ -31,7 +31,6 @@ const maxRadiusByR = new Map<number, number>();
 
 // Generation progress refs
 export const generationInProgress = ref(false);
-export const generationStatus = ref('');
 export const generationProgress = ref(0); // 0-1
 export const generationCompleted = ref(0);
 export const generationTotal = ref(0);
@@ -168,7 +167,6 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
     }
 
     generationInProgress.value = true;
-    generationStatus.value = 'Preparing world...';
     generationProgress.value = 0;
     generationCompleted.value = 0;
 
@@ -188,7 +186,6 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
     }
     generationTotal.value = coords.length;
     updateLoader(loaderId, {total: coords.length});
-    generationStatus.value = 'Generating world...';
     updateLoader(loaderId, {status: 'Generating world...'});
     let index = 0;
 
@@ -204,13 +201,11 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         }
         generationProgress.value = generationTotal.value === 0 ? 1 : generationCompleted.value / generationTotal.value;
         const status = generationProgress.value >= 1 ? 'Finalizing...' : `Generating tiles ${generationCompleted.value} / ${generationTotal.value}`;
-        generationStatus.value = status;
         updateLoader(loaderId, {completed: generationCompleted.value, status});
         worldVersion.value++;
         if (index < coords.length) {
             requestAnimationFrame(step);
         } else {
-            generationStatus.value = 'World ready';
             generationProgress.value = 1;
             generationInProgress.value = false;
             updateLoader(loaderId, {completed: generationTotal.value, status: 'World ready'});

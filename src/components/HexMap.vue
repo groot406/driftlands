@@ -27,12 +27,13 @@ import {
   axialToPixel,
   camera,
   createPointerHandlers,
+  dragged,
   HEX_SIZE,
   HEX_SPACE,
   hexDistance,
   keyDown,
   keyUp,
-  stopCameraAnimation
+  stopCameraAnimation,
 } from '../core/camera';
 
 import forest from '../assets/tiles/forest.png';
@@ -119,15 +120,20 @@ async function updateVisibleTiles() {
 }
 
 let lastClickTime = 0;
-function clickTile(tile: Tile) {
-  const now = performance.now();
-  if (now - lastClickTime < 300) {
-    emit('tile-doubleclick', tile);
-    return;
-  }
 
-  lastClickTime = now;
-  emit('tile-click', tile);
+function clickTile(tile: Tile) {
+  setTimeout(() => {
+    if (dragged) return;
+
+    const now = performance.now();
+    if (now - lastClickTime < 300) {
+      emit('tile-doubleclick', tile);
+      return;
+    }
+
+    lastClickTime = now;
+    emit('tile-click', tile);
+  }, 100)
 }
 
 // Setup pointer handlers

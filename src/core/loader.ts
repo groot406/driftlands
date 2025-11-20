@@ -9,14 +9,15 @@ export interface Loader {
     total: number;
     unitLabel?: string; // e.g. Tiles, Items, Assets
     active: boolean;
+    infinite?: boolean; // Indicates loader is infinite (no defined total/progress)
 }
+
+export type LoaderOptions = Partial<Omit<Loader, 'id' | 'active' | 'progress'>> & { title: string };
 
 // Reactive registry of loaders
 const _loaders = reactive<Record<string, Loader>>({});
 
-export function createLoader(id: string, opts: Partial<Omit<Loader, 'id' | 'active' | 'progress'>> & {
-    title: string
-}): Loader {
+export function createLoader(id: string, opts: LoaderOptions): Loader {
     let existing = _loaders[id];
     if (existing) return existing;
     const loader: Loader = {
@@ -26,8 +27,9 @@ export function createLoader(id: string, opts: Partial<Omit<Loader, 'id' | 'acti
         completed: opts.completed ?? 0,
         total: opts.total ?? 0,
         progress: 0,
-        unitLabel: opts.unitLabel ?? 'Items',
+        unitLabel: opts.unitLabel,
         active: true,
+        infinite: opts.infinite ?? false,
     };
     computeProgress(loader);
     _loaders[id] = loader;
@@ -35,7 +37,9 @@ export function createLoader(id: string, opts: Partial<Omit<Loader, 'id' | 'acti
 }
 
 function computeProgress(l: Loader) {
-    if (l.total <= 0) {
+    if (l.infinite) {
+        l.progress = 0;
+    } else if (l.total <= 0) {
         l.progress = l.completed > 0 ? 1 : 0;
     } else {
         l.progress = Math.min(1, l.completed / l.total);
@@ -56,6 +60,7 @@ export function finishLoader(id: string, finalStatus: string = 'Complete') {
     computeProgress(loader);
     loader.status = finalStatus;
     loader.active = false;
+    delete _loaders[id];
 }
 
 export function getLoader(id: string): Loader | undefined {
