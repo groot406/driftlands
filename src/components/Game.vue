@@ -6,7 +6,7 @@
     </div>
   </div>
 
-  <div class="absolute z-10 top-4 left-4 opacity-80 text-white">
+  <div class="absolute z-10 top-4 left-4 text-white">
     <h1 class="text-2xl font-bold items-center">Nexus Hex – Idle Frontier (POC)</h1>
     <div class="gap-4 flex flex-row items-center mt-2">
       <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
@@ -17,7 +17,6 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
 import { startIdle, idleStore as store } from '../store/idleStore';
 import { startWorldGeneration } from '../core/world';
 import { centerCamera } from '../core/camera';
@@ -32,7 +31,5 @@ function regenerateWorld(size?: number) {
   startWorldGeneration(size ?? WORLD_SIZE);
 }
 
-onMounted(async () => {
-  startWorldGeneration(WORLD_SIZE, store.tiles);
-})
+startWorldGeneration(WORLD_SIZE, store.tiles);
 </script>
