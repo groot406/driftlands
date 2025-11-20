@@ -46,7 +46,18 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getTilesInRadius, generationInProgress, generationStatus, generationProgress, generationCompleted, generationTotal, getMaxRadiusFor } from '../store/idleStore';
+import { idleStore as store, startIdle } from '../store/idleStore';
+import {
+  discoverTile,
+  type Tile,
+  getTilesInRadius,
+  generationInProgress,
+  generationStatus,
+  generationProgress,
+  generationCompleted,
+  generationTotal,
+  getMaxRadiusFor
+} from '../core/world';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -60,7 +71,9 @@ const CAMERA_RADIUS = 20;
 const CAMERA_INNER_RADIUS = 5;
 
 const HEX_SIZE = 32;
-const HEX_SPACE = 4;
+const HEX_SPACE = 3;
+const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}px`;
+
 // Precompute constants used in axialToPixel for speed
 const SQRT3 = Math.sqrt(3);
 const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
@@ -105,20 +118,7 @@ function hexDistance(a: {q: number; r: number}, b: {q: number; r: number}): numb
 
 // Cache for pixel positions per tile id to avoid recalculation every frame
 const pixelCache = new Map<string, {x: number; y: number}>();
-// Reusable style object cache (static size + transform per tile)
 const styleCache = new Map<string, CSSProperties>();
-const baseTileSize = `${HEX_SIZE*2 - HEX_SPACE}px`;
-
-function getPixel(tile: Tile) {
-  let cached = pixelCache.get(tile.id);
-  if (!cached) {
-    cached = axialToPixel(tile.q, tile.r);
-    pixelCache.set(tile.id, cached);
-  }
-  return cached;
-}
-
-// Cache for style opacity per tile id for last camera position hash
 let lastCamKey = '';
 const opacityCache = new Map<string, number>();
 
@@ -222,12 +222,19 @@ function keyUp(e: KeyboardEvent) {
   if (heldKeys.delete(e.key)) e.preventDefault();
 }
 
+function getPixel(tile: Tile) {
+  let cached = pixelCache.get(tile.id);
+  if (!cached) {
+    cached = axialToPixel(tile.q, tile.r);
+    pixelCache.set(tile.id, cached);
+  }
+  return cached;
+}
+
 function animateCamera() {
   const now = performance.now();
   const dt = (now - lastTime) / 1000; // seconds
   lastTime = now;
-
-  // Aggregate movement directions from held keys
   let dqInput = 0, drInput = 0;
   for (const k of heldKeys) {
     if (k === 'ArrowUp' || k === 'w') { drInput += -1; dqInput += 0.5; }
@@ -235,20 +242,13 @@ function animateCamera() {
     else if (k === 'ArrowLeft' || k === 'a') { dqInput += -1; }
     else if (k === 'ArrowRight' || k === 'd') { dqInput += 1; }
   }
-
-  // Normalize diagonal to avoid faster speed (simple scale if both components non-zero)
   if (dqInput !== 0 || drInput !== 0) {
     const mag = Math.sqrt(dqInput * dqInput + drInput * drInput);
-    if (mag > 0) {
-      dqInput /= mag;
-      drInput /= mag;
-    }
+    if (mag > 0) { dqInput /= mag; drInput /= mag; }
     camera.targetQ += dqInput * MOVE_SPEED * dt;
     camera.targetR += drInput * MOVE_SPEED * dt;
-    clampCameraTargets();
+    clampCameraTargets(camera);
   }
-
-  // Distance-adaptive easing for camera follow
   const dq = camera.targetQ - camera.q;
   const dr = camera.targetR - camera.r;
   const dist = Math.sqrt(dq * dq + dr * dr);
@@ -257,7 +257,7 @@ function animateCamera() {
   const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
   if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
   if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
-  clampCameraTargets();
+  clampCameraTargets(camera);
   updateVisibleTiles();
   rafId = requestAnimationFrame(animateCamera);
 }
