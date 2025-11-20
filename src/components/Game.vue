@@ -10,7 +10,12 @@
       <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none">
         <div class="absolute inset-0" :style="worldStyle">
-          <div v-for="tile in visibleTiles" :key="tile.id" :style="tileStyle(tile)" class="absolute group">
+          <div
+            v-for="tile in visibleTiles"
+            :key="tile.id"
+            :style="tileStyle(tile)"
+            :class="['absolute group', 'tile-fade-in']"
+          >
             <div class="hex-tile flex flex-col items-center justify-center font-mono text-[9px] cursor-pointer"
                  :class="tile.discovered ? 'opacity-100' : 'opacity-50'"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
@@ -268,4 +273,12 @@ onBeforeUnmount(() => {
 }
 .hex-tile:hover { filter: brightness(1.15); }
 
+/* Fade-in animation for new tiles (wrapper div) */
+@keyframes tileFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.tile-fade-in {
+  animation: tileFadeIn 0.2s ease-in;
+}
 </style>
