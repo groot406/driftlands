@@ -1,11 +1,13 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100">
-    <div class="flex-1 p-4 overflow-hidden w-full h-full">
+    <div class="flex-1 overflow-hidden w-full h-full">
       <div class="flex items-center justify-between mb-4 absolute gap-4">
+        <div class="p-4">
         <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
         <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
         <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
         {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
+        </div>
       </div>
       <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none">
