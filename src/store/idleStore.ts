@@ -214,29 +214,19 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
     discoverTile(ensureTileExists(0, 0));
 
     const placeholderRadius = discoverRadius + 1; // matches previous logic
-    // Build concentric rings outward from center to maintain visual progressive growth
+    // worldOuterRadius.value = placeholderRadius; // now dynamic via indexTile
+    // Precompute coordinate list
     const coords: Array<{q: number; r: number; dist: number}> = [];
-
-    // Hex axial ring generation
-    const directions: Array<[number, number]> = [
-        [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1], [1, 0]
-    ];
-    function pushRing(radius: number) {
-        if (radius === 0) return; // center already handled
-        // start at (radius,0)
-        let q = radius;
-        let r = 0;
-        for (const [dq, dr] of directions) {
-            for (let step = 0; step < radius; step++) {
-                const dist = radius; // by construction every tile on this ring has distance = radius
-                coords.push({ q, r, dist });
-                q += dq;
-                r += dr;
+    for (let q = 0; q <= placeholderRadius; q++) {
+        for (let r = 0; r <= placeholderRadius; r++) {
+            for(const [sq, sr] of [[q, r], [-q, r], [q, -r], [-q, -r]]) {
+                const dist = hexDistance(sq, sr);
+                if (dist > placeholderRadius) continue;
+                if (sq === 0 && sr === 0) continue;
+                coords.push({q: sq, r: sr, dist});
             }
         }
     }
-    for (let rad = 1; rad <= placeholderRadius; rad++) pushRing(rad);
-
     generationTotal.value = coords.length;
     generationStatus.value = 'Generating world...';
 
@@ -245,9 +235,9 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         const start = performance.now();
         // Process until time budget exhausted or done
         while (index < coords.length && (performance.now() - start) < frameTimeBudgetMs) {
-            const entry = coords[index]!; // non-null due to while guard
+            const entry = coords[index];
             index++;
-            const {q, r, dist} = entry;
+            const {q, r, dist} = entry; // non-null due to while guard
             const t = ensureTileExists(q, r);
             if (dist <= discoverRadius) {
                 discoverTile(t);
@@ -261,6 +251,7 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         if (index < coords.length) {
             requestAnimationFrame(step);
         } else {
+            // Final pass: ensure neighbors of edge discovered tiles exist
             generationStatus.value = 'World ready';
             generationProgress.value = 1;
             generationInProgress.value = false;
@@ -331,3 +322,15 @@ export function hexDistance(q: number, r: number): number {
     return Math.max(dq, dr, ds);
 }
 
+export function ensurePlaceholderRadius(radius: number) {
+    if (radius <= worldOuterRadius.value) return; // already satisfied
+    const old = worldOuterRadius.value;
+    for (let q = -radius; q <= radius; q++) {
+        for (let r = -radius; r <= radius; r++) {
+            const dist = hexDistance(q, r);
+            if (dist > radius || dist <= old) continue;
+            ensureTileExists(q, r); // placeholders only
+        }
+    }
+    worldOuterRadius.value = Math.max(worldOuterRadius.value, radius);
+}
