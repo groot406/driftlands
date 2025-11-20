@@ -103,6 +103,7 @@ function indexTile(t: Tile) {
     // Update per-axis max radius caches (rounded discrete axis values)
     const qKey = t.q; // axial coordinates are already integer for tiles
     const rKey = t.r;
+
     const prevQ = maxRadiusByQ.get(qKey) ?? 0;
     if (dist > prevQ) maxRadiusByQ.set(qKey, dist);
     const prevR = maxRadiusByR.get(rKey) ?? 0;
@@ -351,7 +352,7 @@ export function getMaxRadiusFor(q: number, r: number, offset: number): number {
     const ir = Math.round(r);
 
     const radQs: number[] = [maxRadiusByQ.get(iq) ?? worldOuterRadius.value];
-    const radRs: number[] = [maxRadiusByR.get(iq) ?? worldOuterRadius.value];
+    const radRs: number[] = [maxRadiusByR.get(ir) ?? worldOuterRadius.value];
 
     const checkRange = offset; // check +/-  axial steps for smoother clamping
 
