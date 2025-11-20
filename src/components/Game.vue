@@ -1,7 +1,7 @@
 <template>
-  <div class="h-screen flex bg-slate-900 text-slate-100">
+  <div class="h-screen flex bg-slate-900 text-slate-100 select-none">
     <div class="flex-1 overflow-hidden w-full h-full">
-      <div ref="mapEl" class="w-full h-full relative select-none map-container">
+      <div ref="mapEl" class="w-full h-full relative map-container">
         <div class="absolute inner inset-0 text-[9px] font-mono" :style="worldStyle">
           <div
               v-for="tile in visibleTiles"
@@ -13,39 +13,31 @@
                  :class="!tile.discovered ? 'opacity-50' : ''"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
                  @click="clickTile(tile)"
-               >
-
+            >
             </div>
-            <!-- biome border overlay -->
-            <svg v-if="showBiomeBorders && tile.discovered && tile.biome" class="hex-border" viewBox="0 0 100 100"
-                 preserveAspectRatio="none">
-              <g :stroke="biomeColor(tile.biome)" :stroke-width="BIOME_BORDER_SIZE" stroke-linejoin="round"
-                 stroke-linecap="round" :fill="biomeColor(tile.biome)">
-                <path v-for="edge in getBorderEdges(tile)" :key="edge" :d="edge"/>
-              </g>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Loading overlay -->
-        <div v-if="generationInProgress"
-             class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
-          <div
-              class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 border border-slate-700 shadow-xl drop-shadow-md opacity-80 backdrop:blur-lg">
-            <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">World Generation</div>
-            <div class="text-xs text-slate-400" role="status">{{ generationStatus }}</div>
-            <div class="flex items-center justify-between text-xs text-slate-400">
-              <div>Tiles: {{ generationCompleted }} / {{ generationTotal }}</div>
-              <div>{{ (generationProgress * 100).toFixed(1) }}%</div>
-            </div>
-            <div class="h-3 rounded-md overflow-hidden bg-slate-700/60">
-              <div class="h-full bg-emerald-500 transition-all"
-                   :style="{ width: (generationProgress * 100) + '%' }"></div>
-            </div>
-            <div v-if="generationProgress >= 1" class="text-emerald-300 text-xs">Finalizing world...</div>
           </div>
         </div>
       </div>
+
+      <!-- Loading overlay -->
+      <div v-if="generationInProgress"
+           class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
+        <div
+            class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 border border-slate-700 shadow-xl drop-shadow-md opacity-80 backdrop:blur-lg">
+          <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">World Generation</div>
+          <div class="text-xs text-slate-400" role="status">{{ generationStatus }}</div>
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <div>Tiles: {{ generationCompleted }} / {{ generationTotal }}</div>
+            <div>{{ (generationProgress * 100).toFixed(1) }}%</div>
+          </div>
+          <div class="h-3 rounded-md overflow-hidden bg-slate-700/60">
+            <div class="h-full bg-emerald-500 transition-all"
+                 :style="{ width: (generationProgress * 100) + '%' }"></div>
+          </div>
+          <div v-if="generationProgress >= 1" class="text-emerald-300 text-xs">Finalizing world...</div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -57,11 +49,6 @@
       <button class="btn" @click="regenerateWorld(200)">Generate large world</button>
     </div>
   </div>
-
-  <!-- Minimap overlay -->
-  <div class="absolute bottom-3 right-3 z-20 pointer-events-none" v-if="showMinimap">
-    <Minimap :camera-q="camera.q" :camera-r="camera.r" :camera-radius="camera.radius"/>
-  </div>
 </template>
 
 <script setup lang="ts">
@@ -69,7 +56,6 @@ import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref,
 import {idleStore as store, startIdle} from '../store/idleStore';
 import type {Tile} from '../core/world';
 import {
-  axialKey,
   discoverTile,
   generationCompleted,
   generationInProgress,
@@ -79,7 +65,6 @@ import {
   getMaxRadiusFor,
   getTilesInRadius,
   startWorldGeneration,
-  tileIndex,
   worldVersion
 } from '../core/world';
 
@@ -90,18 +75,16 @@ import water from '../assets/tiles/water.png';
 import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
-import Minimap from './Minimap.vue';
 
 const CAMERA_RADIUS = 20;
 const CAMERA_INNER_RADIUS = 5;
 
 const WORLD_SIZE = 6;
+const MOVE_SPEED = 35;
 const HEX_SIZE = 35;
 const HEX_SPACE = 3;
-const BIOME_BORDER_SIZE = 6;
-const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}px`;
-const showBiomeBorders = false;
-const showMinimap = false;
+
+const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}`;
 
 const mouseDown = ref(false);
 
@@ -143,6 +126,7 @@ function updateVisibleTiles() {
 function measure() {
   const el = mapEl.value;
   if (!el) return;
+
   viewport.w = el.clientWidth;
   viewport.h = el.clientHeight;
   viewport.cx = viewport.w / 2;
@@ -162,12 +146,6 @@ function hexDistance(a: { q: number; r: number }, b: { q: number; r: number }): 
   return Math.max(dq, dr, ds);
 }
 
-// Cache for pixel positions per tile id to avoid recalculation every frame
-const pixelCache = new Map<string, { x: number; y: number }>();
-const styleCache = new Map<string, CSSProperties>();
-let lastCamKey = '';
-const opacityCache = new Map<string, number>();
-
 // Single world transform keeps camera centered
 const worldStyle = computed(() => {
   const camPx = axialToPixel(camera.q, camera.r);
@@ -175,40 +153,19 @@ const worldStyle = computed(() => {
 });
 
 function tileStyle(tile: Tile): CSSProperties {
-  const camKey = `${camera.q.toFixed(3)}:${camera.r.toFixed(3)}:${camera.radius}:${camera.innerRadius}`;
   const px = getPixel(tile);
-  // Fetch or create static style object for this tile
-  let style = styleCache.get(tile.id);
-  if (!style) {
-    style = {
-      width: baseTileSize,
-      height: baseTileSize,
-      transform: `translate(${px.x - HEX_SIZE}px, ${px.y - HEX_SIZE}px)`,
-      opacity: 1,
-      pointerEvents: 'auto'
-    };
-    styleCache.set(tile.id, style);
-  }
-  let opacity: number;
-  if (camKey === lastCamKey && opacityCache.has(tile.id)) {
-    opacity = opacityCache.get(tile.id)!;
-  } else {
-    const dist = hexDistance(camera, tile);
-    const span = Math.max(0.0001, (camera.radius - camera.innerRadius));
-    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-    fade = Math.min(1, Math.max(0, fade));
-    opacity = (tile.terrain === 'towncenter') ? (fade * fade * 0.9) : (fade * fade);
-    if (camKey !== lastCamKey) {
-      if (opacityCache.size > 0) opacityCache.clear();
-      lastCamKey = camKey;
-    }
-    opacityCache.set(tile.id, opacity);
-  }
-  // Mutate dynamic parts
-  style.opacity = opacity;
-  style.pointerEvents = opacity <= 0 ? 'none' : 'auto';
 
-  return style;
+  const span = Math.max(3, (camera.radius - camera.innerRadius));
+  let fade = 1 - Math.max(0, (hexDistance(camera, tile) - camera.innerRadius) / span);
+  fade = Math.min(1, Math.max(0, fade));
+  const opacity = fade * fade;
+
+  return {
+    transform: `translate(${px.x - HEX_SIZE}px, ${px.y - HEX_SIZE}px)`,
+    opacity: opacity,
+    width: baseTileSize + 'px',
+    height: baseTileSize + 'px',
+  };
 }
 
 function getTileBackground(tile: Tile) {
@@ -362,7 +319,6 @@ function clickTile(tile: Tile) {
 // Movement/input state declarations (placed before animateCamera usage)
 let lastTime = performance.now();
 const heldKeys = new Set<string>();
-const MOVE_SPEED = 35;
 let rafId: number | null = null;
 
 function keyDown(e: KeyboardEvent) {
@@ -381,12 +337,12 @@ function keyUp(e: KeyboardEvent) {
 }
 
 function getPixel(tile: Tile) {
-  let cached = pixelCache.get(tile.id);
-  if (!cached) {
-    cached = axialToPixel(tile.q, tile.r);
-    pixelCache.set(tile.id, cached);
+  if (tile.pixel) {
+    return tile.pixel;
   }
-  return cached;
+
+  tile.pixel = axialToPixel(tile.q, tile.r);
+  return tile.pixel;
 }
 
 function animateCamera() {
@@ -443,70 +399,6 @@ function animateCamera() {
   rafId = requestAnimationFrame(animateCamera);
 }
 
-// ---------------- Biome cluster border helpers ----------------
-// Hex vertices (pointy-top) normalized to 0..100
-const HEX_VERTS: [number, number][] = [
-  [50, 0],   // v0 top
-  [100, 25], // v1 top-right
-  [100, 75], // v2 bottom-right
-  [50, 100], // v3 bottom
-  [0, 75],   // v4 bottom-left
-  [0, 25]    // v5 top-left
-];
-
-// Each direction mapping to axial offset and edge between vertex indices
-interface HexEdgeDef {
-  dq: number;
-  dr: number;
-  verts: [number, number];
-}
-
-// Direction order chosen to match axial: NE(+1,-1), E(+1,0), SE(0,+1), SW(-1,+1), W(-1,0), NW(0,-1)
-// Mapped to edges: 0: v0-v1 (NE), 1: v1-v2 (E), 2: v2-v3 (SE), 3: v3-v4 (SW), 4: v4-v5 (W), 5: v5-v0 (NW)
-const EDGE_DEFS: HexEdgeDef[] = [
-  {dq: 1, dr: -1, verts: [0, 1]},
-  {dq: 1, dr: 0, verts: [1, 2]},
-  {dq: 0, dr: 1, verts: [2, 3]},
-  {dq: -1, dr: 1, verts: [3, 4]},
-  {dq: -1, dr: 0, verts: [4, 5]},
-  {dq: 0, dr: -1, verts: [5, 0]}
-];
-
-function biomeColor(biome: string | null): string {
-  switch (biome) {
-    case 'forest':
-      return '#16a34a';
-    case 'mountain':
-      return '#64748b';
-    case 'lake':
-      return '#0055a8';
-    case 'coast':
-      return '#14b8a6';
-    case 'plains':
-      return '#facc15';
-    default:
-      return '#94a3b8';
-  }
-}
-
-function getBorderEdges(tile: Tile): string[] {
-  if (!tile.biome) return [];
-  const result: string[] = [];
-  for (const edge of EDGE_DEFS) {
-    const nq = tile.q + edge.dq;
-    const nr = tile.r + edge.dr;
-    const neighbor = tileIndex[axialKey(nq, nr)];
-    const sameBiome = neighbor && neighbor.discovered && neighbor.biome === tile.biome;
-    if (!sameBiome) {
-      const [aIndex, bIndex] = edge.verts;
-      const [ax, ay] = HEX_VERTS[aIndex]!;
-      const [bx, by] = HEX_VERTS[bIndex]!;
-      result.push(`M${ax},${ay} L${bx},${by}`);
-    }
-  }
-  return result;
-}
-
 function regenerateWorld(size?: number) {
   camera.targetQ = 0;
   camera.targetR = 0;
@@ -551,29 +443,19 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  transition: filter 0.15s, opacity 0.3s;
+  background: #334155;
 }
 
 body {
   image-rendering: high-quality;
 }
 
-.hex-tile.opacity-50 {
-  background: #334155;
-}
-
 .hex-tile:hover {
   filter: brightness(1.25);
 }
 
-.hex-border {
-  position: absolute;
-  inset: -2px;
-  pointer-events: none;
-}
-
 .map-container {
-  touch-action: none; /* prevent browser panning/zoom gestures */
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   overscroll-behavior: contain;
@@ -581,25 +463,6 @@ body {
 
 .map-container:active {
   cursor: grabbing;
-}
-
-.minimap-wrapper { /* allow pointer events pass-through except internal */
-  position: relative;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.minimap {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 150px;
-  height: 150px;
-  border: 2px solid white;
-  border-radius: 8px;
-  overflow: hidden;
-  pointer-events: auto;
 }
 
 </style>

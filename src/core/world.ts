@@ -10,6 +10,7 @@ export interface Tile {
     id: string;
     q: number;
     r: number;
+    pixel?: { x: number; y: number };
     biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
