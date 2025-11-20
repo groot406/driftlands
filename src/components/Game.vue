@@ -40,6 +40,9 @@ import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
 import { computed, reactive, onMounted, onBeforeUnmount, ref, type CSSProperties } from 'vue';
 
+const CAMERA_RADIUS = 20;
+const CAMERA_INNER_RADIUS = 10;
+
 const HEX_SIZE = 32;
 const HEX_SPACE = 4;
 // Precompute constants used in axialToPixel for speed
@@ -48,7 +51,7 @@ const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reus
 const HEX_Y_FACTOR = HEX_SIZE * 3/2;
 
 // Camera state (smoothed position with separate targets)
-const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: 20, innerRadius: 10 });
+const camera = reactive({ q: 0, r: 0, targetQ: 0, targetR: 0, radius: CAMERA_RADIUS, innerRadius: CAMERA_INNER_RADIUS });
 
 // Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
@@ -100,8 +103,8 @@ const visibleTiles = computed(() => {
   const cq = Math.round(camera.q);
   const cr = Math.round(camera.r);
 
-  // depend on tiles for reactivity
-  const tileCount = store.tiles.length;
+  // depend on worldVersion for reactivity
+  const worldVersion = store.worldVersion;
 
   const tilesInRadius = getTilesInRadius(cq, cr, radius + 2);
   const results: Tile[] = [];

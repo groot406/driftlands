@@ -64,6 +64,7 @@ interface IdleState {
     tiles: Tile[];
     tick: number;
     running: boolean;
+    worldVersion: number;
 }
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
@@ -140,6 +141,7 @@ export function discoverTile(tile: Tile) {
     if (!tileIndex[tile.id]) indexTile(tile);
 
     ensureTileNeighbors(tile);
+    idleStore.worldVersion++;
 }
 
 function axialKey(q: number, r: number) {
@@ -192,6 +194,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     tiles: tiles,
     tick: 0,
     running: false,
+    worldVersion: 0,
 };
 export const idleStore = reactive(initial);
 seedInitialWorld(5);
@@ -225,7 +228,6 @@ function loop() {
 }
 
 export function seedInitialWorld(discoverRadius: number = 1) {
-    let timer = performance.now();
     const placeholderRadius = discoverRadius + 1;
 
     discoverTile(ensureTileExists(0, 0));
@@ -240,6 +242,8 @@ export function seedInitialWorld(discoverRadius: number = 1) {
             }
         }
     }
+
+    idleStore.worldVersion++;
 }
 
 export function hexDistance(q: number, r: number): number {
