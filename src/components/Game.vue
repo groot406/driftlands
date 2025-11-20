@@ -54,6 +54,10 @@
       {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
     </div>
   </div>
+  <!-- Minimap overlay -->
+  <div class="absolute bottom-3 right-3 z-20 pointer-events-none"  v-if="showMinimap">
+    <Minimap :camera-q="camera.q" :camera-r="camera.r" :camera-radius="camera.radius" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -79,6 +83,7 @@ import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
 import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef} from 'vue';
+import Minimap from './Minimap.vue';
 
 const CAMERA_RADIUS = 20;
 const CAMERA_INNER_RADIUS = 5;
@@ -87,7 +92,9 @@ const HEX_SIZE = 35;
 const HEX_SPACE = 3;
 const BIOME_BORDER_SIZE = 10;
 const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}px`;
-const showBiomeBorders = false;
+const showBiomeBorders = true;
+const showMinimap = true;
+
 const mouseDown = ref(false);
 
 // Precompute constants used in axialToPixel for speed
@@ -556,5 +563,24 @@ body {
 
 .map-container:active {
   cursor: grabbing;
+}
+
+.minimap-wrapper { /* allow pointer events pass-through except internal */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.minimap {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 150px;
+  height: 150px;
+  border: 2px solid white;
+  border-radius: 8px;
+  overflow: hidden;
+  pointer-events: auto;
 }
 </style>
