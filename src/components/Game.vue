@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds, getTilesInRadius } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -91,25 +91,15 @@ let lastCamKey = '';
 const opacityCache = new Map<string, number>();
 
 const visibleTiles = computed(() => {
-  let timer = performance.now();
   const radius = camera.radius;
-  const cq = camera.q;
-  const cr = camera.r;
+  const cq = Math.round(camera.q);
+  const cr = Math.round(camera.r);
+
+  const tilesInRadius = getTilesInRadius(cq, cr, radius + 2);
   const results: Tile[] = [];
-  const added = new Set<string>();
-
-  // Filter discovered tiles by distance
-  for (const t of store.tiles) {
-    const dq = Math.abs(t.q - cq);
-    const dr = Math.abs(t.r - cr);
-    const ds = Math.abs((-t.q - t.r) - (-cq - cr));
-    const dist = Math.max(dq, dr, ds);
-    if (dist <= radius) {
-      results.push(t); added.add(t.id);
-    }
+  for (const t of tilesInRadius) {
+    results.push(t);
   }
-
-  console.log(`Visible tiles computed in ${(performance.now() - timer).toFixed(2)} ms (${results.length} tiles)`);
 
   return results;
 });

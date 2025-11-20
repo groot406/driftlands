@@ -70,6 +70,8 @@ const LOCAL_KEY = 'driftlands_idle_state_v1';
 
 export const tiles = reactive<Tile[]>([]);
 const tileIndex: Record<string, Tile> = {};
+// Cached axial radius offset lists to avoid recomputing loops every frame
+const radiusOffsetCache = new Map<number, Array<[number, number]>>();
 
 let minQ: number = 0;
 let maxQ: number = 0;
@@ -144,8 +146,27 @@ function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
 
-export function getTile(q: number, r: number): Tile | undefined {
-    return tileIndex[axialKey(q, r)];
+function getRadiusOffsets(radius: number): Array<[number, number]> {
+    let cached = radiusOffsetCache.get(radius);
+    if (cached) return cached;
+    const arr: Array<[number, number]> = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+        for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+            arr.push([dq, dr]);
+        }
+    }
+    radiusOffsetCache.set(radius, arr);
+    return arr;
+}
+
+export function getTilesInRadius(centerQ: number, centerR: number, radius: number): Tile[] {
+    const offsets = getRadiusOffsets(radius);
+    const list: Tile[] = [];
+    for (const [dq, dr] of offsets) {
+        const t = tileIndex[axialKey(centerQ + dq, centerR + dr)];
+        if (t) list.push(t);
+    }
+    return list;
 }
 
 function loadState(): IdleState | null {
@@ -173,7 +194,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     running: false,
 };
 export const idleStore = reactive(initial);
-seedInitialWorld(25);
+seedInitialWorld(2500);
 
 watch(idleStore, () => {
     saveState(idleStore);
