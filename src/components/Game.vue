@@ -95,6 +95,9 @@ const visibleTiles = computed(() => {
   const cq = Math.round(camera.q);
   const cr = Math.round(camera.r);
 
+  // depend on tiles for reactivity
+  const tileCount = store.tiles.length;
+
   const tilesInRadius = getTilesInRadius(cq, cr, radius + 2);
   const results: Tile[] = [];
   for (const t of tilesInRadius) {

@@ -194,7 +194,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     running: false,
 };
 export const idleStore = reactive(initial);
-seedInitialWorld(100);
+seedInitialWorld(5);
 
 watch(idleStore, () => {
     saveState(idleStore);
@@ -240,7 +240,6 @@ export function seedInitialWorld(discoverRadius: number = 1) {
             }
         }
     }
-    console.log(`Seeded initial world in ${performance.now() - timer} ms`);
 }
 
 export function hexDistance(q: number, r: number): number {
