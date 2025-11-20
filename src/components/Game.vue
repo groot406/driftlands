@@ -52,9 +52,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch} from 'vue';
-import {idleStore as store, startIdle} from '../store/idleStore';
-import type {Tile} from '../core/world';
+import { computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { idleStore as store, startIdle } from '../store/idleStore';
+import type { Tile } from '../core/world';
 import {
   discoverTile,
   generationCompleted,
@@ -62,11 +62,24 @@ import {
   generationProgress,
   generationStatus,
   generationTotal,
-  getMaxRadiusFor,
   getTilesInRadius,
   startWorldGeneration,
   worldVersion
 } from '../core/world';
+
+import {
+  camera,
+  HEX_SIZE,
+  HEX_SPACE,
+  axialToPixel,
+  hexDistance,
+  createPointerHandlers,
+  keyDown,
+  keyUp,
+  animateCamera,
+  stopCameraAnimation,
+  centerCamera
+} from '../core/camera';
 
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
@@ -76,44 +89,17 @@ import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
 
-const CAMERA_RADIUS = 20;
-const CAMERA_INNER_RADIUS = 5;
-
 const WORLD_SIZE = 6;
-const MOVE_SPEED = 35;
-const HEX_SIZE = 35;
-const HEX_SPACE = 3;
 
 const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}`;
-
 const mouseDown = ref(false);
-
-// Precompute constants used in axialToPixel for speed
-const SQRT3 = Math.sqrt(3);
-const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
-const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
-
-// Camera state
-const camera = reactive({
-  q: 0,
-  r: 0,
-  targetQ: 0,
-  targetR: 0,
-  radius: CAMERA_RADIUS,
-  innerRadius: CAMERA_INNER_RADIUS,
-  velQ: 0,
-  velR: 0
-});
-
-// Map container measurements
 const mapEl = ref<HTMLElement | null>(null);
-const viewport = reactive({w: 0, h: 0, cx: 0, cy: 0});
-
+const viewport = reactive({ w: 0, h: 0, cx: 0, cy: 0 });
 const visibleTiles = shallowRef<Tile[]>([]);
 
 onMounted(() => {
   startWorldGeneration(WORLD_SIZE, store.tiles);
-})
+});
 
 watch([worldVersion, camera], () => requestAnimationFrame(updateVisibleTiles));
 
@@ -126,43 +112,32 @@ function updateVisibleTiles() {
 function measure() {
   const el = mapEl.value;
   if (!el) return;
-
   viewport.w = el.clientWidth;
   viewport.h = el.clientHeight;
   viewport.cx = viewport.w / 2;
   viewport.cy = viewport.h / 2;
 }
 
-function axialToPixel(q: number, r: number) {
-  const x = HEX_X_FACTOR * (q + r / 2);
-  const y = HEX_Y_FACTOR * r;
-  return {x, y};
+function getPixel(tile: Tile) {
+  if (tile.pixel) return tile.pixel;
+  tile.pixel = axialToPixel(tile.q, tile.r);
+  return tile.pixel;
 }
 
-function hexDistance(a: { q: number; r: number }, b: { q: number; r: number }): number {
-  const dq = Math.abs(a.q - b.q);
-  const dr = Math.abs(a.r - b.r);
-  const ds = Math.abs((-a.q - a.r) - (-b.q - b.r));
-  return Math.max(dq, dr, ds);
-}
-
-// Single world transform keeps camera centered
 const worldStyle = computed(() => {
   const camPx = axialToPixel(camera.q, camera.r);
-  return {transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`};
+  return { transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)` };
 });
 
 function tileStyle(tile: Tile): CSSProperties {
   const px = getPixel(tile);
-
   const span = Math.max(3, (camera.radius - camera.innerRadius));
   let fade = 1 - Math.max(0, (hexDistance(camera, tile) - camera.innerRadius) / span);
   fade = Math.min(1, Math.max(0, fade));
   const opacity = fade * fade;
-
   return {
     transform: `translate(${px.x - HEX_SIZE}px, ${px.y - HEX_SIZE}px)`,
-    opacity: opacity,
+    opacity,
     width: baseTileSize + 'px',
     height: baseTileSize + 'px',
   };
@@ -174,236 +149,38 @@ function getTileBackground(tile: Tile) {
 
 function getTileImage(tile: Tile) {
   switch (tile.terrain) {
-    case 'towncenter':
-      return towncenter;
-    case 'forest':
-      return forest;
-    case 'mountain':
-      return mountain;
-    case 'water':
-      return water;
-    case 'mine':
-      return mine;
-    case 'ruin':
-      return ruin;
+    case 'towncenter': return towncenter;
+    case 'forest': return forest;
+    case 'mountain': return mountain;
+    case 'water': return water;
+    case 'mine': return mine;
+    case 'ruin': return ruin;
     case 'plains':
-    default:
-      return plains;
+    default: return plains;
   }
-}
-
-function clampCameraTargets() {
-  // Improved: use per-axis maximum radius to restrict movement more naturally
-  const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2);
-  const q = camera.targetQ;
-  const r = camera.targetR;
-  const s = -q - r;
-  const dist = Math.max(Math.abs(q), Math.abs(r), Math.abs(s));
-  if (dist > maxRad) {
-    const scale = maxRad / dist;
-    camera.targetQ = q * scale;
-    camera.targetR = r * scale;
-  }
-}
-
-// ---------------- Pointer drag / throw camera navigation ----------------
-const DRAG_THRESHOLD = 4; // px before we treat as drag
-const VELOCITY_SAMPLE_WINDOW_MS = 120; // recent movement window for throw velocity
-const FRICTION = 8; // exponential friction factor (larger => quicker stop)
-const MAX_THROW_SPEED = 100; // axial units per second cap
-let dragging = false;
-
-//let activePointerId: number | null = null;
-let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0;
-const samples: { t: number; x: number; y: number }[] = [];
-
-function pixelDeltaToAxial(dx: number, dy: number) {
-  const dr = dy / HEX_Y_FACTOR;
-  const dq = (dx / HEX_X_FACTOR) - dr / 2; // derived from x = factor*(q + r/2)
-  return {dq, dr};
-}
-
-function pointerDown(e: PointerEvent) {
-  if (e.pointerType === 'mouse' && e.button !== 0) return; // only left button
-  mouseDown.value = true;
-  dragging = false;
-  dragStartX = lastX = e.clientX;
-  dragStartY = lastY = e.clientY;
-
-  samples.length = 0;
-  samples.push({t: performance.now(), x: e.clientX, y: e.clientY});
-}
-
-function pointerMove(e: PointerEvent) {
-  if (!mouseDown.value) return;
-
-  const dx = e.clientX - lastX;
-  const dy = e.clientY - lastY;
-  if (!dragging) {
-    const dist2 = (e.clientX - dragStartX) ** 2 + (e.clientY - dragStartY) ** 2;
-    if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) dragging = true;
-  }
-  if (dragging) {
-    const {dq, dr} = pixelDeltaToAxial(dx, dy);
-    camera.targetQ -= dq; // subtract so map moves with pointer
-    camera.targetR -= dr;
-
-    camera.q = camera.targetQ;
-    camera.r = camera.targetR;
-    clampCameraTargets();
-  }
-  lastX = e.clientX;
-  lastY = e.clientY;
-  const now = performance.now();
-  samples.push({t: now, x: e.clientX, y: e.clientY});
-  while (samples.length > 0 && now - samples[0]!.t > VELOCITY_SAMPLE_WINDOW_MS) samples.shift();
-  e.preventDefault();
-}
-
-function computeThrowVelocity() {
-  if (samples.length < 2) return;
-  const first = samples[0]!;
-  const last = samples[samples.length - 1]!;
-  const dt = (last.t - first.t) / 1000;
-  if (dt <= 0) return;
-  const dx = last.x - first.x;
-  const dy = last.y - first.y;
-  const {dq, dr} = pixelDeltaToAxial(dx, dy);
-  let vq = -dq / dt; // negative to continue map motion
-  let vr = -dr / dt;
-  const speed = Math.sqrt(vq * vq + vr * vr);
-  if (speed < 15) return; // too small
-  const max = MAX_THROW_SPEED;
-  if (speed > max) {
-    const s = max / speed;
-    vq *= s;
-    vr *= s;
-  }
-  camera.velQ = vq;
-  camera.velR = vr;
-}
-
-function pointerUp() {
-  if (dragging) computeThrowVelocity();
-  dragging = false;
-  samples.length = 0;
-  mouseDown.value = false;
-}
-
-function pointerCancel() {
-  dragging = false;
-  samples.length = 0;
-  camera.velQ = 0;
-  camera.velR = 0;
-  mouseDown.value = false;
 }
 
 let lastClickTime = 0;
-
 function clickTile(tile: Tile) {
-  if (dragging) return; // ignore clicks if we were dragging
   if (!tile.discovered) {
     discoverTile(tile);
     return;
   }
 
-  // double click
   if (performance.now() - lastClickTime < 300) {
     camera.targetQ = tile.q;
     camera.targetR = tile.r;
   }
-
   lastClickTime = performance.now();
 }
 
-// Movement/input state declarations (placed before animateCamera usage)
-let lastTime = performance.now();
-const heldKeys = new Set<string>();
-let rafId: number | null = null;
-
-function keyDown(e: KeyboardEvent) {
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
-    heldKeys.add(e.key);
-    e.preventDefault();
-  } else if (e.key === '+' || e.key === '=') {
-    camera.radius = Math.min(40, camera.radius + 1);
-  } else if (e.key === '-' || e.key === '_') {
-    camera.radius = Math.max(camera.innerRadius + 2, camera.radius - 1);
-  }
-}
-
-function keyUp(e: KeyboardEvent) {
-  if (heldKeys.delete(e.key)) e.preventDefault();
-}
-
-function getPixel(tile: Tile) {
-  if (tile.pixel) {
-    return tile.pixel;
-  }
-
-  tile.pixel = axialToPixel(tile.q, tile.r);
-  return tile.pixel;
-}
-
-function animateCamera() {
-  const now = performance.now();
-  const dt = (now - lastTime) / 1000; // seconds
-  lastTime = now;
-  let dqInput = 0, drInput = 0;
-  for (const k of heldKeys) {
-    if (k === 'ArrowUp' || k === 'w') {
-      drInput += -1;
-      dqInput += 0.5;
-    } else if (k === 'ArrowDown' || k === 's') {
-      drInput += 1;
-      dqInput += -0.5;
-    } else if (k === 'ArrowLeft' || k === 'a') {
-      dqInput += -1;
-    } else if (k === 'ArrowRight' || k === 'd') {
-      dqInput += 1;
-    }
-  }
-  if (dqInput !== 0 || drInput !== 0) {
-    const mag = Math.sqrt(dqInput * dqInput + drInput * drInput);
-    if (mag > 0) {
-      dqInput /= mag;
-      drInput /= mag;
-    }
-    camera.targetQ += dqInput * MOVE_SPEED * dt;
-    camera.targetR += drInput * MOVE_SPEED * dt;
-    clampCameraTargets();
-    // Cancel inertial velocity when actively using keyboard (optional)
-    camera.velQ = 0;
-    camera.velR = 0;
-  }
-  // Apply inertial velocity
-  if (camera.velQ !== 0 || camera.velR !== 0) {
-    camera.targetQ += camera.velQ * dt;
-    camera.targetR += camera.velR * dt;
-    clampCameraTargets();
-    const decay = Math.exp(-FRICTION * dt);
-    camera.velQ *= decay;
-    camera.velR *= decay;
-    if (Math.abs(camera.velQ) < 0.02) camera.velQ = 0;
-    if (Math.abs(camera.velR) < 0.02) camera.velR = 0;
-  }
-  const dq = camera.targetQ - camera.q;
-  const dr = camera.targetR - camera.r;
-  const dist = Math.sqrt(dq * dq + dr * dr);
-  const baseMin = 0.05;
-  const baseMax = 0.1;
-  const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
-  if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
-  if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
-  clampCameraTargets();
-  rafId = requestAnimationFrame(animateCamera);
-}
-
 function regenerateWorld(size?: number) {
-  camera.targetQ = 0;
-  camera.targetR = 0;
+  centerCamera();
   startWorldGeneration(size ?? WORLD_SIZE);
 }
+
+// Setup event listeners using extracted handlers
+const { pointerDown, pointerMove, pointerUp, pointerCancel } = createPointerHandlers(mouseDown);
 
 onMounted(() => {
   measure();
@@ -413,11 +190,11 @@ onMounted(() => {
   window.addEventListener('keyup', keyUp);
   const el = mapEl.value;
   if (el) {
-    el.addEventListener('pointerdown', pointerDown, {passive: false});
-    el.addEventListener('pointermove', pointerMove, {passive: false});
-    el.addEventListener('pointerup', pointerUp, {passive: false});
-    el.addEventListener('pointercancel', pointerCancel, {passive: false});
-    el.addEventListener('pointerleave', pointerUp, {passive: false}); // treat leave as up
+    el.addEventListener('pointerdown', pointerDown, { passive: false });
+    el.addEventListener('pointermove', pointerMove, { passive: false });
+    el.addEventListener('pointerup', pointerUp, { passive: false });
+    el.addEventListener('pointercancel', pointerCancel, { passive: false });
+    el.addEventListener('pointerleave', pointerUp, { passive: false });
   }
   animateCamera();
 });
@@ -434,7 +211,7 @@ onBeforeUnmount(() => {
     el.removeEventListener('pointercancel', pointerCancel);
     el.removeEventListener('pointerleave', pointerUp);
   }
-  if (rafId) cancelAnimationFrame(rafId);
+  stopCameraAnimation();
 });
 </script>
 
