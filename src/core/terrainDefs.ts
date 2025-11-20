@@ -1,3 +1,6 @@
+// Centralized terrain definitions with full properties.
+// If you add new terrain types, update TerrainKey and definitions here.
+
 export interface TerrainDef {
   color: string;
   baseWeight: number;

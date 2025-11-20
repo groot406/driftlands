@@ -1,6 +1,5 @@
 import {watch} from 'vue';
 import {tiles, type Tile, worldVersion} from '../core/world';
-import {generationInProgress, generationStatus, generationCompleted, generationTotal, generationProgress} from '../core/world';
 
 interface IdleState {
     radius: number;
@@ -8,12 +7,6 @@ interface IdleState {
     tick: number;
     running: boolean;
     worldVersion: number;
-    // Added generation progress tracking fields for UI loading component
-    generationInProgress: boolean;
-    generationStatus: string;
-    generationProgress: number;
-    generationCompleted: number;
-    generationTotal: number;
 }
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
@@ -22,16 +15,7 @@ function loadState(): IdleState | null {
     try {
         const raw = localStorage.getItem(LOCAL_KEY);
         if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        // Patch older save versions missing new fields
-        if (parsed) {
-            parsed.generationInProgress = parsed.generationInProgress ?? false;
-            parsed.generationStatus = parsed.generationStatus ?? '';
-            parsed.generationProgress = parsed.generationProgress ?? 0;
-            parsed.generationCompleted = parsed.generationCompleted ?? 0;
-            parsed.generationTotal = parsed.generationTotal ?? 0;
-        }
-        return parsed;
+        return JSON.parse(raw);
     } catch {
         return null;
     }
@@ -53,27 +37,13 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     tiles: tiles,
     tick: 0,
     running: false,
-    worldVersion: worldVersion.value,
-    generationInProgress: false,
-    generationStatus: '',
-    generationProgress: 0,
-    generationCompleted: 0,
-    generationTotal: 0
+    worldVersion: worldVersion.value
 };
 export const idleStore = initial;
 
 watch(worldVersion, () => {
     saveState(idleStore);
 }, {deep: true});
-
-// Sync world generation reactive refs into idleStore so UI components can read them directly
-watch([generationInProgress, generationStatus, generationProgress, generationCompleted, generationTotal], () => {
-    idleStore.generationInProgress = generationInProgress.value;
-    idleStore.generationStatus = generationStatus.value;
-    idleStore.generationProgress = generationProgress.value;
-    idleStore.generationCompleted = generationCompleted.value;
-    idleStore.generationTotal = generationTotal.value;
-}, {deep: false});
 
 export function startIdle() {
     if (idleStore.running) return;
