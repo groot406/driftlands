@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds, getTilesInRadius, generationInProgress, generationStatus, generationProgress, generationCompleted, generationTotal, worldOuterRadius } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getTilesInRadius, generationInProgress, generationStatus, generationProgress, generationCompleted, generationTotal, getMaxRadiusFor } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -179,21 +179,19 @@ function getTileImage(tile: Tile) {
   }
 }
 function clampCameraTargets() {
-  // Radial clamp instead of rectangular to avoid showing void outside hex world
-  const maxRad = worldOuterRadius.value > 0 ? worldOuterRadius.value : 50;
-  // Convert target axial to cube coords for distance
+  // Improved: use per-axis maximum radius to restrict movement more naturally
+  const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2);
   const q = camera.targetQ;
   const r = camera.targetR;
   const s = -q - r;
-  // Distance from origin in cube coordinates is max(|q|,|r|,|s|)
   const dist = Math.max(Math.abs(q), Math.abs(r), Math.abs(s));
   if (dist > maxRad) {
-    // Scale back proportionally to boundary (simple normalization in axial plane)
     const scale = maxRad / dist;
     camera.targetQ = q * scale;
     camera.targetR = r * scale;
   }
 }
+
 function clickTile(tile: Tile) {
   if (!tile.discovered) {
     discoverTile(tile);

@@ -87,6 +87,9 @@ let minQ: number = 0;
 let maxQ: number = 0;
 let minR: number = 0;
 let maxR: number = 0;
+// New: track maximum discovered radius per discrete q and r axis for more granular clamping
+const maxRadiusByQ = new Map<number, number>();
+const maxRadiusByR = new Map<number, number>();
 
 function indexTile(t: Tile) {
     tileIndex[t.id] = t;
@@ -97,6 +100,13 @@ function indexTile(t: Tile) {
     if (t.r > maxR) maxR = t.r;
     const dist = hexDistance(t.q, t.r);
     if (dist > worldOuterRadius.value) worldOuterRadius.value = dist;
+    // Update per-axis max radius caches (rounded discrete axis values)
+    const qKey = t.q; // axial coordinates are already integer for tiles
+    const rKey = t.r;
+    const prevQ = maxRadiusByQ.get(qKey) ?? 0;
+    if (dist > prevQ) maxRadiusByQ.set(qKey, dist);
+    const prevR = maxRadiusByR.get(rKey) ?? 0;
+    if (dist > prevR) maxRadiusByR.set(rKey, dist);
 }
 
 function ensureTileExists(q: number, r: number): Tile {
@@ -214,12 +224,12 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
     discoverTile(ensureTileExists(0, 0));
 
     const placeholderRadius = discoverRadius + 1; // matches previous logic
-    // worldOuterRadius.value = placeholderRadius; // now dynamic via indexTile
     // Precompute coordinate list
     const coords: Array<{q: number; r: number; dist: number}> = [];
     for (let q = 0; q <= placeholderRadius; q++) {
         for (let r = 0; r <= placeholderRadius; r++) {
-            for(const [sq, sr] of [[q, r], [-q, r], [q, -r], [-q, -r]]) {
+            const variants: [number, number][] = [[q, r], [-q, r], [q, -r], [-q, -r]];
+            for(const [sq, sr] of variants) {
                 const dist = hexDistance(sq, sr);
                 if (dist > placeholderRadius) continue;
                 if (sq === 0 && sr === 0) continue;
@@ -235,9 +245,9 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         const start = performance.now();
         // Process until time budget exhausted or done
         while (index < coords.length && (performance.now() - start) < frameTimeBudgetMs) {
-            const entry = coords[index];
+            const entry = coords[index]!; // non-null due to while guard
             index++;
-            const {q, r, dist} = entry; // non-null due to while guard
+            const {q, r, dist} = entry; // non-null due to assertion
             const t = ensureTileExists(q, r);
             if (dist <= discoverRadius) {
                 discoverTile(t);
@@ -333,4 +343,30 @@ export function ensurePlaceholderRadius(radius: number) {
         }
     }
     worldOuterRadius.value = Math.max(worldOuterRadius.value, radius);
+}
+
+export function getMaxRadiusFor(q: number, r: number, offset: number): number {
+    // Round to nearest integer axial since tiles are integer; allows smooth camera positions
+    const iq = Math.round(q);
+    const ir = Math.round(r);
+
+    const radQs: number[] = [maxRadiusByQ.get(iq) ?? worldOuterRadius.value];
+    const radRs: number[] = [maxRadiusByR.get(iq) ?? worldOuterRadius.value];
+
+    const checkRange = offset; // check +/-  axial steps for smoother clamping
+
+    for (let d = -checkRange; d <= checkRange; d++) {
+        const radQ = maxRadiusByQ.get(iq + d);
+        if (radQ !== undefined) radQs.push(radQ);
+
+        const radR = maxRadiusByR.get(ir + d);
+        if (radR !== undefined) radRs.push(radR);
+    }
+
+    // Clamp to the most restrictive axis plus global outer radius
+    return Math.min(
+        worldOuterRadius.value,
+        Math.max(...radQs),
+        Math.max(...radRs),
+    );
 }
