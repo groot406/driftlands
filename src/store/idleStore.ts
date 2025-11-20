@@ -68,13 +68,20 @@ interface IdleState {
 }
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
-const INITIAL_WORLD_SIZE = 300;
 
 const tiles: Tile[] = [];
 const tileIndex: Record<string, Tile> = {};
 // Cached axial radius offset lists to avoid recomputing loops every frame
 const radiusOffsetCache = new Map<number, Array<[number, number]>>();
 export const worldVersion = ref(0);
+// Generation progress refs
+export const generationInProgress = ref(false);
+export const generationStatus = ref('');
+export const generationProgress = ref(0); // 0-1
+export const generationCompleted = ref(0);
+export const generationTotal = ref(0);
+// New: track outer world radius for camera clamping
+export const worldOuterRadius = ref(0);
 
 let minQ: number = 0;
 let maxQ: number = 0;
@@ -193,15 +200,79 @@ function saveState(_state: IdleState) {
     }
 }
 
+// Async progressive generation replacing seedInitialWorld
+export async function generateInitialWorld(discoverRadius: number = 4, frameTimeBudgetMs: number = 8) {
+    if (generationInProgress.value || generationProgress.value >= 1) return;
+    generationInProgress.value = true;
+    generationStatus.value = 'Preparing world...';
+    generationProgress.value = 0;
+    generationCompleted.value = 0;
+
+    // Discover center immediately
+    discoverTile(ensureTileExists(0, 0));
+
+    const placeholderRadius = discoverRadius + 1; // matches previous logic
+    worldOuterRadius.value = placeholderRadius; // expose to camera clamping
+    // Precompute coordinate list
+    const coords: Array<{q: number; r: number; dist: number}> = [];
+    for (let q = 0; q <= placeholderRadius; q++) {
+        for (let r = 0; r <= placeholderRadius; r++) {
+            for(const [sq, sr] of [[q, r], [-q, r], [q, -r], [-q, -r]]) {
+                const dist = hexDistance(sq, sr);
+                if (dist > placeholderRadius) continue;
+                if (sq === 0 && sr === 0) continue;
+                coords.push({q: sq, r: sr, dist});
+            }
+        }
+    }
+    generationTotal.value = coords.length;
+    generationStatus.value = 'Generating world...';
+
+    let index = 0;
+    function step() {
+        const start = performance.now();
+        // Process until time budget exhausted or done
+        while (index < coords.length && (performance.now() - start) < frameTimeBudgetMs) {
+            const entry = coords[index];
+            index++;
+            const {q, r, dist} = entry; // non-null due to while guard
+            const t = ensureTileExists(q, r);
+            if (dist <= discoverRadius) {
+                discoverTile(t);
+            }
+            generationCompleted.value = index;
+        }
+        generationProgress.value = generationTotal.value === 0 ? 1 : generationCompleted.value / generationTotal.value;
+        generationStatus.value = generationProgress.value >= 1 ? 'Finalizing...' : `Generating tiles ${generationCompleted.value} / ${generationTotal.value}`;
+        // Bump world version so UI can react
+        worldVersion.value++;
+        if (index < coords.length) {
+            requestAnimationFrame(step);
+        } else {
+            // Final pass: ensure neighbors of edge discovered tiles exist
+            generationStatus.value = 'World ready';
+            generationProgress.value = 1;
+            generationInProgress.value = false;
+            worldVersion.value++;
+        }
+    }
+    requestAnimationFrame(step);
+}
+
+export function startWorldGeneration(radius: number = 4) {
+    generateInitialWorld(radius);
+}
+
 const initial: IdleState = (loadState() as IdleState) ?? {
     radius: 4,
     tiles: tiles,
     tick: 0,
     running: false,
-    worldVersion: worldVersion
+    worldVersion: worldVersion.value
 };
 export const idleStore = initial;
-seedInitialWorld(INITIAL_WORLD_SIZE);
+// Start async generation instead of synchronous seed
+startWorldGeneration(100);
 
 watch(worldVersion, () => {
     console.log('save');
@@ -232,29 +303,6 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
-export function seedInitialWorld(discoverRadius: number = 1) {
-    const placeholderRadius = discoverRadius + 1;
-
-    discoverTile(ensureTileExists(0, 0));
-
-    for (let q = -placeholderRadius; q <= placeholderRadius; q++) {
-        for (let r = -placeholderRadius; r <= placeholderRadius; r++) {
-            const distance = hexDistance(q, r);
-            if (distance > placeholderRadius) continue;
-            const t = ensureTileExists(q, r);
-            if (distance <= discoverRadius) {
-                discoverTile(t);
-            }
-        }
-    }
-
-    worldVersion.value++;
-}
-
-export function hexDistance(q: number, r: number): number {
-    return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r));
-}
-
 export function getWorldBounds(padding: number = 0) {
     return {
         minQ: minQ - padding,
@@ -262,4 +310,12 @@ export function getWorldBounds(padding: number = 0) {
         minR: minR - padding,
         maxR: maxR + padding
     };
+}
+
+export function hexDistance(q: number, r: number): number {
+    // Distance from origin in axial coordinates
+    const dq = Math.abs(q);
+    const dr = Math.abs(r);
+    const ds = Math.abs(-q - r);
+    return Math.max(dq, dr, ds);
 }

@@ -23,13 +23,28 @@
             </div>
           </div>
         </div>
+        <!-- Loading overlay -->
+        <div v-if="generationInProgress" class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
+          <div class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 shadow-xl border border-slate-700">
+            <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">World Generation</div>
+            <div class="text-xs text-slate-400" role="status">{{ generationStatus }}</div>
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <div>Tiles: {{ generationCompleted }} / {{ generationTotal }}</div>
+              <div>{{ (generationProgress * 100).toFixed(1) }}%</div>
+            </div>
+            <div class="h-3 rounded-md overflow-hidden bg-slate-700/60">
+              <div class="h-full bg-emerald-500 transition-all" :style="{ width: (generationProgress * 100) + '%' }"></div>
+            </div>
+            <div v-if="generationProgress >= 1" class="text-emerald-300 text-xs">Finalizing world...</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds, getTilesInRadius } from '../store/idleStore';
+import { idleStore as store, startIdle, discoverTile, type Tile, getWorldBounds, getTilesInRadius, generationInProgress, generationStatus, generationProgress, generationCompleted, generationTotal, worldOuterRadius } from '../store/idleStore';
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -162,9 +177,20 @@ function getTileImage(tile: Tile) {
   }
 }
 function clampCameraTargets() {
-  const b = getWorldBounds(1);
-  camera.targetQ = Math.min(b.maxQ, Math.max(b.minQ, camera.targetQ));
-  camera.targetR = Math.min(b.maxR, Math.max(b.minR, camera.targetR));
+  // Radial clamp instead of rectangular to avoid showing void outside hex world
+  const maxRad = worldOuterRadius.value > 0 ? worldOuterRadius.value : 50;
+  // Convert target axial to cube coords for distance
+  const q = camera.targetQ;
+  const r = camera.targetR;
+  const s = -q - r;
+  // Distance from origin in cube coordinates is max(|q|,|r|,|s|)
+  const dist = Math.max(Math.abs(q), Math.abs(r), Math.abs(s));
+  if (dist > maxRad) {
+    // Scale back proportionally to boundary (simple normalization in axial plane)
+    const scale = maxRad / dist;
+    camera.targetQ = q * scale;
+    camera.targetR = r * scale;
+  }
 }
 function clickTile(tile: Tile) {
   if (!tile.discovered) {
