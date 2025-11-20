@@ -1,12 +1,10 @@
 import {watch} from 'vue';
-import {tiles, type Tile, worldVersion} from '../core/world';
+import {type Tile, tiles, worldVersion} from '../core/world';
 
 interface IdleState {
-    radius: number;
     tiles: Tile[];
     tick: number;
     running: boolean;
-    worldVersion: number;
 }
 
 const LOCAL_KEY = 'driftlands_idle_state_v1';
@@ -27,23 +25,19 @@ function saveState(_state: IdleState) {
         localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
     } catch (e) {
         console.log('save error', e);
-        // ignore quota/security errors
     }
 }
 
-// Keep idle store initialization with imported tiles/worldVersion
 const initial: IdleState = (loadState() as IdleState) ?? {
-    radius: 4,
-    tiles: tiles,
+    tiles,
     tick: 0,
     running: false,
-    worldVersion: worldVersion.value
 };
 export const idleStore = initial;
 
 watch(worldVersion, () => {
     saveState(idleStore);
-}, {deep: true});
+});
 
 export function startIdle() {
     if (idleStore.running) return;
