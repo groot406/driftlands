@@ -221,6 +221,6 @@ export function stopCameraAnimation() {
 }
 
 export function centerCamera() {
-  camera.q = camera.r = camera.targetQ = camera.targetR = 0;
+  camera.targetQ = camera.targetR = 0;
 }
 
