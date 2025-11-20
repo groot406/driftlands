@@ -1,14 +1,6 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100">
     <div class="flex-1 overflow-hidden w-full h-full">
-      <div class="flex items-center justify-between mb-4 absolute gap-4">
-        <div class="p-4">
-          <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
-          <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
-          <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
-          {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
-        </div>
-      </div>
       <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none map-container">
         <div class="absolute inset-0" :style="worldStyle">
@@ -52,6 +44,14 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+  <div class="flex items-center justify-between mb-4 absolute gap-4 absolute z-10 top-0 left-0 text-white">
+    <div class="p-4">
+      <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
+      <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
+      <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
+      {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
     </div>
   </div>
 </template>
@@ -230,10 +230,10 @@ function clampCameraTargets() {
 }
 
 // ---------------- Pointer drag / throw camera navigation ----------------
-const DRAG_THRESHOLD = 10; // px before we treat as drag
-const VELOCITY_SAMPLE_WINDOW_MS = 60; // recent movement window for throw velocity
-const FRICTION = 15; // exponential friction factor (larger => quicker stop)
-const MAX_THROW_SPEED = 70; // axial units per second cap
+const DRAG_THRESHOLD = 4; // px before we treat as drag
+const VELOCITY_SAMPLE_WINDOW_MS = 120; // recent movement window for throw velocity
+const FRICTION = 8; // exponential friction factor (larger => quicker stop)
+const MAX_THROW_SPEED = 100; // axial units per second cap
 let dragging = false;
 
 //let activePointerId: number | null = null;

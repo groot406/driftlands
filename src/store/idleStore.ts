@@ -93,7 +93,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
 };
 export const idleStore = initial;
 // Start async generation
-startWorldGeneration(10);
+startWorldGeneration(100);
 
 watch(worldVersion, () => {
     console.log('save');
