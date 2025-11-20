@@ -1,9 +1,9 @@
 <template>
   <transition name="fade">
-    <div v-if="activeLoaders.length"
+    <div v-if="popupLoaders.length"
          class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
       <div class="flex flex-col space-y-4 w-full max-w-[380px] px-4">
-        <div v-for="loader in activeLoaders" :key="loader.id"
+        <div v-for="loader in popupLoaders" :key="loader.id"
              class="w-full space-y-4 p-6 rounded-xl bg-slate-800 border border-slate-700 shadow-xl drop-shadow-md opacity-80 backdrop:blur-lg">
           <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">{{ loader.title }}</div>
           <div class="text-xs text-slate-400" role="status">{{ loader.status }}</div>
@@ -26,6 +26,7 @@
 
 <script setup lang="ts">
 import {getActiveLoaders, type Loader} from '../core/loader';
+import {computed} from "vue";
 
 const activeLoaders = getActiveLoaders();
 
@@ -39,6 +40,8 @@ function getProgress(loader: Loader): number {
 
   return loader.progress || 0;
 }
+
+const popupLoaders = computed(() => activeLoaders.value.filter(loader => loader.popup))
 </script>
 
 <style scoped>

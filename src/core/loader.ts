@@ -9,6 +9,7 @@ export interface Loader {
     total: number;
     unitLabel?: string; // e.g. Tiles, Items, Assets
     active: boolean;
+    popup?: boolean; // Indicates loader should show as popup/modal
     infinite?: boolean; // Indicates loader is infinite (no defined total/progress)
 }
 
@@ -30,6 +31,7 @@ export function createLoader(id: string, opts: LoaderOptions): Loader {
         unitLabel: opts.unitLabel,
         active: true,
         infinite: opts.infinite ?? false,
+        popup: opts.popup ?? true,
     };
     computeProgress(loader);
     _loaders[id] = loader;

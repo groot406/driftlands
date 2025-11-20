@@ -1,25 +1,31 @@
 <template>
-  <div class="absolute z-10 top-4 left-4 text-white">
-    <h1 class="text-2xl font-bold items-center">Nexus Hex – Idle Frontier (POC)</h1>
-    <div class="gap-4 flex flex-row items-center mt-2">
-      <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
-      <button class="btn" @click="regenerateWorld()">Regenerate</button>
-      <button class="btn" @click="regenerateWorld(LARGE_WORLD_SIZE)">Generate large world</button>
+  <div class="absolute top-0 left-0 w-full h-full z-20 pointer-events-none select-none p-2 flex flex-col gap-4">
+    <div class="flex flex-col md:flex-row gap-40 items-start">
+      <div class="flex-1 flex flex-col gap-4">
+        <ResourceBar/>
+      </div>
+      <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
+        <WorldControls/>
+        <DebugPanel/>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {idleStore as store, startIdle} from '../store/idleStore';
-import {centerCamera} from "../core/camera.ts";
-import {startWorldGeneration} from "../core/world.ts";
+import {onMounted, ref} from 'vue';
+import ResourceBar from './ResourceBar.vue';
+import WorldControls from './WorldControls.vue';
+import DebugPanel from "./DebugPanel.vue";
 
-const WORLD_SIZE = 6;
-const LARGE_WORLD_SIZE = 200;
+const showHelpers = ref(false);
 
-function regenerateWorld(size?: number) {
-  centerCamera();
-  startWorldGeneration(size ?? WORLD_SIZE);
-}
+onMounted(() =>
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        showHelpers.value = !showHelpers.value;
+      }
+    }));
+
 </script>
-

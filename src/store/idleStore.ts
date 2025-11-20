@@ -36,6 +36,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
 export const idleStore = initial;
 
 watch(worldVersion, () => {
+    idleStore.tiles = tiles;
     saveState(idleStore);
 });
 

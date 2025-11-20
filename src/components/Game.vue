@@ -30,3 +30,9 @@ function handleTileClick(tile: Tile) {
 
 loadWorld(store.tiles);
 </script>
+
+<style>
+body, html {
+  overflow:hidden;
+}
+</style>

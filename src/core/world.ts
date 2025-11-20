@@ -76,7 +76,7 @@ export function ensureTileExists(q: number, r: number): Tile {
     return t;
 }
 
-export function ensureTileNeighbors(tile: Tile) {
+async function ensureTileNeighbors(tile: Tile) {
     const neighbors: Array<[number, number]> = [
         [tile.q + 1, tile.r], [tile.q + 1, tile.r - 1], [tile.q, tile.r - 1],
         [tile.q - 1, tile.r], [tile.q - 1, tile.r + 1], [tile.q, tile.r + 1]
@@ -110,10 +110,7 @@ export function discoverTile(tile: Tile) {
     tile.terrain = generated.terrain;
     tile.discovered = true;
     if (!tileIndex[tile.id]) indexTile(tile);
-    ensureTileNeighbors(tile);
-    if (!generationInProgress.value) {
-        worldVersion.value++;
-    }
+    ensureTileNeighbors(tile).then(() => worldVersion.value++);
 }
 
 function getRadiusOffsets(radius: number): Array<[number, number]> {

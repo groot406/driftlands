@@ -166,10 +166,6 @@ export function keyDown(e: KeyboardEvent) {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
         heldKeys.add(e.key);
         e.preventDefault();
-    } else if (e.key === '+' || e.key === '=') {
-        camera.radius = Math.min(40, camera.radius + 1);
-    } else if (e.key === '-' || e.key === '_') {
-        camera.radius = Math.max(camera.innerRadius + 2, camera.radius - 1);
     }
 }
 
