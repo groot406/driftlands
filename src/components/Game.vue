@@ -1,35 +1,37 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100">
     <div class="flex-1 overflow-hidden w-full h-full">
-      <!-- Camera centered map -->
       <div ref="mapEl" class="w-full h-full relative select-none map-container">
-        <div class="absolute inset-0" :style="worldStyle">
+        <div class="absolute inner inset-0 text-[9px] font-mono" :style="worldStyle">
           <div
               v-for="tile in visibleTiles"
               :key="tile.id"
               :style="tileStyle(tile)"
-              class="absolute group"
+              class="absolute"
           >
-            <div class="hex-tile flex flex-col items-center justify-center cursor-pointer text-[9px] font-mono"
-                 :class="tile.discovered ? 'opacity-100' : 'opacity-50'"
+            <div class="hex-tile cursor-pointer"
+                 :class="!tile.discovered ? 'opacity-50' : ''"
                  :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
-                 @click="clickTile(tile)">
+                 @click="clickTile(tile)"
+               >
 
-              <!-- biome border overlay -->
-              <svg v-if="showBiomeBorders && tile.discovered && tile.biome" class="hex-border" viewBox="0 0 100 100"
-                   preserveAspectRatio="none">
-                <g :stroke="biomeColor(tile.biome)" :stroke-width="BIOME_BORDER_SIZE" stroke-linejoin="round"
-                   stroke-linecap="round" :fill="biomeColor(tile.biome)">
-                  <path v-for="edge in getBorderEdges(tile)" :key="edge" :d="edge"/>
-                </g>
-              </svg>
             </div>
+            <!-- biome border overlay -->
+            <svg v-if="showBiomeBorders && tile.discovered && tile.biome" class="hex-border" viewBox="0 0 100 100"
+                 preserveAspectRatio="none">
+              <g :stroke="biomeColor(tile.biome)" :stroke-width="BIOME_BORDER_SIZE" stroke-linejoin="round"
+                 stroke-linecap="round" :fill="biomeColor(tile.biome)">
+                <path v-for="edge in getBorderEdges(tile)" :key="edge" :d="edge"/>
+              </g>
+            </svg>
           </div>
         </div>
+
         <!-- Loading overlay -->
         <div v-if="generationInProgress"
              class="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
-          <div class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 shadow-xl border border-slate-700">
+          <div
+              class="w-[320px] space-y-4 p-6 rounded-lg bg-slate-800 border border-slate-700 shadow-xl drop-shadow-md opacity-80 backdrop:blur-lg">
             <div class="text-sm font-semibold tracking-wide uppercase text-slate-300">World Generation</div>
             <div class="text-xs text-slate-400" role="status">{{ generationStatus }}</div>
             <div class="flex items-center justify-between text-xs text-slate-400">
@@ -46,22 +48,26 @@
       </div>
     </div>
   </div>
-  <div class="flex items-center justify-between mb-4 absolute gap-4 absolute z-10 top-0 left-0 text-white">
-    <div class="p-4">
-      <h1 class="text-2xl font-bold">Nexus Hex – Idle Frontier (POC)</h1>
+
+  <div class="absolute z-10 top-4 left-4 opacity-80 text-white">
+    <h1 class="text-2xl font-bold items-center">Nexus Hex – Idle Frontier (POC)</h1>
+    <div class="gap-4 flex flex-row items-center mt-2">
       <button v-if="!store.running" class="btn" @click="startIdle()">Start</button>
-      <div v-else class="text-xs opacity-70">Tick: {{ store.tick }}</div>
-      {{ visibleTiles.length }} / {{ store.tiles.length }} tiles loaded
+      <button class="btn" @click="regenerateWorld()">Regenerate</button>
+      <button class="btn" @click="regenerateWorld(200)">Generate large world</button>
     </div>
   </div>
+
   <!-- Minimap overlay -->
-  <div class="absolute bottom-3 right-3 z-20 pointer-events-none"  v-if="showMinimap">
-    <Minimap :camera-q="camera.q" :camera-r="camera.r" :camera-radius="camera.radius" />
+  <div class="absolute bottom-3 right-3 z-20 pointer-events-none" v-if="showMinimap">
+    <Minimap :camera-q="camera.q" :camera-r="camera.r" :camera-radius="camera.radius"/>
   </div>
 </template>
 
 <script setup lang="ts">
+import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch} from 'vue';
 import {idleStore as store, startIdle} from '../store/idleStore';
+import type {Tile} from '../core/world';
 import {
   axialKey,
   discoverTile,
@@ -72,9 +78,11 @@ import {
   generationTotal,
   getMaxRadiusFor,
   getTilesInRadius,
-  type Tile,
-  tileIndex
+  startWorldGeneration,
+  tileIndex,
+  worldVersion
 } from '../core/world';
+
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountain.png';
@@ -82,18 +90,18 @@ import water from '../assets/tiles/water.png';
 import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
-import {computed, type CSSProperties, onBeforeUnmount, onMounted, reactive, ref, shallowRef} from 'vue';
 import Minimap from './Minimap.vue';
 
 const CAMERA_RADIUS = 20;
 const CAMERA_INNER_RADIUS = 5;
 
+const WORLD_SIZE = 6;
 const HEX_SIZE = 35;
 const HEX_SPACE = 3;
-const BIOME_BORDER_SIZE = 10;
+const BIOME_BORDER_SIZE = 6;
 const baseTileSize = `${(HEX_SIZE * 2) - HEX_SPACE}px`;
-const showBiomeBorders = true;
-const showMinimap = true;
+const showBiomeBorders = false;
+const showMinimap = false;
 
 const mouseDown = ref(false);
 
@@ -102,7 +110,7 @@ const SQRT3 = Math.sqrt(3);
 const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
 const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
 
-// Camera state (smoothed position with separate targets)
+// Camera state
 const camera = reactive({
   q: 0,
   r: 0,
@@ -118,8 +126,13 @@ const camera = reactive({
 const mapEl = ref<HTMLElement | null>(null);
 const viewport = reactive({w: 0, h: 0, cx: 0, cy: 0});
 
-// Remove computed visibleTiles; use manual shallowRef to avoid dependency on large reactive arrays
 const visibleTiles = shallowRef<Tile[]>([]);
+
+onMounted(() => {
+  startWorldGeneration(WORLD_SIZE, store.tiles);
+})
+
+watch([worldVersion, camera], () => requestAnimationFrame(updateVisibleTiles));
 
 function updateVisibleTiles() {
   const cq = Math.round(camera.q);
@@ -329,15 +342,16 @@ function pointerCancel() {
 }
 
 let lastClickTime = 0;
+
 function clickTile(tile: Tile) {
-  if( dragging ) return; // ignore clicks if we were dragging
+  if (dragging) return; // ignore clicks if we were dragging
   if (!tile.discovered) {
     discoverTile(tile);
     return;
   }
 
   // double click
-  if( performance.now() - lastClickTime < 300 ) {
+  if (performance.now() - lastClickTime < 300) {
     camera.targetQ = tile.q;
     camera.targetR = tile.r;
   }
@@ -426,7 +440,6 @@ function animateCamera() {
   if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
   if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
   clampCameraTargets();
-  updateVisibleTiles();
   rafId = requestAnimationFrame(animateCamera);
 }
 
@@ -466,7 +479,7 @@ function biomeColor(biome: string | null): string {
     case 'mountain':
       return '#64748b';
     case 'lake':
-      return '#0ea5e9';
+      return '#0055a8';
     case 'coast':
       return '#14b8a6';
     case 'plains':
@@ -492,6 +505,12 @@ function getBorderEdges(tile: Tile): string[] {
     }
   }
   return result;
+}
+
+function regenerateWorld(size?: number) {
+  camera.targetQ = 0;
+  camera.targetR = 0;
+  startWorldGeneration(size ?? WORLD_SIZE);
 }
 
 onMounted(() => {
@@ -549,7 +568,7 @@ body {
 
 .hex-border {
   position: absolute;
-  inset: 0;
+  inset: -2px;
   pointer-events: none;
 }
 
@@ -558,7 +577,6 @@ body {
   -webkit-user-select: none;
   user-select: none;
   overscroll-behavior: contain;
-  cursor: grab;
 }
 
 .map-container:active {
@@ -583,4 +601,5 @@ body {
   overflow: hidden;
   pointer-events: auto;
 }
+
 </style>

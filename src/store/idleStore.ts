@@ -1,63 +1,9 @@
 import {watch} from 'vue';
-import {startWorldGeneration, tiles, worldVersion} from '../core/world';
-import type {TerrainKey} from "../core/terrainDefs.ts";
-
-interface IdleTaskDef {
-    baseSeconds: number;
-    primaryStat?: keyof IdleHero['stats'];
-    resourceYield?: Partial<Record<ResourceType, number>>;
-}
-
-interface IdleHeroStats {
-    speed: number;
-    yield: number;
-    defense: number;
-    build: number;
-    explore: number;
-}
-
-interface IdleHero {
-    id: string;
-    name: string;
-    level: number;
-    xp: number;
-    stats: IdleHeroStats;
-    busy: boolean;
-    task?: ActiveIdleTask;
-}
-
-interface ActiveIdleTask {
-    def: IdleTaskDef;
-    tileId: string;
-    assignedHeroIds: string[];
-    progress: number;
-    required: number;
-    startedAt: number;
-    completed: boolean;
-}
-
-// Added road support
-export interface Road {
-    id: string; // canonical id
-    a: string; // tile id
-    b: string; // tile id
-}
-
-export type Terrain = TerrainKey;
-export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
-
-export interface Tile {
-    id: string;
-    q: number;
-    r: number;
-    biome: string | null;
-    terrain: Terrain | null;
-    discovered: boolean;
-}
+import {tiles, type Tile, worldVersion} from '../core/world';
 
 interface IdleState {
     radius: number;
-    tiles: any[]; // referencing core/world tiles
+    tiles: Tile[];
     tick: number;
     running: boolean;
     worldVersion: number;
@@ -77,8 +23,10 @@ function loadState(): IdleState | null {
 
 function saveState(_state: IdleState) {
     try {
-        // localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
-    } catch {
+        console.log('save');
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
+    } catch (e) {
+        console.log('save error', e);
         // ignore quota/security errors
     }
 }
@@ -92,11 +40,8 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     worldVersion: worldVersion.value
 };
 export const idleStore = initial;
-// Start async generation
-startWorldGeneration(100);
 
 watch(worldVersion, () => {
-    console.log('save');
     saveState(idleStore);
 }, {deep: true});
 
