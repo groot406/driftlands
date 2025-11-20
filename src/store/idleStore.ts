@@ -67,6 +67,7 @@ interface IdleState {
     worldVersion: number;
 }
 
+const WORLD_SIZE = 1;
 const LOCAL_KEY = 'driftlands_idle_state_v1';
 
 const tiles: Tile[] = [];
@@ -285,7 +286,7 @@ const initial: IdleState = (loadState() as IdleState) ?? {
 };
 export const idleStore = initial;
 // Start async generation instead of synchronous seed
-startWorldGeneration(100);
+startWorldGeneration(WORLD_SIZE);
 
 watch(worldVersion, () => {
     console.log('save');
@@ -314,15 +315,6 @@ function loop() {
     //     }
     // });
     requestAnimationFrame(loop);
-}
-
-export function getWorldBounds(padding: number = 0) {
-    return {
-        minQ: minQ - padding,
-        maxQ: maxQ + padding,
-        minR: minR - padding,
-        maxR: maxR + padding
-    };
 }
 
 export function hexDistance(q: number, r: number): number {
