@@ -93,3 +93,52 @@ Cosmetics/traits (+niche boosts). F2P matches via quests. Trade in-game – no P
 - [Coop Idle X Post](https://x.com/Razor_Language/status/1891521125336645824)
 - [No Rest Co-op Excitement](https://x.com/thomasmahler/status/1966769207770587590)
 - [Reinventing Idle Social](https://www.kolibrigames.com/blog/were-on-a-mission-to-reinvent-idle/)
+
+---
+
+## 🛠 Generic Loader Service & Overlay
+A lightweight reactive service powers all loading overlays, enabling multiple concurrent loaders (e.g. world gen, asset prefetch, network sync).
+
+### Loader API (`src/core/loader.ts`)
+Fields: `id`, `title`, `status`, `progress` (0-1), `completed`, `total`, `unitLabel`, `active`.
+
+Helpers:
+- `createLoader(id, { title, status?, total?, completed?, unitLabel? })`
+- `updateLoader(id, patch)` – Patch fields and auto-recompute progress.
+- `finishLoader(id, finalStatus?)` – Marks complete + sets `active = false`.
+- `getLoader(id)` – Access a loader directly.
+- `getActiveLoaders()` – Computed array of active loaders for UI.
+
+### Overlay Component (`src/components/LoadingOverlay.vue`)
+Renders when at least one active loader exists. Each loader displays:
+- Title
+- Status message
+- Progress bar + percentage
+- Completed / Total units
+
+Adds blur + dim background (`bg-slate-900/80 backdrop-blur-sm`). Multiple loaders stack vertically.
+
+### World Generation Integration
+`world.ts` now wraps its generation process in a loader with id `world-gen`. Legacy refs (`generationInProgress`, `generationStatus`, etc.) remain exported for backward compatibility.
+
+### Adding Another Loader (Example)
+```ts
+import { createLoader, updateLoader, finishLoader } from '@/core/loader';
+
+async function preloadAssets(list: string[]) {
+  const loader = createLoader('asset-preload', { title: 'Preloading Assets', status: 'Starting...', unitLabel: 'Assets', total: list.length });
+  for (let i = 0; i < list.length; i++) {
+    updateLoader(loader.id, { status: `Loading ${list[i]}`, completed: i });
+    await fetch(list[i]); // placeholder
+  }
+  finishLoader(loader.id, 'Assets ready');
+}
+```
+The overlay will automatically show while assets are loading.
+
+### Future Enhancements
+- Auto purge inactive loaders after delay
+- Error state (`failed: boolean`, `errorMessage`)
+- Cancellable loaders with abort signal
+- Sort by priority
+- Compact mode vs detailed mode

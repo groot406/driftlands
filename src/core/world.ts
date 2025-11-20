@@ -2,6 +2,7 @@ import {ref} from 'vue';
 import {weightedTerrainChoice} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {idleStore as store} from "../store/idleStore.ts";
+import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
 
 export type Terrain = TerrainKey;
 export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
@@ -157,7 +158,15 @@ export function getMaxRadiusFor(q: number, r: number, offset: number): number {
 // Async progressive generation
 export async function generateInitialWorld(discoverRadius: number = 4, frameTimeBudgetMs: number = 8) {
     if (generationInProgress.value || generationProgress.value >= 1) return;
-    console.log('gen');
+    // Initialize loader (id stable across regenerations)
+    const loaderId = 'world-gen';
+    let loader = getLoader(loaderId);
+    if (!loader) {
+        createLoader(loaderId, {title: 'World Generation', status: 'Preparing world...', unitLabel: 'Tiles'});
+    } else {
+        updateLoader(loaderId, {status: 'Preparing world...', completed: 0, total: 0, active: true});
+    }
+
     generationInProgress.value = true;
     generationStatus.value = 'Preparing world...';
     generationProgress.value = 0;
@@ -178,7 +187,9 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         }
     }
     generationTotal.value = coords.length;
+    updateLoader(loaderId, {total: coords.length});
     generationStatus.value = 'Generating world...';
+    updateLoader(loaderId, {status: 'Generating world...'});
     let index = 0;
 
     function step() {
@@ -192,7 +203,9 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
             generationCompleted.value = index;
         }
         generationProgress.value = generationTotal.value === 0 ? 1 : generationCompleted.value / generationTotal.value;
-        generationStatus.value = generationProgress.value >= 1 ? 'Finalizing...' : `Generating tiles ${generationCompleted.value} / ${generationTotal.value}`;
+        const status = generationProgress.value >= 1 ? 'Finalizing...' : `Generating tiles ${generationCompleted.value} / ${generationTotal.value}`;
+        generationStatus.value = status;
+        updateLoader(loaderId, {completed: generationCompleted.value, status});
         worldVersion.value++;
         if (index < coords.length) {
             requestAnimationFrame(step);
@@ -200,6 +213,8 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
             generationStatus.value = 'World ready';
             generationProgress.value = 1;
             generationInProgress.value = false;
+            updateLoader(loaderId, {completed: generationTotal.value, status: 'World ready'});
+            finishLoader(loaderId, 'World ready');
             worldVersion.value++;
         }
     }
@@ -222,7 +237,10 @@ export function startWorldGeneration(radius: number = WORLD_SIZE, loadedTiles ?:
         tiles.length = 0;
         tileIndex = {};
 
-        minQ = 0; maxQ = 0; minR = 0; maxR = 0;
+        minQ = 0;
+        maxQ = 0;
+        minR = 0;
+        maxR = 0;
         maxRadiusByQ.clear();
         maxRadiusByR.clear();
 
@@ -231,4 +249,3 @@ export function startWorldGeneration(radius: number = WORLD_SIZE, loadedTiles ?:
 
     store.tiles = tiles;
 }
-
