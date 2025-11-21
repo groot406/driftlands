@@ -34,8 +34,8 @@ export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for 
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 10}, facing: 'down'},
-    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {hp: 90, atk: 24, spd: 12}, facing: 'down'},
+    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 1}, facing: 'down'},
+    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {hp: 90, atk: 24, spd: 3}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -185,11 +185,10 @@ if (typeof window !== 'undefined') {
 export function resetHeroes() {
     // Clear current heroes and localStorage save, then seed fresh starting heroes within initial discovered radius.
     try { localStorage.removeItem(LS_KEY); } catch {}
-    heroes.splice(0, heroes.length);
-    const fresh: Hero[] = [
-        {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 10}, facing: 'down'},
-        {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 1, r: 0, stats: {hp: 90, atk: 24, spd: 50}, facing: 'down'},
-    ];
-    for (const h of fresh) heroes.push(h);
+    // reset q and r to starting positions
+    for(const hero of heroes) {
+        hero.q = 0;
+        hero.r = 0;
+    }
     persistHeroes();
 }

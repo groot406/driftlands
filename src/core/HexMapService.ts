@@ -340,7 +340,9 @@ export class HexMapService {
       const layout = this._heroLayouts.get(axialKey(h.q,h.r)) || {};
       const pos = layout[h.id] || {x:0,y:0};
       const opacity = this.computeFade(dist, camera.innerRadius, camera.radius);
-      const {x,y} = axialToPixel(h.q,h.r);
+              // --- Smooth interpolation between tiles ---
+      const interp = this.getHeroInterpolatedPixelPosition(h, now);
+      const x = interp.x; const y = interp.y;
       const destX = x - (this.heroFrameSize * this.heroZoom)/2 + pos.x - (this.heroFrameSize/2);
       const destY = y - (this.heroFrameSize * 2) + (this.heroFrameSize/2) + pos.y;
 
@@ -527,5 +529,28 @@ export class HexMapService {
     if (!t.terrain) return false;
     const def = (TERRAIN_DEFS as any)[t.terrain];
     return !!(def && def.walkable);
+  }
+
+  private getHeroInterpolatedPixelPosition(hero: Hero, now: number) {
+    if (!hero.movement) return axialToPixel(hero.q, hero.r);
+    const m = hero.movement;
+    const elapsed = now - m.startMs;
+    if (elapsed < 0) return axialToPixel(hero.q, hero.r);
+    const stepIndex = Math.floor(elapsed / m.stepMs);
+    if (stepIndex >= m.path.length) {
+      // Movement almost done (hero.movement may clear soon); snap to current tile.
+      return axialToPixel(hero.q, hero.r);
+    }
+    // Fraction within current step
+    const stepElapsed = elapsed - stepIndex * m.stepMs;
+    const progress = Math.min(1, Math.max(0, stepElapsed / m.stepMs));
+    const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
+    const to = m.path[stepIndex];
+    const fromPx = axialToPixel(from.q, from.r);
+    const toPx = axialToPixel(to.q, to.r);
+    return {
+      x: fromPx.x + (toPx.x - fromPx.x) * progress,
+      y: fromPx.y + (toPx.y - fromPx.y) * progress,
+    };
   }
 }
