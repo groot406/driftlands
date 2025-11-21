@@ -26,12 +26,6 @@ const seedHeroes: Hero[] = [
 
 export const heroes = reactive<Hero[]>(seedHeroes);
 
-// Ensure their tiles exist & are discovered so camera focusing feels natural.
-heroes.forEach(h => {
-    const t = ensureTileExists(h.q, h.r);
-    if (!t.discovered) discoverTile(t);
-});
-
 export function focusHero(hero: Hero) {
     moveCamera(hero.q, hero.r);
 }

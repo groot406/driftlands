@@ -49,8 +49,8 @@ export function startIdle() {
 async function loop() {
     if (!idleStore.running) return;
     idleStore.tick++;
-
-    //const dt = 1 / 60; // simulation step seconds
+    //
+    // const dt = 1 / 60; // simulation step seconds
     // idleStore.tiles.forEach(tile => {
     //     const task = tile.task;
     //     if (!task || task.completed) return;

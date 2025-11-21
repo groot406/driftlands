@@ -5,17 +5,28 @@
       <LoadingOverlay />
     </div>
   </div>
-  <GameGui />
+  <GameGui v-if="playing" />
 </template>
 
 <script setup lang="ts">
-import {  idleStore as store } from '../store/idleStore';
-import {discoverTile, loadWorld} from '../core/world';
+import { idleStore as store } from '../store/idleStore';
+import {discoverTile, loadWorld, tiles as worldTiles} from '../core/world';
 import { moveCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 import GameGui from './GameGui.vue';
 import type { Tile } from '../core/world';
+import { isPlaying } from '../store/uiStore';
+import { computed, onMounted } from 'vue';
+
+const playing = computed(() => isPlaying());
+
+onMounted(() => {
+  // If we have saved tiles (continue) and world isn't loaded yet, load them.
+  if (worldTiles.length === 0 && store.tiles.length) {
+    loadWorld(store.tiles);
+  }
+});
 
 function moveToTile(tile: Tile) {
   moveCamera(tile.q, tile.r)
@@ -29,7 +40,6 @@ function handleTileClick(tile: Tile) {
   console.log('Clicked tile', tile);
 }
 
-loadWorld(store.tiles);
 </script>
 
 <style>

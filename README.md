@@ -142,3 +142,26 @@ The overlay will automatically show while assets are loading.
 - Cancellable loaders with abort signal
 - Sort by priority
 - Compact mode vs detailed mode
+
+---
+
+## Menus / Game Phases
+A basic UI phase system has been introduced via `uiStore.ts`:
+- Phases: `title`, `playing`, `paused`
+- Title screen component: `TitleScreen.vue`
+- Pause overlay: `PauseMenu.vue`
+
+Escape key toggles pause while playing. The Continue button is enabled if a simple stub save key (`driftlands-save`) exists in localStorage (created on starting a New Game). Future work can expand this to serialize world / heroes.
+
+### Actions
+Imported from `store/uiStore`:
+- `startNewGame()`
+- `continueGame()`
+- `pauseGame()` / `resumeGame()`
+- `returnToTitle()`
+
+### Next Steps (Ideas)
+- Implement real save snapshot (world tiles, heroes, camera position).
+- Settings modal (audio, accessibility, performance toggles).
+- Credits panel with contributor list.
+- Animated logo and subtle background parallax on title screen.

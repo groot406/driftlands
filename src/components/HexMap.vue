@@ -318,11 +318,11 @@ onMounted(async () => {
       handleClick(ev as PointerEvent);
       updateHover(ev as PointerEvent);
     }, {passive: false});
-    el.addEventListener('pointercancel', (ev) => {
-      pointerCancel(ev);
+    el.addEventListener('pointercancel', () => {
+      pointerCancel();
       hoveredTile.value = null;
     }, {passive: false});
-    el.addEventListener('pointerleave', (ev) => {
+    el.addEventListener('pointerleave', () => {
       pointerUp();
       hoveredTile.value = null;
     }, {passive: false});
