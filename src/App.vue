@@ -1,11 +1,12 @@
 <template>
-  <!-- Title Screen -->
-  <TitleScreen v-if="isTitle()" />
-  <!-- Game Scene -->
-  <div v-else class="w-full h-screen relative">
-    <Game />
-    <PauseMenu />
-  </div>
+  <!-- Scene swap with fade -->
+  <Transition name="fade" mode="out-in">
+    <TitleScreen v-if="isTitle()" key="title"/>
+    <div v-else key="game" class="w-full h-screen relative">
+      <Game />
+      <PauseMenu />
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
