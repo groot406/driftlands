@@ -1,5 +1,5 @@
 import {ref, markRaw} from 'vue';
-import {weightedTerrainChoice} from './terrain';
+import {weightedTerrainChoice, resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {idleStore as store} from "../store/idleStore.ts";
 import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
@@ -270,6 +270,7 @@ function clearWorld() {
     maxR = 0;
     maxRadiusByQ.clear();
     maxRadiusByR.clear();
+    resetTerrainWeightCache(); // ensure terrain weight contexts are recomputed for new world
 }
 
 export function startWorldGeneration(radius: number) {

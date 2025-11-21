@@ -63,6 +63,10 @@ export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerra
     return {biome, terrain: 'plains'};
 }
 
+export function resetTerrainWeightCache() {
+    terrainWeightCache.clear();
+}
+
 // Lightweight cache trimming heuristic (optional). Prevent unbounded growth.
 // Called lazily; if cache exceeds threshold, clear oldest half.
 if (terrainWeightCache.size > 2000) {
