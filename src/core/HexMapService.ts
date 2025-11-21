@@ -3,7 +3,7 @@ import {animateCamera, axialToPixel, camera, HEX_SIZE, HEX_SPACE, hexDistance, p
 import type {Tile} from './world';
 import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
-import {isPaused} from '../store/uiStore';
+import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
@@ -21,12 +21,9 @@ export class HexMapService {
 
   // Config constants (exposed for potential external tuning later)
   readonly TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE;
-  readonly heroFrameSize = 32;
-  readonly heroFrames = 2;
-  readonly heroAnimSpeed = 160;
-  readonly heroAnimCooldown = 600;
+  readonly heroFrameSize = heroAnimationSet.size;
+  // Removed fixed heroFrames/speed/row in favor of animation definitions
   readonly heroZoom = 2;
-  readonly heroRow = 8;
   readonly HERO_OFFSET_SPACING = 14;
 
   private _canvas: HTMLCanvasElement | null = null;
@@ -41,9 +38,11 @@ export class HexMapService {
   private _imagesLoaded = false;
   private _heroImages: Record<string, HTMLImageElement> = {};
   private _heroImagesLoaded = false;
-  private _heroMasks: Record<string, Uint8Array[]> = {};
-  private _heroEdgePixels: Record<string, {x:number;y:number}[][]> = {};
+
   private _heroLayouts: Map<string, Record<string,{x:number;y:number}>> = new Map();
+
+  private _heroMasksByRow: Record<string, Record<number, Uint8Array[]>> = {};
+  private _heroEdgePixelsByRow: Record<string, Record<number, {x:number;y:number}[][]>> = {};
 
   private _heroAnimStart = performance.now();
   private _lastHeroFrame = 0;
@@ -98,7 +97,6 @@ export class HexMapService {
     if (!this._imagesLoaded) return;
     const ctx = this._ctx;
     ctx.clearRect(0,0,this._canvas.width,this._canvas.height);
-    this.updateHeroAnimationFrame();
 
     const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
     let blurStrength = Math.min(12, Math.max(0, (pixelSpeed - 100) * 0.005));
@@ -142,7 +140,7 @@ export class HexMapService {
     for (let i = heroes.length - 1; i >= 0; i--) {
       const h = heroes[i]!;
       const {x, y} = this.worldToScreen(h.q, h.r);
-      const layout = this._heroLayouts.get(axialKey(h.q,h.r)) || this.computeTileHeroOffsets(heroes.filter(o => o.q===h.q && o.r===h.r));
+      const layout = this._heroLayouts.get(axialKey(h.q,h.r)) || {};
       const pos = layout[h.id] || {x:0,y:0};
       const left = x - (this.heroFrameSize * this.heroZoom)/2 + pos.x - (this.heroFrameSize / 2);
       const top = y - (this.heroFrameSize * 2) + (this.heroFrameSize/2) + pos.y;
@@ -153,9 +151,11 @@ export class HexMapService {
       const localY = Math.floor((sy - top) / this.heroZoom);
       if (localX < 0 || localX >= this.heroFrameSize || localY < 0 || localY >= this.heroFrameSize) continue;
       const frameIndex = this._lastHeroFrame;
-      const masks = this._heroMasks[h.avatar];
-      if (!masks) continue;
-      const mask = masks[frameIndex];
+      // Determine idle row for facing for pixel mask (better match than always down)
+      const facingRowMap: Record<string, number> = { right: 2, left: 2, up: 5, down: 8 };
+      const row = facingRowMap[h.facing] ?? 8;
+      const rowMasks = this._heroMasksByRow[h.avatar]?.[row];
+      const mask = rowMasks ? rowMasks[Math.min(frameIndex, rowMasks.length - 1)] : null;
       if (!mask) continue;
       if (mask[localY * this.heroFrameSize + localX]) return h;
     }
@@ -254,14 +254,13 @@ export class HexMapService {
       }
     }
 
-    // Path highlight
+    // Path highlight (iterate directly to avoid undefined index warnings)
     if (opts.pathCoords.length) {
-      for (let i=0;i<opts.pathCoords.length;i++) {
-        const pc = opts.pathCoords[i];
+      for (const pc of opts.pathCoords) {
         const dist = hexDistance(camera, pc);
         const opacity = (() => { const f = this.computeFade(dist, camera.innerRadius, camera.radius); return f * f; })();
         if (hexDistance(camera, pc) > camera.radius + 1) continue;
-        const last = i === opts.pathCoords.length - 1;
+        const last = pc === opts.pathCoords[opts.pathCoords.length - 1];
         this.drawHexHighlight(ctx, pc.q, pc.r,
           last ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.5)',
           last ? '#dbedff' : '#daf0ff',
@@ -297,6 +296,8 @@ export class HexMapService {
     this._heroLayouts = new Map();
     for (const [k,list] of map) this._heroLayouts.set(k, this.computeTileHeroOffsets(list));
 
+    const now = performance.now();
+
     for (const h of heroes) {
       const dist = hexDistance(camera, h);
       if (dist > radius) continue;
@@ -308,23 +309,55 @@ export class HexMapService {
       const {x,y} = axialToPixel(h.q,h.r);
       const destX = x - (this.heroFrameSize * this.heroZoom)/2 + pos.x - (this.heroFrameSize/2);
       const destY = y - (this.heroFrameSize * 2) + (this.heroFrameSize/2) + pos.y;
-      const sx = this._lastHeroFrame * this.heroFrameSize;
-      const sy = this.heroRow * this.heroFrameSize;
+
+      // Determine activity (path preview currently not passed here, so use idle always except if selected hero has path in service?)
+      // We don't have path info per hero here; could store externally later. For now use idle.
+      const activity = resolveActivity(0);
+      const animName = heroAnimName(activity, h.facing);
+      const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
+      const elapsed = now - this._heroAnimStart;
+      const frameSize = this.heroFrameSize;
+      const frames = anim.frames;
+      const frameDuration = anim.frameDuration;
+      const cycle = frames * frameDuration + (anim.cooldown || 0);
+      const inCycle = elapsed % cycle;
+      const frameIndex = (frames <= 1) ? 0 : (inCycle >= frames * frameDuration ? frames -1 : Math.floor(inCycle / frameDuration));
+      this._lastHeroFrame = frameIndex; // used for interaction masks
+
+      let sx = frameIndex * frameSize;
+      const sy = anim.row * frameSize;
+
       ctx.globalAlpha = opacity;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, sx, sy, this.heroFrameSize, this.heroFrameSize, destX, destY, this.heroFrameSize * this.heroZoom, this.heroFrameSize * this.heroZoom);
+
+      if (shouldFlip(h.facing)) {
+        ctx.save();
+        ctx.translate(destX + frameSize * this.heroZoom, destY);
+        ctx.scale(-1,1);
+        ctx.drawImage(img, sx, sy, frameSize, frameSize, 0, 0, frameSize * this.heroZoom, frameSize * this.heroZoom);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * this.heroZoom, frameSize * this.heroZoom);
+      }
+
       const selected = selectedHeroId.value === h.id;
       const hovered = hoveredHero && hoveredHero.id === h.id;
-      if ((selected || hovered) && this._heroEdgePixels[h.avatar]) {
-        const edgePixels = this._heroEdgePixels[h.avatar][this._lastHeroFrame];
+      if ((selected || hovered)) {
+        const edgeFrames = this._heroEdgePixelsByRow[h.avatar]?.[anim.row];
+        const edgePixels = edgeFrames ? edgeFrames[frameIndex] : undefined;
         if (edgePixels && edgePixels.length) {
           ctx.save();
             ctx.globalAlpha = opacity;
+            if (shouldFlip(h.facing)) {
+              ctx.translate(destX + frameSize * this.heroZoom, destY);
+              ctx.scale(-1,1);
+            } else {
+              ctx.translate(destX, destY);
+            }
+            ctx.scale(this.heroZoom, this.heroZoom);
             ctx.fillStyle = selected ? '#ffe080' : '#ffffff';
             ctx.shadowColor = selected ? 'rgba(255,224,128,0.9)' : 'rgba(255,255,255,0.6)';
             ctx.shadowBlur = selected ? 12 : 8;
-            ctx.translate(destX, destY);
-            ctx.scale(this.heroZoom, this.heroZoom);
             for (const p of edgePixels) ctx.fillRect(p.x, p.y, 1, 1);
           ctx.restore();
         }
@@ -337,16 +370,16 @@ export class HexMapService {
     const result: Record<string,{x:number;y:number}> = {};
     const count = list.length;
     if (count===0) return result;
-    if (count===1){ result[list[0].id] = {x:12,y:0}; return result; }
-    if (count===2){ result[list[0].id] = {x:-5,y:0}; result[list[1].id]={x:32,y:0}; return result; }
-    if (count===3){ result[list[0].id]={x:-5,y:-2}; result[list[1].id]={x:12,y:8}; result[list[2].id]={x:32,y:-2}; return result; }
-    if (count===4){ result[list[0].id]={x:12,y:-10}; result[list[1].id]={x:-7,y:4}; result[list[2].id]={x:32,y:4}; result[list[3].id]={x:12,y:18}; return result; }
-    if (count===5){ result[list[0].id]={x:16,y:-10}; result[list[1].id]={x:-7,y:4}; result[list[2].id]={x:32,y:4}; result[list[3].id]={x:10,y:8}; result[list[4].id]={x:16,y:22}; return result; }
-    if (count===6){ result[list[0].id]={x:16,y:-12}; result[list[1].id]={x:-10,y:0}; result[list[2].id]={x:38,y:0}; result[list[3].id]={x:0,y:12}; result[list[4].id]={x:28,y:16}; result[list[5].id]={x:16,y:28}; return result; }
+    if (count===1){ result[list[0]!.id] = {x:12,y:0}; return result; }
+    if (count===2){ result[list[0]!.id] = {x:-5,y:0}; result[list[1]!.id]={x:32,y:0}; return result; }
+    if (count===3){ result[list[0]!.id]={x:-5,y:-2}; result[list[1]!.id]={x:12,y:8}; result[list[2]!.id]={x:32,y:-2}; return result; }
+    if (count===4){ result[list[0]!.id]={x:12,y:-10}; result[list[1]!.id]={x:-7,y:4}; result[list[2]!.id]={x:32,y:4}; result[list[3]!.id]={x:12,y:18}; return result; }
+    if (count===5){ result[list[0]!.id]={x:16,y:-10}; result[list[1]!.id]={x:-7,y:4}; result[list[2]!.id]={x:32,y:4}; result[list[3]!.id]={x:10,y:8}; result[list[4]!.id]={x:16,y:22}; return result; }
+    if (count===6){ result[list[0]!.id]={x:16,y:-12}; result[list[1]!.id]={x:-10,y:0}; result[list[2]!.id]={x:38,y:0}; result[list[3]!.id]={x:0,y:12}; result[list[4]!.id]={x:28,y:16}; result[list[5]!.id]={x:16,y:28}; return result; }
     const span = count - 1;
     for (let i=0;i<count;i++) {
       const offset = (i - span/2) * this.HERO_OFFSET_SPACING;
-      result[list[i].id] = {x:offset,y:0};
+      result[list[i]!.id] = {x:offset,y:0};
     }
     return result;
   }
@@ -382,42 +415,49 @@ export class HexMapService {
   }
 
   private buildHeroMasks(img: HTMLImageElement, avatar: string) {
-    if (this._heroMasks[avatar]) return;
-    const frames = this.heroFrames;
-    const masks: Uint8Array[] = [];
-    const edges: {x:number;y:number}[][] = [];
-    for (let f=0; f<frames; f++) {
-      const sx = f * this.heroFrameSize;
-      const sy = this.heroRow * this.heroFrameSize;
-      const c = document.createElement('canvas'); c.width = this.heroFrameSize; c.height = this.heroFrameSize;
-      const g = c.getContext('2d')!;
-      g.drawImage(img, sx, sy, this.heroFrameSize, this.heroFrameSize, 0,0,this.heroFrameSize,this.heroFrameSize);
-      const data = g.getImageData(0,0,this.heroFrameSize,this.heroFrameSize);
-      const mask = new Uint8Array(this.heroFrameSize * this.heroFrameSize);
-      const edgeList: {x:number;y:number}[] = [];
-      for (let y=0;y<this.heroFrameSize;y++) {
-        for (let x=0;x<this.heroFrameSize;x++) {
-          const idx = (y*this.heroFrameSize + x)*4;
-          const alpha = data.data[idx+3];
+    if (!this._heroMasksByRow[avatar]) this._heroMasksByRow[avatar] = {};
+    if (!this._heroEdgePixelsByRow[avatar]) this._heroEdgePixelsByRow[avatar] = {};
+    const processedRows = new Set<number>();
+    for (const anim of heroAnimationSet.list()) {
+      const row = anim.row;
+      if (processedRows.has(row)) continue;
+      processedRows.add(row);
+      const frames = anim.frames;
+      const masks: Uint8Array[] = [];
+      const edges: {x:number;y:number}[][] = [];
+      for (let f=0; f<frames; f++) {
+        const sx = f * this.heroFrameSize;
+        const sy = row * this.heroFrameSize;
+        const c = document.createElement('canvas'); c.width = this.heroFrameSize; c.height = this.heroFrameSize;
+        const g = c.getContext('2d')!;
+        g.drawImage(img, sx, sy, this.heroFrameSize, this.heroFrameSize, 0,0,this.heroFrameSize,this.heroFrameSize);
+        const data = g.getImageData(0,0,this.heroFrameSize,this.heroFrameSize);
+        const mask = new Uint8Array(this.heroFrameSize * this.heroFrameSize);
+        const edgeList: {x:number;y:number}[] = [];
+        for (let y=0;y<this.heroFrameSize;y++) {
+          for (let x=0;x<this.heroFrameSize;x++) {
+            const idx = (y*this.heroFrameSize + x)*4;
+            const alpha = data.data[idx+3]!;
             if (alpha > 20) mask[y*this.heroFrameSize + x] = 1;
-        }
-      }
-      for (let y=0;y<this.heroFrameSize;y++) {
-        for (let x=0;x<this.heroFrameSize;x++) {
-          if (!mask[y*this.heroFrameSize + x]) continue;
-          let edge=false;
-          const dirs = [[1,0],[-1,0],[0,1],[0,-1]] as const;
-          for (const [dx,dy] of dirs) {
-            const nx = x+dx; const ny = y+dy;
-            if (nx<0 || nx>=this.heroFrameSize || ny<0 || ny>=this.heroFrameSize || !mask[ny*this.heroFrameSize + nx]) { edge=true; break; }
           }
-          if (edge) edgeList.push({x,y});
         }
+        for (let y=0;y<this.heroFrameSize;y++) {
+          for (let x=0;x<this.heroFrameSize;x++) {
+            if (!mask[y*this.heroFrameSize + x]) continue;
+            let edge=false;
+            const dirs = [[1,0],[-1,0],[0,1],[0,-1]] as const;
+            for (const [dx,dy] of dirs) {
+              const nx = x+dx; const ny = y+dy;
+              if (nx<0 || nx>=this.heroFrameSize || ny<0 || ny>=this.heroFrameSize || !mask[ny*this.heroFrameSize + nx]) { edge=true; break; }
+            }
+            if (edge) edgeList.push({x,y});
+          }
+        }
+        masks.push(mask); edges.push(edgeList);
       }
-      masks.push(mask); edges.push(edgeList);
+      this._heroMasksByRow[avatar][row] = masks;
+      this._heroEdgePixelsByRow[avatar][row] = edges;
     }
-    this._heroMasks[avatar] = masks;
-    this._heroEdgePixels[avatar] = edges;
   }
 
   private async ensureHeroAssets() {
@@ -428,15 +468,6 @@ export class HexMapService {
     }));
     await Promise.all(promises);
     this._heroImagesLoaded = true;
-  }
-
-  private updateHeroAnimationFrame() {
-    if (isPaused()) return; // keep last frame
-    const cycleActive = this.heroFrames * this.heroAnimSpeed;
-    const totalCycle = cycleActive + this.heroAnimCooldown;
-    const t = (performance.now() - this._heroAnimStart) % totalCycle;
-    if (t >= cycleActive) { this._lastHeroFrame = this.heroFrames - 1; return; }
-    this._lastHeroFrame = Math.min(this.heroFrames - 1, Math.floor(t / this.heroAnimSpeed));
   }
 
   private adaptiveCameraRadius() {
@@ -474,8 +505,8 @@ export class HexMapService {
     let iterations=0;
     while (open.length && iterations < maxNodes) {
       iterations++;
-      let bestIndex=0; let best=open[0];
-      for (let i=1;i<open.length;i++){ if (open[i].f < best.f){ best=open[i]; bestIndex=i; } }
+      let bestIndex=0; let best = open[0]!;
+      for (let i=1;i<open.length;i++){ if (open[i]!.f < best.f){ best=open[i]!; bestIndex=i; } }
       const current = best; open.splice(bestIndex,1); openMap.delete(axialKey(current.q,current.r));
       closed.add(axialKey(current.q,current.r));
       if (current.q===goalQ && current.r===goalR) {
@@ -496,4 +527,3 @@ export class HexMapService {
     return [];
   }
 }
-

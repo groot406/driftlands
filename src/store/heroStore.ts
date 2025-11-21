@@ -15,14 +15,15 @@ export interface Hero {
     q: number; // axial coordinate q
     r: number; // axial coordinate r
     stats: HeroStats;
+    facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
 }
 
 export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for now
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 10}},
-    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {hp: 90, atk: 24, spd: 12}},
+    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 10}, facing: 'down'},
+    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {hp: 90, atk: 24, spd: 12}, facing: 'down'},
     // {id: 'h3', name: 'Cyra', avatar: HERO_SPRITE, q: 0, r: 1, stats: {hp: 75, atk: 16, spd: 15}},
     // {id: 'h4', name: 'Cyra', avatar: HERO_SPRITE, q: 1, r: 0, stats: {hp: 75, atk: 16, spd: 15}},
     // {id: 'h5', name: 'Cyra', avatar: HERO_SPRITE, q: 0, r: 1, stats: {hp: 75, atk: 16, spd: 15}},
@@ -54,4 +55,9 @@ export function selectHero(hero: Hero | null, focus: boolean = true) {
 
 export function getSelectedHero(): Hero | null {
     return selectedHeroId.value ? (heroes.find(h => h.id === selectedHeroId.value) || null) : null;
+}
+
+export function updateHeroFacing(id: string, facing: Hero['facing']) {
+    const hero = heroes.find(h => h.id === id);
+    if (hero) hero.facing = facing;
 }

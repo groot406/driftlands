@@ -7,23 +7,24 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from "vue";
 
-const props = defineProps({
-  sprite: {type: String, required: true},
-  size: {type: Number, required: false},
-  width: {type: Number, required: false},
-  height: {type: Number, required: false},
+interface SpriteProps {
+  sprite: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  zoom: number;
+  row: number;
+  offsetX?: number | null;
+  offsetY?: number | null;
+  flipped?: boolean;
+  frame?: number | null;
+  frames?: number | null;
+  speed?: number | null; // ms per frame
+  cooldown?: number | null; // ms after one cycle
+  paused?: boolean | null;
+}
 
-  zoom: {type: Number, required: true},
-  row: {type: Number, required: true},
-  offsetX: {type: Number, required: null},
-  offsetY: {type: Number, required: null},
-  flipped: {type: Boolean, required: null, default: false},
-  frame: {type: Number, required: null, default: null},
-  frames: {type: Number, required: null, default: null},
-  speed: {type: Number, required: null, default: null},
-  cooldown: {type: Number, required: null, default: null},
-  paused: {type: Boolean, required: null, default: false},
-});
+const props = defineProps<SpriteProps>();
 
 const dimensions = computed(() => {
   if (props.size) {
@@ -36,7 +37,7 @@ const dimensions = computed(() => {
 });
 
 const innerFrame = ref(0);
-let frameTimer = null;
+let frameTimer: ReturnType<typeof setInterval> | null = null;
 let cooldownInProgress = false;
 onMounted(startAnimation);
 
@@ -52,7 +53,7 @@ function startAnimation() {
       if (cooldownInProgress) {
         return;
       }
-      if (innerFrame.value === props.frames - 1) {
+      if (innerFrame.value === props.frames! - 1) {
         if (props.cooldown) {
           cooldownInProgress = true;
           setTimeout(() => {
@@ -63,7 +64,7 @@ function startAnimation() {
       } else {
         innerFrame.value++;
       }
-    }, props.speed);
+    }, props.speed || 500);
   }
 }
 
@@ -82,18 +83,17 @@ watch(() => props.speed, () => {
 });
 
 const style = computed(() => {
-  const renderFrame = (props.frame !== null) ? props.frame : innerFrame.value;
+  const renderFrame = (props.frame !== null && props.frame !== undefined) ? props.frame : innerFrame.value;
   return {
     backgroundImage: 'url(' + props.sprite + ')',
     width: dimensions.value.width + 'px',
     height: dimensions.value.height + 'px',
     overflow: 'hidden',
-    // Use transform for broad browser support
     transform: `scale(${props.zoom})`,
     transformOrigin: 'top left',
     backgroundPositionX: (renderFrame * dimensions.value.width * -1) + 'px',
     backgroundPositionY: (props.row * dimensions.value.height * -1) + 'px'
-  };
+  } as Record<string,string>;
 });
 
 const containerStyle = computed(() => {

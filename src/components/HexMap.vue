@@ -7,7 +7,8 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
-import {Hero, selectHero, selectedHeroId} from '../store/heroStore';
+import type {Hero} from '../store/heroStore';
+import {selectHero, selectedHeroId, heroes, updateHeroFacing} from '../store/heroStore';
 import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
@@ -83,6 +84,25 @@ function updateHover(e: PointerEvent) {
 }
 
 watch(selectedHeroId, () => updatePath());
+
+// New: watch hoveredTile to update facing of selected hero
+watch([hoveredTile, selectedHeroId], () => {
+  if (!hoveredTile.value || !selectedHeroId.value) return;
+  const hero = heroes.find(h => h.id === selectedHeroId.value);
+  if (!hero) return;
+  // Determine facing by axial delta
+  const dq = hoveredTile.value.q - hero.q;
+  const dr = hoveredTile.value.r - hero.r;
+  if (dq === 0 && dr === 0) return; // same tile keep current
+  let facing: 'up'|'down'|'left'|'right' = hero.facing;
+  // Hex axial directions grouping into cardinal approximation
+  // Use vertical component first for up/down, else horizontal for left/right
+  if (dr < 0) facing = 'up';
+  else if (dr > 0) facing = 'down';
+  else if (dq > 0) facing = 'right';
+  else if (dq < 0) facing = 'left';
+  if (facing !== hero.facing) updateHeroFacing(hero.id, facing);
+});
 
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
