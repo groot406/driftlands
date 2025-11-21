@@ -10,7 +10,7 @@
 
 <script setup lang="ts">
 import { idleStore as store } from '../store/idleStore';
-import {discoverTile, loadWorld, tiles as worldTiles} from '../core/world';
+import { loadWorld, tiles as worldTiles } from '../core/world';
 import { moveCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
@@ -29,15 +29,20 @@ onMounted(() => {
 });
 
 function moveToTile(tile: Tile) {
-  moveCamera(tile.q, tile.r)
+  moveCamera(tile.q, tile.r);
 }
 
 function handleTileClick(tile: Tile) {
-  if (!tile.discovered) {
-    discoverTile(tile);
-    return;
-  }
+  // Removed click-based discovery per new behavior; tiles now discovered only when a hero stands on them.
   console.log('Clicked tile', tile);
 }
-
 </script>
+
+<style scoped>
+.map-container {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: contain;
+}
+</style>

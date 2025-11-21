@@ -1,6 +1,7 @@
 import {reactive, ref} from 'vue';
 import {moveCamera} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
+import {discoverTile, ensureTileExists} from '../core/world';
 
 export interface HeroStats {
     hp: number; // hit points
@@ -83,16 +84,20 @@ export function updateHeroMovements(now: number) {
             hero.q = m.target.q;
             hero.r = m.target.r;
             hero.movement = undefined;
+            // Auto-discover tile hero ends on if still undiscovered
+            const endTile = ensureTileExists(hero.q, hero.r);
+            if (!endTile.discovered) discoverTile(endTile);
             persistHeroes();
             continue;
         }
         if (stepsAdvanced < 0) continue; // not started yet (shouldn't happen)
         const currentCoord = m.path[stepsAdvanced];
+        if (!currentCoord) continue; // safety
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
             // Update facing based on delta from previous position
             const prev = stepsAdvanced === 0 ? m.origin : m.path[stepsAdvanced - 1];
-            const dq = currentCoord.q - prev.q;
-            const dr = currentCoord.r - prev.r;
+            const dq = prev ? (currentCoord.q - prev.q) : 0;
+            const dr = prev ? (currentCoord.r - prev.r) : 0;
             let facing: Hero['facing'] = hero.facing;
             if (dr < 0) facing = 'up';
             else if (dr > 0) facing = 'down';
@@ -101,6 +106,9 @@ export function updateHeroMovements(now: number) {
             hero.facing = facing;
             hero.q = currentCoord.q;
             hero.r = currentCoord.r;
+            // Auto-discover intermediate tile if not yet discovered
+            const stepTile = ensureTileExists(hero.q, hero.r);
+            if (!stepTile.discovered) discoverTile(stepTile);
             persistHeroes();
         }
     }
@@ -155,4 +163,16 @@ export function updateHeroFacing(id: string, facing: Hero['facing']) {
 if (typeof window !== 'undefined') {
     restoreHeroes();
     updateHeroMovements(performance.now());
+}
+
+export function resetHeroes() {
+    // Clear current heroes and localStorage save, then seed fresh starting heroes within initial discovered radius.
+    try { localStorage.removeItem(LS_KEY); } catch {}
+    heroes.splice(0, heroes.length);
+    const fresh: Hero[] = [
+        {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 10}, facing: 'down'},
+        {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 1, r: 0, stats: {hp: 90, atk: 24, spd: 50}, facing: 'down'},
+    ];
+    for (const h of fresh) heroes.push(h);
+    persistHeroes();
 }

@@ -2,6 +2,7 @@ import { reactive } from 'vue';
 import { startWorldGeneration, tiles as worldTiles, loadWorld } from '../core/world';
 import { idleStore } from './idleStore';
 import { startIdle } from './idleStore';
+import { resetHeroes } from './heroStore';
 
 export type Phase = 'title' | 'playing' | 'paused';
 
@@ -29,6 +30,8 @@ export const uiStore = reactive<UIState>({
 export function startNewGame() {
   // Clear & generate a fresh world
   startWorldGeneration(NEW_GAME_RADIUS);
+  // Reset hero roster/state for new game
+  resetHeroes();
   // Stub save marker so Continue is enabled next launch.
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({ ts: Date.now(), radius: NEW_GAME_RADIUS }));
