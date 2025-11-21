@@ -14,3 +14,11 @@ import TitleScreen from './components/TitleScreen.vue';
 import PauseMenu from './components/PauseMenu.vue';
 import { isTitle } from './store/uiStore';
 </script>
+
+<style>
+body, html {
+  background: black;
+  overflow:hidden;
+  user-select: none;
+}
+</style>

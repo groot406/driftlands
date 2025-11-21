@@ -41,10 +41,3 @@ function handleTileClick(tile: Tile) {
 }
 
 </script>
-
-<style>
-body, html {
-  background: black;
-  overflow:hidden;
-}
-</style>

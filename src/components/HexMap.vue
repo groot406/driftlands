@@ -272,6 +272,8 @@ function handleClick(e: PointerEvent) {
     return;
   }
   lastClickTime = now;
+  if (tile !== hoveredTile.value) hoveredTile.value = tile;
+
   emit('tile-click', tile);
 }
 
@@ -320,11 +322,11 @@ onMounted(async () => {
     }, {passive: false});
     el.addEventListener('pointercancel', () => {
       pointerCancel();
-      hoveredTile.value = null;
+      //hoveredTile.value = null;
     }, {passive: false});
     el.addEventListener('pointerleave', () => {
       pointerUp();
-      hoveredTile.value = null;
+      //hoveredTile.value = null;
     }, {passive: false});
   }
   animateCamera();
