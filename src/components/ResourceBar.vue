@@ -1,6 +1,5 @@
 <template>
-  <div id="resourcebar"
-       class="flex flex-row items-center flex-wrap w-max justify-center rounded-lg gap-2 max-w-[100vw] overflow-x-auto pointer-events-auto">
+  <div class="noscrollbar flex flex-row items-center flex-wrap w-max justify-center rounded-lg gap-2 max-w-[100vw] overflow-x-auto pointer-events-auto">
     <ResourceBubble v-for="r in resources" :key="r.key" :icon="r.icon" :label="r.label" :value="r.value"/>
   </div>
 </template>
@@ -69,9 +68,3 @@ watch(worldVersion, () => {
 <script lang="ts">
 export default {name: 'ResourceBar'};
 </script>
-
-<style scoped>
-#resourcebar::-webkit-scrollbar {
-  display: none;
-}
-</style>

@@ -9,6 +9,8 @@
         <DebugPanel/>
       </div>
     </div>
+    <!-- Heroes bar anchored at bottom - separate absolute layer -->
+    <HeroesBar />
   </div>
 </template>
 
@@ -17,6 +19,7 @@ import {onMounted, ref} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import WorldControls from './WorldControls.vue';
 import DebugPanel from "./DebugPanel.vue";
+import HeroesBar from './HeroesBar.vue';
 
 const showHelpers = ref(false);
 
@@ -29,3 +32,12 @@ onMounted(() =>
     }));
 
 </script>
+
+<style>
+.noscrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+.noscrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+</style>
