@@ -1,17 +1,25 @@
 <template>
   <div class="absolute left-0 bottom-0 w-full z-30 pointer-events-none">
-    <div class="w-full overflow-x-auto flex gap-3 p-2 pointer-events-auto noscrollbar">
+    <div class="w-full overflow-x-auto flex gap-3 p-2 noscrollbar">
       <template v-if="heroes.length">
         <div
             v-for="h in heroes"
             :key="h.id"
-            class="text-white flex-col items-center gap-3 bg-slate-800/40  backdrop-blur border border-white/10 rounded-xl  hover:bg-slate-600/60 transition-colors cursor-pointer select-none min-w-[160px]"
-            @click="focus(h)"
+            class="text-white flex-col items-center  pointer-events-auto  gap-3 bg-slate-800/40  backdrop-blur border border-white/10 rounded-xl  hover:bg-slate-600/60 transition-colors cursor-pointer select-none min-w-[160px]"
+            @click="select(h)"
         >
           <div class="p-3 w-full font-semibold text-sm">{{ h.name }}</div>
           <div class="flex px-2 gap-x-2 pb-2">
             <div class="text-2xl leading-none rounded w-1/2 flex items-center justify-center bg-yellow-600/30 backdrop-blur-lg">
-              <div>{{ h.avatar }}</div>
+              <div class="relative top-[-16px] left-[-16px]">
+                <Sprite :sprite="h.avatar"
+                        :zoom="2"
+                        :row="8"
+                        :size="32"
+                        :frames="2"
+                        :speed="450"
+                        />
+              </div>
             </div>
             <div class="flex flex-col leading-tight w-1/2">
               <div class="text-[10px] opacity-80 flex flex-col">
@@ -30,8 +38,9 @@
 
 <script setup lang="ts">
 import {focusHero, type Hero, heroes} from '../store/heroStore';
+import Sprite from "./Sprite.vue";
 
-function focus(h: Hero) {
+function select(h: Hero) {
   focusHero(h);
 }
 </script>

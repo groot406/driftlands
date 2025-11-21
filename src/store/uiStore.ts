@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import { startWorldGeneration, tiles as worldTiles, loadWorld } from '../core/world';
 import { idleStore } from './idleStore';
+import { startIdle } from './idleStore';
 
 export type Phase = 'title' | 'playing' | 'paused';
 
@@ -10,7 +11,7 @@ interface UIState {
 }
 
 const SAVE_KEY = 'driftlands-save';
-const NEW_GAME_RADIUS = 6; // generation radius for a fresh world
+const NEW_GAME_RADIUS = 6;
 
 function hasSave(): boolean {
   try {
@@ -34,6 +35,7 @@ export function startNewGame() {
   } catch {}
   uiStore.canContinue = true;
   uiStore.phase = 'playing';
+  if (!idleStore.running) startIdle();
 }
 
 export function continueGame() {
@@ -43,14 +45,17 @@ export function continueGame() {
     loadWorld(idleStore.tiles);
   }
   uiStore.phase = 'playing';
+  if (!idleStore.running) startIdle();
 }
 
 export function resumeGame() {
   if (uiStore.phase === 'paused') uiStore.phase = 'playing';
+  if (!idleStore.running) startIdle();
 }
 
 export function pauseGame() {
   if (uiStore.phase === 'playing') uiStore.phase = 'paused';
+  // idle loop keeps scheduling but skips ticks; leave running flag true to resume seamlessly
 }
 
 export function returnToTitle() {

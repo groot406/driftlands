@@ -3,7 +3,7 @@
     <!-- Procedural scrolling blurred hex background -->
     <TitleBackground />
     <!-- Foreground content -->
-    <div class="flex flex-col items-center gap-8 p-6 rounded-xl z-10 bg-black/10 backdrop-blur-md border-2 border-white/20">
+    <div class="flex flex-col items-center gap-8 p-6 rounded-xl z-10 bg-black/10 backdrop-blur-md border-2 border-white/20 -m-2">
       <h1 class="text-5xl font-bold tracking-wide">Driftlands</h1>
       <p class="text-white max-w-md text-center">Windswept hexes. Hidden secrets. This is only the beginning.</p>
       <div class="flex flex-col gap-3 min-w-[240px]">

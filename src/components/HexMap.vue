@@ -1,13 +1,26 @@
 <template>
   <div ref="container" class="w-full h-full relative map-container">
     <canvas ref="canvas" class="absolute inset-0"/>
+    <!-- Hero sprites overlay -->
+    <div v-for="entry in visibleHeroes" :key="entry.id" class="absolute" :style="entry.style"
+         @click.stop="onHeroClick(entry.id)">
+      <Sprite
+          :key="worldVersion + '-' + entry.id"
+          :sprite="entry.avatar"
+          :zoom="heroZoom"
+          :row="8"
+          :size="heroFrameSize"
+          :frames="heroFrames"
+          :speed="heroAnimSpeed"
+          :cooldown="heroAnimCooldown"/>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
 import type {Tile} from '../core/world';
-import {getTilesInRadius} from '../core/world';
+import {getTilesInRadius, worldVersion } from '../core/world';
 import {
   animateCamera,
   axialToPixel,
@@ -20,6 +33,7 @@ import {
   hexDistance,
   keyDown,
   keyUp,
+  moveCamera,
   pixelToAxial,
   stopCameraAnimation,
   updateCameraRadius
@@ -32,6 +46,9 @@ import water from '../assets/tiles/water.png';
 import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
+import {Hero, heroes} from '../store/heroStore';
+import Sprite from './Sprite.vue';
+import { isPaused } from '../store/uiStore';
 
 const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void }>();
 
@@ -233,7 +250,7 @@ function draw() {
   drawTiles(layerCtx!);
 
   ctx.drawImage(layerCanvas!, 0, 0);
-  el.style.filter = `blur(${blurStrength.toFixed(2)}px) brightness(${brightness.toFixed(2)})`;
+  container.value.style.filter = `blur(${blurStrength.toFixed(2)}px) brightness(${brightness.toFixed(2)})`;
   return;
 }
 
@@ -262,6 +279,7 @@ function pickTile(clientX: number, clientY: number): Tile | null {
 }
 
 function handleClick(e: PointerEvent) {
+  if (isPaused()) return; // ignore clicks while paused
   if (dragged) return;
   const tile = pickTile(e.clientX, e.clientY);
   if (!tile) return;
@@ -279,6 +297,10 @@ function handleClick(e: PointerEvent) {
 
 // Update hovered tile based on pointer event
 function updateHover(e: PointerEvent) {
+  if (isPaused()) { // clear hover while paused
+    if (hoveredTile.value) hoveredTile.value = null;
+    return;
+  }
   if (dragging) {
     if (hoveredTile.value) hoveredTile.value = null;
     return;
@@ -351,6 +373,57 @@ onBeforeUnmount(() => {
   }
   stopCameraAnimation();
 });
+
+// Hero rendering configuration (could move to config later)
+const heroFrameSize = 32; // single frame size (assuming square)
+const heroFrames = 2; // placeholder number of frames in santa spritesheet
+const heroAnimSpeed = 160; // ms per frame
+const heroAnimCooldown = 600; // cooldown at loop end
+const heroZoom = 2; // scale heroes relative to tile size
+
+function heroWorldToScreen(hero: Hero) {
+  const el = canvas.value;
+  if (!el) return {x: 0, y: 0, off: true};
+  const camPx = axialToPixel(camera.q, camera.r);
+  const cx = el.width / dpr / 2;
+  const cy = el.height / dpr / 2;
+  const heroPx = axialToPixel(hero.q, hero.r);
+  const screenX = heroPx.x - camPx.x + cx;
+  const screenY = heroPx.y - camPx.y + cy;
+  return {x: screenX, y: screenY, off: false};
+}
+
+const visibleHeroes = computed(() => {
+  const list: { id: string; style: Record<string, string>; avatar: string; hero: Hero }[] = [];
+  const radius = camera.radius + 1; // small margin
+  for (const h of heroes) {
+    const dist = hexDistance(camera, h);
+    if(h.q === 0 && h.r === 0) continue; // skip hero's at town center (idle)
+    if (dist > radius) continue;
+    const {x, y, off} = heroWorldToScreen(h);
+    if (off) continue;
+    const sameTileHeroes = heroes.filter(o => o.q === h.q && o.r === h.r);
+    const indexInTile = sameTileHeroes.findIndex(o => o.id === h.id);
+    const stackOffsetX = (indexInTile - (sameTileHeroes.length - 1) / 2) * (heroFrameSize * heroZoom * 0.4);
+    const style: Record<string, string> = {
+      left: (x - (heroFrameSize * heroZoom) / 2 + stackOffsetX) - (heroFrameSize / 2) + 'px',
+      top: y - (heroFrameSize * 2) + 'px',
+      zIndex: '50',
+      pointerEvents: 'auto',
+      // opacity based on distance fade
+      opacity: (1 - Math.max(0, (dist - camera.innerRadius) / (radius - camera.innerRadius))).toString()
+    };
+    list.push({id: h.id, style, avatar: h.avatar, hero: h});
+  }
+  return list;
+});
+
+function onHeroClick(heroId: string) {
+  if (isPaused()) return; // no camera jump while paused
+  const h = heroes.find(h => h.id === heroId);
+  if (!h) return;
+  moveCamera(h.q, h.r);
+}
 
 </script>
 

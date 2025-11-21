@@ -1,5 +1,6 @@
 import {reactive} from 'vue';
 import {getMaxRadiusFor} from './world';
+import { isPaused } from '../store/uiStore';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
@@ -127,6 +128,11 @@ function computeThrowVelocity() {
 // Pointer handlers
 export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     function pointerDown(e: PointerEvent) {
+        if (isPaused()) { // ignore presses when paused
+            e.preventDefault();
+            mouseDownRef.value = false;
+            return;
+        }
         if (e.pointerType === 'mouse' && e.button !== 0) return; // only left button
 
         mouseDownRef.value = true;
@@ -139,6 +145,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     }
 
     function pointerMove(e: PointerEvent) {
+        if (isPaused()) return; // no camera dragging while paused
         if (!mouseDownRef.value) return;
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
@@ -163,6 +170,14 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     }
 
     function pointerUp() {
+        if (isPaused()) {
+            dragging = false;
+            samples.length = 0;
+            mouseDownRef.value = false;
+            camera.velQ = 0;
+            camera.velR = 0;
+            return;
+        }
         if (dragging) computeThrowVelocity();
 
         dragging = false;
@@ -171,6 +186,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     }
 
     function pointerCancel() {
+        // When paused treat as cancel
         dragging = false;
         samples.length = 0;
         camera.velQ = 0;
@@ -185,6 +201,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 const heldKeys = new Set<string>();
 
 export function keyDown(e: KeyboardEvent) {
+    if (isPaused()) return; // suppress movement key capture while paused
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
         heldKeys.add(e.key);
         e.preventDefault();
@@ -192,6 +209,7 @@ export function keyDown(e: KeyboardEvent) {
 }
 
 export function keyUp(e: KeyboardEvent) {
+    if (isPaused()) return; // suppress release processing while paused
     if (heldKeys.delete(e.key)) e.preventDefault();
 }
 
@@ -205,6 +223,17 @@ export async function animateCamera() {
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
     lastTime = now;
+    if (isPaused()) {
+        // While paused, freeze velocities & clear input; keep scheduling for smooth resume
+        heldKeys.clear();
+        camera.velQ = 0;
+        camera.velR = 0;
+        camera.speed = camera.speed * 0.8; // gentle decay of motion blur
+        lastQ = camera.q;
+        lastR = camera.r;
+        rafId = requestAnimationFrame(animateCamera);
+        return;
+    }
     let dqInput = 0, drInput = 0;
     for (const k of heldKeys) {
         if (k === 'ArrowUp' || k === 'w') {

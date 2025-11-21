@@ -1,7 +1,7 @@
 <template>
   <Transition name="fade-menu" appear>
     <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center text-white">
-      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="resumeGame" />
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div class="relative bg-slate-800/90 border border-slate-700 rounded-lg p-6 flex flex-col gap-4 min-w-[260px]">
         <h2 class="text-xl font-semibold">Paused</h2>
         <div class="flex flex-col gap-2">
