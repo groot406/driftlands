@@ -3,8 +3,8 @@ import {getMaxRadiusFor} from './world';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
-export const MOVE_SPEED = 35; // axial units per second base
-export const HEX_SIZE = 35;
+export const MOVE_SPEED = 50; // axial units per second base
+export const HEX_SIZE = 34;
 export const HEX_SPACE = 3;
 
 // Interaction constants
@@ -15,8 +15,8 @@ const MAX_THROW_SPEED = 100; // axial units per second cap
 
 // Precomputed factors for axial <-> pixel transforms
 const SQRT3 = Math.sqrt(3);
-const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
-const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
+export const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
+export const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
 
 export interface CameraState {
     q: number;
@@ -47,6 +47,21 @@ export function axialToPixel(q: number, r: number) {
     const x = HEX_X_FACTOR * (q + r / 2);
     const y = HEX_Y_FACTOR * r;
     return {x, y};
+}
+
+export function pixelToAxial(x: number, y: number) {
+    const r = y / HEX_Y_FACTOR;
+    const q = (x / HEX_X_FACTOR) - r / 2;
+    // Axial rounding via cube conversion
+    const s = -q - r;
+    let rq = Math.round(q);
+    let rr = Math.round(r);
+    let rs = Math.round(s);
+    const dq = Math.abs(rq - q);
+    const dr = Math.abs(rr - r);
+    const ds = Math.abs(rs - s);
+    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs; // else s adjusts implicitly
+    return { q: rq, r: rr };
 }
 
 // Hex distance between two axial coordinates

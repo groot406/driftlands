@@ -1,7 +1,7 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100 select-none">
     <div class="flex-1 overflow-hidden w-full h-full">
-      <HexMap @tile-click="handleTileClick" @tile-doubleclick="moveToTile" />
+      <HexMapCanvas @tile-click="handleTileClick" @tile-doubleclick="moveToTile" />
       <LoadingOverlay />
     </div>
   </div>
@@ -12,7 +12,7 @@
 import {  idleStore as store } from '../store/idleStore';
 import {discoverTile, loadWorld} from '../core/world';
 import { moveCamera } from '../core/camera';
-import HexMap from './HexMap.vue';
+import HexMapCanvas from './HexMapCanvas.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 import GameGui from './GameGui.vue';
 import type { Tile } from '../core/world';
