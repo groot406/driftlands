@@ -352,8 +352,7 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
   const tiles = getTilesInRadius(cq, cr, camera.radius);
   for (const t of tiles) {
     const dist = hexDistance(camera, t);
-    const fade = computeFade(dist, camera.innerRadius, camera.radius);
-    const opacity = fade * fade;
+    const opacity = (() => { const f = computeFade(dist, camera.innerRadius, camera.radius); return f * f; })();
     const {x, y} = axialToPixel(t.q, t.r);
     if (t.discovered) {
       const imgKey = getTileImageKey(t);
@@ -378,13 +377,11 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
     }
   }
 
-  // Path highlight
   if (pathCoords.value.length) {
     for (let i = 0; i < pathCoords.value.length; i++) {
       const pc = pathCoords.value[i];
       const dist = hexDistance(camera, pc);
-      const fade = computeFade(dist, camera.innerRadius, camera.radius);
-      const opacity = fade * fade;
+      const opacity = (() => { const f = computeFade(dist, camera.innerRadius, camera.radius); return f * f; })();
       if (hexDistance(camera, pc) > camera.radius + 1) continue;
       const isLast = i === pathCoords.value.length - 1;
       drawHexHighlight(targetCtx, pc.q, pc.r,
@@ -399,8 +396,7 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
     const ht = hoveredTile.value;
     if (hexDistance(camera, ht) <= camera.radius + 1) {
       const dist = hexDistance(camera, ht);
-      const fade = computeFade(dist, camera.innerRadius, camera.radius);
-      const opacity = fade * fade;
+      const opacity = (() => { const f = computeFade(dist, camera.innerRadius, camera.radius); return f * f; })();
       drawHexHighlight(targetCtx, ht.q, ht.r, 'rgba(255, 227, 122, 0.15)', '#d0b23d', opacity);
     }
   }
@@ -713,13 +709,6 @@ function loadHeroImages(): Promise<void> {
     img.src = src;
   }));
   return Promise.all(promises).then(() => { heroImagesLoaded = true; });
-}
-
-function heroWorldToScreen(hero: Hero) {
-  const el = canvas.value;
-  if (!el) return {x: 0, y: 0, off: true};
-  const pos = worldToScreen(hero.q, hero.r, el, dpr);
-  return {x: pos.x, y: pos.y, off: false};
 }
 
 onMounted(async () => {
