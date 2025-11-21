@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
+import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import {getTilesInRadius} from '../core/world';
 import {
@@ -33,6 +33,8 @@ import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
 import {Hero, heroes, selectedHeroId, selectHero} from '../store/heroStore';
+import {TERRAIN_DEFS} from '../core/terrainDefs';
+import {axialKey, tileIndex} from '../core/world';
 
 // Removed Sprite overlay imports
 import {isPaused} from '../store/uiStore';
@@ -49,6 +51,7 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 // Hovered tile tracking
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
+const pathCoords = shallowRef<{q:number;r:number}[]>([]);
 
 interface ImageMap {
   [k: string]: HTMLImageElement
@@ -137,6 +140,7 @@ function resizeCanvas() {
   if (layerCtx) layerCtx.imageSmoothingEnabled = false;
   adaptiveCameraRadius();
 }
+
 
 function getTileImageKey(tile: Tile) {
   return tile.terrain;
@@ -252,7 +256,7 @@ function drawHeroes(targetCtx: CanvasRenderingContext2D) {
       const edgePixels = heroEdgePixels[h.avatar][frameIndex];
       if (edgePixels && edgePixels.length) {
         targetCtx.save();
-        targetCtx.globalAlpha = 1;
+        targetCtx.globalAlpha = opacity;
         targetCtx.fillStyle = isSelected ? '#ffe080' : '#ffffff';
         targetCtx.shadowColor = isSelected ? 'rgba(255,224,128,0.9)' : 'rgba(255,255,255,0.6)';
         targetCtx.shadowBlur = isSelected ? 12 : 8;
@@ -309,13 +313,43 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
     }
   }
 
+  // Path highlight (draw after base tiles, before hover + heroes)
+  if (pathCoords.value.length) {
+    for (let i = 0; i < pathCoords.value.length; i++) {
+      const pc = pathCoords.value[i];
+      const dist = hexDistance(camera, pc);
+      let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+      fade = Math.min(1, Math.max(0, fade));
+      const opacity = fade * fade;
+      // skip if outside camera radius for safety
+      if (hexDistance(camera, pc) > camera.radius + 1) continue;
+      const {x, y} = axialToPixel(pc.q, pc.r);
+      targetCtx.globalAlpha = opacity;
+      targetCtx.lineWidth = 2;
+      // Different color for final destination
+      const isLast = i === pathCoords.value.length - 1;
+      targetCtx.strokeStyle = isLast ? '#dbedff' : '#daf0ff';
+      targetCtx.fillStyle = isLast ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.5)';
+      targetCtx.beginPath();
+      drawHexPath(targetCtx, x, y);
+      targetCtx.fill();
+      targetCtx.stroke();
+    }
+  }
+
   // Hover highlight (draw last so it sits above hero visuals)
   if (hoveredTile.value) {
     const ht = hoveredTile.value;
     // Only highlight if within current camera radius (avoid stale refs)
     if (hexDistance(camera, ht) <= camera.radius + 1) {
       const {x, y} = axialToPixel(ht.q, ht.r);
-      targetCtx.globalAlpha = 1; // ensure full opacity
+
+      const dist = hexDistance(camera, ht);
+      let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+      fade = Math.min(1, Math.max(0, fade));
+      const opacity = fade * fade;
+
+      targetCtx.globalAlpha = opacity; // ensure full opacity
       targetCtx.lineWidth = 2; // stroke thickness in CSS px units (scaled by dpr earlier)
       targetCtx.strokeStyle = '#d0b23d'; // highlight outline color
       targetCtx.fillStyle = 'rgba(255, 227, 122, 0.15)'; // translucent fill
@@ -455,22 +489,26 @@ function updateHover(e: PointerEvent) {
   if (isPaused()) {
     if (hoveredTile.value) hoveredTile.value = null;
     if (hoveredHero.value) hoveredHero.value = null;
+    pathCoords.value = [];
     return;
   }
   if (dragging) {
     if (hoveredTile.value) hoveredTile.value = null;
     if (hoveredHero.value) hoveredHero.value = null;
+    pathCoords.value = [];
     return;
   }
   const hero = pickHero(e.clientX, e.clientY);
   if (hero) {
     if (hoveredTile.value) hoveredTile.value = null;
     hoveredHero.value = hero;
+    pathCoords.value = [];
     return;
   }
   hoveredHero.value = null;
   const tile = pickTile(e.clientX, e.clientY);
   if (tile !== hoveredTile.value) hoveredTile.value = tile;
+  updatePath();
 }
 
 function adaptiveCameraRadius() {
@@ -485,6 +523,91 @@ function adaptiveCameraRadius() {
   const inner = Math.max(3, Math.round(targetRadius * 0.33));
   updateCameraRadius(targetRadius, inner);
 }
+
+// Hex math utilities (retain for other uses)
+function axialDistance(aQ:number,aR:number,bQ:number,bR:number){
+  const dq = Math.abs(aQ - bQ);
+  const dr = Math.abs(aR - bR);
+  const ds = Math.abs((-aQ - aR) - (-bQ - bR));
+  return Math.max(dq, dr, ds);
+}
+
+// A* pathfinding respecting walkable terrain
+const AXIAL_DELTAS: Array<[number, number]> = [ [0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0] ];
+function isWalkable(q:number,r:number): boolean {
+  const t = tileIndex[axialKey(q,r)];
+  if (!t) return false;
+  if (!t.terrain) return true;
+  const def = (TERRAIN_DEFS as any)[t.terrain];
+  return !!(def && def.walkable);
+}
+interface PathNode { q:number; r:number; g:number; f:number; parent?: PathNode }
+function findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number, maxNodes=9999): {q:number;r:number}[] {
+  if (startQ===goalQ && startR===goalR) return [];
+
+  // If goal not walkable, abort (future: search nearest walkable around goal)
+  if (!isWalkable(goalQ, goalR)) return [];
+  if (!isWalkable(startQ, startR)) return []; // shouldn't happen normally
+  const open: PathNode[] = [];
+  const openMap = new Map<string, PathNode>();
+  const closed = new Set<string>();
+  const startNode: PathNode = {q:startQ, r:startR, g:0, f:axialDistance(startQ,startR,goalQ,goalR)};
+  open.push(startNode);
+  openMap.set(axialKey(startQ,startR), startNode);
+  let iterations = 0;
+  while (open.length && iterations < maxNodes) {
+    iterations++;
+    // Pick node with lowest f
+    let bestIndex = 0; let best = open[0];
+    for (let i=1;i<open.length;i++){ if (open[i].f < best.f){ best = open[i]; bestIndex = i; } }
+    const current = best; open.splice(bestIndex,1); openMap.delete(axialKey(current.q,current.r));
+    const curKey = axialKey(current.q,current.r);
+    closed.add(curKey);
+    if (current.q === goalQ && current.r === goalR) {
+      // Reconstruct path
+      const rev: {q:number;r:number}[] = [];
+      let n: PathNode | undefined = current;
+      while (n && !(n.q === startQ && n.r === startR)) { rev.push({q:n.q,r:n.r}); n = n.parent; }
+      rev.reverse();
+      return rev;
+    }
+    for (const [dq,dr] of AXIAL_DELTAS) {
+      const nq = current.q + dq; const nr = current.r + dr;
+      const key = axialKey(nq,nr);
+      if (closed.has(key)) continue;
+      if (!isWalkable(nq,nr) && !(nq===goalQ && nr===goalR)) continue; // allow stepping onto goal only if walkable already handled
+      const tentativeG = current.g + 1; // uniform cost
+      let node = openMap.get(key);
+      if (!node) {
+        node = {q:nq, r:nr, g:tentativeG, f: tentativeG + axialDistance(nq,nr,goalQ,goalR), parent: current};
+        open.push(node); openMap.set(key,node);
+      } else if (tentativeG < node.g) {
+        node.g = tentativeG;
+        node.f = tentativeG + axialDistance(nq,nr,goalQ,goalR);
+        node.parent = current;
+      }
+    }
+  }
+  return []; // no path found within limit
+}
+
+function updatePath() {
+  pathCoords.value = [];
+  if (!selectedHeroId.value || !hoveredTile.value) return;
+  const hero = heroes.find(h => h.id === selectedHeroId.value);
+  if (!hero) return;
+  const target = hoveredTile.value;
+  if (!target) return;
+
+  // if target is not walkable, clear path
+  if (!isWalkable(target.q, target.r)) return;
+
+  const path = findWalkablePath(hero.q, hero.r, target.q, target.r);
+  if (path.length) pathCoords.value = path; // already excludes origin
+}
+
+// Recompute path when selection changes
+watch(selectedHeroId, () => updatePath());
 
 onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId);
