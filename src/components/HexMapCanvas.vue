@@ -9,7 +9,20 @@
 import {onMounted, onBeforeUnmount, ref, shallowRef} from 'vue';
 import type {Tile} from '../core/world';
 import {getTilesInRadius} from '../core/world';
-import {camera, axialToPixel, pixelToAxial, createPointerHandlers, dragged, hexDistance, keyDown, keyUp, animateCamera, stopCameraAnimation, HEX_SIZE} from '../core/camera';
+import {
+  camera,
+  axialToPixel,
+  pixelToAxial,
+  createPointerHandlers,
+  dragged,
+  hexDistance,
+  keyDown,
+  keyUp,
+  animateCamera,
+  stopCameraAnimation,
+  HEX_SIZE,
+  HEX_SPACE
+} from '../core/camera';
 
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
@@ -34,7 +47,7 @@ const images: ImageMap = {};
 const imgSources: Record<string, string> = { forest, plains, mountain, water, mine, ruin, towncenter };
 let imagesLoaded = false;
 
-const TILE_DRAW_SIZE = (HEX_SIZE * 2) - 3; // unified tile draw size
+const TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE;
 const maskedImages: Record<string, HTMLCanvasElement> = {};
 
 function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
@@ -77,52 +90,90 @@ function loadImages(): Promise<void> {
   return Promise.all(promises).then(()=>{ imagesLoaded = true; buildMaskedImages(); });
 }
 
+let layerCanvas: HTMLCanvasElement | null = null;
+let layerCtx: CanvasRenderingContext2D | null = null;
+
 function resizeCanvas() {
   const el = canvas.value; const containerEl = container.value; if(!el || !containerEl) return;
   const w = containerEl.clientWidth; const h = containerEl.clientHeight; dpr = window.devicePixelRatio||1;
   el.width = w * dpr; el.height = h * dpr; el.style.width = w+'px'; el.style.height = h+'px';
   const ctx = el.getContext('2d'); if(ctx) { ctxRef.value = ctx; ctx.imageSmoothingEnabled = false; }
+  // Allocate / resize offscreen layer for motion blur compositing
+  if (!layerCanvas) layerCanvas = document.createElement('canvas');
+  layerCanvas.width = el.width; layerCanvas.height = el.height;
+  layerCtx = layerCanvas.getContext('2d');
+  if (layerCtx) layerCtx.imageSmoothingEnabled = false;
 }
 
 function getTileImageKey(tile: Tile) {
-  return tile.terrain || 'plains';
+  return tile.terrain;
+}
+
+function drawTiles(targetCtx: CanvasRenderingContext2D) {
+  const camPx = axialToPixel(camera.q, camera.r);
+  const el = canvas.value!;
+  const cx = el.width / dpr / 2; const cy = el.height / dpr / 2;
+  const translateX = cx - camPx.x; const translateY = cy - camPx.y;
+  targetCtx.save();
+  targetCtx.scale(dpr,dpr);
+  targetCtx.translate(translateX, translateY);
+  const cq = Math.round(camera.q); const cr = Math.round(camera.r);
+  const tiles = getTilesInRadius(cq, cr, camera.radius);
+  const span = Math.max(3, (camera.radius - camera.innerRadius));
+  for (const t of tiles) {
+    const dist = hexDistance(camera, t);
+    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+    fade = Math.min(1, Math.max(0, fade));
+    const opacity = fade * fade;
+    const {x, y} = axialToPixel(t.q, t.r);
+    if(t.discovered) {
+      const imgKey = getTileImageKey(t);
+      const masked = maskedImages[imgKey ?? 'plains'];
+      if (!masked) continue;
+      targetCtx.globalAlpha = opacity;
+      targetCtx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
+    } else {
+      targetCtx.globalAlpha = opacity * 0.5;
+      targetCtx.fillStyle = '#242c3f';
+      targetCtx.beginPath();
+      const w = TILE_DRAW_SIZE;
+      const h = TILE_DRAW_SIZE;
+      targetCtx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
+      targetCtx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+      targetCtx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+      targetCtx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
+      targetCtx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+      targetCtx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+      targetCtx.closePath();
+      targetCtx.fill();
+    }
+  }
+  targetCtx.restore();
 }
 
 function draw() {
   const ctx = ctxRef.value; if(!ctx) return; if(!imagesLoaded) return;
   const el = canvas.value; if(!el) return;
   ctx.clearRect(0,0,el.width, el.height);
-  ctx.save();
-  ctx.scale(dpr,dpr);
-  const camPx = axialToPixel(camera.q, camera.r);
-  const cx = el.width / dpr / 2; const cy = el.height / dpr / 2;
-  const translateX = cx - camPx.x; const translateY = cy - camPx.y;
-  ctx.translate(translateX, translateY);
 
-  const cq = Math.round(camera.q); const cr = Math.round(camera.r);
-  const tiles = getTilesInRadius(cq, cr, camera.radius);
-  const span = Math.max(3, (camera.radius - camera.innerRadius));
+  // Derive motion blur based on camera.speed (axial units/sec -> pixel/sec heuristic)
+  const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
+  // Same heuristic as DOM version: start blur after threshold, scale gently
+  const blur = Math.min(14, Math.max(0, (pixelSpeed - 700) * 0.005));
+  const brightness = blur > 0 ? 1 - Math.min(0.18, blur * 0.025) : 1;
 
-  for (const t of tiles) {
-    const dist = hexDistance(camera, t);
-    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-    fade = Math.min(1, Math.max(0, fade));
-    const opacity = fade * fade;
-
-    const {x, y} = axialToPixel(t.q, t.r);
-    const imgKey = getTileImageKey(t);
-    const masked = maskedImages[imgKey];
-    if(!masked) continue; // masked image may not exist yet
-
-    if (t.discovered) {
-      ctx.globalAlpha = opacity;
-      ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
-    } else {
-      ctx.globalAlpha = opacity * 0.5;
-      ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
-    }
+  if (blur < 0.35 || !layerCtx) {
+    // Fast path: draw directly without offscreen compositing
+    drawTiles(ctx);
+  } else {
+    // Offscreen compositing for smoother global blur
+    layerCtx!.clearRect(0,0,layerCanvas!.width, layerCanvas!.height);
+    drawTiles(layerCtx!);
+    ctx.save();
+    ctx.filter = `blur(${blur.toFixed(2)}px) brightness(${brightness.toFixed(2)})`;
+    ctx.drawImage(layerCanvas!, 0, 0);
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 let rafId: number|null = null;
