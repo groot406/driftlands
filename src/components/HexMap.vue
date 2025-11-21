@@ -74,7 +74,6 @@ function handleClick(e: PointerEvent) {
         startHeroMovement(sel.id, path, {q: tile.q, r: tile.r});
         // path preview should show planned path until movement starts
         pathCoords.value = path;
-        selectHero(null, false);
       }
     } else {
       // No hero selected -> deselect explicitly

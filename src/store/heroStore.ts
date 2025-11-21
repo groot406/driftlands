@@ -2,6 +2,8 @@ import {reactive, ref} from 'vue';
 import {moveCamera} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
 import {discoverTile, ensureTileExists} from '../core/world';
+import type { Tile } from '../core/world';
+import { TERRAIN_DEFS } from '../core/terrainDefs';
 
 export interface HeroStats {
     hp: number; // hit points
@@ -73,6 +75,10 @@ function restoreHeroes() {
     }
 }
 
+function isTileWalkable(tile: Tile): boolean {
+    return !!(tile.terrain && TERRAIN_DEFS[tile.terrain]?.walkable);
+}
+
 // Advance heroes based on movement timing; called each frame before drawing.
 export function updateHeroMovements(now: number) {
     for (const hero of heroes) {
@@ -80,13 +86,18 @@ export function updateHeroMovements(now: number) {
         const m = hero.movement;
         const stepsAdvanced = Math.floor((now - m.startMs) / m.stepMs);
         if (stepsAdvanced >= m.path.length) {
-            // Movement complete
+            // Attempt to move onto final target tile
+            const targetTile = ensureTileExists(m.target.q, m.target.r);
+            if (!targetTile.discovered) discoverTile(targetTile);
+            if (!isTileWalkable(targetTile)) {
+                // Cancel movement: target not walkable after discovery; hero stays at previous position.
+                hero.movement = undefined;
+                persistHeroes();
+                continue;
+            }
             hero.q = m.target.q;
             hero.r = m.target.r;
             hero.movement = undefined;
-            // Auto-discover tile hero ends on if still undiscovered
-            const endTile = ensureTileExists(hero.q, hero.r);
-            if (!endTile.discovered) discoverTile(endTile);
             persistHeroes();
             continue;
         }
@@ -94,6 +105,15 @@ export function updateHeroMovements(now: number) {
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue; // safety
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
+            // Discover prospective step tile first
+            const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
+            if (!stepTile.discovered) discoverTile(stepTile);
+            if (!isTileWalkable(stepTile)) {
+                // Cancel movement; do not move onto unwalkable tile
+                hero.movement = undefined;
+                persistHeroes();
+                continue;
+            }
             // Update facing based on delta from previous position
             const prev = stepsAdvanced === 0 ? m.origin : m.path[stepsAdvanced - 1];
             const dq = prev ? (currentCoord.q - prev.q) : 0;
@@ -106,9 +126,6 @@ export function updateHeroMovements(now: number) {
             hero.facing = facing;
             hero.q = currentCoord.q;
             hero.r = currentCoord.r;
-            // Auto-discover intermediate tile if not yet discovered
-            const stepTile = ensureTileExists(hero.q, hero.r);
-            if (!stepTile.discovered) discoverTile(stepTile);
             persistHeroes();
         }
     }

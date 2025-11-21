@@ -296,7 +296,7 @@ export class HexMapService {
         if (hexDistance(camera, pc) > camera.radius + 1) continue;
         const last = pc === opts.pathCoords[opts.pathCoords.length - 1];
         this.drawHexHighlight(ctx, pc.q, pc.r,
-          last ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.5)',
+          last ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.18)',
           last ? '#dbedff' : '#daf0ff',
           opacity);
       }
