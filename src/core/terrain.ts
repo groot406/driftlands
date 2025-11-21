@@ -1,6 +1,7 @@
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {applyBiomeModifiers, detectBiome} from './biomes';
+import {terrainPositions} from './world'; // use sets for fast lookup
 
 export {TERRAIN_DEFS};
 
@@ -48,10 +49,59 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
     return entry;
 }
 
-export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[]): {biome: string|null, terrain: TerrainKey} {
+function hexDistanceFromOrigin(q: number, r: number): number {
+    const dq = Math.abs(q);
+    const dr = Math.abs(r);
+    const ds = Math.abs(-q - r);
+    return Math.max(dq, dr, ds);
+}
+
+// Remove unused hexDistanceBetween; cache offsets for separation radii
+const separationOffsetCache = new Map<number, Array<[number, number]>>();
+function getSeparationOffsets(radius: number): Array<[number, number]> {
+    let cached = separationOffsetCache.get(radius);
+    if (cached) return cached;
+    const arr: Array<[number, number]> = [];
+    for (let dq = -radius; dq <= radius; dq++) {
+        for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+            arr.push([dq, dr]);
+        }
+    }
+    separationOffsetCache.set(radius, arr);
+    return arr;
+}
+
+export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[], q?: number, r?: number): {biome: string|null, terrain: TerrainKey} {
     const { biome, weights } = getWeightsForContext(neighborTerrains, biomeTerrains);
 
-    const entries = (Object.entries(weights) as [TerrainKey, number][]) // exclude towncenter by weight
+    const candidate: Record<TerrainKey, number> = { ...weights };
+
+    if (q !== undefined && r !== undefined) {
+        const distFromCenter = hexDistanceFromOrigin(q, r);
+        for (const key of Object.keys(candidate) as TerrainKey[]) {
+            const def = TERRAIN_DEFS[key];
+            if (!def) continue;
+            if (def.minDistanceFromCenter !== undefined && distFromCenter < def.minDistanceFromCenter) {
+                candidate[key] = 0;
+                continue;
+            }
+            if (def.minSeparation !== undefined && def.minSeparation > 0) {
+                const radius = def.minSeparation - 1;
+                if (radius >= 0) {
+                    const offsets = getSeparationOffsets(radius);
+                    for (const [dq, dr] of offsets) {
+                        const keyStr = (q + dq) + ',' + (r + dr);
+                        if (terrainPositions[key].has(keyStr)) {
+                            candidate[key] = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const entries = (Object.entries(candidate) as [TerrainKey, number][]) // exclude towncenter
         .filter(([k, w]) => k !== 'towncenter' && w > 0 && w !== Infinity && !Number.isNaN(w));
     const total = entries.reduce((acc, [, w]) => acc + w, 0);
     if (total <= 0) return {biome, terrain: 'plains'};

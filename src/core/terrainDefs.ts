@@ -5,6 +5,11 @@ export interface TerrainDef {
     color: string;
     baseWeight: number;
     adjacency: Record<string, number>; // neighbor terrain -> weight delta
+    // Optional properties used for generation constraints & movement
+    walkable?: boolean;
+    minDistanceFromCenter?: number; // must be at least this far from (0,0)
+    minSeparation?: number; // must be at least this far from any same-terrain tile
+    preserveIsolation?: boolean; // if true, island reduction will not modify solitary instances
 }
 
 interface TerrainDefsMap {
@@ -38,6 +43,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
     },
     water: {
+        minDistanceFromCenter: 5,
         color: '#0ea5e9',
         baseWeight: 30,
         walkable: false,
@@ -47,6 +53,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
     },
     mountain: {
+        minDistanceFromCenter: 3,
         color: '#475569',
         baseWeight: 40,
         walkable: true,
@@ -57,6 +64,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
     },
     mine: {
+        minDistanceFromCenter: 4,
+        minSeparation: 10,
+        preserveIsolation: true,
         color: '#525252',
         baseWeight: 5,
         walkable: true,
@@ -66,6 +76,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
     },
     ruin: {
+        minDistanceFromCenter: 4,
+        minSeparation: 10,
+        preserveIsolation: true,
         color: '#7f1d1d',
         baseWeight: 1,
         walkable: true,
@@ -79,6 +92,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         walkable: true,
         baseWeight: 0, // never randomly generated
         adjacency: {},
+        preserveIsolation: true,
     },
 };
 

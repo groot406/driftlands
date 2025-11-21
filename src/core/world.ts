@@ -3,6 +3,7 @@ import {weightedTerrainChoice, resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {idleStore as store} from "../store/idleStore.ts";
 import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
+import {TERRAIN_DEFS} from './terrainDefs';
 
 export type Terrain = TerrainKey;
 export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
@@ -135,6 +136,16 @@ export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
     return neighbors;
 }
 
+export const terrainPositions: Record<TerrainKey, Set<string>> = {
+    forest: new Set(),
+    plains: new Set(),
+    water: new Set(),
+    mountain: new Set(),
+    mine: new Set(),
+    ruin: new Set(),
+    towncenter: new Set(),
+};
+
 export function discoverTile(tile: Tile) {
     if (tile.discovered && tile.terrain) return;
     if (tile.q === 0 && tile.r === 0) {
@@ -142,18 +153,20 @@ export function discoverTile(tile: Tile) {
         tile.discovered = true;
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
+        terrainPositions.towncenter.add(tile.id);
         worldVersion.value++;
         return;
     }
     const neighborTerrains = getNeighborTerrains(tile);
     const biomeTerrains = getNeighborTerrains(tile, 2);
-    const generated = weightedTerrainChoice(neighborTerrains, biomeTerrains);
+    const generated = weightedTerrainChoice(neighborTerrains, biomeTerrains, tile.q, tile.r);
 
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
     tile.discovered = true;
     if (!tileIndex[tile.id]) indexTile(tile);
     ensureTileNeighbors(tile);
+    if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);
     worldVersion.value++;
 }
 
@@ -249,7 +262,8 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
         } else {
             generationProgress.value = 1;
             generationInProgress.value = false;
-            updateLoader(loaderId, {completed: generationTotal.value, status: 'World ready'});
+            updateLoader(loaderId, {completed: generationTotal.value, status: 'Reducing terrain islands...'});
+            reduceTerrainIslands();
             finishLoader(loaderId, 'World ready');
             worldVersion.value++;
         }
@@ -271,6 +285,7 @@ function clearWorld() {
     maxRadiusByQ.clear();
     maxRadiusByR.clear();
     resetTerrainWeightCache(); // ensure terrain weight contexts are recomputed for new world
+    for (const key of Object.keys(terrainPositions) as TerrainKey[]) terrainPositions[key].clear();
 }
 
 export function startWorldGeneration(radius: number) {
@@ -299,4 +314,40 @@ export function loadWorld(tileData: Tile[]) {
         ensureTileNeighbors(t);
     }
     worldVersion.value++;
+}
+
+function reduceTerrainIslands() {
+    let changed = false;
+    for (const t of tiles) {
+        if (!t.discovered || !t.terrain) continue;
+        const def = TERRAIN_DEFS[t.terrain];
+        if (def?.preserveIsolation) continue;
+        const nm = t.neighbors ?? ensureTileNeighbors(t);
+        let sameCount = 0;
+        let discoveredNeighborCount = 0;
+        const neighborTerrainCounts: Record<string, number> = {};
+        for (const side of ['a','b','c','d','e','f'] as const) {
+            const n = nm[side];
+            if (!n.discovered || !n.terrain) continue;
+            discoveredNeighborCount++;
+            if (n.terrain === t.terrain) sameCount++;
+            neighborTerrainCounts[n.terrain] = (neighborTerrainCounts[n.terrain] ?? 0) + 1;
+        }
+        if (discoveredNeighborCount === 0) continue;
+        // Island if no discovered neighbor shares terrain
+        if (sameCount === 0) {
+            // Pick majority terrain among neighbors (exclude towncenter)
+            let bestTerrain: TerrainKey | null = null;
+            let bestCount = -1;
+            for (const [terrain, count] of Object.entries(neighborTerrainCounts)) {
+                if (terrain === 'towncenter') continue;
+                if (count > bestCount) { bestCount = count; bestTerrain = terrain as TerrainKey; }
+            }
+            if (bestTerrain && bestTerrain !== t.terrain) {
+                t.terrain = bestTerrain;
+                changed = true;
+            }
+        }
+    }
+    if (changed) worldVersion.value++;
 }
