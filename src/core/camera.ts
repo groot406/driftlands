@@ -272,3 +272,14 @@ export function moveCamera(q: number, r: number) {
     camera.targetQ = q;
     camera.targetR = r;
 }
+
+export function updateCameraRadius(radius: number, innerRadius?: number) {
+    const r = Math.max(1, Math.round(radius));
+    camera.radius = r;
+    if (innerRadius !== undefined) {
+        const inner = Math.max(1, Math.min(r - 1, Math.round(innerRadius)));
+        camera.innerRadius = inner;
+    } else if (camera.innerRadius >= r) {
+        camera.innerRadius = Math.max(1, Math.round(r * 0.35));
+    }
+}
