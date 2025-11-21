@@ -1,7 +1,7 @@
 import {reactive} from 'vue';
 import {getMaxRadiusFor} from './world';
 
-export const CAMERA_RADIUS = 20;
+export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
 export const MOVE_SPEED = 35; // axial units per second base
 export const HEX_SIZE = 35;

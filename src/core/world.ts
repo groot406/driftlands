@@ -1,4 +1,4 @@
-import {ref} from 'vue';
+import {ref, markRaw} from 'vue';
 import {weightedTerrainChoice} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {idleStore as store} from "../store/idleStore.ts";
@@ -15,7 +15,15 @@ export interface Tile {
     biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
+    // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
+    neighbors?: TileNeighborMap;
 }
+
+// Side names clockwise starting at +q (matching first axial delta) then proceeding.
+const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
+export type TileSide = typeof SIDE_NAMES[number];
+export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
+const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
 
 // Reactive world version bump for UI invalidation
 export const worldVersion = ref(0);
@@ -76,15 +84,46 @@ export function ensureTileExists(q: number, r: number): Tile {
     return t;
 }
 
-async function ensureTileNeighbors(tile: Tile) {
-    const neighbors: Array<[number, number]> = [
-        [tile.q + 1, tile.r], [tile.q + 1, tile.r - 1], [tile.q, tile.r - 1],
-        [tile.q - 1, tile.r], [tile.q - 1, tile.r + 1], [tile.q, tile.r + 1]
-    ];
-    neighbors.forEach(([q, r]) => ensureTileExists(q, r));
+// Axial coordinate neighbor deltas (pointy-top layout):
+const AXIAL_NEIGHBOR_DELTAS: Array<[number, number]> = [
+    [0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]
+];
+
+function ensureTileNeighbors(tile: Tile): TileNeighborMap {
+    if (tile.neighbors) return tile.neighbors;
+    const obj: Partial<TileNeighborMap> = {};
+    for (let i = 0; i < AXIAL_NEIGHBOR_DELTAS.length; i++) {
+        const [dq, dr] = AXIAL_NEIGHBOR_DELTAS[i]!;
+        const side = SIDE_NAMES[i]!;
+        obj[side] = ensureTileExists(tile.q + dq, tile.r + dr);
+    }
+    // Define as non-enumerable & mark raw to prevent Vue from deep proxying (avoids circular reactive graph & JSON stringify loops)
+    Object.defineProperty(tile, 'neighbors', { value: markRaw(obj as TileNeighborMap), configurable: true, writable: true });
+    // Reverse linking (still non-enumerable for target tiles if not yet defined)
+    for (const side of SIDE_NAMES) {
+        const n = tile.neighbors![side]!;
+        const opposite = OPPOSITE_SIDE[side];
+        if (n.neighbors && n.neighbors[opposite] !== tile) {
+            n.neighbors[opposite] = tile;
+        }
+    }
+    return tile.neighbors!;
+}
+
+export function getNeighborBySide(tile: Tile, side: TileSide): Tile {
+    return (tile.neighbors ?? ensureTileNeighbors(tile))[side];
 }
 
 export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
+    if (radius === 1) {
+        const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+        const terrains: TerrainKey[] = [];
+        for (const side of SIDE_NAMES) {
+            const nt = nm[side];
+            if (nt.discovered && nt.terrain) terrains.push(nt.terrain);
+        }
+        return terrains;
+    }
     const neighbors: TerrainKey[] = [];
     for (let dq = -radius; dq <= radius; dq++) {
         for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
@@ -101,16 +140,21 @@ export function discoverTile(tile: Tile) {
     if (tile.q === 0 && tile.r === 0) {
         tile.terrain = 'towncenter';
         tile.discovered = true;
+        if (!tileIndex[tile.id]) indexTile(tile);
+        ensureTileNeighbors(tile);
+        worldVersion.value++;
         return;
     }
     const neighborTerrains = getNeighborTerrains(tile);
     const biomeTerrains = getNeighborTerrains(tile, 2);
     const generated = weightedTerrainChoice(neighborTerrains, biomeTerrains);
+
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
     tile.discovered = true;
     if (!tileIndex[tile.id]) indexTile(tile);
-    ensureTileNeighbors(tile).then(() => worldVersion.value++);
+    ensureTileNeighbors(tile);
+    worldVersion.value++;
 }
 
 function getRadiusOffsets(radius: number): Array<[number, number]> {
@@ -240,4 +284,18 @@ export function loadWorld(tileData: Tile[]) {
         tiles.push(t);
         indexTile(t);
     }
+    for (const t of tiles) {
+        if (!t.discovered) continue;
+        const legacy = (t as any).neighbors;
+        if (Array.isArray(legacy)) {
+            const obj: Partial<TileNeighborMap> = {};
+            for (let i = 0; i < Math.min(legacy.length, 6); i++) {
+                const side = SIDE_NAMES[i]!;
+                obj[side] = legacy[i];
+            }
+            Object.defineProperty(t, 'neighbors', { value: markRaw(obj as TileNeighborMap), configurable: true, writable: true });
+        }
+        ensureTileNeighbors(t);
+    }
+    worldVersion.value++;
 }

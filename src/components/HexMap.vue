@@ -8,11 +8,12 @@
           class="absolute"
       >
         <div
-            class="hex-tile cursor-pointer"
+            class="hex-tile cursor-pointer flex items-center justify-center"
             :class="!tile.discovered ? 'opacity-50' : ''"
             :style="{ background: tile.discovered ? getTileBackground(tile) : '' }"
             @click="clickTile(tile)"
-        ></div>
+        >
+        </div>
       </div>
     </div>
   </div>
@@ -134,7 +135,7 @@ function getTileImage(tile: Tile) {
 async function updateVisibleTiles() {
   const cq = Math.round(camera.q);
   const cr = Math.round(camera.r);
-  visibleTiles.value = getTilesInRadius(cq, cr, camera.radius + 2);
+  visibleTiles.value = getTilesInRadius(cq, cr, camera.radius );
 }
 
 let lastClickTime = 0;

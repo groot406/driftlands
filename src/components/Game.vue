@@ -26,6 +26,7 @@ function handleTileClick(tile: Tile) {
     discoverTile(tile);
     return;
   }
+  console.log('Clicked tile', tile);
 }
 
 loadWorld(store.tiles);
