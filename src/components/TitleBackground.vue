@@ -15,7 +15,7 @@ import { getTileType, getCachedTile } from '../core/procGen';
 // Asset imports for real tile imagery (masked to hex)
 import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
-import mountain from '../assets/tiles/mountain.png';
+import mountain from '../assets/tiles/mountains.png';
 import water from '../assets/tiles/water.png';
 import ruin from '../assets/tiles/ruin.png';
 
