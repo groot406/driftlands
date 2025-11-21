@@ -181,7 +181,7 @@ function draw() {
   const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
   let blurStrength = Math.min(12, Math.max(0, (pixelSpeed - 100) * 0.005));
   const brightness = blurStrength > 0 ? 1 - Math.min(0.15, blurStrength * 0.02) : 1;
-  
+
   if (blurStrength < 0.4 || !layerCtx) {
     // Fast path: draw directly without offscreen compositing
     drawTiles(ctx);
@@ -274,9 +274,9 @@ function adaptiveCameraRadius() {
   const el = container.value; if(!el) return;
   const w = el.clientWidth; const h = el.clientHeight;
   // Heuristic: radius ~ proportional to diagonal / tile pixel span
-  const diag = Math.sqrt(w*w + h*h);
+  const diag = Math.min(w, h);
   const tilePixelSpan = HEX_SIZE * 2; // approximate diameter
-  const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 0.65)));
+  const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
   const inner = Math.max(3, Math.round(targetRadius * 0.33));
   updateCameraRadius(targetRadius, inner);
 }
