@@ -8,7 +8,7 @@
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import type {Hero} from '../store/heroStore';
-import {selectHero, selectedHeroId, heroes, updateHeroFacing} from '../store/heroStore';
+import {selectHero, selectedHeroId, heroes, updateHeroFacing, startHeroMovement, updateHeroMovements, getSelectedHero} from '../store/heroStore';
 import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
@@ -31,6 +31,13 @@ let rafId: number | null = null;
 let lastClickTime = 0;
 
 function animationLoop() {
+  const now = performance.now();
+  // advance hero movements
+  updateHeroMovements(now);
+  // recompute path preview for selected hero (if moving use remaining path from movement state)
+  if (selectedHeroId.value && hoveredTile.value) {
+    pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+  }
   service.draw({hoveredTile: hoveredTile.value, hoveredHero: hoveredHero.value, pathCoords: pathCoords.value});
   rafId = requestAnimationFrame(animationLoop);
 }
@@ -59,9 +66,20 @@ function handleClick(e: PointerEvent) {
     lastClickTime = now;
     hoveredTile.value = tile;
     emit('tile-click', tile);
+    // If a hero is selected, start movement along path to tile
+    const sel = getSelectedHero();
+    if (sel) {
+      const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+      if (path.length) {
+        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r});
+        // path preview should show planned path until movement starts
+        pathCoords.value = path;
+      }
+    } else {
+      // No hero selected -> deselect explicitly
+      selectHero(null, false);
+    }
   }
-  // Deselect hero when clicking tile
-  selectHero(null, false);
   updatePath();
 }
 
@@ -85,18 +103,15 @@ function updateHover(e: PointerEvent) {
 
 watch(selectedHeroId, () => updatePath());
 
-// New: watch hoveredTile to update facing of selected hero
+// New: watch hoveredTile to update facing of selected hero (only when not moving)
 watch([hoveredTile, selectedHeroId], () => {
   if (!hoveredTile.value || !selectedHeroId.value) return;
   const hero = heroes.find(h => h.id === selectedHeroId.value);
-  if (!hero) return;
-  // Determine facing by axial delta
+  if (!hero || hero.movement) return;
   const dq = hoveredTile.value.q - hero.q;
   const dr = hoveredTile.value.r - hero.r;
   if (dq === 0 && dr === 0) return; // same tile keep current
   let facing: 'up'|'down'|'left'|'right' = hero.facing;
-  // Hex axial directions grouping into cardinal approximation
-  // Use vertical component first for up/down, else horizontal for left/right
   if (dr < 0) facing = 'up';
   else if (dr > 0) facing = 'down';
   else if (dq > 0) facing = 'right';

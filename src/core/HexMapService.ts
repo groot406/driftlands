@@ -120,6 +120,40 @@ export class HexMapService {
     return this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
   }
 
+  // New: expose pathfinding for external movement start
+  public findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,maxNodes=9999): PathCoord[] {
+    if (startQ===goalQ && startR===goalR) return [];
+    if (!this.isWalkable(goalQ, goalR)) return [];
+    if (!this.isWalkable(startQ, startR)) return [];
+    interface PathNode { q:number;r:number; g:number; f:number; parent?: PathNode }
+    const open: PathNode[] = []; const openMap = new Map<string,PathNode>(); const closed = new Set<string>();
+    const startNode: PathNode = {q:startQ,r:startR,g:0,f:this.axialDistance(startQ,startR,goalQ,goalR)};
+    open.push(startNode); openMap.set(axialKey(startQ,startR), startNode);
+    let iterations=0;
+    while (open.length && iterations < maxNodes) {
+      iterations++;
+      let bestIndex=0; let best = open[0]!;
+      for (let i=1;i<open.length;i++){ if (open[i]!.f < best.f){ best=open[i]!; bestIndex=i; } }
+      const current = best; open.splice(bestIndex,1); openMap.delete(axialKey(current.q,current.r));
+      closed.add(axialKey(current.q,current.r));
+      if (current.q===goalQ && current.r===goalR) {
+        const rev: PathCoord[] = []; let n: PathNode | undefined = current;
+        while (n && !(n.q===startQ && n.r===startR)) { rev.push({q:n.q,r:n.r}); n = n.parent; }
+        rev.reverse(); return rev;
+      }
+      for (const [dq,dr] of this.AXIAL_DELTAS) {
+        const nq = current.q + dq; const nr = current.r + dr; const key = axialKey(nq,nr);
+        if (closed.has(key)) continue;
+        if (!this.isWalkable(nq,nr) && !(nq===goalQ && nr===goalR)) continue;
+        const tentativeG = current.g + 1;
+        let node = openMap.get(key);
+        if (!node) { node = {q:nq,r:nr,g:tentativeG,f: tentativeG + this.axialDistance(nq,nr,goalQ,goalR), parent: current}; open.push(node); openMap.set(key,node); }
+        else if (tentativeG < node.g) { node.g = tentativeG; node.f = tentativeG + this.axialDistance(nq,nr,goalQ,goalR); node.parent = current; }
+      }
+    }
+    return [];
+  }
+
   pickTile(screenX: number, screenY: number): Tile | null {
     if (!this._canvas) return null;
     const rect = this._canvas.getBoundingClientRect();
@@ -310,9 +344,9 @@ export class HexMapService {
       const destX = x - (this.heroFrameSize * this.heroZoom)/2 + pos.x - (this.heroFrameSize/2);
       const destY = y - (this.heroFrameSize * 2) + (this.heroFrameSize/2) + pos.y;
 
-      // Determine activity (path preview currently not passed here, so use idle always except if selected hero has path in service?)
-      // We don't have path info per hero here; could store externally later. For now use idle.
-      const activity = resolveActivity(0);
+      // Determine activity based on movement state
+      const remaining = h.movement ? (h.movement.path.length) : 0;
+      const activity = resolveActivity(remaining);
       const animName = heroAnimName(activity, h.facing);
       const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
       const elapsed = now - this._heroAnimStart;
