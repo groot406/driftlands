@@ -116,14 +116,14 @@ export class HexMapService {
     if (!selectedId || !hoveredTile) return [];
     const hero = heroes.find(h => h.id === selectedId);
     if (!hero) return [];
-    if (!this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
+    if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
     return this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
   }
 
   // New: expose pathfinding for external movement start
   public findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,maxNodes=9999): PathCoord[] {
     if (startQ===goalQ && startR===goalR) return [];
-    if (!this.isWalkable(goalQ, goalR)) return [];
+    
     if (!this.isWalkable(startQ, startR)) return [];
     interface PathNode { q:number;r:number; g:number; f:number; parent?: PathNode }
     const open: PathNode[] = []; const openMap = new Map<string,PathNode>(); const closed = new Set<string>();
@@ -524,40 +524,8 @@ export class HexMapService {
   private isWalkable(q:number,r:number) {
     const t = tileIndex[axialKey(q,r)];
     if (!t) return false;
-    if (!t.terrain) return true;
+    if (!t.terrain) return false;
     const def = (TERRAIN_DEFS as any)[t.terrain];
     return !!(def && def.walkable);
-  }
-  private findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,maxNodes=9999): PathCoord[] {
-    if (startQ===goalQ && startR===goalR) return [];
-    if (!this.isWalkable(goalQ, goalR)) return [];
-    if (!this.isWalkable(startQ, startR)) return [];
-    interface PathNode { q:number;r:number; g:number; f:number; parent?: PathNode }
-    const open: PathNode[] = []; const openMap = new Map<string,PathNode>(); const closed = new Set<string>();
-    const startNode: PathNode = {q:startQ,r:startR,g:0,f:this.axialDistance(startQ,startR,goalQ,goalR)};
-    open.push(startNode); openMap.set(axialKey(startQ,startR), startNode);
-    let iterations=0;
-    while (open.length && iterations < maxNodes) {
-      iterations++;
-      let bestIndex=0; let best = open[0]!;
-      for (let i=1;i<open.length;i++){ if (open[i]!.f < best.f){ best=open[i]!; bestIndex=i; } }
-      const current = best; open.splice(bestIndex,1); openMap.delete(axialKey(current.q,current.r));
-      closed.add(axialKey(current.q,current.r));
-      if (current.q===goalQ && current.r===goalR) {
-        const rev: PathCoord[] = []; let n: PathNode | undefined = current;
-        while (n && !(n.q===startQ && n.r===startR)) { rev.push({q:n.q,r:n.r}); n = n.parent; }
-        rev.reverse(); return rev;
-      }
-      for (const [dq,dr] of this.AXIAL_DELTAS) {
-        const nq = current.q + dq; const nr = current.r + dr; const key = axialKey(nq,nr);
-        if (closed.has(key)) continue;
-        if (!this.isWalkable(nq,nr) && !(nq===goalQ && nr===goalR)) continue;
-        const tentativeG = current.g + 1;
-        let node = openMap.get(key);
-        if (!node) { node = {q:nq,r:nr,g:tentativeG,f: tentativeG + this.axialDistance(nq,nr,goalQ,goalR), parent: current}; open.push(node); openMap.set(key,node); }
-        else if (tentativeG < node.g) { node.g = tentativeG; node.f = tentativeG + this.axialDistance(nq,nr,goalQ,goalR); node.parent = current; }
-      }
-    }
-    return [];
   }
 }

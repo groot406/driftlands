@@ -74,6 +74,7 @@ function handleClick(e: PointerEvent) {
         startHeroMovement(sel.id, path, {q: tile.q, r: tile.r});
         // path preview should show planned path until movement starts
         pathCoords.value = path;
+        selectHero(null, false);
       }
     } else {
       // No hero selected -> deselect explicitly
@@ -103,14 +104,16 @@ function updateHover(e: PointerEvent) {
 
 watch(selectedHeroId, () => updatePath());
 
-// New: watch hoveredTile to update facing of selected hero (only when not moving)
-watch([hoveredTile, selectedHeroId], () => {
-  if (!hoveredTile.value || !selectedHeroId.value) return;
+// Adjust facing: look towards first step in current path preview (if any), rather than final hovered tile.
+watch([pathCoords, selectedHeroId], () => {
+  if (!selectedHeroId.value) return;
   const hero = heroes.find(h => h.id === selectedHeroId.value);
-  if (!hero || hero.movement) return;
-  const dq = hoveredTile.value.q - hero.q;
-  const dr = hoveredTile.value.r - hero.r;
-  if (dq === 0 && dr === 0) return; // same tile keep current
+  if (!hero || hero.movement) return; // do not override while moving
+  const first = pathCoords.value[0];
+  if (!first) return; // no path -> keep current facing
+  const dq = first.q - hero.q;
+  const dr = first.r - hero.r;
+  if (dq === 0 && dr === 0) return;
   let facing: 'up'|'down'|'left'|'right' = hero.facing;
   if (dr < 0) facing = 'up';
   else if (dr > 0) facing = 'down';
