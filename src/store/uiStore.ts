@@ -11,7 +11,7 @@ interface UIState {
 }
 
 const SAVE_KEY = 'driftlands-save';
-const NEW_GAME_RADIUS = 6;
+const NEW_GAME_RADIUS = 25;
 
 function hasSave(): boolean {
   try {

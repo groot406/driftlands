@@ -5,7 +5,8 @@
         <div
             v-for="h in heroes"
             :key="h.id"
-            class="text-white flex-col items-center  pointer-events-auto  gap-3 bg-slate-800/40  backdrop-blur border border-white/10 rounded-xl  hover:bg-slate-600/60 transition-colors cursor-pointer select-none min-w-[160px]"
+            class="text-white flex-col items-center  pointer-events-auto  gap-3 backdrop-blur rounded-xl hover:bg-slate-600/60 transition-colors cursor-pointer select-none min-w-[160px]"
+            :class="selectedHeroId === h.id ? 'bg-slate-700/70 border border-yellow-400 shadow-[0_0_0_2px_rgba(255,216,107,0.4)]' : 'bg-slate-800/40 border border-white/10'"
             @click="select(h)"
         >
           <div class="p-3 w-full font-semibold text-sm">{{ h.name }}</div>
@@ -37,11 +38,11 @@
 </template>
 
 <script setup lang="ts">
-import {focusHero, type Hero, heroes} from '../store/heroStore';
+import {type Hero, heroes, selectHero, selectedHeroId} from '../store/heroStore';
 import Sprite from "./Sprite.vue";
 
 function select(h: Hero) {
-  focusHero(h);
+  selectHero(h, true);
 }
 </script>
 
@@ -67,4 +68,3 @@ export default {name: 'HeroesBar'};
   background: rgba(255, 255, 255, 0.3);
 }
 </style>
-

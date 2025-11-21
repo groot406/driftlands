@@ -1,26 +1,13 @@
 <template>
   <div ref="container" class="w-full h-full relative map-container">
     <canvas ref="canvas" class="absolute inset-0"/>
-    <!-- Hero sprites overlay -->
-    <div v-for="entry in visibleHeroes" :key="entry.id" class="absolute" :style="entry.style"
-         @click.stop="onHeroClick(entry.id)">
-      <Sprite
-          :key="worldVersion + '-' + entry.id"
-          :sprite="entry.avatar"
-          :zoom="heroZoom"
-          :row="8"
-          :size="heroFrameSize"
-          :frames="heroFrames"
-          :speed="heroAnimSpeed"
-          :cooldown="heroAnimCooldown"/>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
+import {onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
 import type {Tile} from '../core/world';
-import {getTilesInRadius, worldVersion } from '../core/world';
+import {getTilesInRadius} from '../core/world';
 import {
   animateCamera,
   axialToPixel,
@@ -33,7 +20,6 @@ import {
   hexDistance,
   keyDown,
   keyUp,
-  moveCamera,
   pixelToAxial,
   stopCameraAnimation,
   updateCameraRadius
@@ -46,11 +32,12 @@ import water from '../assets/tiles/water.png';
 import mine from '../assets/tiles/mine.png';
 import ruin from '../assets/tiles/ruin.png';
 import towncenter from '../assets/tiles/towncenter.png';
-import {Hero, heroes} from '../store/heroStore';
-import Sprite from './Sprite.vue';
-import { isPaused } from '../store/uiStore';
+import {Hero, heroes, selectedHeroId, selectHero} from '../store/heroStore';
 
-const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void }>();
+// Removed Sprite overlay imports
+import {isPaused} from '../store/uiStore';
+
+const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void; (e: 'hero-click', hero: Hero): void }>();
 
 const container = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -61,6 +48,7 @@ const mouseDown = ref(false);
 const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandlers(mouseDown);
 // Hovered tile tracking
 const hoveredTile = shallowRef<Tile | null>(null);
+const hoveredHero = shallowRef<Hero | null>(null);
 
 interface ImageMap {
   [k: string]: HTMLImageElement
@@ -70,8 +58,7 @@ const images: ImageMap = {};
 const imgSources: Record<string, string> = {forest, plains, mountain, water, mine, ruin, towncenter};
 let imagesLoaded = false;
 
-const TILE_SPACE = HEX_SPACE;
-const TILE_DRAW_SIZE = (HEX_SIZE * 2) - TILE_SPACE; // unified tile draw size
+const TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE; // unified tile draw size
 
 const maskedImages: Record<string, HTMLCanvasElement> = {};
 
@@ -84,6 +71,7 @@ function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
   const h = TILE_DRAW_SIZE;
   g.save();
   g.beginPath();
+
   // Hex path matching CSS clip-path polygon used previously (pointy-top)
   g.moveTo(0.5 * w, 0);
   g.lineTo(w, 0.25 * h);
@@ -140,6 +128,7 @@ function resizeCanvas() {
     ctxRef.value = ctx;
     ctx.imageSmoothingEnabled = false;
   }
+
   // Allocate / resize offscreen layer for motion blur compositing
   if (!layerCanvas) layerCanvas = document.createElement('canvas');
   layerCanvas.width = el.width;
@@ -164,6 +153,117 @@ function drawHexPath(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
   ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
   ctx.closePath();
+}
+
+function computeTileHeroOffsets(tileHeroes: Hero[]): Record<string, {x: number; y: number}> {
+  const result: Record<string, {x:number;y:number}> = {};
+  const count = tileHeroes.length;
+  if (count === 0) return result;
+
+  if(count === 1) {
+    result[tileHeroes[0].id] = {x: 12, y: 0};
+    return result;
+  }
+
+  if(count === 2) {
+    result[tileHeroes[0].id] = {x: -5, y: 0};
+    result[tileHeroes[1].id] = {x: 32, y: 0};
+    return result;
+  }
+
+  if(count === 3) {
+    result[tileHeroes[0].id] = {x: -5, y: -2};
+    result[tileHeroes[1].id] = {x: 12, y: 8};
+    result[tileHeroes[2].id] = {x: 32, y: -2};
+    return result;
+  }
+
+  if(count === 4) {
+    result[tileHeroes[0].id] = {x: 12, y: -10};
+    result[tileHeroes[1].id] = {x: -7, y: 4};
+    result[tileHeroes[2].id] = {x: 32, y: 4};
+    result[tileHeroes[3].id] = {x: 12, y: 18};
+    return result;
+  }
+
+  if(count === 5) {
+    result[tileHeroes[0].id] = {x: 16, y: -10};
+    result[tileHeroes[1].id] = {x: -7, y: 4};
+    result[tileHeroes[2].id] = {x: 32, y: 4};
+    result[tileHeroes[3].id] = {x: 10, y: 8};
+    result[tileHeroes[4].id] = {x: 16, y: 22};
+    return result;
+  }
+
+  if (count === 6) {
+    result[tileHeroes[0].id] = {x: 16, y: -12};
+    result[tileHeroes[1].id] = {x: -10, y: 0};
+    result[tileHeroes[2].id] = {x: 38, y: 0};
+    result[tileHeroes[3].id] = {x: 0, y: 12};
+    result[tileHeroes[4].id] = {x: 28, y: 16};
+    result[tileHeroes[5].id] = {x: 16, y: 28};
+    return result;
+  }
+
+  // Generic horizontal compression for other counts (previous behavior)
+  for (let i = 0; i < count; i++) {
+    const offset = (i - (count - 1) / 2) * hSpacing;
+    result[tileHeroes[i].id] = {x: offset, y: 0};
+  }
+  return result;
+}
+
+function drawHeroes(targetCtx: CanvasRenderingContext2D) {
+  if (!heroImagesLoaded) return; // skip until loaded
+  const radius = camera.radius + 1; // margin similar to overlay logic
+  const span = Math.max(3, (camera.radius - camera.innerRadius));
+  const now = performance.now();
+  let frameIndex = lastHeroFrame;
+  if (!isPaused()) {
+    frameIndex = computeHeroFrame(now);
+    lastHeroFrame = frameIndex;
+  }
+  for (const h of heroes) {
+    const dist = hexDistance(camera, h);
+    if (dist > radius) continue;
+    const img = heroImages[h.avatar];
+    if (!img) continue;
+
+    // Build layout offsets for this tile once per hero (small tile sizes so acceptable; could cache if needed)
+    const sameTile = heroes.filter(o => o.q === h.q && o.r === h.r);
+    const layout = computeTileHeroOffsets(sameTile);
+    const pos = layout[h.id] || {x:0,y:0};
+    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
+    fade = Math.min(1, Math.max(0, fade));
+    const opacity = fade;
+    const {x, y} = axialToPixel(h.q, h.r);
+    const dw = heroFrameSize * heroZoom;
+    const dh = heroFrameSize * heroZoom;
+    const destX = x - (heroFrameSize * heroZoom) / 2 + pos.x - (heroFrameSize / 2);
+    const destY = y - (heroFrameSize * 2) + (heroFrameSize/2) + pos.y;
+    const sx = frameIndex * heroFrameSize;
+    const sy = heroRow * heroFrameSize;
+    targetCtx.globalAlpha = opacity;
+    targetCtx.imageSmoothingEnabled = false;
+    targetCtx.drawImage(img, sx, sy, heroFrameSize, heroFrameSize, destX, destY, dw, dh);
+    const isSelected = selectedHeroId.value === h.id;
+    const isHovered = hoveredHero.value && hoveredHero.value.id === h.id;
+    if ((isSelected || isHovered) && heroEdgePixels[h.avatar]) {
+      const edgePixels = heroEdgePixels[h.avatar][frameIndex];
+      if (edgePixels && edgePixels.length) {
+        targetCtx.save();
+        targetCtx.globalAlpha = 1;
+        targetCtx.fillStyle = isSelected ? '#ffe080' : '#ffffff';
+        targetCtx.shadowColor = isSelected ? 'rgba(255,224,128,0.9)' : 'rgba(255,255,255,0.6)';
+        targetCtx.shadowBlur = isSelected ? 12 : 8;
+        targetCtx.translate(destX, destY);
+        targetCtx.scale(heroZoom, heroZoom);
+        for (const p of edgePixels) targetCtx.fillRect(p.x, p.y, 1, 1);
+        targetCtx.restore();
+      }
+    }
+  }
+  targetCtx.globalAlpha = 1; // restore
 }
 
 function drawTiles(targetCtx: CanvasRenderingContext2D) {
@@ -208,7 +308,8 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
       targetCtx.fill();
     }
   }
-  // Hover highlight (draw last so it sits above tile visuals)
+
+  // Hover highlight (draw last so it sits above hero visuals)
   if (hoveredTile.value) {
     const ht = hoveredTile.value;
     // Only highlight if within current camera radius (avoid stale refs)
@@ -224,6 +325,10 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
       targetCtx.stroke();
     }
   }
+
+  // Draw heroes within same transformed context so world coords align
+  drawHeroes(targetCtx);
+
   targetCtx.restore();
 }
 
@@ -250,7 +355,7 @@ function draw() {
   drawTiles(layerCtx!);
 
   ctx.drawImage(layerCanvas!, 0, 0);
-  container.value.style.filter = `blur(${blurStrength.toFixed(2)}px) brightness(${brightness.toFixed(2)})`;
+  el.style.filter = `blur(${blurStrength.toFixed(2)}px) brightness(${brightness.toFixed(2)})`;
   return;
 }
 
@@ -278,13 +383,60 @@ function pickTile(clientX: number, clientY: number): Tile | null {
   return results.length ? results[0]! : null;
 }
 
+function computeHeroFrame(now: number): number {
+  const cycleActive = heroFrames * heroAnimSpeed;
+  const totalCycle = cycleActive + heroAnimCooldown;
+  const t = (now - heroAnimStart) % totalCycle;
+  if (t >= cycleActive) return heroFrames - 1; // hold last frame during cooldown
+  return Math.min(heroFrames - 1, Math.floor(t / heroAnimSpeed));
+}
+
+function pickHero(clientX: number, clientY: number): Hero | null {
+  const el = canvas.value; if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  // Iterate heroes in reverse draw order for hit priority (later heroes potentially visually above)
+  for (let i = heroes.length - 1; i >= 0; i--) {
+    const h = heroes[i]!;
+    const {x: sx, y: sy} = heroWorldToScreen(h);
+    const sameTile = heroes.filter(o => o.q === h.q && o.r === h.r);
+    const layout = computeTileHeroOffsets(sameTile);
+    const pos = layout[h.id] || {x:0,y:0};
+    const left = sx - (heroFrameSize * heroZoom)/2 + pos.x - (heroFrameSize / 2);
+    const top = sy - (heroFrameSize * 2) + (heroFrameSize/2) + pos.y;
+    const w = heroFrameSize * heroZoom;
+    const hH = heroFrameSize * heroZoom;
+    if (x < left || x > left + w || y < top || y > top + hH) continue;
+    const localX = Math.floor((x - left) / heroZoom);
+    const localY = Math.floor((y - top) / heroZoom);
+    if (localX < 0 || localX >= heroFrameSize || localY < 0 || localY >= heroFrameSize) continue;
+    const frameIndex = lastHeroFrame;
+    const masks = heroMasks[h.avatar];
+    if (!masks) continue;
+    const mask = masks[frameIndex];
+    if (!mask) continue;
+    if (mask[localY * heroFrameSize + localX]) return h;
+  }
+  return null;
+}
+
 function handleClick(e: PointerEvent) {
   if (isPaused()) return; // ignore clicks while paused
   if (dragged) return;
+  const hero = pickHero(e.clientX, e.clientY);
+  if (hero) {
+    selectHero(hero, false); // focus & select
+    hoveredHero.value = hero; // ensure hover state matches after click
+    emit('hero-click', hero);
+    return;
+  }
+
+  // ...existing tile picking logic...
   const tile = pickTile(e.clientX, e.clientY);
   if (!tile) return;
   const now = performance.now();
-  if (now - lastClickTime < 300) {
+  if ((now - lastClickTime) < 300) {
     emit('tile-doubleclick', tile);
     lastClickTime = 0;
     return;
@@ -293,18 +445,30 @@ function handleClick(e: PointerEvent) {
   if (tile !== hoveredTile.value) hoveredTile.value = tile;
 
   emit('tile-click', tile);
+
+  // deselect any selected hero on tile click
+  selectHero(null, false);
 }
 
 // Update hovered tile based on pointer event
 function updateHover(e: PointerEvent) {
-  if (isPaused()) { // clear hover while paused
+  if (isPaused()) {
     if (hoveredTile.value) hoveredTile.value = null;
+    if (hoveredHero.value) hoveredHero.value = null;
     return;
   }
   if (dragging) {
     if (hoveredTile.value) hoveredTile.value = null;
+    if (hoveredHero.value) hoveredHero.value = null;
     return;
   }
+  const hero = pickHero(e.clientX, e.clientY);
+  if (hero) {
+    if (hoveredTile.value) hoveredTile.value = null;
+    hoveredHero.value = hero;
+    return;
+  }
+  hoveredHero.value = null;
   const tile = pickTile(e.clientX, e.clientY);
   if (tile !== hoveredTile.value) hoveredTile.value = tile;
 }
@@ -322,8 +486,115 @@ function adaptiveCameraRadius() {
   updateCameraRadius(targetRadius, inner);
 }
 
+onBeforeUnmount(() => {
+  if (rafId) cancelAnimationFrame(rafId);
+  window.removeEventListener('resize', resizeCanvas);
+  window.removeEventListener('orientationchange', resizeCanvas);
+  window.removeEventListener('keydown', keyDown);
+  window.removeEventListener('keyup', keyUp);
+  const el = container.value;
+  if (el) {
+    el.removeEventListener('pointerdown', pointerDown as any);
+    // Remove wrapped pointermove handler (cannot reference original directly, so clear all by cloning?)
+    // Simplicity: replace with nullifying hoveredTile; not critical for unmount but ensure pointer events cease.
+    el.removeEventListener('pointermove', pointerMove as any);
+    el.removeEventListener('pointerup', pointerUp as any);
+    el.removeEventListener('pointercancel', pointerCancel as any);
+    el.removeEventListener('pointerleave', pointerUp as any);
+  }
+  stopCameraAnimation();
+});
+
+// Hero rendering configuration (could move to config later)
+const heroFrameSize = 32; // single frame size (assuming square)
+const heroFrames = 2; // placeholder number of frames in santa spritesheet
+const heroAnimSpeed = 160; // ms per frame
+const heroAnimCooldown = 600; // cooldown at loop end
+const heroZoom = 2; // scale heroes relative to tile size
+const heroRow = 8; // spritesheet row used previously in <Sprite :row="8"/>
+let lastHeroFrame = 0; // persist frame while paused
+let heroAnimStart = performance.now();
+
+// Hero image cache
+const heroImages: Record<string, HTMLImageElement> = {};
+let heroImagesLoaded = false;
+// Per-avatar frame alpha masks (Uint8Array width*height with 1=opaque,0=transparent)
+const heroMasks: Record<string, Uint8Array[]> = {};
+// Edge pixel coordinate lists per frame for fast outline drawing
+const heroEdgePixels: Record<string, {x:number;y:number}[][]> = {};
+
+function buildHeroMasks(img: HTMLImageElement, avatar: string) {
+  if (heroMasks[avatar]) return; // already built
+  const frames = heroFrames;
+  const masks: Uint8Array[] = [];
+  const edges: {x:number;y:number}[][] = [];
+  for (let f = 0; f < frames; f++) {
+    const sx = f * heroFrameSize;
+    const sy = heroRow * heroFrameSize;
+    const c = document.createElement('canvas');
+    c.width = heroFrameSize;
+    c.height = heroFrameSize;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, sx, sy, heroFrameSize, heroFrameSize, 0, 0, heroFrameSize, heroFrameSize);
+    const data = g.getImageData(0, 0, heroFrameSize, heroFrameSize);
+    const mask = new Uint8Array(heroFrameSize * heroFrameSize);
+    const edgeList: {x:number;y:number}[] = [];
+    for (let y = 0; y < heroFrameSize; y++) {
+      for (let x = 0; x < heroFrameSize; x++) {
+        const idx = (y * heroFrameSize + x) * 4;
+        const alpha = data.data[idx + 3];
+        if (alpha > 20) { // threshold
+          mask[y * heroFrameSize + x] = 1;
+        }
+      }
+    }
+    // Build edge pixels (if opaque and any 4-neighbor is transparent)
+    for (let y = 0; y < heroFrameSize; y++) {
+      for (let x = 0; x < heroFrameSize; x++) {
+        if (!mask[y * heroFrameSize + x]) continue;
+        let isEdge = false;
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx; const ny = y + dy;
+          if (nx < 0 || nx >= heroFrameSize || ny < 0 || ny >= heroFrameSize || !mask[ny * heroFrameSize + nx]) { isEdge = true; break; }
+        }
+        if (isEdge) edgeList.push({x,y});
+      }
+    }
+    masks.push(mask);
+    edges.push(edgeList);
+  }
+  heroMasks[avatar] = masks;
+  heroEdgePixels[avatar] = edges;
+}
+
+function loadHeroImages(): Promise<void> {
+  // Collect unique avatar sources
+  const unique = Array.from(new Set(heroes.map(h => h.avatar)));
+  const promises = unique.map(src => new Promise<void>(resolve => {
+    if (heroImages[src]) { buildHeroMasks(heroImages[src], src); resolve(); return; }
+    const img = new Image();
+    img.onload = () => { heroImages[src] = img; buildHeroMasks(img, src); resolve(); };
+    img.src = src;
+  }));
+  return Promise.all(promises).then(() => { heroImagesLoaded = true; });
+}
+
+function heroWorldToScreen(hero: Hero) { // retained for click hit-testing
+  const el = canvas.value;
+  if (!el) return {x: 0, y: 0, off: true};
+  const camPx = axialToPixel(camera.q, camera.r);
+  const cx = el.width / dpr / 2;
+  const cy = el.height / dpr / 2;
+  const heroPx = axialToPixel(hero.q, hero.r);
+  const screenX = heroPx.x - camPx.x + cx;
+  const screenY = heroPx.y - camPx.y + cy;
+  return {x: screenX, y: screenY, off: false};
+}
+
 onMounted(async () => {
   await loadImages();
+  await loadHeroImages();
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('orientationchange', resizeCanvas);
@@ -354,76 +625,6 @@ onMounted(async () => {
   animateCamera();
   animationLoop();
 });
-
-onBeforeUnmount(() => {
-  if (rafId) cancelAnimationFrame(rafId);
-  window.removeEventListener('resize', resizeCanvas);
-  window.removeEventListener('orientationchange', resizeCanvas);
-  window.removeEventListener('keydown', keyDown);
-  window.removeEventListener('keyup', keyUp);
-  const el = container.value;
-  if (el) {
-    el.removeEventListener('pointerdown', pointerDown as any);
-    // Remove wrapped pointermove handler (cannot reference original directly, so clear all by cloning?)
-    // Simplicity: replace with nullifying hoveredTile; not critical for unmount but ensure pointer events cease.
-    el.removeEventListener('pointermove', pointerMove as any);
-    el.removeEventListener('pointerup', pointerUp as any);
-    el.removeEventListener('pointercancel', pointerCancel as any);
-    el.removeEventListener('pointerleave', pointerUp as any);
-  }
-  stopCameraAnimation();
-});
-
-// Hero rendering configuration (could move to config later)
-const heroFrameSize = 32; // single frame size (assuming square)
-const heroFrames = 2; // placeholder number of frames in santa spritesheet
-const heroAnimSpeed = 160; // ms per frame
-const heroAnimCooldown = 600; // cooldown at loop end
-const heroZoom = 2; // scale heroes relative to tile size
-
-function heroWorldToScreen(hero: Hero) {
-  const el = canvas.value;
-  if (!el) return {x: 0, y: 0, off: true};
-  const camPx = axialToPixel(camera.q, camera.r);
-  const cx = el.width / dpr / 2;
-  const cy = el.height / dpr / 2;
-  const heroPx = axialToPixel(hero.q, hero.r);
-  const screenX = heroPx.x - camPx.x + cx;
-  const screenY = heroPx.y - camPx.y + cy;
-  return {x: screenX, y: screenY, off: false};
-}
-
-const visibleHeroes = computed(() => {
-  const list: { id: string; style: Record<string, string>; avatar: string; hero: Hero }[] = [];
-  const radius = camera.radius + 1; // small margin
-  for (const h of heroes) {
-    const dist = hexDistance(camera, h);
-    if(h.q === 0 && h.r === 0) continue; // skip hero's at town center (idle)
-    if (dist > radius) continue;
-    const {x, y, off} = heroWorldToScreen(h);
-    if (off) continue;
-    const sameTileHeroes = heroes.filter(o => o.q === h.q && o.r === h.r);
-    const indexInTile = sameTileHeroes.findIndex(o => o.id === h.id);
-    const stackOffsetX = (indexInTile - (sameTileHeroes.length - 1) / 2) * (heroFrameSize * heroZoom * 0.4);
-    const style: Record<string, string> = {
-      left: (x - (heroFrameSize * heroZoom) / 2 + stackOffsetX) - (heroFrameSize / 2) + 'px',
-      top: y - (heroFrameSize * 2) + 'px',
-      zIndex: '50',
-      pointerEvents: 'auto',
-      // opacity based on distance fade
-      opacity: (1 - Math.max(0, (dist - camera.innerRadius) / (radius - camera.innerRadius))).toString()
-    };
-    list.push({id: h.id, style, avatar: h.avatar, hero: h});
-  }
-  return list;
-});
-
-function onHeroClick(heroId: string) {
-  if (isPaused()) return; // no camera jump while paused
-  const h = heroes.find(h => h.id === heroId);
-  if (!h) return;
-  moveCamera(h.q, h.r);
-}
 
 </script>
 
