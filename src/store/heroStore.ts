@@ -213,6 +213,7 @@ export function resetHeroes() {
     for(const hero of heroes) {
         hero.q = 0;
         hero.r = 0;
+        hero.facing = 'down';
     }
     persistHeroes();
 }
