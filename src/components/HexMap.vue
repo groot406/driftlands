@@ -41,6 +41,65 @@ import {isPaused} from '../store/uiStore';
 
 const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void; (e: 'hero-click', hero: Hero): void }>();
 
+// ---------------------------------------------------------------------------
+// Render & animation configuration (grouped)
+// ---------------------------------------------------------------------------
+const TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE; // unified tile draw size
+const heroFrameSize = 32; // single frame size (square)
+const heroFrames = 2; // number of frames in avatar spritesheet row
+const heroAnimSpeed = 160; // ms per frame during active cycle
+const heroAnimCooldown = 600; // ms pause holding last frame
+const heroZoom = 2; // scale applied to hero rendering
+const heroRow = 8; // spritesheet row used for avatars
+const HERO_OFFSET_SPACING = 14; // fallback horizontal spacing (bugfix for undefined hSpacing)
+
+// Helper: compute fade value (0..1) based on distance within camera radii
+function computeFade(dist: number, inner: number, radius: number): number {
+  const span = Math.max(3, (radius - inner));
+  let fade = 1 - Math.max(0, (dist - inner) / span);
+  fade = Math.min(1, Math.max(0, fade));
+  return fade;
+}
+
+// Coordinate helpers
+function getCanvasCenter(el: HTMLCanvasElement, dpr: number) {
+  return {cx: el.width / dpr / 2, cy: el.height / dpr / 2};
+}
+function worldToScreen(q: number, r: number, el: HTMLCanvasElement, dpr: number) {
+  const camPx = axialToPixel(camera.q, camera.r);
+  const {cx, cy} = getCanvasCenter(el, dpr);
+  const tilePx = axialToPixel(q, r);
+  return {x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy};
+}
+function screenToWorld(x: number, y: number, el: HTMLCanvasElement, dpr: number) {
+  const camPx = axialToPixel(camera.q, camera.r);
+  const {cx, cy} = getCanvasCenter(el, dpr);
+  const worldX = x - (cx - camPx.x);
+  const worldY = y - (cy - camPx.y);
+  return {worldX, worldY};
+}
+
+// Draw hex highlight (hover, path) with configurable styles
+function drawHexHighlight(ctx: CanvasRenderingContext2D, q: number, r: number, fillStyle: string | null, strokeStyle: string | null, opacity: number) {
+  const {x, y} = axialToPixel(q, r);
+  ctx.globalAlpha = opacity;
+  ctx.beginPath();
+  drawHexPath(ctx, x, y);
+  if (fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+  if (strokeStyle) {
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Cache of per-tile hero layout for current frame (key = axialKey)
+let currentHeroLayouts: Map<string, Record<string, {x:number;y:number}>> = new Map();
+
 const container = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const ctxRef = shallowRef<CanvasRenderingContext2D | null>(null);
@@ -60,8 +119,6 @@ interface ImageMap {
 const images: ImageMap = {};
 const imgSources: Record<string, string> = {forest, plains, mountain, water, mine, ruin, towncenter};
 let imagesLoaded = false;
-
-const TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE; // unified tile draw size
 
 const maskedImages: Record<string, HTMLCanvasElement> = {};
 
@@ -210,8 +267,9 @@ function computeTileHeroOffsets(tileHeroes: Hero[]): Record<string, {x: number; 
   }
 
   // Generic horizontal compression for other counts (previous behavior)
+  const span = count - 1;
   for (let i = 0; i < count; i++) {
-    const offset = (i - (count - 1) / 2) * hSpacing;
+    const offset = (i - span / 2) * HERO_OFFSET_SPACING;
     result[tileHeroes[i].id] = {x: offset, y: 0};
   }
   return result;
@@ -220,25 +278,35 @@ function computeTileHeroOffsets(tileHeroes: Hero[]): Record<string, {x: number; 
 function drawHeroes(targetCtx: CanvasRenderingContext2D) {
   if (!heroImagesLoaded) return; // skip until loaded
   const radius = camera.radius + 1; // margin similar to overlay logic
-  const span = Math.max(3, (camera.radius - camera.innerRadius));
   const now = performance.now();
   let frameIndex = lastHeroFrame;
   if (!isPaused()) {
     frameIndex = computeHeroFrame(now);
     lastHeroFrame = frameIndex;
   }
+
+  // Rebuild tile hero layouts cache for current frame using grouping (O(n))
+  const tileHeroesMap = new Map<string, Hero[]>();
+  for (const h of heroes) {
+    const key = axialKey(h.q, h.r);
+    let list = tileHeroesMap.get(key);
+    if (!list) { list = []; tileHeroesMap.set(key, list); }
+    list.push(h);
+  }
+  currentHeroLayouts = new Map();
+  for (const [key, list] of tileHeroesMap) {
+    currentHeroLayouts.set(key, computeTileHeroOffsets(list));
+  }
+
   for (const h of heroes) {
     const dist = hexDistance(camera, h);
     if (dist > radius) continue;
     const img = heroImages[h.avatar];
     if (!img) continue;
 
-    // Build layout offsets for this tile once per hero (small tile sizes so acceptable; could cache if needed)
-    const sameTile = heroes.filter(o => o.q === h.q && o.r === h.r);
-    const layout = computeTileHeroOffsets(sameTile);
+    const layout = currentHeroLayouts.get(axialKey(h.q, h.r)) || {};
     const pos = layout[h.id] || {x:0,y:0};
-    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-    fade = Math.min(1, Math.max(0, fade));
+    const fade = computeFade(dist, camera.innerRadius, camera.radius);
     const opacity = fade;
     const {x, y} = axialToPixel(h.q, h.r);
     const dw = heroFrameSize * heroZoom;
@@ -273,8 +341,7 @@ function drawHeroes(targetCtx: CanvasRenderingContext2D) {
 function drawTiles(targetCtx: CanvasRenderingContext2D) {
   const camPx = axialToPixel(camera.q, camera.r);
   const el = canvas.value!;
-  const cx = el.width / dpr / 2;
-  const cy = el.height / dpr / 2;
+  const {cx, cy} = getCanvasCenter(el, dpr);
   const translateX = cx - camPx.x;
   const translateY = cy - camPx.y;
   targetCtx.save();
@@ -283,11 +350,9 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
   const cq = Math.round(camera.q);
   const cr = Math.round(camera.r);
   const tiles = getTilesInRadius(cq, cr, camera.radius);
-  const span = Math.max(3, (camera.radius - camera.innerRadius));
   for (const t of tiles) {
     const dist = hexDistance(camera, t);
-    let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-    fade = Math.min(1, Math.max(0, fade));
+    const fade = computeFade(dist, camera.innerRadius, camera.radius);
     const opacity = fade * fade;
     const {x, y} = axialToPixel(t.q, t.r);
     if (t.discovered) {
@@ -313,54 +378,34 @@ function drawTiles(targetCtx: CanvasRenderingContext2D) {
     }
   }
 
-  // Path highlight (draw after base tiles, before hover + heroes)
+  // Path highlight
   if (pathCoords.value.length) {
     for (let i = 0; i < pathCoords.value.length; i++) {
       const pc = pathCoords.value[i];
       const dist = hexDistance(camera, pc);
-      let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-      fade = Math.min(1, Math.max(0, fade));
+      const fade = computeFade(dist, camera.innerRadius, camera.radius);
       const opacity = fade * fade;
-      // skip if outside camera radius for safety
       if (hexDistance(camera, pc) > camera.radius + 1) continue;
-      const {x, y} = axialToPixel(pc.q, pc.r);
-      targetCtx.globalAlpha = opacity;
-      targetCtx.lineWidth = 2;
-      // Different color for final destination
       const isLast = i === pathCoords.value.length - 1;
-      targetCtx.strokeStyle = isLast ? '#dbedff' : '#daf0ff';
-      targetCtx.fillStyle = isLast ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.5)';
-      targetCtx.beginPath();
-      drawHexPath(targetCtx, x, y);
-      targetCtx.fill();
-      targetCtx.stroke();
+      drawHexHighlight(targetCtx, pc.q, pc.r,
+        isLast ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.5)',
+        isLast ? '#dbedff' : '#daf0ff',
+        opacity);
     }
   }
 
-  // Hover highlight (draw last so it sits above hero visuals)
+  // Hover highlight
   if (hoveredTile.value) {
     const ht = hoveredTile.value;
-    // Only highlight if within current camera radius (avoid stale refs)
     if (hexDistance(camera, ht) <= camera.radius + 1) {
-      const {x, y} = axialToPixel(ht.q, ht.r);
-
       const dist = hexDistance(camera, ht);
-      let fade = 1 - Math.max(0, (dist - camera.innerRadius) / span);
-      fade = Math.min(1, Math.max(0, fade));
+      const fade = computeFade(dist, camera.innerRadius, camera.radius);
       const opacity = fade * fade;
-
-      targetCtx.globalAlpha = opacity; // ensure full opacity
-      targetCtx.lineWidth = 2; // stroke thickness in CSS px units (scaled by dpr earlier)
-      targetCtx.strokeStyle = '#d0b23d'; // highlight outline color
-      targetCtx.fillStyle = 'rgba(255, 227, 122, 0.15)'; // translucent fill
-      targetCtx.beginPath();
-      drawHexPath(targetCtx, x, y);
-      targetCtx.fill();
-      targetCtx.stroke();
+      drawHexHighlight(targetCtx, ht.q, ht.r, 'rgba(255, 227, 122, 0.15)', '#d0b23d', opacity);
     }
   }
 
-  // Draw heroes within same transformed context so world coords align
+  // Draw heroes
   drawHeroes(targetCtx);
 
   targetCtx.restore();
@@ -379,12 +424,10 @@ function draw() {
   const brightness = blurStrength > 0 ? 1 - Math.min(0.15, blurStrength * 0.02) : 1;
 
   if (blurStrength < 0.4 || !layerCtx) {
-    // Fast path: draw directly without offscreen compositing
     drawTiles(ctx);
     return;
   }
 
-  // Offscreen compositing for smoother global blur
   layerCtx!.clearRect(0, 0, layerCanvas!.width, layerCanvas!.height);
   drawTiles(layerCtx!);
 
@@ -404,15 +447,10 @@ function pickTile(clientX: number, clientY: number): Tile | null {
   const el = canvas.value;
   if (!el) return null;
   const rect = el.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
-  const camPx = axialToPixel(camera.q, camera.r);
-  const cx = el.width / dpr / 2;
-  const cy = el.height / dpr / 2;
-  const worldX = (x) - (cx - camPx.x);
-  const worldY = (y) - (cy - camPx.y);
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  const {worldX, worldY} = screenToWorld(sx, sy, el, dpr);
   const {q, r} = pixelToAxial(worldX, worldY);
-
   const results = getTilesInRadius(q, r, 0);
   return results.length ? results[0]! : null;
 }
@@ -430,12 +468,10 @@ function pickHero(clientX: number, clientY: number): Hero | null {
   const rect = el.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
-  // Iterate heroes in reverse draw order for hit priority (later heroes potentially visually above)
   for (let i = heroes.length - 1; i >= 0; i--) {
     const h = heroes[i]!;
-    const {x: sx, y: sy} = heroWorldToScreen(h);
-    const sameTile = heroes.filter(o => o.q === h.q && o.r === h.r);
-    const layout = computeTileHeroOffsets(sameTile);
+    const {x: sx, y: sy} = worldToScreen(h.q, h.r, el, dpr);
+    const layout = currentHeroLayouts.get(axialKey(h.q, h.r)) || computeTileHeroOffsets(heroes.filter(o => o.q === h.q && o.r === h.r));
     const pos = layout[h.id] || {x:0,y:0};
     const left = sx - (heroFrameSize * heroZoom)/2 + pos.x - (heroFrameSize / 2);
     const top = sy - (heroFrameSize * 2) + (heroFrameSize/2) + pos.y;
@@ -516,7 +552,6 @@ function adaptiveCameraRadius() {
   if (!el) return;
   const w = el.clientWidth;
   const h = el.clientHeight;
-  // Heuristic: radius ~ proportional to diagonal / tile pixel span
   const diag = Math.min(w, h);
   const tilePixelSpan = HEX_SIZE * 2; // approximate diameter
   const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
@@ -524,7 +559,6 @@ function adaptiveCameraRadius() {
   updateCameraRadius(targetRadius, inner);
 }
 
-// Hex math utilities (retain for other uses)
 function axialDistance(aQ:number,aR:number,bQ:number,bR:number){
   const dq = Math.abs(aQ - bQ);
   const dr = Math.abs(aR - bR);
@@ -532,7 +566,6 @@ function axialDistance(aQ:number,aR:number,bQ:number,bR:number){
   return Math.max(dq, dr, ds);
 }
 
-// A* pathfinding respecting walkable terrain
 const AXIAL_DELTAS: Array<[number, number]> = [ [0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0] ];
 function isWalkable(q:number,r:number): boolean {
   const t = tileIndex[axialKey(q,r)];
@@ -544,10 +577,8 @@ function isWalkable(q:number,r:number): boolean {
 interface PathNode { q:number; r:number; g:number; f:number; parent?: PathNode }
 function findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number, maxNodes=9999): {q:number;r:number}[] {
   if (startQ===goalQ && startR===goalR) return [];
-
-  // If goal not walkable, abort (future: search nearest walkable around goal)
   if (!isWalkable(goalQ, goalR)) return [];
-  if (!isWalkable(startQ, startR)) return []; // shouldn't happen normally
+  if (!isWalkable(startQ, startR)) return [];
   const open: PathNode[] = [];
   const openMap = new Map<string, PathNode>();
   const closed = new Set<string>();
@@ -557,14 +588,12 @@ function findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,
   let iterations = 0;
   while (open.length && iterations < maxNodes) {
     iterations++;
-    // Pick node with lowest f
     let bestIndex = 0; let best = open[0];
     for (let i=1;i<open.length;i++){ if (open[i].f < best.f){ best = open[i]; bestIndex = i; } }
     const current = best; open.splice(bestIndex,1); openMap.delete(axialKey(current.q,current.r));
     const curKey = axialKey(current.q,current.r);
     closed.add(curKey);
     if (current.q === goalQ && current.r === goalR) {
-      // Reconstruct path
       const rev: {q:number;r:number}[] = [];
       let n: PathNode | undefined = current;
       while (n && !(n.q === startQ && n.r === startR)) { rev.push({q:n.q,r:n.r}); n = n.parent; }
@@ -575,8 +604,8 @@ function findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,
       const nq = current.q + dq; const nr = current.r + dr;
       const key = axialKey(nq,nr);
       if (closed.has(key)) continue;
-      if (!isWalkable(nq,nr) && !(nq===goalQ && nr===goalR)) continue; // allow stepping onto goal only if walkable already handled
-      const tentativeG = current.g + 1; // uniform cost
+      if (!isWalkable(nq,nr) && !(nq===goalQ && nr===goalR)) continue;
+      const tentativeG = current.g + 1;
       let node = openMap.get(key);
       if (!node) {
         node = {q:nq, r:nr, g:tentativeG, f: tentativeG + axialDistance(nq,nr,goalQ,goalR), parent: current};
@@ -588,7 +617,7 @@ function findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,
       }
     }
   }
-  return []; // no path found within limit
+  return [];
 }
 
 function updatePath() {
@@ -598,15 +627,11 @@ function updatePath() {
   if (!hero) return;
   const target = hoveredTile.value;
   if (!target) return;
-
-  // if target is not walkable, clear path
   if (!isWalkable(target.q, target.r)) return;
-
   const path = findWalkablePath(hero.q, hero.r, target.q, target.r);
-  if (path.length) pathCoords.value = path; // already excludes origin
+  if (path.length) pathCoords.value = path;
 }
 
-// Recompute path when selection changes
 watch(selectedHeroId, () => updatePath());
 
 onBeforeUnmount(() => {
@@ -618,8 +643,6 @@ onBeforeUnmount(() => {
   const el = container.value;
   if (el) {
     el.removeEventListener('pointerdown', pointerDown as any);
-    // Remove wrapped pointermove handler (cannot reference original directly, so clear all by cloning?)
-    // Simplicity: replace with nullifying hoveredTile; not critical for unmount but ensure pointer events cease.
     el.removeEventListener('pointermove', pointerMove as any);
     el.removeEventListener('pointerup', pointerUp as any);
     el.removeEventListener('pointercancel', pointerCancel as any);
@@ -628,26 +651,17 @@ onBeforeUnmount(() => {
   stopCameraAnimation();
 });
 
-// Hero rendering configuration (could move to config later)
-const heroFrameSize = 32; // single frame size (assuming square)
-const heroFrames = 2; // placeholder number of frames in santa spritesheet
-const heroAnimSpeed = 160; // ms per frame
-const heroAnimCooldown = 600; // cooldown at loop end
-const heroZoom = 2; // scale heroes relative to tile size
-const heroRow = 8; // spritesheet row used previously in <Sprite :row="8"/>
+// Hero animation state
 let lastHeroFrame = 0; // persist frame while paused
 let heroAnimStart = performance.now();
 
-// Hero image cache
 const heroImages: Record<string, HTMLImageElement> = {};
 let heroImagesLoaded = false;
-// Per-avatar frame alpha masks (Uint8Array width*height with 1=opaque,0=transparent)
 const heroMasks: Record<string, Uint8Array[]> = {};
-// Edge pixel coordinate lists per frame for fast outline drawing
 const heroEdgePixels: Record<string, {x:number;y:number}[][]> = {};
 
 function buildHeroMasks(img: HTMLImageElement, avatar: string) {
-  if (heroMasks[avatar]) return; // already built
+  if (heroMasks[avatar]) return;
   const frames = heroFrames;
   const masks: Uint8Array[] = [];
   const edges: {x:number;y:number}[][] = [];
@@ -666,17 +680,16 @@ function buildHeroMasks(img: HTMLImageElement, avatar: string) {
       for (let x = 0; x < heroFrameSize; x++) {
         const idx = (y * heroFrameSize + x) * 4;
         const alpha = data.data[idx + 3];
-        if (alpha > 20) { // threshold
+        if (alpha > 20) {
           mask[y * heroFrameSize + x] = 1;
         }
       }
     }
-    // Build edge pixels (if opaque and any 4-neighbor is transparent)
     for (let y = 0; y < heroFrameSize; y++) {
       for (let x = 0; x < heroFrameSize; x++) {
         if (!mask[y * heroFrameSize + x]) continue;
         let isEdge = false;
-        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]] as const;
         for (const [dx, dy] of dirs) {
           const nx = x + dx; const ny = y + dy;
           if (nx < 0 || nx >= heroFrameSize || ny < 0 || ny >= heroFrameSize || !mask[ny * heroFrameSize + nx]) { isEdge = true; break; }
@@ -692,7 +705,6 @@ function buildHeroMasks(img: HTMLImageElement, avatar: string) {
 }
 
 function loadHeroImages(): Promise<void> {
-  // Collect unique avatar sources
   const unique = Array.from(new Set(heroes.map(h => h.avatar)));
   const promises = unique.map(src => new Promise<void>(resolve => {
     if (heroImages[src]) { buildHeroMasks(heroImages[src], src); resolve(); return; }
@@ -703,16 +715,11 @@ function loadHeroImages(): Promise<void> {
   return Promise.all(promises).then(() => { heroImagesLoaded = true; });
 }
 
-function heroWorldToScreen(hero: Hero) { // retained for click hit-testing
+function heroWorldToScreen(hero: Hero) {
   const el = canvas.value;
   if (!el) return {x: 0, y: 0, off: true};
-  const camPx = axialToPixel(camera.q, camera.r);
-  const cx = el.width / dpr / 2;
-  const cy = el.height / dpr / 2;
-  const heroPx = axialToPixel(hero.q, hero.r);
-  const screenX = heroPx.x - camPx.x + cx;
-  const screenY = heroPx.y - camPx.y + cy;
-  return {x: screenX, y: screenY, off: false};
+  const pos = worldToScreen(hero.q, hero.r, el, dpr);
+  return {x: pos.x, y: pos.y, off: false};
 }
 
 onMounted(async () => {
@@ -738,17 +745,14 @@ onMounted(async () => {
     }, {passive: false});
     el.addEventListener('pointercancel', () => {
       pointerCancel();
-      //hoveredTile.value = null;
     }, {passive: false});
     el.addEventListener('pointerleave', () => {
       pointerUp();
-      //hoveredTile.value = null;
     }, {passive: false});
   }
   animateCamera();
   animationLoop();
 });
-
 </script>
 
 <style scoped>
