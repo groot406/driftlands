@@ -1,5 +1,4 @@
 import {reactive} from 'vue';
-import {ensureTileExists, discoverTile} from '../core/world';
 import {moveCamera} from '../core/camera';
 
 export interface HeroStats {
