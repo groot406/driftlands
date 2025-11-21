@@ -79,7 +79,12 @@ let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0;
 const samples: { t: number; x: number; y: number }[] = [];
 
 async function clampCameraTargets() {
-    const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2);
+    const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
+    if(maxRad < 0) {
+        camera.targetQ = 0;
+        camera.targetR = 0;
+        return;
+    }
     const q = camera.targetQ;
     const r = camera.targetR;
     const s = -q - r;
@@ -137,7 +142,8 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
         if (!mouseDownRef.value) return;
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
-        if (!dragging) {
+        const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
+        if (!dragging && maxRad >= 0) {
             const dist2 = (e.clientX - dragStartX) ** 2 + (e.clientY - dragStartY) ** 2;
             if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) dragging = true;
             if (dragging) dragged = true;
