@@ -34,6 +34,7 @@ loadWorld(store.tiles);
 
 <style>
 body, html {
+  background: black;
   overflow:hidden;
 }
 </style>
