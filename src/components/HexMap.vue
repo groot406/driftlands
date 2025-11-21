@@ -306,8 +306,7 @@ function drawHeroes(targetCtx: CanvasRenderingContext2D) {
 
     const layout = currentHeroLayouts.get(axialKey(h.q, h.r)) || {};
     const pos = layout[h.id] || {x:0,y:0};
-    const fade = computeFade(dist, camera.innerRadius, camera.radius);
-    const opacity = fade;
+    const opacity = computeFade(dist, camera.innerRadius, camera.radius);
     const {x, y} = axialToPixel(h.q, h.r);
     const dw = heroFrameSize * heroZoom;
     const dh = heroFrameSize * heroZoom;
