@@ -85,7 +85,7 @@ const worldStyle = computed(() => {
   }
 
   // Slight brightness reduction when moving fast to compensate blur washout
-  const brightness = blur > 0 ? 1 - Math.min(0.15, blur * 0.015) : 1;
+  const brightness = blur > 0 ? 1 - Math.min(0.15, blur * 0.025) : 1;
   return {
     transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`,
     filter: blur > 0 ? `blur(${blur.toFixed(2)}px) brightness(${brightness.toFixed(2)})` : '',
