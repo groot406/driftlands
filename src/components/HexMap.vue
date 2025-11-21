@@ -72,7 +72,25 @@ function getPixel(tile: Tile) {
 
 const worldStyle = computed(() => {
   const camPx = axialToPixel(camera.q, camera.r);
-  return {transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`};
+  // Motion blur radius (px) scaled from camera.speed (axial units/sec)
+  // Rough heuristic: convert axial speed to pixel speed using X factor, clamp
+  const pixelSpeed = camera.speed * (HEX_SIZE * 0.9); // scale factor heuristic
+  const blur = Math.min(12, Math.max(0, (pixelSpeed - 700) * 0.01)); // start after threshold
+
+  if(pixelSpeed < 700) {
+    return {
+      transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`,
+      willChange: 'transform'
+    } as CSSProperties;
+  }
+
+  // Slight brightness reduction when moving fast to compensate blur washout
+  const brightness = blur > 0 ? 1 - Math.min(0.15, blur * 0.015) : 1;
+  return {
+    transform: `translate(${viewport.cx - camPx.x}px, ${viewport.cy - camPx.y}px)`,
+    filter: blur > 0 ? `blur(${blur.toFixed(2)}px) brightness(${brightness.toFixed(2)})` : '',
+    willChange: 'transform, filter'
+  } as CSSProperties;
 });
 
 function tileStyle(tile: Tile): CSSProperties {
@@ -197,4 +215,3 @@ watch([worldVersion, camera], () => requestAnimationFrame(updateVisibleTiles));
   cursor: grabbing;
 }
 </style>
-

@@ -27,6 +27,8 @@ export interface CameraState {
     innerRadius: number;
     velQ: number;
     velR: number;
+    // instantaneous smoothed movement speed in axial units / second (used for motion blur)
+    speed: number;
 }
 
 export const camera: CameraState = reactive({
@@ -38,6 +40,7 @@ export const camera: CameraState = reactive({
     innerRadius: CAMERA_INNER_RADIUS,
     velQ: 0,
     velR: 0,
+    speed: 0,
 });
 
 export function axialToPixel(q: number, r: number) {
@@ -176,6 +179,8 @@ export function keyUp(e: KeyboardEvent) {
 // Animation loop
 let lastTime = performance.now();
 let rafId: number | null = null;
+let lastQ = camera.q;
+let lastR = camera.r;
 
 export async function animateCamera() {
     const now = performance.now();
@@ -226,6 +231,16 @@ export async function animateCamera() {
     if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
     if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
     clampCameraTargets();
+
+    // Compute instantaneous movement speed (axial units / second) then smooth it
+    const moveDQ = camera.q - lastQ;
+    const moveDR = camera.r - lastR;
+    const instSpeed = dt > 0 ? Math.sqrt(moveDQ * moveDQ + moveDR * moveDR) / dt : 0;
+    // Exponential smoothing for nicer blur transitions
+    camera.speed = camera.speed * 0.85 + instSpeed * 0.15;
+    lastQ = camera.q;
+    lastR = camera.r;
+
     rafId = requestAnimationFrame(animateCamera);
 }
 
@@ -242,4 +257,3 @@ export function moveCamera(q: number, r: number) {
     camera.targetQ = q;
     camera.targetR = r;
 }
-
