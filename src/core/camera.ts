@@ -152,8 +152,6 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
             const {dq, dr} = pixelDeltaToAxial(dx, dy);
             camera.targetQ -= dq; // subtract so map moves with pointer drag
             camera.targetR -= dr;
-            camera.q = camera.targetQ;
-            camera.r = camera.targetR;
             clampCameraTargets();
         }
         lastX = e.clientX;
@@ -227,6 +225,7 @@ export async function animateCamera() {
             dqInput /= mag;
             drInput /= mag;
         }
+
         camera.targetQ += dqInput * MOVE_SPEED * dt;
         camera.targetR += drInput * MOVE_SPEED * dt;
         clampCameraTargets();
