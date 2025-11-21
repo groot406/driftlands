@@ -65,7 +65,31 @@ function restoreHeroes() {
             hero.r = saved.r;
             hero.facing = saved.facing || hero.facing;
             if (saved.movement && Array.isArray(saved.movement.path) && saved.movement.path.length) {
-                hero.movement = saved.movement;
+                // Reconstruct movement with rebased startMs so elapsed time is non-negative.
+                const m: HeroMovementState = {
+                    path: saved.movement.path.slice(),
+                    origin: saved.movement.origin,
+                    target: saved.movement.target,
+                    startMs: performance.now(), // temporary, will adjust below
+                    stepMs: saved.movement.stepMs || 550,
+                };
+                // If hero already at target, discard movement
+                if (hero.q === m.target.q && hero.r === m.target.r) {
+                    hero.movement = undefined;
+                    continue;
+                }
+                // Determine progress index based on current hero position within path.
+                let progressIndex = m.path.findIndex(p => p.q === hero.q && p.r === hero.r);
+                if (progressIndex < 0) {
+                    // If hero at origin treat as not yet started.
+                    progressIndex = (hero.q === m.origin.q && hero.r === m.origin.r) ? 0 : 0;
+                } else {
+                    // Hero already on path[progressIndex]; do not advance further.
+                }
+                // Rebase startMs so that (now - startMs) / stepMs ~= progressIndex completed.
+                const nowPerf = performance.now();
+                m.startMs = nowPerf - progressIndex * m.stepMs;
+                hero.movement = m;
             } else {
                 hero.movement = undefined;
             }
@@ -101,7 +125,7 @@ export function updateHeroMovements(now: number) {
             persistHeroes();
             continue;
         }
-        if (stepsAdvanced < 0) continue; // not started yet (shouldn't happen)
+        if (stepsAdvanced < 0) continue; // not started yet (shouldn't happen after rebase)
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue; // safety
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
