@@ -304,6 +304,7 @@ export function centerCamera() {
 export function moveCamera(q: number, r: number) {
     camera.targetQ = q;
     camera.targetR = r;
+    clampCameraTargets();
 }
 
 export function updateCameraRadius(radius: number, innerRadius?: number) {
