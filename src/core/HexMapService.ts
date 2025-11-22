@@ -4,6 +4,7 @@ import type {Tile} from './world';
 import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
+import { taskStore } from '../store/taskStore';
 
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
@@ -298,6 +299,36 @@ export class HexMapService {
         ctx.fillText(String(centerDist), x-2, y-2);
         ctx.restore();
       }
+      // NEW: active task highlight overlay (after drawing base tile)
+      const activeTasksForTile = taskStore.tasksByTile[t.id];
+      if (activeTasksForTile) {
+        // If any active task instances are still incomplete, draw a subtle pulsating border
+        let hasActive = false;
+        for (const taskId of Object.values(activeTasksForTile)) {
+          const inst = taskStore.taskIndex[taskId];
+          if (inst && inst.active && !inst.completedMs) { hasActive = true; break; }
+        }
+        if (hasActive) {
+          const pulse = (Math.sin(performance.now()/400) + 1) / 2; // 0..1
+          ctx.save();
+          ctx.globalAlpha = opacity * (0.5 + 0.4 * pulse);
+          ctx.beginPath();
+          const w = this.TILE_DRAW_SIZE; const h = this.TILE_DRAW_SIZE;
+          ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
+          ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+          ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+          ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
+          ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+          ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+          ctx.closePath();
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = `rgba(0,225,255, 1)`;
+          ctx.shadowColor = 'rgba(0,225,255,0.8)';
+          ctx.shadowBlur = 6 * pulse;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     }
 
     // Path highlight (iterate directly to avoid undefined index warnings)
@@ -360,7 +391,14 @@ export class HexMapService {
 
       // Determine activity based on movement state
       const remaining = h.movement ? (h.movement.path.length) : 0;
-      const activity = resolveActivity(remaining);
+      let activity = resolveActivity(remaining);
+      // NEW: if hero is on an active task, switch to attack animation
+      if (!h.movement && h.currentTaskId) {
+        const inst = taskStore.taskIndex[h.currentTaskId];
+        if (inst && inst.active && !inst.completedMs) {
+          activity = 'attack';
+        }
+      }
       const animName = heroAnimName(activity, h.facing);
       const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
       const elapsed = now - this._heroAnimStart;
@@ -567,3 +605,4 @@ export class HexMapService {
     };
   }
 }
+

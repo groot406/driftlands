@@ -43,6 +43,12 @@ function removeTask(inst: TaskInstance) {
             // could delete taskStore.tasksByTile[inst.tileId]
         }
     }
+    // NEW: detach any heroes that still reference this task
+    for (const hero of heroes) {
+        if (hero.currentTaskId === inst.id) {
+            hero.currentTaskId = undefined;
+        }
+    }
 }
 
 export function detachHeroFromCurrentTask(hero: Hero) {
