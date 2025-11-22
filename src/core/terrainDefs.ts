@@ -40,7 +40,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             forest: 40,
             plains: 10,
         },
-        moveCost: 3,
+        moveCost: 2.5,
     },
     plains: {
         color: '#16a34a',

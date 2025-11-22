@@ -73,6 +73,9 @@ export class HexMapService {
 
     private _tileAnimStart = performance.now();
 
+    // NEW: stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
+    private _sortedHeroes: Hero[] = [];
+
     // Pathfinding statics
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
 
@@ -267,9 +270,10 @@ export class HexMapService {
         const rect = this._canvas.getBoundingClientRect();
         const sx = screenX - rect.left;
         const sy = screenY - rect.top;
-        // Iterate in reverse to match draw stacking
-        for (let i = heroes.length - 1; i >= 0; i--) {
-            const h = heroes[i]!;
+        // Iterate in reverse of draw order so visually top hero is picked first
+        const layer = this._sortedHeroes.length ? this._sortedHeroes : heroes;
+        for (let i = layer.length - 1; i >= 0; i--) {
+            const h = layer[i]!;
             const {x, y} = this.worldToScreen(h.q, h.r);
             const layout = this._heroLayouts.get(axialKey(h.q, h.r)) || {};
             const pos = layout[h.id] || {x: 0, y: 0};
@@ -282,7 +286,6 @@ export class HexMapService {
             const localY = Math.floor((sy - top) / this.heroZoom);
             if (localX < 0 || localX >= this.heroFrameSize || localY < 0 || localY >= this.heroFrameSize) continue;
             const frameIndex = this._lastHeroFrame;
-            // Determine idle row for facing for pixel mask (better match than always down)
             const facingRowMap: Record<string, number> = {right: 2, left: 2, up: 5, down: 8};
             const row = facingRowMap[h.facing] ?? 8;
             const rowMasks = this._heroMasksByRow[h.avatar]?.[row];
@@ -636,7 +639,7 @@ export class HexMapService {
     private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, selectedHeroIdle: boolean) {
         if (!this._heroImagesLoaded) return;
         const radius = camera.radius + 1;
-        // Rebuild layout map
+        // Rebuild layout map (group heroes by tile first)
         const map = new Map<string, Hero[]>();
         for (const h of heroes) {
             const key = axialKey(h.q, h.r);
@@ -652,6 +655,9 @@ export class HexMapService {
 
         const now = performance.now();
 
+        // Build render records with interpolated positions so we can sort by vertical stacking (destY)
+        const renderRecords: Array<{ hero: Hero; dist: number; img: HTMLImageElement; pos: {x:number;y:number}; interp: {x:number;y:number}; destX: number; destY: number; opacity: number; activity: string; animRow: number; frameIndex: number; }> = [];
+
         for (const h of heroes) {
             const dist = hexDistance(camera, h);
             if (dist > radius) continue;
@@ -660,60 +666,67 @@ export class HexMapService {
             const layout = this._heroLayouts.get(axialKey(h.q, h.r)) || {};
             const pos = layout[h.id] || {x: 0, y: 0};
             const opacity = this.computeFade(dist, camera.innerRadius, camera.radius);
-            // --- Smooth interpolation between tiles ---
             const interp = this.getHeroInterpolatedPixelPosition(h, now);
             const x = interp.x;
             const y = interp.y;
             const destX = x - (this.heroFrameSize * this.heroZoom) / 2 + pos.x - (this.heroFrameSize / 2);
             const destY = y - (this.heroFrameSize * 2) + (this.heroFrameSize / 2) + pos.y;
+            let remaining = h.movement ? h.movement.path.length : 0;
+            let activity = resolveActivity(remaining);
+            if (!h.movement && h.currentTaskId) {
+                const inst = taskStore.taskIndex[h.currentTaskId];
+                if (inst && inst.active && !inst.completedMs) activity = 'attack';
+            }
+            const animName = heroAnimName(activity, h.facing);
+            const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
+            const elapsed = now - this._heroAnimStart;
+            const frames = anim.frames;
+            const frameDuration = anim.frameDuration;
+            const cycle = frames * frameDuration + (anim.cooldown || 0);
+            const inCycle = elapsed % cycle;
+            const frameIndex = (frames <= 1) ? 0 : (inCycle >= frames * frameDuration ? frames - 1 : Math.floor(inCycle / frameDuration));
+            this._lastHeroFrame = frameIndex; // keep updated (last processed frame suffices for picking accuracy)
+            renderRecords.push({hero: h, dist, img, pos, interp, destX, destY, opacity, activity, animRow: anim.row, frameIndex});
+        }
 
-            // NEW: drop shadow (draw before sprite)
+        // Sort by vertical stacking: smaller destY (visually higher) first so lower heroes (larger destY) draw last (on top)
+        renderRecords.sort((a, b) => {
+            if (a.destY !== b.destY) return a.destY - b.destY; // top-to-bottom
+            if (a.destX !== b.destX) return a.destX - b.destX; // left-to-right tie-break
+            return a.hero.id.localeCompare(b.hero.id); // stable final tie-break
+        });
+
+        // Store sorted hero order for picking (draw order ascending; picking iterates reversed to target topmost)
+        this._sortedHeroes = renderRecords.map(r => r.hero);
+
+        // Draw pass
+        for (const rec of renderRecords) {
+            const {hero: h, img, pos, interp, destX, destY, opacity, frameIndex, animRow} = rec;
+            const x = interp.x;
+            const y = interp.y;
+            // Shadow first
             ctx.save();
             const shadowScale = this.heroZoom;
             const shadowW = this.heroFrameSize * shadowScale * this.heroShadowWidthFactor;
             const shadowH = this.heroFrameSize * shadowScale * this.heroShadowHeightFactor;
-            // Base (ground) position roughly at tile center adjusted by offset; shift upward a bit to align under feet
             const baseX = x + pos.x - 15;
-            const baseY = y + pos.y + this.heroFrameSize * this.heroShadowYOffset; // y offset tune
-            ctx.globalAlpha = opacity * this.heroShadowOpacity; // incorporate camera fade
+            const baseY = y + pos.y + this.heroFrameSize * this.heroShadowYOffset;
+            ctx.globalAlpha = opacity * this.heroShadowOpacity;
             ctx.translate(baseX, baseY);
             ctx.beginPath();
             ctx.ellipse(0, 0, shadowW / 2.8, shadowH / 2.2, 0, 0, Math.PI * 2);
             const grad = ctx.createRadialGradient(0, 0, shadowH * 0.05, 0, 0, shadowW / 2);
             grad.addColorStop(0, 'rgba(0,0,0,0.8)');
             grad.addColorStop(0.8, 'rgba(0,0,0,0)');
-
             ctx.fillStyle = grad;
             ctx.fill();
             ctx.restore();
 
-            // Determine activity based on movement state
-            const remaining = h.movement ? (h.movement.path.length) : 0;
-            let activity = resolveActivity(remaining);
-            // NEW: if hero is on an active task, switch to attack animation
-            if (!h.movement && h.currentTaskId) {
-                const inst = taskStore.taskIndex[h.currentTaskId];
-                if (inst && inst.active && !inst.completedMs) {
-                    activity = 'attack';
-                }
-            }
-            const animName = heroAnimName(activity, h.facing);
-            const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
-            const elapsed = now - this._heroAnimStart;
-            const frameSize = this.heroFrameSize;
-            const frames = anim.frames;
-            const frameDuration = anim.frameDuration;
-            const cycle = frames * frameDuration + (anim.cooldown || 0);
-            const inCycle = elapsed % cycle;
-            const frameIndex = (frames <= 1) ? 0 : (inCycle >= frames * frameDuration ? frames - 1 : Math.floor(inCycle / frameDuration));
-            this._lastHeroFrame = frameIndex; // used for interaction masks
-
-            let sx = frameIndex * frameSize;
-            const sy = anim.row * frameSize;
-
             ctx.globalAlpha = opacity;
             ctx.imageSmoothingEnabled = false;
-
+            const frameSize = this.heroFrameSize;
+            let sx = frameIndex * frameSize;
+            const sy = animRow * frameSize;
             if (shouldFlip(h.facing)) {
                 ctx.save();
                 ctx.translate(destX + frameSize * this.heroZoom, destY);
@@ -724,10 +737,10 @@ export class HexMapService {
                 ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * this.heroZoom, frameSize * this.heroZoom);
             }
 
-            const selected = (selectedHeroId.value === h.id) && selectedHeroIdle; // only highlight selected if idle
-            const hovered = hoveredHero && hoveredHero.id === h.id; // hovered unaffected
+            const selected = (selectedHeroId.value === h.id) && selectedHeroIdle;
+            const hovered = hoveredHero && hoveredHero.id === h.id;
             if ((selected || hovered)) {
-                const edgeFrames = this._heroEdgePixelsByRow[h.avatar]?.[anim.row];
+                const edgeFrames = this._heroEdgePixelsByRow[h.avatar]?.[animRow];
                 const edgePixels = edgeFrames ? edgeFrames[frameIndex] : undefined;
                 if (edgePixels && edgePixels.length) {
                     ctx.save();
