@@ -71,6 +71,8 @@ export class HexMapService {
     private _heroAnimStart = performance.now();
     private _lastHeroFrame = 0;
 
+    private _tileAnimStart = performance.now();
+
     // Pathfinding statics
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
 
@@ -353,6 +355,7 @@ export class HexMapService {
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
         const tiles = getTilesInRadius(cq, cr, camera.radius);
+        const now = performance.now();
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = (() => {
@@ -362,7 +365,48 @@ export class HexMapService {
             const {x, y} = axialToPixel(t.q, t.r);
             if (t.discovered) {
                 const key = this.getTileImageKey(t);
-                const masked = this._maskedImages[key ?? 'plains'];
+                const baseImg = this._images[key ?? 'plains'];
+                if (!baseImg) continue;
+                // Determine animation frame if terrain has frames
+                const def: any = (TERRAIN_DEFS as any)[key ?? 'plains'];
+                let masked: HTMLCanvasElement | undefined = null;
+                const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
+                if (!frames) {
+                    masked = this._maskedImages[key ?? 'plains'];
+                } else {
+                    const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
+                    const elapsed = now - this._tileAnimStart;
+                    const frameIndex = Math.floor(elapsed / frameTime) % frames;
+                    // Build per-frame masked canvas lazily (cache by key+frameIndex)
+                    const cacheKey = key + '__f' + frameIndex;
+                    let frameCanvas = this._maskedImages[cacheKey];
+                    if (!frameCanvas) {
+                        const frameWidth = baseImg.width / frames;
+                        const sx = frameIndex * frameWidth;
+                        const c = document.createElement('canvas');
+                        c.width = this.TILE_DRAW_SIZE;
+                        c.height = this.TILE_DRAW_SIZE;
+                        const g = c.getContext('2d')!;
+                        // Clip to hex shape then draw specific frame portion
+                        g.save();
+                        g.beginPath();
+                        const w = this.TILE_DRAW_SIZE;
+                        const h = this.TILE_DRAW_SIZE;
+                        g.moveTo(0.5 * w, 0);
+                        g.lineTo(w, 0.25 * h);
+                        g.lineTo(w, 0.75 * h);
+                        g.lineTo(0.5 * w, h);
+                        g.lineTo(0, 0.75 * h);
+                        g.lineTo(0, 0.25 * h);
+                        g.closePath();
+                        g.clip();
+                        g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, w, h);
+                        g.restore();
+                        this._maskedImages[cacheKey] = c;
+                        frameCanvas = c;
+                    }
+                    masked = frameCanvas;
+                }
                 if (!masked) continue;
                 ctx.globalAlpha = opacity;
                 ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
@@ -380,14 +424,12 @@ export class HexMapService {
                 ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
                 ctx.closePath();
                 ctx.fill();
-                // Distance from center (0,0) overlay for undiscovered tiles
                 const centerDist = this.axialDistance(0, 0, t.q, t.r);
                 ctx.globalAlpha = opacity * 0.95;
                 ctx.font = '600 12px system-ui, sans-serif';
                 ctx.fillStyle = '#d8eefa';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                // Slight shadow for readability
                 ctx.save();
                 ctx.translate(0, 0);
                 ctx.shadowColor = 'rgba(0,0,0,0.8)';
@@ -498,8 +540,8 @@ export class HexMapService {
 
         // Path highlight only when selected hero idle
         if ((selectedHeroIdle || selectedHeroWalking) && opts.pathCoords.length) {
-            // prepend with current position to highlight from there
-            if(opts.pathCoords[0].q !== selectedHero.q || opts.pathCoords[0].r !== selectedHero!.r) {
+            const first = opts.pathCoords[0];
+            if (selectedHero && first && (first.q !== selectedHero.q || first.r !== selectedHero.r)) {
                 opts.pathCoords.unshift({q: selectedHero.q, r: selectedHero.r});
             }
 

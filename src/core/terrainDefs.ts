@@ -10,6 +10,11 @@ export interface TerrainDef {
     minDistanceFromCenter?: number; // must be at least this far from (0,0)
     minSeparation?: number; // must be at least this far from any same-terrain tile
     preserveIsolation?: boolean; // if true, island reduction will not modify solitary instances
+    // --- Animation (optional) ---
+    // If provided, renderer will treat tile image as a horizontal sprite sheet consisting of `frames` equal-width frames.
+    // frameTime is the duration (ms) per frame. If omitted or invalid, defaults are applied.
+    frames?: number; // number of animation frames (>=2 for animation)
+    frameTime?: number; // ms per frame
 }
 
 interface TerrainDefsMap {
@@ -51,6 +56,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             water: 60,
             plains: 20,
         },
+        // Example animation: adjust frames/frameTime to match actual asset width & desired speed
+        frames: 4, // assumes water.png is a horizontal strip of 4 frames
+        frameTime: 220, // ~4.5 fps (adjust as desired)
     },
     mountain: {
         minDistanceFromCenter: 3,
