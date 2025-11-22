@@ -9,7 +9,7 @@ import {idleStore} from './idleStore';
 interface TaskState {
     tasks: TaskInstance[];
     taskIndex: Record<string, TaskInstance>; // id -> instance
-    tasksByTile: Record<string, string>; // tileId -> taskId
+    tasksByTile: Record<string, Record<string, string>>; // tileId -> (taskType -> taskId)
     nextId: number;
 }
 
@@ -28,12 +28,46 @@ function makeId(state: TaskState) {
     return 'task_' + (state.nextId++);
 }
 
+// Remove a task instance from all indices
+function removeTask(inst: TaskInstance) {
+    const idx = taskStore.tasks.findIndex(t => t.id === inst.id);
+    if (idx >= 0) taskStore.tasks.splice(idx, 1);
+    delete taskStore.taskIndex[inst.id];
+    const tileTasks = taskStore.tasksByTile[inst.tileId];
+    if (tileTasks) {
+        delete tileTasks[inst.type];
+        // Optionally prune empty map (not strictly required)
+        if (!Object.keys(tileTasks).length) {
+            // leave for now; could delete taskStore.tasksByTile[inst.tileId]
+        }
+    }
+}
+
+// Detach hero from any active (non-completed) tasks other than optional excludeTaskId.
+function detachHeroFromOtherTasks(heroId: string, excludeTaskId?: string) {
+    for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
+        const inst = taskStore.tasks[i]!;
+        if (excludeTaskId && inst.id === excludeTaskId) continue;
+        if (inst.completedTick !== undefined) continue; // ignore completed awaiting cleanup
+        if (inst.participants[heroId] !== undefined) {
+            delete inst.participants[heroId];
+            // If no participants remain, remove the task entirely.
+            if (!Object.keys(inst.participants).length) {
+                removeTask(inst);
+            }
+        }
+    }
+}
+
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     const def = getTaskDefinition(type);
     if (!def) return null;
     if (!taskStore.tasksByTile[tile.id]) {
         taskStore.tasksByTile[tile.id] = {};
     }
+
+    // Ensure hero leaves any previous tasks before starting a new one.
+    detachHeroFromOtherTasks(starter.id);
 
     if (taskStore.tasksByTile[tile.id][type]) return taskStore.taskIndex[taskStore.tasksByTile[tile.id][type]] || null;
     const distance = hexDistance(tile.q, tile.r);
@@ -58,6 +92,8 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || !inst.active || inst.completedTick) return;
+    // Detach hero from other tasks, but keep contributions if already part of this one.
+    detachHeroFromOtherTasks(hero.id, inst.id);
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
 }
 
@@ -65,6 +101,9 @@ export function leaveTask(taskId: string, heroId: string) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst) return;
     delete inst.participants[heroId];
+    if (!Object.keys(inst.participants).length) {
+        removeTask(inst);
+    }
 }
 
 export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance | undefined {
@@ -76,7 +115,7 @@ export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance 
 
 export function updateActiveTasks(heroes: Hero[]) {
     // Called each tick from idle loop
-    for (const inst of taskStore.tasks) {
+    for (const inst of taskStore.tasks.slice()) { // slice to avoid issues if tasks removed mid-loop
         console.log(inst);
         if (!inst.active || inst.completedTick) continue;
         const def = getTaskDefinition(inst.type);
@@ -87,6 +126,11 @@ export function updateActiveTasks(heroes: Hero[]) {
         for (const heroId of Object.keys(inst.participants)) {
             const h = heroes.find(hh => hh.id === heroId);
             if (h) parts.push(h);
+        }
+        // If task lost all heroes (e.g. removed elsewhere) ensure cleanup
+        if (!parts.length) {
+            removeTask(inst);
+            continue;
         }
         let tickContribution = 0;
         for (const hero of parts) {
@@ -102,7 +146,7 @@ export function updateActiveTasks(heroes: Hero[]) {
             inst.active = false;
             def.onComplete(tile, inst, parts);
             rewardXpToParticipants(inst, parts);
-            cleanupCompletedTasks()
+            cleanupCompletedTasks();
         }
     }
 }
@@ -121,6 +165,7 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
         for(const stat in rewards) {
             const statReward = rewards[stat];
             const rewardAmount = Math.ceil(statReward * share);
+            // @ts-ignore dynamic stat key assignment
             hero.stats[stat] += rewardAmount;
         }
     }
@@ -130,8 +175,7 @@ export function cleanupCompletedTasks() {
     for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
         const t = taskStore.tasks[i]!;
         if (t.completedTick !== undefined) {
-            taskStore.tasks.splice(i, 1);
-            delete taskStore.tasksByTile[t.tileId][t.type];
+            removeTask(t);
         }
     }
 }
