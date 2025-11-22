@@ -8,7 +8,7 @@ const exploreTask: TaskDefinition = {
     key: 'explore',
     label: 'Explore',
     requiredXp(distance: number) {
-        return 100 * Math.floor((distance+1) * ((distance+1)/2)); // tuning constant
+        return 250 * Math.floor((distance+1) * ((distance+1)/2)); // tuning constant
     },
     heroRate(hero: Hero) {
         return Math.max(1, hero.stats.xp);

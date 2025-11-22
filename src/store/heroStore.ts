@@ -33,13 +33,14 @@ export interface Hero {
     stats: HeroStats;
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
+    currentTaskId?: string; // id of currently assigned active task (if any)
 }
 
 export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for now
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down'},
+    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down', currentTaskId: undefined},
     // {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
 ];
 
@@ -49,7 +50,7 @@ const LS_KEY = 'driftlands_heroes_v1';
 
 function persistHeroes() {
     try {
-        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined}));
+        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId}));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
         // ignore persistence errors
@@ -71,11 +72,11 @@ function restoreHeroes() {
             hero.facing = saved.facing || hero.facing;
             if (saved.stats) {
                 // Restore individual stat fields to preserve reactivity
-                const stats = saved.stats;
-                if (typeof stats.xp === 'number') hero.stats.xp = stats.xp;
-                if (typeof stats.hp === 'number') hero.stats.hp = stats.hp;
-                if (typeof stats.atk === 'number') hero.stats.atk = stats.atk;
-                if (typeof stats.spd === 'number') hero.stats.spd = stats.spd;
+                const stats = saved.stats as Partial<HeroStats>;
+                if ('xp' in stats && typeof stats.xp === 'number') hero.stats.xp = stats.xp;
+                if ('hp' in stats && typeof stats.hp === 'number') hero.stats.hp = stats.hp;
+                if ('atk' in stats && typeof stats.atk === 'number') hero.stats.atk = stats.atk;
+                if ('spd' in stats && typeof stats.spd === 'number') hero.stats.spd = stats.spd;
             }
             if (saved.movement && Array.isArray(saved.movement.path) && saved.movement.path.length) {
                 // Reconstruct movement with rebased startMs so elapsed time is non-negative.
@@ -105,6 +106,12 @@ function restoreHeroes() {
                 hero.movement = m;
             } else {
                 hero.movement = undefined;
+            }
+            // restore currentTaskId safely (may be stale if task was removed; taskStore will reconcile)
+            if (typeof saved.currentTaskId === 'string') {
+                hero.currentTaskId = saved.currentTaskId;
+            } else {
+                hero.currentTaskId = undefined;
             }
         }
     } catch (e) {
@@ -223,10 +230,14 @@ export function resetHeroes() {
         hero.r = 0;
         hero.facing = 'down';
         hero.movement = undefined;
+        hero.currentTaskId = undefined;
         // Reset stats to seed values if available
         const seed = seedHeroes.find(s => s.id === hero.id);
         if (seed) {
-            hero.stats.xp = seed.stats.xp;
+            //hero.stats.xp = seed.stats.xp;
+            //temp disable xp reset for testing
+            hero.stats.xp = 0;
+
             hero.stats.hp = seed.stats.hp;
             hero.stats.atk = seed.stats.atk;
             hero.stats.spd = seed.stats.spd;

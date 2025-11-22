@@ -12,6 +12,7 @@ import {selectHero, selectedHeroId, heroes, updateHeroFacing, startHeroMovement,
 import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
+import {detachHeroFromCurrentTask} from "../store/taskStore.ts";
 
 const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void; (e: 'hero-click', hero: Hero): void }>();
 
@@ -71,6 +72,7 @@ function handleClick(e: PointerEvent) {
     if (sel) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
+        detachHeroFromCurrentTask(sel);
         startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : null);
         // path preview should show planned path until movement starts
         pathCoords.value = path;

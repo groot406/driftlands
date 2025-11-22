@@ -1,8 +1,7 @@
 import {reactive} from 'vue';
 import type {TaskInstance, TaskType} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
-import {hexDistance, type Tile} from '../core/world';
-import {tileIndex} from '../core/world';
+import {hexDistance, type Tile, tileIndex} from '../core/world';
 import type {Hero} from './heroStore';
 import {idleStore} from './idleStore';
 
@@ -43,31 +42,20 @@ function removeTask(inst: TaskInstance) {
     }
 }
 
-// Detach hero from any active (non-completed) tasks other than optional excludeTaskId.
-function detachHeroFromOtherTasks(heroId: string, excludeTaskId?: string) {
-    for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
-        const inst = taskStore.tasks[i]!;
-        if (excludeTaskId && inst.id === excludeTaskId) continue;
-        if (inst.completedTick !== undefined) continue; // ignore completed awaiting cleanup
-        if (inst.participants[heroId] !== undefined) {
-            delete inst.participants[heroId];
-            // If no participants remain, remove the task entirely.
-            if (!Object.keys(inst.participants).length) {
-                removeTask(inst);
-            }
-        }
+export function detachHeroFromCurrentTask(hero: Hero) {
+    if (hero.currentTaskId) {
+        leaveTask(hero.currentTaskId, hero)
     }
 }
 
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
+    // Before starting, detach hero from any current task.
+    detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
     if (!taskStore.tasksByTile[tile.id]) {
         taskStore.tasksByTile[tile.id] = {};
     }
-
-    // Ensure hero leaves any previous tasks before starting a new one.
-    detachHeroFromOtherTasks(starter.id);
 
     if (taskStore.tasksByTile[tile.id][type]) return taskStore.taskIndex[taskStore.tasksByTile[tile.id][type]] || null;
     const distance = hexDistance(tile.q, tile.r);
@@ -86,21 +74,25 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     taskStore.taskIndex[inst.id] = inst;
     taskStore.tasksByTile[tile.id][type] = inst.id;
     def.onStart?.(tile, [starter]);
+    starter.currentTaskId = inst.id;
     return inst;
 }
 
 export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || !inst.active || inst.completedTick) return;
-    // Detach hero from other tasks, but keep contributions if already part of this one.
-    detachHeroFromOtherTasks(hero.id, inst.id);
+    if (hero.currentTaskId === inst.id) return; // already on this task
+    detachHeroFromCurrentTask(hero);
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
+    hero.currentTaskId = inst.id;
 }
 
-export function leaveTask(taskId: string, heroId: string) {
+export function leaveTask(taskId: string, hero: string) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst) return;
-    delete inst.participants[heroId];
+
+    delete inst.participants[hero.id];
+    if (hero.currentTaskId === taskId) hero.currentTaskId = undefined;
     if (!Object.keys(inst.participants).length) {
         removeTask(inst);
     }
@@ -116,7 +108,6 @@ export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance 
 export function updateActiveTasks(heroes: Hero[]) {
     // Called each tick from idle loop
     for (const inst of taskStore.tasks.slice()) { // slice to avoid issues if tasks removed mid-loop
-        console.log(inst);
         if (!inst.active || inst.completedTick) continue;
         const def = getTaskDefinition(inst.type);
         if (!def) continue;
@@ -162,10 +153,9 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
         const share = contrib / totalContrib;
 
         const rewards = def.totalRewardedStats(distance);
-        for(const stat in rewards) {
+        for (const stat in rewards) {
             const statReward = rewards[stat];
             const rewardAmount = Math.ceil(statReward * share);
-            // @ts-ignore dynamic stat key assignment
             hero.stats[stat] += rewardAmount;
         }
     }
