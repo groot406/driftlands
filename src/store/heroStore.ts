@@ -69,6 +69,14 @@ function restoreHeroes() {
             hero.q = saved.q;
             hero.r = saved.r;
             hero.facing = saved.facing || hero.facing;
+            if (saved.stats) {
+                // Restore individual stat fields to preserve reactivity
+                const stats = saved.stats;
+                if (typeof stats.xp === 'number') hero.stats.xp = stats.xp;
+                if (typeof stats.hp === 'number') hero.stats.hp = stats.hp;
+                if (typeof stats.atk === 'number') hero.stats.atk = stats.atk;
+                if (typeof stats.spd === 'number') hero.stats.spd = stats.spd;
+            }
             if (saved.movement && Array.isArray(saved.movement.path) && saved.movement.path.length) {
                 // Reconstruct movement with rebased startMs so elapsed time is non-negative.
                 const m: HeroMovementState = {
@@ -215,12 +223,25 @@ export function resetHeroes() {
         hero.r = 0;
         hero.facing = 'down';
         hero.movement = undefined;
+        // Reset stats to seed values if available
+        const seed = seedHeroes.find(s => s.id === hero.id);
+        if (seed) {
+            hero.stats.xp = seed.stats.xp;
+            hero.stats.hp = seed.stats.hp;
+            hero.stats.atk = seed.stats.atk;
+            hero.stats.spd = seed.stats.spd;
+        }
     }
     persistHeroes();
 }
 
-export function ensureHeroSelected() {
+export function ensureHeroSelected(focus: boolean) {
     if (!selectedHeroId.value && heroes.length) {
         selectedHeroId.value = heroes[0].id;
+    }
+
+    if (focus) {
+        const hero = getSelectedHero();
+        if (hero) focusHero(hero);
     }
 }

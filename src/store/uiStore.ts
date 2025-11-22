@@ -80,14 +80,14 @@ export function continueGame() {
   uiStore.phase = 'playing';
   startIdle();
   restoreUIState();
-  ensureHeroSelected();
+  ensureHeroSelected(true);
 }
 
 export function resumeGame() {
   if (uiStore.phase === 'paused') uiStore.phase = 'playing';
   if (!idleStore.running) startIdle();
   restoreUIState();
-  ensureHeroSelected();
+  ensureHeroSelected(false);
 }
 
 export function pauseGame() {
@@ -104,8 +104,8 @@ export function isTitle() { return uiStore.phase === 'title'; }
 export function isPaused() { return uiStore.phase === 'paused'; }
 export function isPlaying() { return uiStore.phase === 'playing'; }
 
-if (typeof window !== 'undefined') {
-  // Attempt initial restore when module loads (for continue)
-  restoreUIState();
-  ensureHeroSelected();
-}
+// if (typeof window !== 'undefined') {
+//   // Attempt initial restore when module loads (for continue)
+//   restoreUIState();
+//   ensureHeroSelected(false);
+// }
