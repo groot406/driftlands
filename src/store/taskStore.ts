@@ -10,7 +10,6 @@ interface TaskState {
     tasks: TaskInstance[];
     taskIndex: Record<string, TaskInstance>; // id -> instance
     tasksByTile: Record<string, string>; // tileId -> taskId
-    selectedTaskTypeByTile: Record<string, TaskType | undefined>; // UI pre-selection
     nextId: number;
 }
 
@@ -19,7 +18,6 @@ function createState(): TaskState {
         tasks: [],
         taskIndex: {},
         tasksByTile: {},
-        selectedTaskTypeByTile: {},
         nextId: 1,
     });
 }
@@ -30,14 +28,14 @@ function makeId(state: TaskState) {
     return 'task_' + (state.nextId++);
 }
 
-export function selectTaskTypeForTile(tileId: string, type: TaskType | undefined) {
-    taskStore.selectedTaskTypeByTile[tileId] = type;
-}
-
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     const def = getTaskDefinition(type);
     if (!def) return null;
-    if (taskStore.tasksByTile[tile.id][taskType]) return taskStore.taskIndex[taskStore.tasksByTile[tile.id][type]] || null;
+    if (!taskStore.tasksByTile[tile.id]) {
+        taskStore.tasksByTile[tile.id] = {};
+    }
+
+    if (taskStore.tasksByTile[tile.id][type]) return taskStore.taskIndex[taskStore.tasksByTile[tile.id][type]] || null;
     const distance = hexDistance(tile.q, tile.r);
     const inst: TaskInstance = {
         id: makeId(taskStore),
@@ -70,12 +68,10 @@ export function leaveTask(taskId: string, heroId: string) {
 }
 
 export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance | undefined {
-    const id = taskStore.tasksByTile[tileId][taskType];
+    const tileTasks = taskStore.tasksByTile[tileId];
+    if (!tileTasks) return undefined;
+    const id = tileTasks[taskType];
     return id ? taskStore.taskIndex[id] : undefined;
-}
-
-export function getSelectedTaskForTile(tileId: string): TaskType | undefined {
-    return taskStore.selectedTaskTypeByTile[tileId];
 }
 
 export function updateActiveTasks(heroes: Hero[]) {
@@ -106,6 +102,7 @@ export function updateActiveTasks(heroes: Hero[]) {
             inst.active = false;
             def.onComplete(tile, inst, parts);
             rewardXpToParticipants(inst, parts);
+            cleanupCompletedTasks()
         }
     }
 }
@@ -115,25 +112,26 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
     if (!def) return;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
-    const rewardPool = def.totalRewardXp || 0;
+    const distance = hexDistance(tileIndex[instance.tileId]!.q, tileIndex[instance.tileId]!.r);
     for (const hero of participants) {
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
 
-        for(const stat in def.totalRewardedStats) {
-            const statReward = def.totalRewardedStats[stat];
-            const rewardAmount = Math.round(statReward * share);
+        const rewards = def.totalRewardedStats(distance);
+        for(const stat in rewards) {
+            const statReward = rewards[stat];
+            const rewardAmount = Math.ceil(statReward * share);
             hero.stats[stat] += rewardAmount;
         }
     }
 }
 
 export function cleanupCompletedTasks() {
-    // Remove tasks that are completed and whose tiles are discovered; for persistence reasons maybe keep them longer later.
     for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
         const t = taskStore.tasks[i]!;
         if (t.completedTick !== undefined) {
-            // For now keep them (could prune after N ticks)
+            taskStore.tasks.splice(i, 1);
+            delete taskStore.tasksByTile[t.tileId][t.type];
         }
     }
 }

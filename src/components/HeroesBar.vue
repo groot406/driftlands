@@ -24,6 +24,7 @@
             </div>
             <div class="flex flex-col leading-tight w-1/2">
               <div class="text-[10px] opacity-80 flex flex-col">
+                <span class="text-yellow-500">XP {{ h.stats.xp }}</span>
                 <span>HP {{ h.stats.hp }}</span>
                 <span>ATK {{ h.stats.atk }}</span>
                 <span>SPD {{ h.stats.spd }}</span>

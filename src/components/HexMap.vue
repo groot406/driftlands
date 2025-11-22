@@ -8,24 +8,12 @@
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import type {Hero} from '../store/heroStore';
-import {
-  getSelectedHero,
-  heroes,
-  selectedHeroId,
-  selectHero,
-  startHeroMovement,
-  updateHeroFacing,
-  updateHeroMovements
-} from '../store/heroStore';
+import {selectHero, selectedHeroId, heroes, updateHeroFacing, startHeroMovement, updateHeroMovements, getSelectedHero} from '../store/heroStore';
 import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 
-const emit = defineEmits<{
-  (e: 'tile-click', tile: Tile): void;
-  (e: 'tile-doubleclick', tile: Tile): void;
-  (e: 'hero-click', hero: Hero): void
-}>();
+const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void; (e: 'hero-click', hero: Hero): void }>();
 
 const container = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -35,7 +23,7 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 // Hover & path reactive state
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
-const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
+const pathCoords = shallowRef<{q:number;r:number}[]>([]);
 
 // Service instance
 const service = new HexMapService();
@@ -83,7 +71,7 @@ function handleClick(e: PointerEvent) {
     if (sel) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
-        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r, type: tile.undiscovered ? 'explore' : null});
+        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : null);
         // path preview should show planned path until movement starts
         pathCoords.value = path;
       }
@@ -97,9 +85,7 @@ function handleClick(e: PointerEvent) {
 
 function updateHover(e: PointerEvent) {
   if (isPaused() || dragging) {
-    hoveredTile.value = null;
-    hoveredHero.value = null;
-    pathCoords.value = [];
+    hoveredTile.value = null; hoveredHero.value = null; pathCoords.value = [];
     return;
   }
   const hero = service.pickHero(e.clientX, e.clientY);
@@ -127,7 +113,7 @@ watch([pathCoords, selectedHeroId], () => {
   const dq = first.q - hero.q;
   const dr = first.r - hero.r;
   if (dq === 0 && dr === 0) return;
-  let facing: 'up' | 'down' | 'left' | 'right' = hero.facing;
+  let facing: 'up'|'down'|'left'|'right' = hero.facing;
   if (dr < 0) facing = 'up';
   else if (dr > 0) facing = 'down';
   else if (dq > 0) facing = 'right';
@@ -144,22 +130,11 @@ onMounted(async () => {
   window.addEventListener('keyup', keyUp);
   const el = container.value;
   if (el) {
-    el.addEventListener('pointerdown', pointerDown, {passive: false});
-    el.addEventListener('pointermove', (ev) => {
-      pointerMove(ev);
-      updateHover(ev as PointerEvent);
-    }, {passive: false});
-    el.addEventListener('pointerup', (ev) => {
-      pointerUp();
-      handleClick(ev as PointerEvent);
-      updateHover(ev as PointerEvent);
-    }, {passive: false});
-    el.addEventListener('pointercancel', () => {
-      pointerCancel();
-    }, {passive: false});
-    el.addEventListener('pointerleave', () => {
-      pointerUp();
-    }, {passive: false});
+    el.addEventListener('pointerdown', pointerDown, {passive:false});
+    el.addEventListener('pointermove', (ev) => { pointerMove(ev); updateHover(ev as PointerEvent); }, {passive:false});
+    el.addEventListener('pointerup', (ev) => { pointerUp(); handleClick(ev as PointerEvent); updateHover(ev as PointerEvent); }, {passive:false});
+    el.addEventListener('pointercancel', () => { pointerCancel(); }, {passive:false});
+    el.addEventListener('pointerleave', () => { pointerUp(); }, {passive:false});
   }
   animationLoop();
 });
@@ -184,10 +159,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.map-container {
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-  overscroll-behavior: contain;
-}
+.map-container { touch-action: none; -webkit-user-select: none; user-select: none; overscroll-behavior: contain; }
 </style>

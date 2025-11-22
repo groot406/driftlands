@@ -1,7 +1,7 @@
 import {reactive, ref} from 'vue';
 import {moveCamera} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
-import {discoverTile, ensureTileExists} from '../core/world';
+import {ensureTileExists} from '../core/world';
 import type { Tile } from '../core/world';
 import { TERRAIN_DEFS } from '../core/terrainDefs';
 import { handleHeroArrival } from '../core/tasks';
@@ -40,7 +40,7 @@ export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
     {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down'},
-    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
+    // {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -132,8 +132,8 @@ export function updateHeroMovements(now: number) {
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
             // Discover prospective step tile first (keep existing traversal discovery behavior)
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
-            if (!stepTile.discovered) discoverTile(stepTile);
-            if (!isTileWalkable(stepTile)) {
+
+            if (stepTile.discovered && !isTileWalkable(stepTile)) {
                 // Cancel movement; do not move onto unwalkable tile
                 hero.movement = undefined;
                 persistHeroes();
@@ -217,4 +217,10 @@ export function resetHeroes() {
         hero.movement = undefined;
     }
     persistHeroes();
+}
+
+export function ensureHeroSelected() {
+    if (!selectedHeroId.value && heroes.length) {
+        selectedHeroId.value = heroes[0].id;
+    }
 }

@@ -8,12 +8,14 @@ const exploreTask: TaskDefinition = {
     key: 'explore',
     label: 'Explore',
     requiredXp(distance: number) {
-        return 12 + Math.floor(distance * 1.5); // tuning constant
+        return 100 * Math.floor((distance+1) * ((distance+1)/2)); // tuning constant
     },
     heroRate(hero: Hero) {
         return Math.max(1, hero.stats.xp);
     },
-    totalRewardedStats: {xp: 100},
+    totalRewardedStats(distance) {
+        return {xp: Math.ceil(distance/2) }
+    },
     onStart(tile, participants) {
     },
     onComplete(tile, instance, participants) {

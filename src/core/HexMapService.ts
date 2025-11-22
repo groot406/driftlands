@@ -122,9 +122,6 @@ export class HexMapService {
 
   // New: expose pathfinding for external movement start
   public findWalkablePath(startQ:number,startR:number,goalQ:number,goalR:number,maxNodes=9999): PathCoord[] {
-    if (startQ===goalQ && startR===goalR) return [];
-
-    if (!this.isWalkable(startQ, startR)) return [];
     interface PathNode { q:number;r:number; g:number; f:number; parent?: PathNode }
     const open: PathNode[] = []; const openMap = new Map<string,PathNode>(); const closed = new Set<string>();
     const startNode: PathNode = {q:startQ,r:startR,g:0,f:this.axialDistance(startQ,startR,goalQ,goalR)};

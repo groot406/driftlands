@@ -1,6 +1,6 @@
 import type {Tile} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
-import {startTask, joinTask, getTaskByTile, getSelectedTaskForTile} from '../store/taskStore';
+import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
 
 // Import task definitions to register them
 import '../core/taskDefs/explore';
@@ -26,7 +26,7 @@ export interface TaskDefinition {
     onComplete(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
 
     // Optional base reward XP for participants collectively (split proportionally)
-    totalRewardedStats?: Map<HeroStat, number>;
+    totalRewardedStats(distance): Map<HeroStat, number>;
 }
 
 export type TaskType = 'explore' | string;
@@ -48,8 +48,7 @@ export interface TaskInstance {
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile || !hero.movement?.taskType) return;
-
-    const selected = getSelectedTaskForTile(tile.id, hero.movement.taskType);
+    const selected = hero.movement?.taskType;
     if (selected) {
         const existing = getTaskByTile(tile.id, selected);
         if (!existing) {
