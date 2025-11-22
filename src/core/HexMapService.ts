@@ -45,6 +45,11 @@ export class HexMapService {
     readonly heroZoom = 2;
     readonly HERO_OFFSET_SPACING = 14;
 
+    readonly heroShadowOpacity = 0.6; // base opacity before fade scaling
+    readonly heroShadowWidthFactor = 0.6; // relative to heroFrameSize * zoom
+    readonly heroShadowHeightFactor = 0.20; // relative to heroFrameSize * zoom
+    readonly heroShadowYOffset = 0.13; // move shadow up relative to tile center (in heroFrameSize units)
+
     private _canvas: HTMLCanvasElement | null = null;
     private _container: HTMLDivElement | null = null;
     private _ctx: CanvasRenderingContext2D | null = null;
@@ -605,6 +610,26 @@ export class HexMapService {
             const y = interp.y;
             const destX = x - (this.heroFrameSize * this.heroZoom) / 2 + pos.x - (this.heroFrameSize / 2);
             const destY = y - (this.heroFrameSize * 2) + (this.heroFrameSize / 2) + pos.y;
+
+            // NEW: drop shadow (draw before sprite)
+            ctx.save();
+            const shadowScale = this.heroZoom;
+            const shadowW = this.heroFrameSize * shadowScale * this.heroShadowWidthFactor;
+            const shadowH = this.heroFrameSize * shadowScale * this.heroShadowHeightFactor;
+            // Base (ground) position roughly at tile center adjusted by offset; shift upward a bit to align under feet
+            const baseX = x + pos.x - 15;
+            const baseY = y + pos.y + this.heroFrameSize * this.heroShadowYOffset; // y offset tune
+            ctx.globalAlpha = opacity * this.heroShadowOpacity; // incorporate camera fade
+            ctx.translate(baseX, baseY);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, shadowW / 2.8, shadowH / 2.2, 0, 0, Math.PI * 2);
+            const grad = ctx.createRadialGradient(0, 0, shadowH * 0.05, 0, 0, shadowW / 2);
+            grad.addColorStop(0, 'rgba(0,0,0,0.8)');
+            grad.addColorStop(0.8, 'rgba(0,0,0,0)');
+
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.restore();
 
             // Determine activity based on movement state
             const remaining = h.movement ? (h.movement.path.length) : 0;
