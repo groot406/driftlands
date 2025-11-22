@@ -6,6 +6,7 @@ import { HexMapService } from './HexMapService';
 // Import task definitions to register them
 import '../core/taskDefs/explore';
 import '../core/taskDefs/chopWood'; // register chop wood task
+import '../core/taskDefs/plantTrees'; // register plant trees task
 import {startHeroMovement} from '../store/heroStore';
 // Task definition interfaces enable future extension.
 export interface TaskDefinition {
@@ -31,7 +32,7 @@ export interface TaskDefinition {
     totalRewardedStats(distance: number): Record<HeroStat, number>;
 }
 
-export type TaskType = 'explore' | 'chopWood' | string;
+export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;
 
 export interface TaskInstance {
     id: string;

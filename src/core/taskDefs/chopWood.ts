@@ -29,7 +29,7 @@ const chopWoodTask: TaskDefinition = {
     label: 'Chop Wood',
     requiredXp(_distance: number) {
         // Fixed effort per forest tile for now
-        return 120; // tune later
+        return 120 * _distance; // tune later
     },
     heroRate(hero: Hero) {
         // Use attack stat for chopping efficiency; add small base

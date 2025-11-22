@@ -101,20 +101,29 @@ function handleClick(e: PointerEvent) {
     lastClickTime = 0;
     // retain direct double-click chop option
     const sel = getSelectedHero();
-    if (sel && tile.discovered && tile.terrain === 'forest') {
-      const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-      if (path.length) {
-        detachHeroFromCurrentTask(sel);
-        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
-        hideTaskBubble();
+    if (sel && tile.discovered) {
+      if (tile.terrain === 'forest') {
+        const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+        if (path.length) {
+          detachHeroFromCurrentTask(sel);
+          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
+          hideTaskBubble();
+        }
+      } else if (tile.terrain === 'chopped_forest') {
+        const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+        if (path.length) {
+          detachHeroFromCurrentTask(sel);
+          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'plantTrees');
+          hideTaskBubble();
+        }
       }
     }
   } else {
     lastClickTime = now;
     hoveredTile.value = tile;
     emit('tile-click', tile);
-    // Show task bubble if forest tile discovered
-    if (tile.discovered && tile.terrain === 'forest') {
+    // Show task bubble if forest OR chopped_forest tile discovered
+    if (tile.discovered && (tile.terrain === 'forest' || tile.terrain === 'chopped_forest')) {
       taskBubbleTile.value = tile;
       showTaskBubble.value = true;
       // compute screen position
@@ -127,9 +136,9 @@ function handleClick(e: PointerEvent) {
     } else {
       hideTaskBubble();
     }
-    // movement logic (unchanged) if hero selected and not forest OR if bubble hidden
+    // movement logic (unchanged) if hero selected and not forest OR chopped_forest OR if bubble hidden
     const sel = getSelectedHero();
-    if (sel && (!tile.discovered || tile.terrain !== 'forest')) {
+    if (sel && (!tile.discovered || (tile.terrain !== 'forest' && tile.terrain !== 'chopped_forest'))) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
         const originTile = ensureTileExists(sel.q, sel.r);

@@ -10,7 +10,10 @@
         <button v-if="canChop" @click="startChop" class="task-btn">
           Chop Wood
         </button>
-        <div v-else class="text-[11px] text-slate-400 italic">No actions available</div>
+        <button v-if="canPlant" @click="startPlant" class="task-btn bg-emerald-600 hover:bg-emerald-500 border-emerald-700">
+          Plant Trees
+        </button>
+        <div v-else-if="!canChop && !canPlant" class="text-[11px] text-slate-400 italic">No actions available</div>
       </div>
     </div>
   </div>
@@ -35,6 +38,7 @@ const service = new HexMapService();
 const terrain = computed(() => props.tile?.terrain || 'unknown');
 const visible = computed(() => props.show && !!props.tile);
 const canChop = computed(() => props.tile?.terrain === 'forest');
+const canPlant = computed(() => props.tile?.terrain === 'chopped_forest');
 
 function startChop() {
   const tile = props.tile;
@@ -46,6 +50,18 @@ function startChop() {
   detachHeroFromCurrentTask(hero);
   startHeroMovement(hero.id, path, {q: tile.q, r: tile.r}, 'chopWood');
   emit('started', 'chopWood', tile);
+  emit('close');
+}
+function startPlant() {
+  const tile = props.tile;
+  if (!tile) return;
+  const hero = getSelectedHero();
+  if (!hero) return;
+  const path = service.findWalkablePath(hero.q, hero.r, tile.q, tile.r);
+  if (!path.length) return;
+  detachHeroFromCurrentTask(hero);
+  startHeroMovement(hero.id, path, {q: tile.q, r: tile.r}, 'plantTrees');
+  emit('started', 'plantTrees', tile);
   emit('close');
 }
 function close() { emit('close'); }
@@ -61,4 +77,3 @@ const style = computed(() => {
 <style scoped>
 .task-btn { @apply text-xs font-medium px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white shadow border border-green-700 transition; }
 </style>
-
