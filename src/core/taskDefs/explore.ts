@@ -24,11 +24,11 @@ const exploreTask: TaskDefinition = {
         const tilesInRing = 6 * distance;
         rewardedXp /= tilesInRing;
 
-        return { xp: Math.ceil(10* (distance * distance) / (6 * distance)) };
+        return { xp: Math.ceil(10* (distance * distance) / (6 * distance)), hp: 0, atk: 0, spd: 0 };
     },
     onStart(_tile, _participants) {
     },
-    onComplete(tile, instance, participants) {
+    onComplete(tile, _instance, participants) {
         discoverTile(tile);
         // After discovery, if terrain is non-walkable, move heroes back to their previous tile (if recorded)
         const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;

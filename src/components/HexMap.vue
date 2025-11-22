@@ -9,7 +9,7 @@ import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import type {Hero} from '../store/heroStore';
 import {selectHero, selectedHeroId, heroes, updateHeroFacing, startHeroMovement, updateHeroMovements, getSelectedHero} from '../store/heroStore';
-import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation, camera, isKeyboardNavigating} from '../core/camera';
+import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation, isKeyboardNavigating} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from "../store/taskStore.ts";

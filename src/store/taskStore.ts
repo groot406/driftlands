@@ -4,6 +4,7 @@ import {getTaskDefinition} from '../core/taskRegistry';
 import {hexDistance, type Tile, tileIndex} from '../core/world';
 import type {Hero} from './heroStore';
 import {heroes} from './heroStore';
+import type {HeroStats} from './heroStore';
 import {idleStore} from './idleStore';
 
 // Persistence key for tasks (versioned)
@@ -177,7 +178,8 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
     for (const hero of participants) {
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
-        for (const stat of Object.keys(rewards) as (keyof HeroStats)[]) {
+        const statKeys: (keyof HeroStats)[] = ['xp','hp','atk','spd'];
+        for (const stat of statKeys) {
             const statReward = rewards[stat];
             const rewardAmount = Math.ceil(statReward * share);
             hero.stats[stat] += rewardAmount;
