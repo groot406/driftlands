@@ -33,8 +33,7 @@ function moveToTile(tile: Tile) {
 }
 
 function handleTileClick(tile: Tile) {
-  // Removed click-based discovery per new behavior; tiles now discovered only when a hero stands on them.
-  console.log('Clicked tile', tile);
+  // TODO: create 'explore' task and assign the selected hero to it
 }
 </script>
 

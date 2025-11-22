@@ -4,17 +4,22 @@ import santa from '../assets/heroes/santa.png';
 import {discoverTile, ensureTileExists} from '../core/world';
 import type { Tile } from '../core/world';
 import { TERRAIN_DEFS } from '../core/terrainDefs';
+import { handleHeroArrival } from '../core/tasks';
 
 export interface HeroStats {
+    xp: number; // experience points
     hp: number; // hit points
     atk: number; // attack power
     spd: number; // speed / initiative
 }
 
+export type HeroStat = keyof HeroStats;
+
 export interface HeroMovementState {
     path: {q:number;r:number}[]; // sequence of tiles to traverse (excluding origin, including destination)
     origin: {q:number;r:number};
     target: {q:number;r:number};
+    taskType?: string; // optional task type to start upon arrival
     startMs: number; // performance.now() when movement started
     stepMs: number; // ms per tile step
 }
@@ -34,8 +39,8 @@ export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for 
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {hp: 120, atk: 18, spd: 1}, facing: 'down'},
-    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {hp: 90, atk: 24, spd: 3}, facing: 'down'},
+    {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down'},
+    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -112,13 +117,9 @@ export function updateHeroMovements(now: number) {
         if (stepsAdvanced >= m.path.length) {
             // Attempt to move onto final target tile
             const targetTile = ensureTileExists(m.target.q, m.target.r);
-            if (!targetTile.discovered) discoverTile(targetTile);
-            if (!isTileWalkable(targetTile)) {
-                // Cancel movement: target not walkable after discovery; hero stays at previous position.
-                hero.movement = undefined;
-                persistHeroes();
-                continue;
-            }
+            // Instead of discovering immediately, invoke arrival handler (which starts explore task if needed)
+            handleHeroArrival(hero, targetTile);
+
             hero.q = m.target.q;
             hero.r = m.target.r;
             hero.movement = undefined;
@@ -129,7 +130,7 @@ export function updateHeroMovements(now: number) {
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue; // safety
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
-            // Discover prospective step tile first
+            // Discover prospective step tile first (keep existing traversal discovery behavior)
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
             if (!stepTile.discovered) discoverTile(stepTile);
             if (!isTileWalkable(stepTile)) {
@@ -155,7 +156,7 @@ export function updateHeroMovements(now: number) {
     }
 }
 
-export function startHeroMovement(heroId: string, path: {q:number;r:number}[], target: {q:number;r:number}) {
+export function startHeroMovement(heroId: string, path: {q:number;r:number}[], target: {q:number;r:number}, taskType?: string) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
@@ -165,6 +166,7 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
         path: path.slice(), // copy
         origin: {q: hero.q, r: hero.r},
         target,
+        taskType,
         startMs: performance.now(),
         stepMs,
     };
@@ -207,13 +209,12 @@ if (typeof window !== 'undefined') {
 }
 
 export function resetHeroes() {
-    // Clear current heroes and localStorage save, then seed fresh starting heroes within initial discovered radius.
     try { localStorage.removeItem(LS_KEY); } catch {}
-    // reset q and r to starting positions
     for(const hero of heroes) {
         hero.q = 0;
         hero.r = 0;
         hero.facing = 'down';
+        hero.movement = undefined;
     }
     persistHeroes();
 }

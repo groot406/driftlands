@@ -1,6 +1,8 @@
 import {watch} from 'vue';
 import {type Tile, tiles, worldVersion} from '../core/world';
 import { isPaused } from './uiStore';
+import { updateActiveTasks } from './taskStore';
+import { heroes } from './heroStore';
 
 interface IdleState {
     tiles: Tile[];
@@ -42,7 +44,6 @@ watch(worldVersion, () => {
 });
 
 export function startIdle() {
-    if (idleStore.running) return;
     idleStore.running = true;
     loop();
 }
@@ -54,17 +55,7 @@ async function loop() {
         return;
     }
     idleStore.tick++;
-    //
-    // const dt = 1 / 60; // simulation step seconds
-    // idleStore.tiles.forEach(tile => {
-    //     const task = tile.task;
-    //     if (!task || task.completed) return;
-    //     const heroes = idleStore.heroes.filter(h => task.assignedHeroIds.includes(h.id));
-    //     const collectiveRate = heroes.reduce((acc, h) => acc + speedMultiplier(h) * statMultiplier(h, task.def), 0) * synergyMultiplier(heroes.length);
-    //     task.progress += collectiveRate * dt * 0.5; // 0.5 tuning factor
-    //     if (task.progress >= task.required) {
-    //         task.progress = task.required;
-    //     }
-    // });
+
+    updateActiveTasks(heroes);
     requestAnimationFrame(loop);
 }

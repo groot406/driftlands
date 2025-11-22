@@ -38,7 +38,7 @@ export function startNewGame() {
   } catch {}
   uiStore.canContinue = true;
   uiStore.phase = 'playing';
-  if (!idleStore.running) startIdle();
+  startIdle();
 }
 
 export function continueGame() {
@@ -48,7 +48,7 @@ export function continueGame() {
     loadWorld(idleStore.tiles);
   }
   uiStore.phase = 'playing';
-  if (!idleStore.running) startIdle();
+  startIdle();
 }
 
 export function resumeGame() {
