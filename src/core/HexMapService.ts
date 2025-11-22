@@ -99,14 +99,27 @@ export class HexMapService {
     const ctx = this._ctx;
     ctx.clearRect(0,0,this._canvas.width,this._canvas.height);
 
+    // Motion blur tuning: only engage at higher pixel speeds
     const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
-    let blurStrength = Math.min(12, Math.max(0, (pixelSpeed - 100) * 0.005));
-    const brightness = blurStrength > 0 ? 1 - Math.min(0.15, blurStrength * 0.02) : 1;
+    const SPEED_THRESHOLD = 260; // px/sec required before any blur (was effectively ~100 earlier)
+    const MAX_SPEED_FOR_SCALING = 1400; // px/sec where blur reaches cap
 
-    if (blurStrength < 0.4 || !this._layerCtx) {
+    if (!this._layerCtx || pixelSpeed <= SPEED_THRESHOLD) {
+      // Below threshold: ensure previous filter cleared so slight movements don't keep old blur
+      if (this._canvas.style.filter) this._canvas.style.filter = 'none';
       this.drawTilesAndActors(ctx, opts);
       return;
     }
+
+    // Compute blur strength with smoother scaling above threshold
+    const speedRange = Math.max(0, Math.min(MAX_SPEED_FOR_SCALING, pixelSpeed) - SPEED_THRESHOLD);
+    // Map speedRange 0..(MAX_SPEED_FOR_SCALING-SPEED_THRESHOLD) -> 0..1
+    const norm = speedRange / (MAX_SPEED_FOR_SCALING - SPEED_THRESHOLD);
+    // Start with a small base blur and increase towards cap (2px .. 12px)
+    let blurStrength = 2 + norm * 10; // 2 -> 12
+    blurStrength = Math.min(12, Math.max(0, blurStrength));
+    const brightness = 1 - Math.min(0.15, (blurStrength - 2) * 0.02); // dim only as blur grows beyond base
+
     this._layerCtx.clearRect(0,0,this._layerCanvas!.width,this._layerCanvas!.height);
     this.drawTilesAndActors(this._layerCtx, opts);
     ctx.drawImage(this._layerCanvas!,0,0);
