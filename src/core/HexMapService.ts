@@ -173,15 +173,28 @@ export class HexMapService {
         interface PathNode {
             q: number;
             r: number;
-            g: number;
-            f: number;
+            g: number; // accumulated movement cost
+            f: number; // g + heuristic
             parent?: PathNode
         }
+
+        const costFor = (q: number, r: number): number => {
+            const t = tileIndex[axialKey(q, r)];
+            if (!t || !t.terrain) return 1;
+            const def = (TERRAIN_DEFS as any)[t.terrain];
+            const mc = def && typeof def.moveCost === 'number' ? def.moveCost : 1;
+            return Math.max(0.1, mc); // enforce sane lower bound
+        };
+
+        const heuristic = (q: number, r: number): number => {
+            // Admissible heuristic: axial distance * minimum per-step cost (>=0.1)
+            return this.axialDistance(q, r, goalQ, goalR) * 0.1;
+        };
 
         const open: PathNode[] = [];
         const openMap = new Map<string, PathNode>();
         const closed = new Set<string>();
-        const startNode: PathNode = {q: startQ, r: startR, g: 0, f: this.axialDistance(startQ, startR, goalQ, goalR)};
+        const startNode: PathNode = {q: startQ, r: startR, g: 0, f: heuristic(startQ, startR)};
         open.push(startNode);
         openMap.set(axialKey(startQ, startR), startNode);
         let iterations = 0;
@@ -215,21 +228,22 @@ export class HexMapService {
                 const key = axialKey(nq, nr);
                 if (closed.has(key)) continue;
                 if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
-                const tentativeG = current.g + 1;
+                const stepCost = costFor(nq, nr);
+                const tentativeG = current.g + stepCost;
                 let node = openMap.get(key);
                 if (!node) {
                     node = {
                         q: nq,
                         r: nr,
                         g: tentativeG,
-                        f: tentativeG + this.axialDistance(nq, nr, goalQ, goalR),
+                        f: tentativeG + heuristic(nq, nr),
                         parent: current
                     };
                     open.push(node);
                     openMap.set(key, node);
                 } else if (tentativeG < node.g) {
                     node.g = tentativeG;
-                    node.f = tentativeG + this.axialDistance(nq, nr, goalQ, goalR);
+                    node.f = tentativeG + heuristic(nq, nr);
                     node.parent = current;
                 }
             }
@@ -369,7 +383,7 @@ export class HexMapService {
                 if (!baseImg) continue;
                 // Determine animation frame if terrain has frames
                 const def: any = (TERRAIN_DEFS as any)[key ?? 'plains'];
-                let masked: HTMLCanvasElement | undefined = null;
+                let masked: HTMLCanvasElement | null | undefined = null;
                 const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
                 if (!frames) {
                     masked = this._maskedImages[key ?? 'plains'];
@@ -952,12 +966,32 @@ export class HexMapService {
         const m = hero.movement;
         const elapsed = now - m.startMs;
         if (elapsed < 0) return axialToPixel(hero.q, hero.r);
+
+        // If variable durations available use them
+        if (m.stepDurations && m.cumulative && m.stepDurations.length === m.path.length && m.cumulative.length === m.path.length) {
+            const total = m.cumulative[m.cumulative.length - 1]!;
+            if (elapsed >= total) return axialToPixel(hero.q, hero.r); // movement effectively done
+            // Find current step index (first cumulative > elapsed)
+            let stepIndex = 0;
+            while (stepIndex < m.cumulative.length && elapsed >= m.cumulative[stepIndex]!) stepIndex++;
+            if (stepIndex >= m.path.length) return axialToPixel(hero.q, hero.r);
+            const prevEnd = stepIndex === 0 ? 0 : m.cumulative[stepIndex - 1]!;
+            const stepElapsed = elapsed - prevEnd;
+            const stepDuration = m.stepDurations[stepIndex]! || m.stepMs;
+            const progress = Math.min(1, Math.max(0, stepElapsed / stepDuration));
+            const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
+            const to = m.path[stepIndex];
+            if (!from || !to) return axialToPixel(hero.q, hero.r);
+            const fromPx = axialToPixel(from.q, from.r);
+            const toPx = axialToPixel(to.q, to.r);
+            return { x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress };
+        }
+
+        // Fallback legacy uniform timing
         const stepIndex = Math.floor(elapsed / m.stepMs);
         if (stepIndex >= m.path.length) {
-            // Movement almost done (hero.movement may clear soon); snap to current tile.
             return axialToPixel(hero.q, hero.r);
         }
-        // Fraction within current step
         const stepElapsed = elapsed - stepIndex * m.stepMs;
         const progress = Math.min(1, Math.max(0, stepElapsed / m.stepMs));
         const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];

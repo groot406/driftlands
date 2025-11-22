@@ -24,7 +24,9 @@ export interface HeroMovementState {
     target: {q:number;r:number};
     taskType?: string; // optional task type to start upon arrival
     startMs: number; // performance.now() when movement started
-    stepMs: number; // ms per tile step
+    stepMs: number; // legacy uniform ms per tile (kept for backward compatibility / interpolation fallback)
+    stepDurations?: number[]; // per-step durations (same length as path)
+    cumulative?: number[]; // cumulative end times relative to startMs for each step
 }
 
 export interface Hero {
@@ -139,37 +141,75 @@ export function updateHeroMovements(now: number) {
     for (const hero of heroes) {
         if (!hero.movement) continue;
         const m = hero.movement;
+        const durations = m.stepDurations;
+        const cumulative = m.cumulative;
+        if (durations && cumulative && durations.length === m.path.length && cumulative.length === m.path.length) {
+            const elapsed = now - m.startMs;
+            // Find current step index via linear scan (paths are short); optimize later with binary search if needed
+            let stepIndex = -1;
+            for (let i = 0; i < cumulative.length; i++) {
+                if (elapsed < cumulative[i]!) { stepIndex = i; break; }
+            }
+            if (stepIndex === -1) {
+                // Completed all steps -> arrive
+                const targetTile = ensureTileExists(m.target.q, m.target.r);
+                handleHeroArrival(hero, targetTile);
+                hero.q = m.target.q;
+                hero.r = m.target.r;
+                hero.movement = undefined;
+                persistHeroes();
+                continue;
+            }
+            // Determine previous coord (completed) and current coord
+            const prevCoordRaw = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
+            const prevCoord = prevCoordRaw || m.origin; // fallback ensures defined
+            hero.prevPos = prevCoord;
+            const currentCoord = m.path[stepIndex];
+            if (!currentCoord) continue;
+            if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
+                const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
+                if (stepTile.discovered && !isTileWalkable(stepTile)) {
+                    hero.movement = undefined;
+                    persistHeroes();
+                    continue;
+                }
+                const dq = currentCoord.q - prevCoord.q;
+                const dr = currentCoord.r - prevCoord.r;
+                let facing: Hero['facing'] = hero.facing;
+                if (dr < 0) facing = 'up';
+                else if (dr > 0) facing = 'down';
+                else if (dq > 0) facing = 'right';
+                else if (dq < 0) facing = 'left';
+                hero.facing = facing;
+                hero.q = currentCoord.q;
+                hero.r = currentCoord.r;
+                persistHeroes();
+            }
+            continue;
+        }
+        // Fallback legacy uniform timing
         const stepsAdvanced = Math.floor((now - m.startMs) / m.stepMs);
         if (stepsAdvanced >= m.path.length) {
-            // Attempt to move onto final target tile
             const targetTile = ensureTileExists(m.target.q, m.target.r);
-            // Instead of discovering immediately, invoke arrival handler (which starts explore task if needed)
             handleHeroArrival(hero, targetTile);
-
             hero.q = m.target.q;
             hero.r = m.target.r;
             hero.movement = undefined;
             persistHeroes();
             continue;
         }
-        if (stepsAdvanced < 0) continue; // not started yet (shouldn't happen after rebase)
-
+        if (stepsAdvanced < 0) continue; // not started yet
         const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1];
         hero.prevPos = prevCoord;
-
         const currentCoord = m.path[stepsAdvanced];
-        if (!currentCoord) continue; // safety
+        if (!currentCoord) continue;
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
-            // Discover prospective step tile first (keep existing traversal discovery behavior)
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
-
             if (stepTile.discovered && !isTileWalkable(stepTile)) {
-                // Cancel movement; do not move onto unwalkable tile
                 hero.movement = undefined;
                 persistHeroes();
                 continue;
             }
-            // Update facing based on delta from previous position
             const prev = stepsAdvanced === 0 ? m.origin : m.path[stepsAdvanced - 1];
             const dq = prev ? (currentCoord.q - prev.q) : 0;
             const dr = prev ? (currentCoord.r - prev.r) : 0;
@@ -193,20 +233,37 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
     if (!originTile.discovered && !targetTile.discovered) {
-        // Allow if hero.prevPos exists and target is adjacent to prevPos (reachable without needing current exploration)
         const prev = hero.prevPos;
         const allow = prev && hexDistance(prev, target) === 1;
-        if (!allow) return; // block movement; must finish exploring current tile first
+        if (!allow) return;
     }
-    const baseStepMs = 550; // base duration per tile
-    const stepMs = Math.max(150, baseStepMs - hero.stats.spd * 20); // faster with higher spd
+    const baseStepMs = 550;
+    const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04); // spd reduces time (cap at 50%)
+    // Build per-step durations factoring terrain moveCost (use destination terrain for each hop)
+    const durations: number[] = [];
+    for (let i = 0; i < path.length; i++) {
+        const coord = path[i]!;
+        const tile = ensureTileExists(coord.q, coord.r);
+        const def = tile.terrain ? (TERRAIN_DEFS as any)[tile.terrain] : null;
+        const moveCost = def && typeof def.moveCost === 'number' ? def.moveCost : 1;
+        const stepDuration = Math.max(120, baseStepMs * moveCost * speedAdj);
+        durations.push(stepDuration);
+    }
+    // Compute cumulative end times
+    const cumulative: number[] = [];
+    let acc = 0;
+    for (const d of durations) { acc += d; cumulative.push(acc); }
+    // Keep uniform stepMs for interpolation fallback (average)
+    const avg = durations.reduce((a,b)=>a+b,0) / durations.length;
     hero.movement = {
-        path: path.slice(), // copy
+        path: path.slice(),
         origin: {q: hero.q, r: hero.r},
         target,
         taskType,
         startMs: performance.now(),
-        stepMs,
+        stepMs: avg,
+        stepDurations: durations,
+        cumulative,
     };
     persistHeroes();
 }
@@ -259,24 +316,22 @@ export function resetHeroes() {
         const seed = seedHeroes.find(s => s.id === hero.id);
         if (seed) {
             //hero.stats.xp = seed.stats.xp;
-            //temp disable xp reset for testing
-            hero.stats.xp = 0;
-
-            hero.stats.hp = seed.stats.hp;
-            hero.stats.atk = seed.stats.atk;
-            hero.stats.spd = seed.stats.spd;
         }
     }
     persistHeroes();
 }
 
 export function ensureHeroSelected(focus: boolean = true) {
-    if (!selectedHeroId.value && heroes.length) {
-        selectedHeroId.value = heroes[0] ? heroes[0].id : null;
+    if (selectedHeroId.value && heroes.find(h => h.id === selectedHeroId.value)) {
+        if (focus) {
+            const hero = heroes.find(h => h.id === selectedHeroId.value)!;
+            focusHero(hero);
+        }
+        return;
     }
-
-    if (focus) {
-        const hero = getSelectedHero();
-        if (hero) focusHero(hero);
+    const first = heroes[0];
+    if (first) {
+        selectedHeroId.value = first.id;
+        if (focus) focusHero(first);
     }
 }

@@ -15,6 +15,10 @@ export interface TerrainDef {
     // frameTime is the duration (ms) per frame. If omitted or invalid, defaults are applied.
     frames?: number; // number of animation frames (>=2 for animation)
     frameTime?: number; // ms per frame
+    // --- Movement (optional) ---
+    // Multiplier applied to base hero step duration when entering this terrain (>= 0.1).
+    // Lower values => faster traversal; higher => slower. Defaults to 1 if omitted.
+    moveCost?: number;
 }
 
 interface TerrainDefsMap {
@@ -36,6 +40,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             forest: 40,
             plains: 10,
         },
+        moveCost: 3,
     },
     plains: {
         color: '#16a34a',
@@ -46,6 +51,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             forest: 10,
             plains: 40,
         },
+        moveCost: 1,
     },
     water: {
         minDistanceFromCenter: 5,
@@ -56,9 +62,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             water: 60,
             plains: 20,
         },
-        // Example animation: adjust frames/frameTime to match actual asset width & desired speed
-        frames: 4, // assumes water.png is a horizontal strip of 4 frames
-        frameTime: 220, // ~4.5 fps (adjust as desired)
+        frames: 4,
+        frameTime: 220,
     },
     mountain: {
         minDistanceFromCenter: 3,
@@ -70,6 +75,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             mine: 20,
             ruin: -5,
         },
+        moveCost: 5,
     },
     mine: {
         minDistanceFromCenter: 4,
@@ -80,8 +86,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         walkable: true,
         adjacency: {
             mountain: 10,
-            mine: -100, // discourage clustering
+            mine: -100,
         },
+        moveCost: 4,
     },
     ruin: {
         minDistanceFromCenter: 4,
@@ -92,15 +99,17 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         walkable: true,
         adjacency: {
             forest: 20,
-            ruin: -100, // discourage clustering
+            ruin: -100,
         },
+        moveCost: 4,
     },
     towncenter: {
         color: '#eab308',
         walkable: true,
-        baseWeight: 0, // never randomly generated
+        baseWeight: 0,
         adjacency: {},
         preserveIsolation: true,
+        moveCost: 5,
     },
 };
 
