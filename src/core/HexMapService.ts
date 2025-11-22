@@ -147,6 +147,13 @@ export class HexMapService {
         if (!selectedId || !hoveredTile) return [];
         const hero = heroes.find(h => h.id === selectedId);
         if (!hero) return [];
+        // Block path preview if hero stands on an undiscovered tile and hovered tile also undiscovered
+        const originTile = tileIndex[axialKey(hero.q, hero.r)];
+        if (originTile && !originTile.discovered && !hoveredTile.discovered) {
+            const prev = hero.prevPos;
+            const allow = prev && this.axialDistance(prev.q, prev.r, hoveredTile.q, hoveredTile.r) === 1;
+            if (!allow) return [];
+        }
         // Only allow path preview if hero is idle
         if (!this.isHeroIdle(hero)) return [];
         if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
