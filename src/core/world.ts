@@ -138,6 +138,7 @@ export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
 
 export const terrainPositions: Record<TerrainKey, Set<string>> = {
     forest: new Set(),
+    chopped_forest: new Set(), // added for chopped forest tiles
     plains: new Set(),
     water: new Set(),
     mountain: new Set(),

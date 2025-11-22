@@ -18,6 +18,7 @@ import type {TaskInstance} from './tasks';
 
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
+import chopped_forest from '../assets/tiles/chopped_forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountains.png';
 import water from '../assets/tiles/water.png';
@@ -80,7 +81,7 @@ export class HexMapService {
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
 
     // Asset sources
-    private readonly tileImgSources: Record<string, string> = {forest, plains, mountain, water, mine, ruin, towncenter};
+    private readonly tileImgSources: Record<string, string> = {forest, chopped_forest, plains, mountain, water, mine, ruin, towncenter};
 
     async init(canvasEl: HTMLCanvasElement, containerEl: HTMLDivElement) {
         this._canvas = canvasEl;
@@ -274,7 +275,7 @@ export class HexMapService {
         const layer = this._sortedHeroes.length ? this._sortedHeroes : heroes;
         for (let i = layer.length - 1; i >= 0; i--) {
             const h = layer[i]!;
-            const {x, y} = this.worldToScreen(h.q, h.r);
+            const {x, y} = axialToPixel(h.q, h.r);
             const layout = this._heroLayouts.get(axialKey(h.q, h.r)) || {};
             const pos = layout[h.id] || {x: 0, y: 0};
             const left = x - (this.heroFrameSize * this.heroZoom) / 2 + pos.x - (this.heroFrameSize / 2);
@@ -315,11 +316,12 @@ export class HexMapService {
         return {cx: this._canvas.width / this._dpr / 2, cy: this._canvas.height / this._dpr / 2};
     }
 
-    private worldToScreen(q: number, r: number) {
+    // Public helper to convert axial coords to screen center position
+    public getTileScreenCenter(q: number, r: number) {
         const camPx = axialToPixel(camera.q, camera.r);
         const {cx, cy} = this.getCanvasCenter();
         const tilePx = axialToPixel(q, r);
-        return {x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy};
+        return { x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy };
     }
 
     private screenToWorld(x: number, y: number) {
@@ -758,6 +760,26 @@ export class HexMapService {
                     for (const p of edgePixels) ctx.fillRect(p.x, p.y, 1, 1);
                     ctx.restore();
                 }
+            }
+            // Wood carry indicator
+            if (h.carryingWood) {
+                ctx.save();
+                ctx.globalAlpha = opacity;
+                const iconY = destY; // above head
+                const iconX = destX + (this.heroFrameSize * this.heroZoom) / 2;
+                ctx.beginPath();
+                ctx.arc(iconX, iconY, 14, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(29,29,33,0.95)'; // wood colored circle
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(70,70,70,0.9)';
+                ctx.stroke();
+                ctx.font = '700 16px system-ui';
+                ctx.fillStyle = '#fff6d7';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🪵', iconX, iconY + 1);
+                ctx.restore();
             }
         }
         ctx.globalAlpha = 1;

@@ -35,7 +35,9 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
     // Apply adjacency deltas
     neighborTerrains.forEach(nt => {
         for (const key of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
-            const delta = TERRAIN_DEFS[key].adjacency[nt];
+            if(!TERRAIN_DEFS[key]) continue;
+            if(!TERRAIN_DEFS[key]?.adjacency) continue;
+            const delta = TERRAIN_DEFS[key]?.adjacency[nt];
             if (delta !== undefined) weights[key] += delta;
         }
     });

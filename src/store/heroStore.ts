@@ -40,6 +40,8 @@ export interface Hero {
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
     prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
+    carryingWood?: boolean; // indicator hero is carrying wood to warehouse
+    returnPos?: { q: number; r: number }; // original position to return after delivery
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
@@ -56,7 +58,7 @@ const LS_KEY = 'driftlands_heroes_v1';
 
 function persistHeroes() {
     try {
-        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined}));
+        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined, carryingWood: h.carryingWood || false, returnPos: h.returnPos ? {...h.returnPos} : undefined}));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
         // ignore persistence errors
@@ -125,6 +127,13 @@ function restoreHeroes() {
                 hero.prevPos = { q: saved.prevPos.q, r: saved.prevPos.r };
             } else {
                 hero.prevPos = undefined;
+            }
+            // restore carryingWood & returnPos
+            hero.carryingWood = !!saved.carryingWood;
+            if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
+                hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
+            } else {
+                hero.returnPos = undefined;
             }
         }
     } catch (e) {
@@ -312,6 +321,9 @@ export function resetHeroes() {
         hero.movement = undefined;
         hero.currentTaskId = undefined;
         hero.prevPos = undefined;
+        // Reset wood-carry state
+        hero.carryingWood = false;
+        hero.returnPos = undefined;
         // Reset stats to seed values if available
         const seed = seedHeroes.find(s => s.id === hero.id);
         if (seed) {

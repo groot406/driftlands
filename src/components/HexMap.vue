@@ -1,11 +1,12 @@
 <template>
-  <div ref="container" class="w-full h-full relative map-container">
+  <div ref="container" class="w-full h-full relative map-container" @pointerdown="hideTaskBubble">
     <canvas ref="canvas" class="absolute inset-0"/>
+    <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" @started="onTaskStarted" :style="taskBubbleStyle" />
   </div>
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
+import {onBeforeUnmount, onMounted, ref, shallowRef, watch, computed} from 'vue';
 import type {Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import type {Hero} from '../store/heroStore';
@@ -31,6 +32,7 @@ import {
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from "../store/taskStore.ts";
+import TaskBubble from './TaskBubble.vue';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -47,6 +49,12 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
 const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
+
+const showTaskBubble = ref(false);
+const taskBubbleTile = ref<Tile | null>(null);
+
+const containerBounds = ref<{left:number;top:number}>({left:0,top:0});
+const bubbleScreen = ref<{x:number;y:number}>({x:0,y:0});
 
 // Service instance
 const service = new HexMapService();
@@ -87,29 +95,49 @@ function handleClick(e: PointerEvent) {
   if ((now - lastClickTime) < 300) {
     emit('tile-doubleclick', tile);
     lastClickTime = 0;
+    // retain direct double-click chop option
+    const sel = getSelectedHero();
+    if (sel && tile.discovered && tile.terrain === 'forest') {
+      const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+      if (path.length) {
+        detachHeroFromCurrentTask(sel);
+        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
+        hideTaskBubble();
+      }
+    }
   } else {
     lastClickTime = now;
     hoveredTile.value = tile;
     emit('tile-click', tile);
-    // If a hero is selected, start movement along path to tile
+    // Show task bubble if forest tile discovered
+    if (tile.discovered && tile.terrain === 'forest') {
+      taskBubbleTile.value = tile;
+      showTaskBubble.value = true;
+      // compute screen position
+      if (container.value) {
+        const rect = container.value.getBoundingClientRect();
+        containerBounds.value = {left: rect.left, top: rect.top};
+      }
+      const center = service.getTileScreenCenter(tile.q, tile.r);
+      bubbleScreen.value = center;
+    } else {
+      hideTaskBubble();
+    }
+    // movement logic (unchanged) if hero selected and not forest OR if bubble hidden
     const sel = getSelectedHero();
-    if (sel) {
+    if (sel && (!tile.discovered || tile.terrain !== 'forest')) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
-        // Prevent moving from an undiscovered tile directly to another undiscovered tile
         const originTile = ensureTileExists(sel.q, sel.r);
         const targetTile = ensureTileExists(tile.q, tile.r);
-        if (!(originTile.discovered === false && targetTile.discovered === false) || (sel.prevPos && hexDistance(sel.prevPos, {
-          q: tile.q,
-          r: tile.r
-        }) === 1)) {
+        if (!(originTile.discovered === false && targetTile.discovered === false) || (sel.prevPos && hexDistance(sel.prevPos, {q: tile.q, r: tile.r}) === 1)) {
           detachHeroFromCurrentTask(sel);
           startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
           pathCoords.value = path;
         }
       }
-    } else {
-      // No hero selected -> deselect explicitly
+    }
+    if (!sel) {
       selectHero(null, false);
     }
   }
@@ -202,6 +230,11 @@ onBeforeUnmount(() => {
   service.destroy();
   stopCameraAnimation();
 });
+
+function hideTaskBubble() {
+  showTaskBubble.value = false;
+  taskBubbleTile.value = null;
+}
 </script>
 
 <style scoped>

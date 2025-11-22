@@ -23,6 +23,7 @@ export interface TerrainDef {
 
 interface TerrainDefsMap {
     forest: TerrainDef;
+    chopped_forest: TerrainDef;
     plains: TerrainDef;
     water: TerrainDef;
     mountain: TerrainDef;
@@ -41,6 +42,12 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             plains: 10,
         },
         moveCost: 2.5,
+    },
+    chopped_forest: {
+        color: '#14532d',
+        baseWeight: 0,
+        walkable: true,
+        moveCost: 1.2,
     },
     plains: {
         color: '#16a34a',

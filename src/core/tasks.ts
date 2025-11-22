@@ -1,10 +1,12 @@
 import type {Tile} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
 import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
+import { HexMapService } from './HexMapService';
 
 // Import task definitions to register them
 import '../core/taskDefs/explore';
-
+import '../core/taskDefs/chopWood'; // register chop wood task
+import {startHeroMovement} from '../store/heroStore';
 // Task definition interfaces enable future extension.
 export interface TaskDefinition {
     key: TaskType;
@@ -29,7 +31,7 @@ export interface TaskDefinition {
     totalRewardedStats(distance: number): Record<HeroStat, number>;
 }
 
-export type TaskType = 'explore' | string;
+export type TaskType = 'explore' | 'chopWood' | string;
 
 export interface TaskInstance {
     id: string;
@@ -51,7 +53,28 @@ export interface TaskInstance {
 
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
-    if (!hero || !tile || !hero.movement?.taskType) return;
+    if (!hero || !tile) return;
+    // Wood delivery: if carrying wood and tile is towncenter, send hero back to original returnPos
+    if (hero.carryingWood && tile.terrain === 'towncenter') {
+        const dest = hero.returnPos;
+        hero.carryingWood = false;
+        if (dest) {
+            const service = new HexMapService();
+            const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);
+            if (path.length) {
+                startHeroMovement(hero.id, path, { q: dest.q, r: dest.r });
+                return; // defer task start until after return
+            }
+        }
+        hero.returnPos = undefined;
+    }
+    if (!hero.movement?.taskType) {
+        // If hero ended a return movement (no taskType) and reached returnPos, clear returnPos
+        if (hero.returnPos && hero.q === hero.returnPos.q && hero.r === hero.returnPos.r) {
+            hero.returnPos = undefined;
+        }
+        return;
+    }
     const selected = hero.movement?.taskType;
     if (selected) {
         const existing = getTaskByTile(tile.id, selected);
