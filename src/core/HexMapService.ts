@@ -117,6 +117,8 @@ export class HexMapService {
     if (!selectedId || !hoveredTile) return [];
     const hero = heroes.find(h => h.id === selectedId);
     if (!hero) return [];
+    // Only allow path preview if hero is idle
+    if (!this.isHeroIdle(hero)) return [];
     if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
     return this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
   }
@@ -331,8 +333,12 @@ export class HexMapService {
       }
     }
 
-    // Path highlight (iterate directly to avoid undefined index warnings)
-    if (opts.pathCoords.length) {
+    // Determine if selected hero is idle (gate path and selected highlight)
+    const selectedHero = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) || null : null;
+    const selectedHeroIdle = selectedHero ? this.isHeroIdle(selectedHero) : false;
+
+    // Path highlight only when selected hero idle
+    if (selectedHeroIdle && opts.pathCoords.length) {
       for (const pc of opts.pathCoords) {
         const dist = hexDistance(camera, pc);
         const opacity = (() => { const f = this.computeFade(dist, camera.innerRadius, camera.radius); return f * f; })();
@@ -356,12 +362,12 @@ export class HexMapService {
     }
 
     // Heroes
-    this.drawHeroes(ctx, opts.hoveredHero);
+    this.drawHeroes(ctx, opts.hoveredHero, selectedHeroIdle);
 
     ctx.restore();
   }
 
-  private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null) {
+  private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, selectedHeroIdle: boolean) {
     if (!this._heroImagesLoaded) return;
     const radius = camera.radius + 1;
     // Rebuild layout map
@@ -426,8 +432,8 @@ export class HexMapService {
         ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * this.heroZoom, frameSize * this.heroZoom);
       }
 
-      const selected = selectedHeroId.value === h.id;
-      const hovered = hoveredHero && hoveredHero.id === h.id;
+      const selected = (selectedHeroId.value === h.id) && selectedHeroIdle; // only highlight selected if idle
+      const hovered = hoveredHero && hoveredHero.id === h.id; // hovered unaffected
       if ((selected || hovered)) {
         const edgeFrames = this._heroEdgePixelsByRow[h.avatar]?.[anim.row];
         const edgePixels = edgeFrames ? edgeFrames[frameIndex] : undefined;
@@ -579,6 +585,15 @@ export class HexMapService {
     if (!t.terrain) return false;
     const def = (TERRAIN_DEFS as any)[t.terrain];
     return !!(def && def.walkable);
+  }
+
+  private isHeroIdle(hero: Hero): boolean {
+    if (hero.movement) return false;
+    if (hero.currentTaskId) {
+      const inst = taskStore.taskIndex[hero.currentTaskId];
+      if (inst && inst.active && !inst.completedMs) return false;
+    }
+    return true;
   }
 
   private getHeroInterpolatedPixelPosition(hero: Hero, now: number) {

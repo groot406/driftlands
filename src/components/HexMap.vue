@@ -128,7 +128,7 @@ watch([pathCoords, selectedHeroId], () => {
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
   await service.init(canvas.value, container.value);
-  window.addEventListener('resize', () => service.resize());
+  // Ignore if modifier keys pressed to avoid interfering with shortcuts
   window.addEventListener('orientationchange', () => service.resize());
   window.addEventListener('keydown', keyDown);
   window.addEventListener('keyup', keyUp);
