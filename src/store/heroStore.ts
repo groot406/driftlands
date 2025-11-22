@@ -1,5 +1,5 @@
 import {reactive, ref} from 'vue';
-import {moveCamera} from '../core/camera';
+import {moveCamera, hexDistance} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
 import {ensureTileExists} from '../core/world';
 import type { Tile } from '../core/world';
@@ -187,6 +187,14 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
+    const originTile = ensureTileExists(hero.q, hero.r);
+    const targetTile = ensureTileExists(target.q, target.r);
+    if (!originTile.discovered && !targetTile.discovered) {
+        // Allow if hero.prevPos exists and target is adjacent to prevPos (reachable without needing current exploration)
+        const prev = hero.prevPos;
+        const allow = prev && hexDistance(prev, target) === 1;
+        if (!allow) return; // block movement; must finish exploring current tile first
+    }
     const baseStepMs = 550; // base duration per tile
     const stepMs = Math.max(150, baseStepMs - hero.stats.spd * 20); // faster with higher spd
     hero.movement = {

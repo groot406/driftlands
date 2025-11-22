@@ -42,6 +42,7 @@
 import {type Hero, heroes, selectHero, selectedHeroId} from '../store/heroStore';
 import Sprite from "./Sprite.vue";
 import {onBeforeUnmount, onMounted} from "vue";
+import {isPaused} from "../store/uiStore";
 
 function select(h: Hero) {
   selectHero(h, true);
@@ -53,8 +54,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleHeroHotkey);
 })
-import {isPaused} from "../store/uiStore";
-
 
 // Hero selection hotkeys: numeric keys 1..9 (and 0 for 10th), plus Tab / Shift+Tab to cycle.
 function handleHeroHotkey(e: KeyboardEvent) {

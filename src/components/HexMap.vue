@@ -13,6 +13,8 @@ import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnim
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from "../store/taskStore.ts";
+import {ensureTileExists} from '../core/world';
+import {hexDistance} from '../core/camera';
 
 const emit = defineEmits<{ (e: 'tile-click', tile: Tile): void; (e: 'tile-doubleclick', tile: Tile): void; (e: 'hero-click', hero: Hero): void }>();
 
@@ -74,10 +76,14 @@ function handleClick(e: PointerEvent) {
     if (sel) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
-        detachHeroFromCurrentTask(sel);
-        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
-        // path preview should show planned path until movement starts
-        pathCoords.value = path;
+        // Prevent moving from an undiscovered tile directly to another undiscovered tile
+        const originTile = ensureTileExists(sel.q, sel.r);
+        const targetTile = ensureTileExists(tile.q, tile.r);
+        if (!(originTile.discovered === false && targetTile.discovered === false) || (sel.prevPos && hexDistance(sel.prevPos, {q: tile.q, r: tile.r}) === 1)) {
+          detachHeroFromCurrentTask(sel);
+          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
+          pathCoords.value = path;
+        }
       }
     } else {
       // No hero selected -> deselect explicitly
