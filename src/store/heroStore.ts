@@ -34,6 +34,7 @@ export interface Hero {
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
+    prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
 }
 
 export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for now
@@ -41,7 +42,7 @@ export const HERO_SPRITE = santa; // placeholder spritesheet for all heroes for 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
     {id: 'h1', name: 'Santa', avatar: HERO_SPRITE, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down', currentTaskId: undefined},
-    // {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
+    {id: 'h2', name: 'Brann', avatar: HERO_SPRITE, q: 2, r: 2, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -50,12 +51,13 @@ const LS_KEY = 'driftlands_heroes_v1';
 
 function persistHeroes() {
     try {
-        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId}));
+        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined}));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
         // ignore persistence errors
     }
 }
+export { persistHeroes }; // export for task completion side-effects
 
 function restoreHeroes() {
     if (typeof window === 'undefined') return;
@@ -113,6 +115,12 @@ function restoreHeroes() {
             } else {
                 hero.currentTaskId = undefined;
             }
+            // restore previous position snapshot if present
+            if (saved.prevPos && typeof saved.prevPos.q === 'number' && typeof saved.prevPos.r === 'number') {
+                hero.prevPos = { q: saved.prevPos.q, r: saved.prevPos.r };
+            } else {
+                hero.prevPos = undefined;
+            }
         }
     } catch (e) {
         // ignore
@@ -142,6 +150,10 @@ export function updateHeroMovements(now: number) {
             continue;
         }
         if (stepsAdvanced < 0) continue; // not started yet (shouldn't happen after rebase)
+
+        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1];
+        hero.prevPos = prevCoord;
+
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue; // safety
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
@@ -231,6 +243,7 @@ export function resetHeroes() {
         hero.facing = 'down';
         hero.movement = undefined;
         hero.currentTaskId = undefined;
+        hero.prevPos = undefined;
         // Reset stats to seed values if available
         const seed = seedHeroes.find(s => s.id === hero.id);
         if (seed) {
@@ -246,9 +259,9 @@ export function resetHeroes() {
     persistHeroes();
 }
 
-export function ensureHeroSelected(focus: boolean) {
+export function ensureHeroSelected(focus: boolean = true) {
     if (!selectedHeroId.value && heroes.length) {
-        selectedHeroId.value = heroes[0].id;
+        selectedHeroId.value = heroes[0] ? heroes[0].id : null;
     }
 
     if (focus) {

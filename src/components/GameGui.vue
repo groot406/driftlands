@@ -9,7 +9,6 @@
         <DebugPanel/>
       </div>
     </div>
-    <!-- Heroes bar anchored at bottom - separate absolute layer -->
     <HeroesBar />
   </div>
 </template>

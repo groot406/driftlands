@@ -1,6 +1,5 @@
 import {watch} from 'vue';
 import {type Tile, tiles, worldVersion} from '../core/world';
-import { isPaused } from './uiStore';
 import { updateActiveTasks } from './taskStore';
 import { heroes } from './heroStore';
 
@@ -50,12 +49,7 @@ export function startIdle() {
 
 async function loop() {
     if (!idleStore.running) return;
-    if (isPaused()) { // while paused, defer tick increment & reschedule
-        requestAnimationFrame(loop);
-        return;
-    }
     idleStore.tick++;
-
     updateActiveTasks(heroes);
     requestAnimationFrame(loop);
 }

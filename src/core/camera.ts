@@ -199,6 +199,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 
 // Keyboard handlers
 const heldKeys = new Set<string>();
+export function isKeyboardNavigating(): boolean { return heldKeys.size > 0; }
 
 export function keyDown(e: KeyboardEvent) {
     if (isPaused()) return; // suppress movement key capture while paused
@@ -224,13 +225,11 @@ export async function animateCamera() {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     if (isPaused()) {
-        // While paused, freeze velocities & clear input; keep scheduling for smooth resume
+        // When menu open, suppress input sampling but continue inertial motion decay
         heldKeys.clear();
-        camera.velQ = 0;
-        camera.velR = 0;
-        camera.speed = camera.speed * 0.8; // gentle decay of motion blur
-        lastQ = camera.q;
-        lastR = camera.r;
+        camera.velQ = camera.velQ * 0.9; // gentle decay
+        camera.velR = camera.velR * 0.9;
+        camera.speed = camera.speed * 0.9;
         rafId = requestAnimationFrame(animateCamera);
         return;
     }

@@ -24,11 +24,17 @@ const wrapper = ref<HTMLDivElement | null>(null);
 const ctxRef = shallowRef<CanvasRenderingContext2D | null>(null);
 let dpr = window.devicePixelRatio || 1;
 
+const props = defineProps<{
+  move: boolean
+  speed?: number;
+  blur?: number
+}>();
+
 // Scroll configuration
-const SCROLL_SPEED = 50; // reduced speed for subtle motion
-const DIR_X = 0.6; // diagonal direction components (normalized below)
-const DIR_Y = 0.8;
-const BLUR_AMOUNT = 4; // base blur (px)
+const SCROLL_SPEED = props.speed ?? (props.move ? 50 : 0); // reduced speed for subtle motion
+const DIR_X = props.move ? 0.6 : 0.01; // diagonal direction components (normalized below)
+const DIR_Y = props.move ? 0.8 : 0.01;
+const BLUR_AMOUNT = props.blur ?? 4; // base blur (px)
 const EXTRA_MARGIN = HEX_SIZE * 3; // pixels beyond viewport to prefill
 
 let scrollX = 0;

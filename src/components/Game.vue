@@ -32,7 +32,7 @@ function moveToTile(tile: Tile) {
   moveCamera(tile.q, tile.r);
 }
 
-function handleTileClick(tile: Tile) {
+function handleTileClick(_tile: Tile) {
   // TODO: create 'explore' task and assign the selected hero to it
 }
 </script>

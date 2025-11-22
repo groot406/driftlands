@@ -26,7 +26,7 @@ export interface TaskDefinition {
     onComplete(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
 
     // Optional base reward XP for participants collectively (split proportionally)
-    totalRewardedStats(distance): Map<HeroStat, number>;
+    totalRewardedStats(distance: number): Record<HeroStat, number>;
 }
 
 export type TaskType = 'explore' | string;
@@ -37,9 +37,13 @@ export interface TaskInstance {
     tileId: string;
     progressXp: number;
     requiredXp: number;
-    createdTick: number;
-    completedTick?: number;
-    participants: Record<string, number>; // heroId -> contributedXp
+    createdTick: number; // legacy tick when created
+    completedTick?: number; // legacy tick when completed
+    // Real-time fields for offline progression
+    createdMs: number; // Date.now() when task started
+    lastUpdateMs: number; // last Date.now() when progress applied
+    completedMs?: number; // Date.now() when completed
+    participants: Record<string, number>; // heroId -> contributedXp (time-scaled cumulative)
     active: boolean;
 }
 

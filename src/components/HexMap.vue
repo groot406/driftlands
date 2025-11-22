@@ -9,7 +9,7 @@ import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import type {Hero} from '../store/heroStore';
 import {selectHero, selectedHeroId, heroes, updateHeroFacing, startHeroMovement, updateHeroMovements, getSelectedHero} from '../store/heroStore';
-import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation} from '../core/camera';
+import {createPointerHandlers, dragged, dragging, keyDown, keyUp, stopCameraAnimation, camera, isKeyboardNavigating} from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from "../store/taskStore.ts";
@@ -33,10 +33,12 @@ let lastClickTime = 0;
 
 function animationLoop() {
   const now = performance.now();
-  // advance hero movements
   updateHeroMovements(now);
-  // recompute path preview for selected hero (if moving use remaining path from movement state)
-  if (selectedHeroId.value && hoveredTile.value) {
+
+  if (isKeyboardNavigating()) {
+    if (hoveredTile.value) hoveredTile.value = null;
+    if (pathCoords.value.length) pathCoords.value = [];
+  } else if (selectedHeroId.value && hoveredTile.value) {
     pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
   }
   service.draw({hoveredTile: hoveredTile.value, hoveredHero: hoveredHero.value, pathCoords: pathCoords.value});
@@ -73,7 +75,7 @@ function handleClick(e: PointerEvent) {
       const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
       if (path.length) {
         detachHeroFromCurrentTask(sel);
-        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : null);
+        startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
         // path preview should show planned path until movement starts
         pathCoords.value = path;
       }

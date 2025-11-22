@@ -270,8 +270,8 @@ export class HexMapService {
         ctx.globalAlpha = opacity;
         ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
       } else {
-        ctx.globalAlpha = opacity * 0.5;
-        ctx.fillStyle = '#242c3f';
+        ctx.globalAlpha = opacity * 0.8;
+        ctx.fillStyle = '#3a4662';
         ctx.beginPath();
         const w = this.TILE_DRAW_SIZE; const h = this.TILE_DRAW_SIZE;
         ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
@@ -282,6 +282,21 @@ export class HexMapService {
         ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
         ctx.closePath();
         ctx.fill();
+        // Distance from center (0,0) overlay for undiscovered tiles
+        const centerDist = this.axialDistance(0,0,t.q,t.r);
+        ctx.globalAlpha = opacity * 0.95;
+        ctx.font = '600 12px system-ui, sans-serif';
+        ctx.fillStyle = '#d8eefa';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Slight shadow for readability
+        ctx.save();
+        ctx.translate(0,0);
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 2;
+        ctx.globalAlpha = 0.5 * opacity;
+        ctx.fillText(String(centerDist), x-2, y-2);
+        ctx.restore();
       }
     }
 
@@ -543,6 +558,7 @@ export class HexMapService {
     const progress = Math.min(1, Math.max(0, stepElapsed / m.stepMs));
     const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
     const to = m.path[stepIndex];
+    if (!from || !to) return axialToPixel(hero.q, hero.r);
     const fromPx = axialToPixel(from.q, from.r);
     const toPx = axialToPixel(to.q, to.r);
     return {

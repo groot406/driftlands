@@ -146,22 +146,36 @@ The overlay will automatically show while assets are loading.
 ---
 
 ## Menus / Game Phases
-A basic UI phase system has been introduced via `uiStore.ts`:
-- Phases: `title`, `playing`, `paused`
-- Title screen component: `TitleScreen.vue`
-- Pause overlay: `PauseMenu.vue`
+The UI phase system now supports non-pausing in-game menus:
+- Phases: `title`, `playing`
+- In-game menu overlay: `PauseMenu.vue` (will be renamed `InGameMenu.vue`) displays without halting simulation.
 
-Escape key toggles pause while playing. The Continue button is enabled if a simple stub save key (`driftlands-save`) exists in localStorage (created on starting a New Game). Future work can expand this to serialize world / heroes.
+Escape toggles the menu (`uiStore.menuOpen`), but hero movement, task progression, and camera inertia continue. Input (drag/keys) is suppressed while open.
 
 ### Actions
-Imported from `store/uiStore`:
+From `store/uiStore`:
 - `startNewGame()`
 - `continueGame()`
-- `pauseGame()` / `resumeGame()`
+- `pauseGame()` / `resumeGame()` (semantic: open/close menu)
+- `toggleMenu()`
 - `returnToTitle()`
 
-### Next Steps (Ideas)
-- Implement real save snapshot (world tiles, heroes, camera position).
-- Settings modal (audio, accessibility, performance toggles).
-- Credits panel with contributor list.
-- Animated logo and subtle background parallax on title screen.
+## Real-Time Task Progression
+Tasks have migrated from tick-based to elapsed time progression. Each `TaskInstance` now stores:
+- `createdMs`, `lastUpdateMs`, `completedMs?` timestamps (Date.now based)
+- Legacy `createdTick`/`completedTick` kept temporarily for transition
+- Contributions scale by seconds: `heroRate()` is treated as XP per second.
+
+On each frame `updateActiveTasks()` computes `elapsedMs` since `lastUpdateMs` and applies `ratePerSecond * (elapsedMs/1000)` per hero. Offline gaps are captured by restoring tasks and immediately synchronizing timestamps; a subsequent update after heroes load awards full catch-up.
+
+### Balancing Notes
+Previous required XP values assumed ~60 ticks/sec; they've been reduced for the `explore` task. Future tuning can adjust either `requiredXp()` or `heroRate()` for pacing.
+
+### Persistence
+Tasks serialize minimal fields under `driftlands_tasks_v2`. Heroes persist separately. On load, tasks restore then wait for a hero update pass to apply real progress.
+
+### Edge Cases Handled
+- Empty participant set removes task.
+- Negative elapsed or zero elapsed are ignored.
+- Multiple completions in same frame handled by array slice iteration.
+- Offline gap sets baseline timestamp to avoid partial double-counting until heroes restored.

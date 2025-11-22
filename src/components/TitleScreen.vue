@@ -1,7 +1,7 @@
 <template>
   <div class="title-screen w-full h-screen flex flex-col items-center justify-center bg-slate-900 text-slate-100 relative overflow-hidden">
     <!-- Procedural scrolling blurred hex background -->
-    <TitleBackground />
+    <TitleBackground :move="true" />
     <!-- Foreground content -->
     <div class="flex flex-col items-center gap-8 p-6 rounded-xl z-10 bg-black/10 backdrop-blur-md border-2 border-white/20 -m-2">
       <h1 class="text-5xl font-bold tracking-wide">Driftlands</h1>
