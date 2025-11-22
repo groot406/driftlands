@@ -275,7 +275,7 @@ export class HexMapService {
         const layer = this._sortedHeroes.length ? this._sortedHeroes : heroes;
         for (let i = layer.length - 1; i >= 0; i--) {
             const h = layer[i]!;
-            const {x, y} = axialToPixel(h.q, h.r);
+            const {x, y} = this.worldToScreen(h.q, h.r);
             const layout = this._heroLayouts.get(axialKey(h.q, h.r)) || {};
             const pos = layout[h.id] || {x: 0, y: 0};
             const left = x - (this.heroFrameSize * this.heroZoom) / 2 + pos.x - (this.heroFrameSize / 2);
@@ -342,6 +342,13 @@ export class HexMapService {
         ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
         ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
         ctx.closePath();
+    }
+
+    private worldToScreen(q: number, r: number) {
+        const camPx = axialToPixel(camera.q, camera.r);
+        const {cx, cy} = this.getCanvasCenter();
+        const tilePx = axialToPixel(q, r);
+        return {x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy};
     }
 
     private drawHexHighlight(ctx: CanvasRenderingContext2D, q: number, r: number, fill: string | null, stroke: string | null, opacity: number) {

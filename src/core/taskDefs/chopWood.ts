@@ -62,6 +62,7 @@ const chopWoodTask: TaskDefinition = {
         // For each participating hero: mark carrying wood and send to nearest towncenter
         for (const hero of participants) {
             hero.carryingWood = true;
+            hero.carryingWoodCount = (hero.carryingWoodCount || 0) + 1;
             if (!hero.returnPos) hero.returnPos = { q: hero.q, r: hero.r }; // fallback
             const tc = findNearestTowncenter(hero.q, hero.r);
             if (tc) {

@@ -1,7 +1,9 @@
 <template>
   <div ref="container" class="w-full h-full relative map-container" @pointerdown="hideTaskBubble">
     <canvas ref="canvas" class="absolute inset-0"/>
-    <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" @started="onTaskStarted" :style="taskBubbleStyle" />
+    <transition name="fade-menu" mode="out-in">
+      <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" @started="onTaskStarted" :style="taskBubbleStyle" />
+    </transition>
   </div>
 </template>
 
@@ -82,6 +84,8 @@ function updatePath() {
 function handleClick(e: PointerEvent) {
   if (isPaused()) return;
   if (dragged) return;
+  if(showTaskBubble.value) return;
+
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
     selectHero(hero, false);
@@ -235,6 +239,15 @@ function hideTaskBubble() {
   showTaskBubble.value = false;
   taskBubbleTile.value = null;
 }
+
+const taskBubbleStyle = computed(() => {
+  return {
+    position: 'absolute',
+    left: `${bubbleScreen.value.x}px`,
+    top: `${bubbleScreen.value.y}px`,
+    transform: 'translate(-50%, -100%)'
+  };
+});
 </script>
 
 <style scoped>
