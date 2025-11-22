@@ -14,6 +14,7 @@ import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
+import type {TaskInstance} from './tasks';
 
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
@@ -395,11 +396,21 @@ export class HexMapService {
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
                 let hasActive = false;
+                let chosen: TaskInstance | null = null; // for progress bar
                 for (const taskId of Object.values(activeTasksForTile)) {
                     const inst = taskStore.taskIndex[taskId];
                     if (inst && inst.active && !inst.completedMs) {
                         hasActive = true;
-                        break;
+                        // select task with highest progress ratio (tie break earliest createdMs)
+                        const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
+                        if (!chosen) {
+                            chosen = inst;
+                        } else {
+                            const chosenRatio = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
+                            if (ratio > chosenRatio || (Math.abs(ratio - chosenRatio) < 0.0001 && inst.createdMs < chosen.createdMs)) {
+                                chosen = inst;
+                            }
+                        }
                     }
                 }
                 if (hasActive) {
@@ -422,6 +433,55 @@ export class HexMapService {
                     ctx.shadowBlur = 6 * pulse;
                     ctx.stroke();
                     ctx.restore();
+
+                    // --- Progress bar (small) ---
+                    if (chosen && opacity > 0.05) {
+                        const progressRatioRaw = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
+                        const progressRatio = Math.min(1, Math.max(0, progressRatioRaw));
+                        // Tile bounds
+                        const tileLeft = x - HEX_SIZE;
+                        const tileTop = y - HEX_SIZE;
+                        const tileWidth = this.TILE_DRAW_SIZE;
+                        const tileHeight = this.TILE_DRAW_SIZE;
+                        // Bar dimensions
+                        const barWidth = Math.round(tileWidth * 0.55);
+                        const barHeight = 7; // small bar
+                        const marginBottom = 8; // space from bottom edge
+                        let barX = x - barWidth / 2; // center
+                        const barY = tileTop + tileHeight - marginBottom - barHeight;
+                        // Clamp horizontally within tile
+                        const minX = tileLeft + 4;
+                        const maxX = tileLeft + tileWidth - barWidth - 4;
+                        if (barX < minX) barX = minX;
+                        if (barX > maxX) barX = maxX;
+
+                        ctx.save();
+                        ctx.globalAlpha = opacity; // integrate camera fade
+                        // Background with rounded corners
+                        const radius = 16;
+                        this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+                        ctx.fillStyle = 'rgba(8,24,36,0.55)';
+                        ctx.fill();
+                        // Border
+                        ctx.strokeStyle = 'rgba(255,183,0,0.8)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        // Fill portion (rounded left, full rounding if complete)
+                        const filled = Math.max(1, Math.round(barWidth * progressRatio)); // ensure at least 1px if >0
+                        if (progressRatio > 0) {
+                            const grad = ctx.createLinearGradient(barX, barY, barX + filled, barY);
+                            grad.addColorStop(0, 'rgba(246,255,120,0.9)');
+                            grad.addColorStop(1, 'rgba(255,242,0,0.95)');
+                            ctx.fillStyle = grad;
+                            if (progressRatio >= 0.999) {
+                                this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+                            } else {
+                                this.drawLeftRoundedRect(ctx, barX, barY, filled, barHeight, radius);
+                            }
+                            ctx.fill();
+                        }
+                        ctx.restore();
+                    }
                 }
             }
         }
@@ -817,8 +877,7 @@ export class HexMapService {
     }
 
     private isHeroWalking(hero: Hero): boolean {
-        if (hero.movement) return true;
-        return false;
+        return !!hero.movement;
     }
 
     private getHeroInterpolatedPixelPosition(hero: Hero, now: number) {
@@ -844,5 +903,33 @@ export class HexMapService {
             y: fromPx.y + (toPx.y - fromPx.y) * progress,
         };
     }
-}
 
+    // Helper: draw rounded rectangle (all corners)
+    private drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+    // Helper: draw rounded rectangle only on left side (used for partial progress fill)
+    private drawLeftRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w, y);
+        ctx.lineTo(x + w, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+}
