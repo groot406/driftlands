@@ -156,13 +156,13 @@ export function updateHeroMovements(now: number) {
         const cumulative = m.cumulative;
         if (durations && cumulative && durations.length === m.path.length && cumulative.length === m.path.length) {
             const elapsed = now - m.startMs;
-            // Find current step index via linear scan (paths are short); optimize later with binary search if needed
-            let stepIndex = -1;
+            // Determine number of COMPLETED steps (elapsed >= cumulative[i])
+            let completedSteps = 0;
             for (let i = 0; i < cumulative.length; i++) {
-                if (elapsed < cumulative[i]!) { stepIndex = i; break; }
+                if (elapsed >= cumulative[i]!) completedSteps = i + 1; else break;
             }
-            if (stepIndex === -1) {
-                // Completed all steps -> arrive
+            // Arrival if all steps completed
+            if (completedSteps >= m.path.length) {
                 const targetTile = ensureTileExists(m.target.q, m.target.r);
                 handleHeroArrival(hero, targetTile);
                 hero.q = m.target.q;
@@ -171,27 +171,32 @@ export function updateHeroMovements(now: number) {
                 persistHeroes();
                 continue;
             }
-            // Determine previous coord (completed) and current coord
-            const prevCoordRaw = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
-            const prevCoord = prevCoordRaw || m.origin; // fallback ensures defined
-            hero.prevPos = prevCoord;
-            const currentCoord = m.path[stepIndex];
-            if (!currentCoord) continue;
-            if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
-                const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
-                if (stepTile.discovered && !isTileWalkable(stepTile)) {
+            // Current coord = last fully completed tile (origin if none yet)
+            const currentCoord = (completedSteps === 0) ? m.origin : m.path[completedSteps - 1]!;
+            const nextCoord = m.path[completedSteps]; // in-progress destination (not yet reached)
+            hero.prevPos = currentCoord;
+            // Validate destination walkability ahead of time
+            if (nextCoord) {
+                const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
+                if (nextTile.discovered && !isTileWalkable(nextTile)) {
                     hero.movement = undefined;
                     persistHeroes();
                     continue;
                 }
-                const dq = currentCoord.q - prevCoord.q;
-                const dr = currentCoord.r - prevCoord.r;
+            }
+            // Facing toward next tile if exists
+            if (nextCoord) {
+                const dq = nextCoord.q - currentCoord.q;
+                const dr = nextCoord.r - currentCoord.r;
                 let facing: Hero['facing'] = hero.facing;
                 if (dr < 0) facing = 'up';
                 else if (dr > 0) facing = 'down';
                 else if (dq > 0) facing = 'right';
                 else if (dq < 0) facing = 'left';
                 hero.facing = facing;
+            }
+            // Update hero position only when a full step finished
+            if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
                 hero.q = currentCoord.q;
                 hero.r = currentCoord.r;
                 persistHeroes();
@@ -241,6 +246,21 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
+    // Prevent exploit: ignore if hero already moving and target unchanged
+    if (hero.movement) {
+        const m = hero.movement;
+        if (m.target.q === target.q && m.target.r === target.r) {
+            return; // already en route to this target; ignore repeated clicks
+        }
+        // Additionally, if hero hasn't completed the first step yet (elapsed < first duration), block re-pathing to any intermediate of current path
+        if (m.stepDurations && m.cumulative) {
+            const elapsed = performance.now() - m.startMs;
+            if (elapsed < m.stepDurations[0]! * 0.5) {
+                // Early in first step; disallow new movement to avoid jump
+                return;
+            }
+        }
+    }
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
     if (!originTile.discovered && !targetTile.discovered) {
@@ -250,14 +270,19 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     }
     const baseStepMs = 550;
     const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04); // spd reduces time (cap at 50%)
-    // Build per-step durations factoring terrain moveCost (use destination terrain for each hop)
+    // Build per-step durations factoring terrain moveCost using edge-average (0.5*from + 0.5*to)
     const durations: number[] = [];
     for (let i = 0; i < path.length; i++) {
-        const coord = path[i]!;
-        const tile = ensureTileExists(coord.q, coord.r);
-        const def = tile.terrain ? (TERRAIN_DEFS as any)[tile.terrain] : null;
-        const moveCost = def && typeof def.moveCost === 'number' ? def.moveCost : 1;
-        const stepDuration = Math.max(120, baseStepMs * moveCost * speedAdj);
+        const fromCoord = (i === 0) ? { q: hero.q, r: hero.r } : path[i - 1]!;
+        const toCoord = path[i]!;
+        const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
+        const toTile = ensureTileExists(toCoord.q, toCoord.r);
+        const fromDef = fromTile.terrain ? (TERRAIN_DEFS as any)[fromTile.terrain] : null;
+        const toDef = toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
+        const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
+        const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
+        const edgeCost = 0.5 * fromCost + 0.5 * toCost; // include half of origin + half of destination
+        const stepDuration = Math.max(120, baseStepMs * edgeCost * speedAdj);
         durations.push(stepDuration);
     }
     // Compute cumulative end times
