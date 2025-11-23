@@ -48,6 +48,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         baseWeight: 0,
         walkable: true,
         moveCost: 1.2,
+        adjacency: {},
     },
     plains: {
         color: '#16a34a',

@@ -2,7 +2,7 @@
   <div ref="container" class="w-full h-full relative map-container" @pointerdown="hideTaskBubble">
     <canvas ref="canvas" class="absolute inset-0"/>
     <transition name="fade-menu" mode="out-in">
-      <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" @started="onTaskStarted" :style="taskBubbleStyle" />
+      <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" :style="taskBubbleStyle" />
     </transition>
   </div>
 </template>

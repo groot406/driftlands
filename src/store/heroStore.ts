@@ -41,6 +41,7 @@ export interface Hero {
     currentTaskId?: string; // id of currently assigned active task (if any)
     prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
     carryingWood?: boolean; // indicator hero is carrying wood to warehouse
+    carryingWoodCount?: number; // number of wood deliveries completed
     returnPos?: { q: number; r: number }; // original position to return after delivery
 }
 
@@ -58,7 +59,7 @@ const LS_KEY = 'driftlands_heroes_v1';
 
 function persistHeroes() {
     try {
-        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined, carryingWood: h.carryingWood || false, returnPos: h.returnPos ? {...h.returnPos} : undefined}));
+        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined, carryingWood: h.carryingWood || false, carryingWoodCount: h.carryingWoodCount || 0, returnPos: h.returnPos ? {...h.returnPos} : undefined}));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
         // ignore persistence errors
@@ -130,6 +131,7 @@ function restoreHeroes() {
             }
             // restore carryingWood & returnPos
             hero.carryingWood = !!saved.carryingWood;
+            if (typeof saved.carryingWoodCount === 'number') hero.carryingWoodCount = saved.carryingWoodCount;
             if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
                 hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
             } else {

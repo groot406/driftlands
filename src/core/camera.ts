@@ -6,7 +6,7 @@ export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
 export const MOVE_SPEED = 50; // axial units per second base
 export const HEX_SIZE = 34;
-export const HEX_SPACE = 3;
+export const HEX_SPACE = 2;
 
 // Interaction constants
 const DRAG_THRESHOLD = 4; // px before treating pointer as drag
