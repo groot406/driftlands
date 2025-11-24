@@ -36,6 +36,10 @@ export function terrainColor(t: ProcTerrain): string {
     case 'mountain': return '#5b5f68';
     case 'forest': return '#1f5130';
     case 'plains': return '#5d7d3a';
+    case 'snow': return '#b8c7d6'; // add missing
+    case 'dessert': return '#c2a26e'; // desert stylized
+    case 'dirt': return '#7a5d3b';
+    default: return '#444f53';
   }
 }
 

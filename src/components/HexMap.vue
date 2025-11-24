@@ -100,6 +100,12 @@ function handleClick(e: PointerEvent) {
   }
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
+  const selHero = getSelectedHero();
+  // Allow unloading wood: if hero carryingWood and clicks a plains or towncenter tile they're standing on, drop wood.
+  if (selHero && selHero.carryingWood && selHero.q === tile.q && selHero.r === tile.r && tile.discovered && (tile.terrain === 'plains' || tile.terrain === 'towncenter')) {
+    selHero.carryingWood = false;
+    selHero.returnPos = undefined;
+  }
   const now = performance.now();
   if ((now - lastClickTime) < 300) {
     emit('tile-doubleclick', tile);

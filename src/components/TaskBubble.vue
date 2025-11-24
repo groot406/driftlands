@@ -7,10 +7,11 @@
         <button class="ml-auto text-slate-400 hover:text-slate-200" @click="close">✕</button>
       </div>
       <div class="flex flex-col gap-1">
-        <button v-if="canChop" @click="startChop" class="task-btn">
+        <div v-if="carryingBlocked" class="text-[11px] text-amber-300 font-medium">Unload wood first (plains or towncenter)</div>
+        <button v-else-if="canChop" @click="startChop" class="task-btn">
           Chop Wood
         </button>
-        <button v-if="canPlant" @click="startPlant" class="task-btn bg-emerald-600 hover:bg-emerald-500 border-emerald-700">
+        <button v-else-if="canPlant" @click="startPlant" class="task-btn bg-emerald-600 hover:bg-emerald-500 border-emerald-700">
           Plant Trees
         </button>
         <div v-else-if="!canChop && !canPlant" class="text-[11px] text-slate-400 italic">No actions available</div>
@@ -23,7 +24,6 @@ import {computed} from 'vue';
 import type {Tile} from '../core/world';
 import {getSelectedHero, startHeroMovement} from '../store/heroStore';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
-// NEW: import task helpers to start/join directly if already on tile
 import {startTask, getTaskByTile, joinTask} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 
@@ -41,6 +41,10 @@ const terrain = computed(() => props.tile?.terrain || 'unknown');
 const visible = computed(() => props.show && !!props.tile);
 const canChop = computed(() => props.tile?.terrain === 'forest');
 const canPlant = computed(() => props.tile?.terrain === 'chopped_forest');
+const carryingBlocked = computed(() => {
+  const hero = getSelectedHero();
+  return !!hero?.carryingWood;
+});
 
 function startChop() {
   const tile = props.tile;
