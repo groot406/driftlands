@@ -23,6 +23,8 @@ import {computed} from 'vue';
 import type {Tile} from '../core/world';
 import {getSelectedHero, startHeroMovement} from '../store/heroStore';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
+// NEW: import task helpers to start/join directly if already on tile
+import {startTask, getTaskByTile, joinTask} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 
 interface Props {
@@ -45,8 +47,21 @@ function startChop() {
   if (!tile) return;
   const hero = getSelectedHero();
   if (!hero) return;
+  // If hero already stands on tile, start or join task immediately.
+  if (hero.q === tile.q && hero.r === tile.r) {
+    detachHeroFromCurrentTask(hero);
+    const existing = getTaskByTile(tile.id, 'chopWood');
+    if (!existing) {
+      startTask(tile, 'chopWood', hero);
+    } else if (existing.active && !existing.completedMs) {
+      joinTask(existing.id, hero);
+    }
+    emit('started', 'chopWood', tile);
+    emit('close');
+    return;
+  }
   const path = service.findWalkablePath(hero.q, hero.r, tile.q, tile.r);
-  if (!path.length) return;
+  if (!path.length) return; // keep guard for unreachable tiles
   detachHeroFromCurrentTask(hero);
   startHeroMovement(hero.id, path, {q: tile.q, r: tile.r}, 'chopWood');
   emit('started', 'chopWood', tile);
@@ -57,6 +72,18 @@ function startPlant() {
   if (!tile) return;
   const hero = getSelectedHero();
   if (!hero) return;
+  if (hero.q === tile.q && hero.r === tile.r) {
+    detachHeroFromCurrentTask(hero);
+    const existing = getTaskByTile(tile.id, 'plantTrees');
+    if (!existing) {
+      startTask(tile, 'plantTrees', hero);
+    } else if (existing.active && !existing.completedMs) {
+      joinTask(existing.id, hero);
+    }
+    emit('started', 'plantTrees', tile);
+    emit('close');
+    return;
+  }
   const path = service.findWalkablePath(hero.q, hero.r, tile.q, tile.r);
   if (!path.length) return;
   detachHeroFromCurrentTask(hero);

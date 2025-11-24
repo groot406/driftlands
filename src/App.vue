@@ -14,7 +14,6 @@ import Game from './components/Game.vue';
 import TitleScreen from './components/TitleScreen.vue';
 import InGameMenu from './components/InGameMenu.vue';
 import { isTitle } from './store/uiStore';
-import TitleBackground from "./components/TitleBackground.vue";
 </script>
 
 <style>

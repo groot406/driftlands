@@ -33,7 +33,8 @@ import {
 } from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
-import {detachHeroFromCurrentTask} from "../store/taskStore.ts";
+// UPDATED: import task helpers (startTask/getTaskByTile/joinTask) and unify path (remove .ts suffix)
+import {detachHeroFromCurrentTask, startTask, getTaskByTile, joinTask} from '../store/taskStore';
 import TaskBubble from './TaskBubble.vue';
 
 const emit = defineEmits<{
@@ -103,22 +104,45 @@ function handleClick(e: PointerEvent) {
   if ((now - lastClickTime) < 300) {
     emit('tile-doubleclick', tile);
     lastClickTime = 0;
-    // retain direct double-click chop option
+    // retain direct double-click chop/plant option and allow action if already on tile
     const sel = getSelectedHero();
     if (sel && tile.discovered) {
       if (tile.terrain === 'forest') {
-        const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-        if (path.length) {
+        if (sel.q === tile.q && sel.r === tile.r) {
+          // Already on tile: start or join task immediately
           detachHeroFromCurrentTask(sel);
-          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
+          const existing = getTaskByTile(tile.id, 'chopWood');
+          if (!existing) {
+            startTask(tile, 'chopWood', sel);
+          } else if (existing.active && !existing.completedMs) {
+            joinTask(existing.id, sel);
+          }
           hideTaskBubble();
+        } else {
+          const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+          if (path.length) {
+            detachHeroFromCurrentTask(sel);
+            startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
+            hideTaskBubble();
+          }
         }
       } else if (tile.terrain === 'chopped_forest') {
-        const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-        if (path.length) {
+        if (sel.q === tile.q && sel.r === tile.r) {
           detachHeroFromCurrentTask(sel);
-          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'plantTrees');
+          const existing = getTaskByTile(tile.id, 'plantTrees');
+          if (!existing) {
+            startTask(tile, 'plantTrees', sel);
+          } else if (existing.active && !existing.completedMs) {
+            joinTask(existing.id, sel);
+          }
           hideTaskBubble();
+        } else {
+          const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
+          if (path.length) {
+            detachHeroFromCurrentTask(sel);
+            startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'plantTrees');
+            hideTaskBubble();
+          }
         }
       }
     }
