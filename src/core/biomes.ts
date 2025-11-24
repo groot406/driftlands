@@ -1,6 +1,6 @@
 import type {TerrainKey} from './terrainDefs';
 
-export type BiomeKey = 'forest' | 'mountain' | 'lake' | 'plains';
+export type BiomeKey = 'forest' | 'mountain' | 'lake' | 'plains' | 'dessert' | 'snow' | 'dirt';
 
 export interface BiomeDef {
     // terrain counts required to trigger biome
@@ -16,13 +16,13 @@ export interface BiomeDef {
 export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
     forest: {
         when: {'forest': 4},
-        allowedTerrains: ['forest', 'plains', 'ruin'],
-        weightAdjust: {forest: 3, ruin: 0.25, plains: 1},
+        allowedTerrains: ['forest', 'plains'],
+        weightAdjust: {forest: 3, plains: 1},
     },
     mountain: {
         when: {'mountain': 4},
-        allowedTerrains: ['mountain', 'mine', 'ruin', 'plains'],
-        weightAdjust: {mountain: 3, mine: 1.5, ruin: 0.25},
+        allowedTerrains: ['mountain', 'plains'],
+        weightAdjust: {mountain: 3},
     },
     lake: {
         when: {'water': 5},
@@ -31,9 +31,24 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
     },
     plains: {
         when: {'plains': 4},
-        allowedTerrains: ['plains', 'forest', 'mountain', 'water', 'ruin'],
+        allowedTerrains: ['plains', 'forest', 'mountain', 'water'],
         weightAdjust: {plains: 3},
     },
+    dessert: {
+        when: {'dessert': 3},
+        allowedTerrains: ['dessert', 'plains', 'dirt', 'mountain'],
+        weightAdjust: {dessert: 8, plains: 0.5},
+    },
+    snow: {
+        when: {'snow': 3},
+        allowedTerrains: ['snow', 'mountain', 'plains', 'dessert', 'dirt'],
+        weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+    },
+    dirt: {
+        when: {'dirt': 3},
+        allowedTerrains: ['dirt', 'mountain', 'plains', 'forest', 'dessert', 'snow'],
+        weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+    }
 };
 
 export function detectBiome(neighborTerrains: TerrainKey[]): BiomeKey | null {

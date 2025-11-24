@@ -3,7 +3,6 @@
   <Transition name="fade" mode="out-in">
     <TitleScreen v-if="isTitle()" key="title"/>
     <div v-else key="game" class="w-full h-screen relative">
-      <div class="opacity-30"><TitleBackground :move="false" :blur="15" /></div>
       <Game />
       <InGameMenu />
     </div>

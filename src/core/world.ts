@@ -16,6 +16,8 @@ export interface Tile {
     biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
+    // Variant key if a terrain variation was selected (e.g. 'plains_coast_a'). Null if base terrain.
+    variant?: string | null;
     // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
     neighbors?: TileNeighborMap;
 }
@@ -142,15 +144,17 @@ export const terrainPositions: Record<TerrainKey, Set<string>> = {
     plains: new Set(),
     water: new Set(),
     mountain: new Set(),
-    mine: new Set(),
-    ruin: new Set(),
     towncenter: new Set(),
+    dirt: new Set(),
+    snow: new Set(),
+    dessert: new Set(),
 };
 
 export function discoverTile(tile: Tile) {
     if (tile.discovered && tile.terrain) return;
     if (tile.q === 0 && tile.r === 0) {
         tile.terrain = 'towncenter';
+        tile.variant = null;
         tile.discovered = true;
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
@@ -168,6 +172,45 @@ export function discoverTile(tile: Tile) {
     if (!tileIndex[tile.id]) indexTile(tile);
     ensureTileNeighbors(tile);
     if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);
+
+    // --- Variation selection ---
+    tile.variant = null;
+    if (tile.terrain) {
+        const def = TERRAIN_DEFS[tile.terrain];
+        const variations = def?.variations;
+        if (variations && variations.length) {
+            const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+            // Build valid variants list based on constraints
+            const valid: { key: string; weight: number }[] = [];
+            for (const v of variations) {
+                let ok = true;
+                if (v.constraints && v.constraints.length) {
+                    for (const c of v.constraints) {
+                        const sideTile = nm[c.side];
+                        if (!sideTile) { ok = false; break; }
+                        const neighborTerrain = sideTile.discovered ? sideTile.terrain : null;
+                        const terrainOk = neighborTerrain && c.anyOf.includes(neighborTerrain);
+                        const undiscoveredOk = (!neighborTerrain && c.allowUndiscovered);
+                        if (!(terrainOk || undiscoveredOk)) { ok = false; break; }
+                    }
+                }
+                if (ok) valid.push({ key: v.key, weight: Math.max(0, v.weight ?? (def.baseWeight/variations.length)) });
+            }
+            if (valid.length) {
+                const baseWeight = def.baseWeight;
+                const total = baseWeight + valid.reduce((a, b) => a + (b.weight ?? (def.baseWeight/variations.length)), 0);
+                let roll = Math.random() * total;
+                if (roll > baseWeight) {
+                    roll -= baseWeight;
+                    for (const v of valid) {
+                        if (roll < v.weight) { tile.variant = v.key; break; }
+                        roll -= v.weight;
+                    }
+                }
+            }
+        }
+    }
+
     worldVersion.value++;
 }
 

@@ -17,7 +17,6 @@ import forest from '../assets/tiles/forest.png';
 import plains from '../assets/tiles/plains.png';
 import mountain from '../assets/tiles/mountains.png';
 import water from '../assets/tiles/water.png';
-import ruin from '../assets/tiles/ruin.png';
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const wrapper = ref<HTMLDivElement | null>(null);
@@ -64,7 +63,7 @@ function axialToPixel(q: number, r: number) {
 // Image loading & masking state
 const rawImages: Record<string, HTMLImageElement> = {};
 const maskedImages: Record<string, HTMLCanvasElement> = {};
-const imgSources: Record<string, string> = { forest, plains, mountain, water, ruin };
+const imgSources: Record<string, string> = { forest, plains, mountain, water };
 
 function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
   const drawSize = (HEX_SIZE * 2) - 2; // similar sizing to game map tiles
@@ -190,7 +189,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibility);
   // Apply blur & subtle saturation shift via CSS filter on the wrapper
   if (wrapper.value) {
-    wrapper.value.style.filter = `blur(${BLUR_AMOUNT}px) saturate(110%) brightness(0.9)`;
+    wrapper.value.style.filter = `blur(${BLUR_AMOUNT}px) saturate(110%) brightness(${1 - (BLUR_AMOUNT/100)})`;
   }
   // Load images then start loop for full fidelity
   loadImages().finally(() => loop());

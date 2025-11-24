@@ -1,3 +1,4 @@
+import type {Tile} from './world';
 import {axialKey, getTilesInRadius, tileIndex} from './world';
 import {
     animateCamera,
@@ -9,7 +10,6 @@ import {
     pixelToAxial,
     updateCameraRadius
 } from './camera';
-import type {Tile} from './world';
 import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
@@ -20,11 +20,22 @@ import type {TaskInstance} from './tasks';
 import forest from '../assets/tiles/forest.png';
 import chopped_forest from '../assets/tiles/chopped_forest.png';
 import plains from '../assets/tiles/plains.png';
+import plains2 from '../assets/tiles/plains2.png';
+import plains_puddle from '../assets/tiles/plains_puddle.png';
 import mountain from '../assets/tiles/mountains.png';
 import water from '../assets/tiles/water.png';
-import mine from '../assets/tiles/mine.png';
-import ruin from '../assets/tiles/ruin.png';
+import water_lily from '../assets/tiles/water_lily.png';
 import towncenter from '../assets/tiles/towncenter.png';
+import dirt from '../assets/tiles/dirt.png';
+import dirt2 from '../assets/tiles/dirt2.png';
+import dirt_rock from '../assets/tiles/dirt_rock.png';
+import snow from '../assets/tiles/snow.png';
+import snow_rock from '../assets/tiles/snow_rock.png';
+import dessert from '../assets/tiles/dessert.png';
+import dessert2 from '../assets/tiles/dessert2.png';
+import cactus from '../assets/tiles/cactus.png';
+import dessert_rock from '../assets/tiles/dessert_rock.png';
+import dessert_rock2 from '../assets/tiles/dessert_rock2.png';
 
 interface PathCoord {
     q: number;
@@ -81,7 +92,28 @@ export class HexMapService {
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
 
     // Asset sources
-    private readonly tileImgSources: Record<string, string> = {forest, chopped_forest, plains, mountain, water, mine, ruin, towncenter};
+    private readonly tileImgSources: Record<string, string> = {
+        forest,
+        chopped_forest,
+        plains,
+        plains2,
+        plains_puddle,
+        mountain,
+        water,
+        water_lily,
+        towncenter,
+        dirt,
+        dirt2,
+        dirt_rock,
+        snow,
+        snow_rock,
+        dessert,
+        dessert2,
+        dessert_rock,
+        dessert_rock2,
+        cactus,
+
+    };
 
     async init(canvasEl: HTMLCanvasElement, containerEl: HTMLDivElement) {
         this._canvas = canvasEl;
@@ -321,7 +353,7 @@ export class HexMapService {
         const camPx = axialToPixel(camera.q, camera.r);
         const {cx, cy} = this.getCanvasCenter();
         const tilePx = axialToPixel(q, r);
-        return { x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy };
+        return {x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy};
     }
 
     private screenToWorld(x: number, y: number) {
@@ -434,7 +466,9 @@ export class HexMapService {
                     masked = frameCanvas;
                 }
                 if (!masked) continue;
+
                 ctx.globalAlpha = opacity;
+
                 ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
             } else {
                 ctx.globalAlpha = opacity * 0.8;
@@ -665,7 +699,19 @@ export class HexMapService {
         const now = performance.now();
 
         // Build render records with interpolated positions so we can sort by vertical stacking (destY)
-        const renderRecords: Array<{ hero: Hero; dist: number; img: HTMLImageElement; pos: {x:number;y:number}; interp: {x:number;y:number}; destX: number; destY: number; opacity: number; activity: string; animRow: number; frameIndex: number; }> = [];
+        const renderRecords: Array<{
+            hero: Hero;
+            dist: number;
+            img: HTMLImageElement;
+            pos: { x: number; y: number };
+            interp: { x: number; y: number };
+            destX: number;
+            destY: number;
+            opacity: number;
+            activity: string;
+            animRow: number;
+            frameIndex: number;
+        }> = [];
 
         for (const h of heroes) {
             const dist = hexDistance(camera, h);
@@ -695,7 +741,19 @@ export class HexMapService {
             const inCycle = elapsed % cycle;
             const frameIndex = (frames <= 1) ? 0 : (inCycle >= frames * frameDuration ? frames - 1 : Math.floor(inCycle / frameDuration));
             this._lastHeroFrame = frameIndex; // keep updated (last processed frame suffices for picking accuracy)
-            renderRecords.push({hero: h, dist, img, pos, interp, destX, destY, opacity, activity, animRow: anim.row, frameIndex});
+            renderRecords.push({
+                hero: h,
+                dist,
+                img,
+                pos,
+                interp,
+                destX,
+                destY,
+                opacity,
+                activity,
+                animRow: anim.row,
+                frameIndex
+            });
         }
 
         // Sort by vertical stacking: smaller destY (visually higher) first so lower heroes (larger destY) draw last (on top)
@@ -844,6 +902,8 @@ export class HexMapService {
     }
 
     private getTileImageKey(t: Tile) {
+        // Prefer variant key if present and loaded, else base terrain
+        if (t.variant && this._images[t.variant]) return t.variant;
         return t.terrain;
     }
 
@@ -878,12 +938,27 @@ export class HexMapService {
     }
 
     private async loadTileImages() {
-        const promises = Object.entries(this.tileImgSources).map(([key, src]) => new Promise<void>(resolve => {
+        const sources: Record<string, string> = {...this.tileImgSources};
+        // Glob all png assets in tiles folder (Vite eager import ensures bundling)
+        const globbed: Record<string, any> = import.meta.glob('../assets/tiles/*.png', {eager: true});
+        for (const [path, mod] of Object.entries(globbed)) {
+            const fileName = path.split('/').pop() || '';
+            const key = fileName.replace(/\.png$/i, '');
+            if (!sources[key] && mod && mod.default) sources[key] = mod.default;
+        }
+        // Ensure variant keys from definitions are present (assets may be missing; that's OK -> fallback to base terrain art)
+        const variantKeys: string[] = [];
+        for (const def of Object.values(TERRAIN_DEFS)) {
+            if (def.variations) for (const v of def.variations) variantKeys.push(v.key);
+        }
+        // No extra dynamic import; rely solely on globbed assets. Missing variants will simply not appear visually.
+        const promises = Object.entries(sources).map(([key, src]) => new Promise<void>(resolve => {
             const img = new Image();
             img.onload = () => {
                 this._images[key] = img;
                 resolve();
             };
+            img.onerror = () => resolve();
             img.src = src;
         }));
         await Promise.all(promises);
@@ -1026,7 +1101,7 @@ export class HexMapService {
             if (!from || !to) return axialToPixel(hero.q, hero.r);
             const fromPx = axialToPixel(from.q, from.r);
             const toPx = axialToPixel(to.q, to.r);
-            return { x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress };
+            return {x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress};
         }
 
         // Fallback legacy uniform timing
@@ -1062,6 +1137,7 @@ export class HexMapService {
         ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
     }
+
     // Helper: draw rounded rectangle only on left side (used for partial progress fill)
     private drawLeftRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));

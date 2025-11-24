@@ -28,8 +28,9 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
         plains: TERRAIN_DEFS.plains.baseWeight,
         water: TERRAIN_DEFS.water.baseWeight,
         mountain: TERRAIN_DEFS.mountain.baseWeight,
-        mine: TERRAIN_DEFS.mine.baseWeight,
-        ruin: TERRAIN_DEFS.ruin.baseWeight,
+        dirt: TERRAIN_DEFS.dirt.baseWeight,
+        snow: TERRAIN_DEFS.snow.baseWeight,
+        dessert: TERRAIN_DEFS.dessert.baseWeight,
         towncenter: 0,
     };
 

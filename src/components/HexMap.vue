@@ -1,6 +1,6 @@
 <template>
   <div ref="container" class="w-full h-full relative map-container" @pointerdown="hideTaskBubble">
-    <canvas ref="canvas" class="absolute inset-0"/>
+    <canvas ref="canvas" class="absolute inset-0" />
     <transition name="fade-menu" mode="out-in">
       <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" :style="taskBubbleStyle" />
     </transition>

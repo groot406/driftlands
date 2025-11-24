@@ -2,7 +2,7 @@
 // Separate from gameplay world so it never conflicts with save/state.
 // Provides deterministic lightweight hash + terrain selection + cached hex tile canvas.
 
-export type ProcTerrain = 'water' | 'mountain' | 'ruin' | 'forest' | 'plains';
+export type ProcTerrain = 'water' | 'mountain' | 'forest' | 'plains' | 'snow' | 'dessert' | 'dirt';
 
 // 32-bit integer hash based on coordinates (q,r)
 export function hash32(q: number, r: number): number {
@@ -18,12 +18,12 @@ function n01(q: number, r: number, salt = 0): number {
 }
 
 // Deterministic terrain selection with simple distribution thresholds.
-// Intent: atmospheric mix; more forest+plains, sparse water/mountains/ruins.
+// Intent: atmospheric mix; more forest+plains, sparse water/mountains.
 export function getTileType(q: number, r: number): ProcTerrain {
   const v = n01(q, r);
   if (v < 0.045) return 'water';
   if (v < 0.085) return 'mountain';
-  if (v < 0.105) return 'ruin';
+
   // Secondary noise to diversify forest/plains patches
   const v2 = n01(q, r, 2);
   return v2 < 0.55 ? 'forest' : 'plains';
@@ -34,7 +34,6 @@ export function terrainColor(t: ProcTerrain): string {
   switch (t) {
     case 'water': return '#123d68';
     case 'mountain': return '#5b5f68';
-    case 'ruin': return '#6b4f4f';
     case 'forest': return '#1f5130';
     case 'plains': return '#5d7d3a';
   }

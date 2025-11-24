@@ -34,12 +34,6 @@ watch(worldVersion, () => {
       case 'forest':
         counts.wood++;
         break;
-      case 'mine':
-        counts.ore++;
-        break;
-      case 'ruin':
-        counts.artifact++;
-        break;
       case 'plains':
         counts.food++;
         break;
