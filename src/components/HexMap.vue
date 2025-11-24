@@ -60,6 +60,10 @@ const bubbleScreen = ref<{x:number;y:number}>({x:0,y:0});
 
 // Service instance
 const service = new HexMapService();
+// NEW: Named resize/orientation handlers so we can properly remove them.
+function onWindowResize() { service.resize(); }
+function onOrientationChange() { service.resize(); }
+
 let rafId: number | null = null;
 let lastClickTime = 0;
 
@@ -201,7 +205,8 @@ onMounted(async () => {
   if (!canvas.value || !container.value) return;
   await service.init(canvas.value, container.value);
   // Ignore if modifier keys pressed to avoid interfering with shortcuts
-  window.addEventListener('orientationchange', () => service.resize());
+  window.addEventListener('orientationchange', onOrientationChange);
+  window.addEventListener('resize', onWindowResize);
   window.addEventListener('keydown', keyDown);
   window.addEventListener('keyup', keyUp);
   const el = container.value;
@@ -228,8 +233,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId);
-  window.removeEventListener('resize', () => service.resize());
-  window.removeEventListener('orientationchange', () => service.resize());
+  window.removeEventListener('resize', onWindowResize);
+  window.removeEventListener('orientationchange', onOrientationChange);
   window.removeEventListener('keydown', keyDown);
   window.removeEventListener('keyup', keyUp);
   const el = container.value;

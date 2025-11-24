@@ -8,13 +8,16 @@ import {
     HEX_SPACE,
     hexDistance,
     pixelToAxial,
-    updateCameraRadius
+    updateCameraRadius,
+    centerCamera,
+    moveCamera
 } from './camera';
 import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
 import type {TaskInstance} from './tasks';
+import { worldOuterRadius } from './world';
 
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
@@ -152,6 +155,10 @@ export class HexMapService {
         this._layerCtx = this._layerCanvas.getContext('2d');
         if (this._layerCtx) this._layerCtx.imageSmoothingEnabled = false;
         this.adaptiveCameraRadius();
+        // NEW: recenter camera if entire world comfortably fits inside current camera radius.
+        this.recenterIfWorldFits();
+        // Ensure current target is clamped after potential radius change.
+        moveCamera(camera.targetQ, camera.targetR);
     }
 
     draw(opts: DrawOptions) {
@@ -1048,6 +1055,15 @@ export class HexMapService {
         const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
         const inner = Math.max(3, Math.round(targetRadius * 0.33));
         updateCameraRadius(targetRadius, inner);
+    }
+
+    // NEW: Recenter camera when world smaller than view radius so map stays centered on resize.
+    private recenterIfWorldFits() {
+        // Margin so we don't over-recenter for worlds just barely smaller than radius.
+        const margin = 3;
+        if (camera.radius >= worldOuterRadius.value + margin) {
+            centerCamera();
+        }
     }
 
     private axialDistance(aQ: number, aR: number, bQ: number, bR: number) {
