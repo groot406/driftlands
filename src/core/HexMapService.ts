@@ -47,7 +47,8 @@ interface DrawOptions {
     hoveredHero: Hero | null;
     taskMenuTile: Tile | null;
     pathCoords: PathCoord[];
-    clusterBoundaryTiles?: Tile[]; // new: boundary tiles of same-terrain cluster for menu highlighting
+    clusterBoundaryTiles?: Tile[]; // boundary tiles of same-terrain cluster for menu highlighting
+    clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
 }
 
 export class HexMapService {
@@ -671,7 +672,8 @@ export class HexMapService {
 
         // Existing task menu tile highlight retained; add cluster border if provided
         if (opts.taskMenuTile && opts.clusterBoundaryTiles && opts.clusterBoundaryTiles.length) {
-            // Draw border strokes around boundary tiles (after hover/path but before heroes for clarity)
+            const clusterSet = opts.clusterTileIds || new Set<string>();
+            // Draw only outer edges (outline) for the cluster
             for (const bt of opts.clusterBoundaryTiles) {
                 if (hexDistance(camera, bt) > camera.radius + 1) continue;
                 const dist = hexDistance(camera, bt);
@@ -679,8 +681,40 @@ export class HexMapService {
                     const f = this.computeFade(dist, camera.innerRadius, camera.radius);
                     return f * f;
                 })();
-                // Use semi-transparent stroke without fill
-                this.drawHexHighlight(ctx, bt.q, bt.r, 'rgba(255,201,77,0.10)', 'rgba(255,201,77,0.85)', opacity);
+                // Compute corners for this hex
+                const {x: cx, y: cy} = axialToPixel(bt.q, bt.r);
+                const w = this.TILE_DRAW_SIZE;
+                const h = this.TILE_DRAW_SIZE;
+                const corners: Array<[number, number]> = [
+                    [cx + 0.5 * w - HEX_SIZE, cy - HEX_SIZE], // 0 top
+                    [cx + w - HEX_SIZE, cy + 0.25 * h - HEX_SIZE], // 1 upper-right
+                    [cx + w - HEX_SIZE, cy + 0.75 * h - HEX_SIZE], // 2 lower-right
+                    [cx + 0.5 * w - HEX_SIZE, cy + h - HEX_SIZE], // 3 bottom
+                    [cx - HEX_SIZE, cy + 0.75 * h - HEX_SIZE], // 4 lower-left
+                    [cx - HEX_SIZE, cy + 0.25 * h - HEX_SIZE], // 5 upper-left
+                ];
+                const nm = bt.neighbors;
+                const SIDE_ORDER = ['a','b','c','d','e','f'] as const;
+                for (let i = 0; i < SIDE_ORDER.length; i++) {
+                    const side = SIDE_ORDER[i]!;
+                    const nTile = nm ? nm[side] : null;
+                    const outside = !nTile || !nTile.discovered || !nTile.terrain || !clusterSet.has(nTile.id);
+                    if (!outside) continue; // skip interior edge
+                    // Rotate edge mapping one step CCW: use previous corner -> current corner
+                    const p1 = corners[(i + 5) % 6];
+                    const p2 = corners[i];
+                    if (!p1 || !p2) continue;
+                    ctx.save();
+                    ctx.globalAlpha = opacity;
+                    ctx.beginPath();
+                    ctx.moveTo(p1[0], p1[1]);
+                    ctx.lineTo(p2[0], p2[1]);
+                    ctx.strokeStyle = 'rgba(255,201,77,0.95)';
+                    ctx.lineWidth = 3;
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                    ctx.restore();
+                }
             }
         }
 

@@ -7,9 +7,9 @@
         ✕
       </div>
       <!-- Task options around -->
-      <div class="relative left-12">
+      <div class="relative left-16">
         <transition-group name="fade-task" tag="div">
-          <div v-for="t in availableTasks" class="bg-slate-800 px-3 mb-1.5  hover:bg-slate-900 shadow-md rounded-full  w-max  text-white drop-shadow-md left-4 pointer-events-auto cursor-pointer relative text-sm p-1.5  text-center flex items-center"
+          <div v-for="t in availableTasks" class="bg-slate-800/50 backdrop-blur-sm  px-3 mb-1.5  hover:bg-slate-900/60 shadow-md rounded-full  w-max  text-white drop-shadow-md left-4 pointer-events-auto cursor-pointer relative text-sm p-1.5  text-center flex items-center"
                @click="selectTask(t)"
                :title="t.label">
             <span class="label">{{ t.label }}</span>
@@ -123,8 +123,4 @@ const menuStyle = computed(() => {
   top: -36px;
 }
 
-.fade-task-leave-to, .fade-task-enter-from {
-  transition: opacity 0.2s, transform 0.2s;
-  transform: scale(0.2);
-}
 </style>

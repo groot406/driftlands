@@ -95,7 +95,8 @@ function animationLoop() {
     hoveredHero: hoveredHero.value,
     pathCoords: pathCoords.value,
     taskMenuTile: taskMenuTile.value,
-    clusterBoundaryTiles: clusterBoundaryTiles.value
+    clusterBoundaryTiles: clusterBoundaryTiles.value,
+    clusterTileIds: clusterTiles.value
   });
   rafId = requestAnimationFrame(animationLoop);
 }
