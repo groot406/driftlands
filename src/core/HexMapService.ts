@@ -398,6 +398,7 @@ export class HexMapService {
         const cr = Math.round(camera.r);
         const tiles = getTilesInRadius(cq, cr, camera.radius);
         const now = performance.now();
+        const overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }> = [];
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = (() => {
@@ -481,6 +482,18 @@ export class HexMapService {
                 ctx.globalAlpha = 0.5 * opacity;
                 ctx.fillText(String(centerDist), x - 2, y - 2);
                 ctx.restore();
+            }
+            // NEW: collect optional overlay second layer (only for discovered tiles)
+            if (t.discovered) {
+                const overlayKey = this.getTileOverlayKey(t);
+                if (overlayKey) {
+                    const ovImg = this._images[overlayKey];
+                    if (ovImg) {
+                        const off = this.getTileOverlayOffset(t);
+                        // store axial coords for later layering sort (r,q)
+                        overlayRecords.push({ img: ovImg, x: x - HEX_SIZE + off.x, y: y - HEX_SIZE + off.y, q: t.q, r: t.r, opacity });
+                    }
+                }
             }
             // NEW: active task highlight overlay (after drawing base tile)
             const activeTasksForTile = taskStore.tasksByTile[t.id];
@@ -598,7 +611,7 @@ export class HexMapService {
                 if (hexDistance(camera, pc) > camera.radius + 1) continue;
                 const last = pc === opts.pathCoords[opts.pathCoords.length - 1];
                 this.drawHexHighlight(ctx, pc.q, pc.r,
-                    last ? 'rgba(216,244,255,0.18)' : 'rgba(250,253,255,0.18)',
+                    last ? 'rgba(216,244,255,0.0)' : 'rgba(250,253,255,0.0)',
                     last ? '#dbedff' : '#daf0ff',
                     opacity);
             }
@@ -613,7 +626,7 @@ export class HexMapService {
             }
             const remaining = m.path.slice(Math.max(0, currentIndex + 1));
             // prepend remaining with current position to highlight from there
-            remaining.unshift({q: selectedHero.q, r: selectedHero.r});
+            //remaining.unshift({q: selectedHero.q, r: selectedHero.r});
             if (remaining.length) {
                 for (let i = 0; i < remaining.length; i++) {
                     const pc = remaining[i]!;
@@ -626,7 +639,7 @@ export class HexMapService {
                     const isLast = i === remaining.length - 1; // destination/target
                     // Slightly different color scheme for active movement path
                     this.drawHexHighlight(ctx, pc.q, pc.r,
-                        isLast ? 'rgba(132,196,255,0.14)' : 'rgba(132,196,255,0.22)',
+                        isLast ? 'rgba(132,196,255,0.0)' : 'rgba(132,196,255,0.0)',
                         isLast ? '#6fb8ff' : '#9fd8ff',
                         opacity);
                 }
@@ -639,7 +652,7 @@ export class HexMapService {
                         const f = this.computeFade(dist, camera.innerRadius, camera.radius);
                         return f * f;
                     })();
-                    this.drawHexHighlight(ctx, tgt.q, tgt.r, 'rgba(132,196,255,0.25)', '#9fd8ff', opacity);
+                    this.drawHexHighlight(ctx, tgt.q, tgt.r, 'rgba(132,196,255,0.0)', '#9fd8ff', opacity);
                 }
             }
         }
@@ -653,7 +666,7 @@ export class HexMapService {
                     const f = this.computeFade(dist, camera.innerRadius, camera.radius);
                     return f * f;
                 })();
-                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgba(255, 227, 122, 0.15)', '#d0b23d', opacity);
+                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgba(255, 227, 122, 0)', '#d0b23d', opacity);
             }
         }
 
@@ -670,14 +683,22 @@ export class HexMapService {
             }
         }
 
-        // Heroes
-        this.drawHeroes(ctx, opts.hoveredHero, selectedHeroIdle);
-
+        // Heroes & overlays combined layering
+        this.drawHeroes(ctx, opts.hoveredHero, selectedHeroIdle, overlayRecords);
         ctx.restore();
     }
 
-    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, selectedHeroIdle: boolean) {
-        if (!this._heroImagesLoaded) return;
+    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, selectedHeroIdle: boolean, overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }> = []) {
+        // If hero assets not yet loaded, just draw overlays and return
+        if (!this._heroImagesLoaded) {
+            for (const ov of overlayRecords) {
+                ctx.globalAlpha = ov.opacity;
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(ov.img, ov.x, ov.y, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+            }
+            ctx.globalAlpha = 1;
+            return;
+        }
         const radius = camera.radius + 1;
         // Rebuild layout map (group heroes by tile first)
         const map = new Map<string, Hero[]>();
@@ -695,7 +716,7 @@ export class HexMapService {
 
         const now = performance.now();
 
-        // Build render records with interpolated positions so we can sort by vertical stacking (destY)
+        // Build hero render records
         const renderRecords: Array<{
             hero: Hero;
             dist: number;
@@ -753,19 +774,33 @@ export class HexMapService {
             });
         }
 
-        // Sort by vertical stacking: smaller destY (visually higher) first so lower heroes (larger destY) draw last (on top)
-        renderRecords.sort((a, b) => {
-            if (a.destY !== b.destY) return a.destY - b.destY; // top-to-bottom
-            if (a.destX !== b.destX) return a.destX - b.destX; // left-to-right tie-break
-            return a.hero.id.localeCompare(b.hero.id); // stable final tie-break
+        // Merge overlays and heroes using axial coordinate ordering (r then q ascending).
+        type LayerRec = { kind: 'overlay'; ov: { img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number } } | { kind: 'hero'; rec: typeof renderRecords[number] };
+        const layers: LayerRec[] = [];
+        for (const ov of overlayRecords) layers.push({ kind: 'overlay', ov });
+        for (const rr of renderRecords) layers.push({ kind: 'hero', rec: rr });
+        layers.sort((a, b) => {
+            const ar = a.kind === 'overlay' ? a.ov.r : tileIndex[axialKey(a.rec.hero.q, a.rec.hero.r)] ? a.rec.hero.r+1 : a.rec.destY; // hero.r available
+            const br = b.kind === 'overlay' ? b.ov.r : tileIndex[axialKey(b.rec.hero.q, b.rec.hero.r)] ? b.rec.hero.r : b.rec.destY;
+            if (ar !== br) return ar - br; // smaller r ("lower" coord) first
+            const aq = a.kind === 'overlay' ? a.ov.q : a.rec.hero.q;
+            const bq = b.kind === 'overlay' ? b.ov.q : b.rec.hero.q;
+            if (aq !== bq) return aq - bq; // then q
+            // Tie-break: if same tile, draw overlay before hero so hero remains on top (overlay NOT above hero on same tile)
+            if (a.kind !== b.kind) return a.kind === 'overlay' ? -1 : 1;
+            if (a.kind === 'hero' && b.kind === 'hero') return a.rec.hero.id.localeCompare(b.rec.hero.id);
+            return 0;
         });
-
-        // Store sorted hero order for picking (draw order ascending; picking iterates reversed to target topmost)
-        this._sortedHeroes = renderRecords.map(r => r.hero);
-
-        // Draw pass
-        for (const rec of renderRecords) {
-            const {hero: h, img, pos, interp, destX, destY, opacity, frameIndex, animRow} = rec;
+        this._sortedHeroes = layers.filter(l => l.kind === 'hero').map(l => (l as any).rec.hero);
+        for (const layer of layers) {
+            if (layer.kind === 'overlay') {
+                const {ov} = layer;
+                ctx.globalAlpha = ov.opacity;
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(ov.img, ov.x, ov.y, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+                continue;
+            }
+            const { hero: h, img, pos, interp, destX, destY, opacity, frameIndex, animRow } = layer.rec;
             const x = interp.x;
             const y = interp.y;
             // Shadow first
@@ -847,68 +882,29 @@ export class HexMapService {
         ctx.globalAlpha = 1;
     }
 
-    private computeTileHeroOffsets(list: Hero[]): Record<string, { x: number; y: number }> {
-        const result: Record<string, { x: number; y: number }> = {};
-        const count = list.length;
-        if (count === 0) return result;
-        if (count === 1) {
-            result[list[0]!.id] = {x: 12, y: 0};
-            return result;
-        }
-        if (count === 2) {
-            result[list[0]!.id] = {x: -5, y: 0};
-            result[list[1]!.id] = {x: 32, y: 0};
-            return result;
-        }
-        if (count === 3) {
-            result[list[0]!.id] = {x: -5, y: -2};
-            result[list[1]!.id] = {x: 12, y: 8};
-            result[list[2]!.id] = {x: 32, y: -2};
-            return result;
-        }
-        if (count === 4) {
-            result[list[0]!.id] = {x: 12, y: -10};
-            result[list[1]!.id] = {x: -7, y: 4};
-            result[list[2]!.id] = {x: 32, y: 4};
-            result[list[3]!.id] = {x: 12, y: 18};
-            return result;
-        }
-        if (count === 5) {
-            result[list[0]!.id] = {x: 16, y: -10};
-            result[list[1]!.id] = {x: -7, y: 4};
-            result[list[2]!.id] = {x: 32, y: 4};
-            result[list[3]!.id] = {x: 10, y: 8};
-            result[list[4]!.id] = {x: 16, y: 22};
-            return result;
-        }
-        if (count === 6) {
-            result[list[0]!.id] = {x: 16, y: -12};
-            result[list[1]!.id] = {x: -10, y: 0};
-            result[list[2]!.id] = {x: 38, y: 0};
-            result[list[3]!.id] = {x: 0, y: 12};
-            result[list[4]!.id] = {x: 28, y: 16};
-            result[list[5]!.id] = {x: 16, y: 28};
-            return result;
-        }
-        const span = count - 1;
-        for (let i = 0; i < count; i++) {
-            const offset = (i - span / 2) * this.HERO_OFFSET_SPACING;
-            result[list[i]!.id] = {x: offset, y: 0};
-        }
-        return result;
-    }
-
-    private getTileImageKey(t: Tile): string | null {
+    // NEW: resolve optional overlay key (variant override > base)
+    private getTileOverlayKey(t: Tile): string | null {
         if (!t.terrain) return null;
         const def: any = (TERRAIN_DEFS as any)[t.terrain];
-        if (t.variant) {
-            // Variant override assetKey else variant key
-            const variantDef = def?.variations?.find((v: any) => v.key === t.variant);
-            const vk = variantDef?.assetKey || t.variant;
-            if (this.tileImgSources[vk]) return vk;
+        let overlayKey: string | undefined = def?.overlayAssetKey;
+        if (t.variant && def?.variations) {
+            const vDef = def.variations.find((v: any) => v.key === t.variant);
+            if (vDef?.overlayAssetKey) overlayKey = vDef.overlayAssetKey;
+            if(vDef?.overlayAssetKey === false) overlayKey = undefined;
         }
-        const baseKey = def?.assetKey || t.terrain;
-        return this.tileImgSources[baseKey] ? baseKey : null;
+        if (!overlayKey) return null;
+        return this.tileImgSources[overlayKey] ? overlayKey : null;
+    }
+
+    private getTileOverlayOffset(t: Tile): { x: number; y: number } {
+        if (!t.terrain) return {x:0,y:0};
+        const def: any = (TERRAIN_DEFS as any)[t.terrain];
+        let offset = def?.overlayOffset || {x:0,y:0};
+        if (t.variant && def?.variations) {
+            const vDef = def.variations.find((v: any) => v.key === t.variant);
+            if (vDef?.overlayOffset) offset = vDef.overlayOffset;
+        }
+        return offset || {x:0,y:0};
     }
 
     private async loadTileImages() {
@@ -1137,5 +1133,37 @@ export class HexMapService {
         ctx.lineTo(x, y + r);
         ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
+    }
+
+    // RESTORED: compute hero offsets by number of heroes on a tile
+    private computeTileHeroOffsets(list: Hero[]): Record<string, { x: number; y: number }> {
+        const result: Record<string, { x: number; y: number }> = {};
+        const count = list.length;
+        if (count === 0) return result;
+        if (count === 1) { result[list[0]!.id] = {x: 12, y: 0}; return result; }
+        if (count === 2) { result[list[0]!.id] = {x: -5, y: 0}; result[list[1]!.id] = {x: 32, y: 0}; return result; }
+        if (count === 3) { result[list[0]!.id] = {x: -5, y: -2}; result[list[1]!.id] = {x: 12, y: 8}; result[list[2]!.id] = {x: 32, y: -2}; return result; }
+        if (count === 4) { result[list[0]!.id] = {x: 12, y: -10}; result[list[1]!.id] = {x: -7, y: 4}; result[list[2]!.id] = {x: 32, y: 4}; result[list[3]!.id] = {x: 12, y: 18}; return result; }
+        if (count === 5) { result[list[0]!.id] = {x: 16, y: -10}; result[list[1]!.id] = {x: -7, y: 4}; result[list[2]!.id] = {x: 32, y: 4}; result[list[3]!.id] = {x: 10, y: 8}; result[list[4]!.id] = {x: 16, y: 22}; return result; }
+        if (count === 6) { result[list[0]!.id] = {x: 16, y: -12}; result[list[1]!.id] = {x: -10, y: 0}; result[list[2]!.id] = {x: 38, y: 0}; result[list[3]!.id] = {x: 0, y: 12}; result[list[4]!.id] = {x: 28, y: 16}; result[list[5]!.id] = {x: 16, y: 28}; return result; }
+        const span = count - 1;
+        for (let i = 0; i < count; i++) {
+            const offset = (i - span / 2) * this.HERO_OFFSET_SPACING;
+            result[list[i]!.id] = {x: offset, y: 0};
+        }
+        return result;
+    }
+
+    // RESTORED: original tile image key resolution (variant overrides base)
+    private getTileImageKey(t: Tile): string | null {
+        if (!t.terrain) return null;
+        const def: any = (TERRAIN_DEFS as any)[t.terrain];
+        if (t.variant) {
+            const variantDef = def?.variations?.find((v: any) => v.key === t.variant);
+            const vk = variantDef?.assetKey || t.variant;
+            if (this.tileImgSources[vk]) return vk;
+        }
+        const baseKey = def?.assetKey || t.terrain;
+        return this.tileImgSources[baseKey] ? baseKey : null;
     }
 }

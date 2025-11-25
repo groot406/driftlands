@@ -16,15 +16,12 @@ export interface TerrainDef {
     // --- Movement (optional) ---
     moveCost?: number;
     // --- Variations (optional) ---
-    // Lightweight variant tiles that inherit all properties of the base terrain.
-    // Variants provide alternate art (and potentially future overrides) selected AFTER terrain generation.
-    // Each variant has a relative weight and optional neighbor side constraints controlling placement.
-    // Example use: coastline versions of plains that only appear when a given side borders water OR an undiscovered tile.
     variations?: TerrainVariationDef[];
-    // Relative weight for choosing "no variation" when variants are available. Defaults to sum(variant weights) if omitted.
     variationBaseWeight?: number;
-    // optional override for image filename base
     assetKey?: string;
+    // NEW: optional second render layer (unmasked) drawn with vertical stacking among heroes/other overlays
+    overlayAssetKey?: string; // image key (filename without extension) for overlay (e.g. 'cactus_top')
+    overlayOffset?: { x: number; y: number }; // optional pixel offset applied to overlay drawing (top-left origin)
 }
 
 // Side names reused from world.ts (keep string literals to avoid circular import)
@@ -40,9 +37,11 @@ export interface TerrainVariationDef {
     key: string; // unique variant image key (e.g. 'plains_coast_a')
     weight?: number; // relative selection weight among other valid variants
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
-    // Optional timed growth configuration: after ageMs, variant auto-transitions to next variant (or null for base)
     assetKey?: string; // optional override for image filename base if different from key
     growth?: { next: string | null; ageMs: number }; // biome scaling moved to biomes
+    // NEW: optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
+    overlayAssetKey?: string;
+    overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
 }
 
 interface TerrainDefsMap {
@@ -64,6 +63,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         adjacency: {},
         preserveIsolation: true,
         moveCost: 3,
+        overlayAssetKey: 'towncenter_overlay',
+        overlayOffset: { x: 0, y: -11}
     },
     forest: {
         color: '#14532d',
@@ -75,9 +76,11 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
         moveCost: 2.5,
         variations: [
-            {key: 'chopped_forest', weight: 5},
-            {key: 'young_forest', weight: 2, growth: {next: null, ageMs: 600000}},
+            {key: 'chopped_forest', weight: 5, overlayAssetKey: false},
+            {key: 'young_forest', weight: 2, growth: {next: null, ageMs: 600000}, overlayAssetKey: false},
         ],
+        overlayAssetKey: 'forest_overlay',
+        overlayOffset: { x: 0, y: -4}
     },
     plains: {
         color: '#16a34a',
@@ -122,6 +125,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
         moveCost: 5,
         assetKey: 'mountains',
+        overlayAssetKey: 'mountains_overhang',
+        overlayOffset: { x: 0, y: -4 }
     },
     dirt: {
         minDistanceFromCenter: 6,
