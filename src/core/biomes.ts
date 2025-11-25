@@ -45,19 +45,19 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
         when: {'dessert': 3},
         allowedTerrains: ['dessert', 'plains', 'dirt', 'mountain'],
         weightAdjust: {dessert: 8, plains: 0.5},
-        variantGrowthScale: { young_forest: 1.5 }
+        variantGrowthScale: { young_forest: 3.5 }
     },
     snow: {
         when: {'snow': 3},
         allowedTerrains: ['snow', 'mountain', 'plains', 'dessert', 'dirt'],
         weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
-        variantGrowthScale: { young_forest: 1.4 }
+        variantGrowthScale: { young_forest: 2.4 }
     },
     dirt: {
         when: {'dirt': 3},
         allowedTerrains: ['dirt', 'mountain', 'plains', 'forest', 'dessert', 'snow'],
         weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
-        variantGrowthScale: { young_forest: 1.1 }
+        variantGrowthScale: { young_forest: 1.2 }
     }
 };
 

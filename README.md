@@ -224,3 +224,22 @@ Certain terrain variants naturally age over real time. This enables ecological r
 ### Biome Scaling
 Variants can define `biomeScale` multipliers inside their `growth` config. The effective maturation time = `ageMs * (biomeScale[biome] ?? 1)`.
 Example (`young_forest`): faster in `forest` biome (0.8x), slower in harsh biomes like `dessert` (1.5x) or `snow` (1.4x).
+
+---
+
+## Resource Persistence
+Collected (delivered) resources are now persisted locally so totals survive page reloads.
+
+Details:
+- Key: `driftlands_resources_v1` (versioned; future migrations can bump suffix)
+- Schema: `{ version: 1, ts, inventory: { wood, ore, stone, food, crystal, artifact } }`
+- Write Strategy: Debounced (500ms) after any inventory mutation to reduce localStorage churn; skipped if JSON unchanged.
+- Integrity: Values sanitized on load (non-negative integers; invalid/NaN become 0).
+- Restore: Happens automatically on module init before further deposits.
+- Flush: A final save runs on `beforeunload` to capture last-second changes.
+- Reset: Call `clearResourcePersistence()` to wipe saved data and zero inventory (used by future in-game reset button).
+
+Future Enhancements Ideas:
+- Add multi-slot profiles (prefix key)
+- Add cloud sync layer gated behind auth
+- Track lifetime totals separately for statistics/achievements
