@@ -12,7 +12,7 @@
           <div v-if="!isMobile" class="p-3 pt-1.5 pb-0 opacity-65 w-full font-semibold text-sm">{{ h.name }}</div>
           <div class="flex px-2 gap-x-2 pb-2">
             <div class="text-2xl leading-none rounded flex items-center justify-center">
-              <div class="relative top-[-15px] left-[-15px] -m-1">
+              <div class="relative top-[-16px] left-[-16px] -m-1">
                 <Sprite :sprite="h.avatar" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
               </div>
             </div>
