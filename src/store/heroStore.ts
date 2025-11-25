@@ -40,8 +40,9 @@ export interface Hero {
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
     prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
-    carryingResources?: boolean; // indicator hero is carrying wood to warehouse
-    carryingResourcesCount?: number; // number of wood deliveries completed
+    carryingResources?: boolean; // indicator hero is carrying wood to warehouse (legacy)
+    carryingResourcesCount?: number; // number of wood deliveries completed (legacy cumulative deliveries)
+    carryingPayload?: { type: 'wood' | string; amount: number }; // new payload model for carried resources
     returnPos?: { q: number; r: number }; // original position to return after delivery
 }
 
@@ -75,7 +76,8 @@ function persistHeroes() {
             prevPos: h.prevPos ? {...h.prevPos} : undefined,
             carryingResources: h.carryingResources || false,
             carryingResourcesCount: h.carryingResourcesCount || 0,
-            returnPos: h.returnPos ? {...h.returnPos} : undefined
+            carryingPayload: h.carryingPayload ? { ...h.carryingPayload } : undefined,
+            returnPos: h.returnPos ? { ...h.returnPos} : undefined
         }));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
@@ -148,12 +150,19 @@ function restoreHeroes() {
                 hero.prevPos = undefined;
             }
 
-            hero.carryingResources = !!saved.carryingResourcesCount;
-            if (typeof saved.carryingResourcesCount === 'number') hero.carryingResourcesCount = saved.carryingResourcesCount;
-            if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
-                hero.returnPos = {q: saved.returnPos.q, r: saved.returnPos.r};
+            // Legacy restore of carrying state: only set carryingResources if actively carrying (payload or explicit flag), not from delivery count
+            // Previous logic incorrectly set carryingResources from carryingResourcesCount (total delivered), causing false positives after reload.
+            const savedHasPayload = saved.carryingPayload && typeof saved.carryingPayload.type === 'string' && typeof saved.carryingPayload.amount === 'number';
+            if (savedHasPayload) {
+                hero.carryingPayload = { type: saved.carryingPayload.type, amount: saved.carryingPayload.amount };
             } else {
-                hero.returnPos = undefined;
+                hero.carryingPayload = undefined;
+            }
+            hero.carryingResources = !!saved.carryingResources || !!hero.carryingPayload; // derive from actual payload or persisted flag
+            if (typeof saved.carryingResourcesCount === 'number') hero.carryingResourcesCount = saved.carryingResourcesCount; // keep historical deliveries
+            // If flag set but no payload, clear to avoid blocking tasks
+            if (hero.carryingResources && !hero.carryingPayload) {
+                hero.carryingResources = false;
             }
         }
     } catch (e) {
@@ -377,6 +386,7 @@ export function resetHeroes() {
         hero.prevPos = undefined;
         // Reset wood-carry state
         hero.carryingResources = false;
+        hero.carryingPayload = undefined;
         hero.returnPos = undefined;
         // Reset stats to seed values if available
         const seed = seedHeroes.find(s => s.id === hero.id);
@@ -401,3 +411,6 @@ export function ensureHeroSelected(focus: boolean = true) {
         if (focus) focusHero(first);
     }
 }
+
+
+

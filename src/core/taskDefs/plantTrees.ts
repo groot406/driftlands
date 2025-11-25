@@ -12,7 +12,7 @@ const plantTreesTask: TaskDefinition = {
     label: 'Plant Trees',
 
     canStart(tile, hero) {
-        return hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
+        return !hero.carryingPayload && hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },
 
     requiredXp(_distance: number) {

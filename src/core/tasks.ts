@@ -2,6 +2,7 @@ import type {Tile} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
 import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
 import { HexMapService } from './HexMapService';
+import { depositResource } from '../store/resourceStore';
 
 // Import task definitions to register them
 import '../core/taskDefs/explore';
@@ -61,10 +62,26 @@ export interface TaskInstance {
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
-    // Wood delivery: if carrying wood and tile is towncenter, send hero back to original returnPos
-    if (hero.carryingResources && tile.terrain === 'towncenter') {
+    // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
+    if (hero.carryingPayload && tile.terrain === 'towncenter') {
+        depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
+        hero.carryingPayload = undefined;
+        hero.carryingResources = false; // legacy flag
         const dest = hero.returnPos;
+        if (dest) {
+            const service = new HexMapService();
+            const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);
+            if (path.length) {
+                startHeroMovement(hero.id, path, { q: dest.q, r: dest.r });
+                return; // defer task start until after return
+            }
+        }
+        hero.returnPos = undefined;
+    }
+    // Legacy wood delivery (fallback if payload not used yet)
+    else if (hero.carryingResources && tile.terrain === 'towncenter') {
         hero.carryingResources = false;
+        const dest = hero.returnPos;
         if (dest) {
             const service = new HexMapService();
             const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);

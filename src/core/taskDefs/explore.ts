@@ -28,7 +28,7 @@ const exploreTask: TaskDefinition = {
     },
 
     canStart(tile: Tile, hero: Hero): boolean {
-        return hero.carryingResources === false && tile.discovered === false;
+        return !hero.carryingPayload && hero.carryingResources === false && tile.discovered === false;
     },
 
     onStart(_tile, _participants) {

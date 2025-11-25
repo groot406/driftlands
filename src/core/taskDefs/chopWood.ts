@@ -66,9 +66,11 @@ const chopWoodTask: TaskDefinition = {
         }
         // For each participating hero: mark carrying wood and send to nearest towncenter
         for (const hero of participants) {
-            hero.carryingResources = true;
-            hero.carryingResourcesCount = (hero.carryingResourcesCount || 0) + 1;
+            hero.carryingPayload = { type: 'wood', amount: 1 };
+            hero.carryingResources = true; // legacy flag for gating other tasks
+            hero.carryingResourcesCount = (hero.carryingResourcesCount || 0) + 1; // legacy cumulative deliveries
             if (!hero.returnPos) hero.returnPos = { q: hero.q, r: hero.r }; // fallback
+
             const tc = findNearestTowncenter(hero.q, hero.r);
             if (tc) {
                 const path = service.findWalkablePath(hero.q, hero.r, tc.q, tc.r);

@@ -11,7 +11,7 @@ const removeTrunksTask: TaskDefinition = {
     label: 'Remove Trunks',
 
     canStart(tile, hero) {
-        return hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
+        return !hero.carryingPayload && hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },
 
     requiredXp(_distance: number) {
@@ -36,7 +36,7 @@ const removeTrunksTask: TaskDefinition = {
             tile.terrain = 'plains';
             tile.variant = undefined;
             tile.variantSetMs = undefined;
-            
+
             terrainPositions.forest.delete(tile.id);
             terrainPositions.plains.add(tile.id);
             worldVersion.value++;

@@ -6,9 +6,9 @@
 
 <script setup lang="ts">
 import {ref, type Ref, watch} from 'vue';
-import {type ResourceType, worldVersion} from '../core/world';
+import {type ResourceType} from '../core/world';
 import ResourceBubble from './ResourceBubble.vue';
-import {idleStore as store} from '../store/idleStore';
+import {resourceInventory, resourceVersion} from '../store/resourceStore';
 
 interface ResMeta {
   key: ResourceType;
@@ -24,39 +24,17 @@ interface Resource {
 }
 const resources:Ref<Resource[]> = ref([]);
 
-watch(worldVersion, () => {
-  const counts: Record<ResourceType, number> = {
-    wood: 0, ore: 0, stone: 0, food: 0, crystal: 0, artifact: 0,
-  };
-  for (const t of store.tiles) {
-    if (!t.discovered || !t.terrain) continue;
-    switch (t.terrain) {
-      case 'forest':
-        counts.wood++;
-        break;
-      case 'plains':
-        counts.food++;
-        break;
-      case 'mountain':
-        counts.crystal++;
-        break;
-      default:
-        break;
-    }
-  }
-  counts.stone = Math.round((counts.ore + counts.crystal) * 0.4);
+watch(resourceVersion, () => {
   const meta: ResMeta[] = [
-    {key: 'wood', label: 'Wood', icon: '🌲'},
-    {key: 'ore', label: 'Ore', icon: '⛏️'},
-    {key: 'stone', label: 'Stone', icon: '🪨'},
-    {key: 'food', label: 'Food', icon: '🍖'},
-    {key: 'crystal', label: 'Crystal', icon: '💎'},
-    {key: 'artifact', label: 'Artifact', icon: '🏺'},
+    {key: 'wood', label: 'Wood', icon: '\uD83C\uDF32'},
+    {key: 'ore', label: 'Ore', icon: '\u26CF\uFE0F'},
+    {key: 'stone', label: 'Stone', icon: '\uD83E\uDEA8'},
+    {key: 'food', label: 'Food', icon: '\uD83C\uDF56'},
+    {key: 'crystal', label: 'Crystal', icon: '\uD83D\uDC8E'},
+    {key: 'artifact', label: 'Artifact', icon: '\uD83C\uDFFA'},
   ];
-
-  resources.value = meta.map(m => ({...m, value: counts[m.key]}))
+  resources.value = meta.map(m => ({...m, value: resourceInventory[m.key]}));
 }, {immediate: true});
-
 </script>
 
 <script lang="ts">
