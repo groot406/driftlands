@@ -1,0 +1,46 @@
+import type { Tile } from './world';
+import { registerAgingTile, getEffectiveAgeMs } from './growth';
+import { TERRAIN_DEFS } from './terrainDefs';
+import { getVariantSet } from './world';
+
+interface ApplyVariantOptions {
+  stagger?: boolean; // apply random backward offset across effective age window
+  respectBiome?: boolean; // scale aging time using biomeScale
+  setTimestamp?: boolean; // set variantSetMs (if growth config present)
+}
+
+export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyVariantOptions = {}) {
+  const prev = tile.variant;
+  tile.variant = variantKey;
+  if (prev && prev !== variantKey) {
+    // Remove previous variant tracking set if known
+    if (prev === 'chopped_forest') getVariantSet('chopped_forest').delete(tile.id);
+  }
+  if (!variantKey) {
+    tile.variantSetMs = undefined;
+    return;
+  }
+  // Track certain explicit variants
+  if (variantKey === 'chopped_forest') getVariantSet('chopped_forest').add(tile.id);
+
+  const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
+  const variantDef = def?.variations?.find(v => v.key === variantKey);
+  if (!variantDef?.growth) {
+    tile.variantSetMs = undefined;
+    return;
+  }
+  if (opts.setTimestamp !== false) {
+    // Compute effective age (only needed for stagger offset). Timestamp always set to now unless stagger indicates backdating.
+    let effectiveAge = variantDef.growth.ageMs;
+    if (opts.respectBiome) {
+      effectiveAge = getEffectiveAgeMs(tile, variantDef.growth);
+    }
+    if (opts.stagger) {
+      const offset = Math.floor(Math.random() * effectiveAge);
+      tile.variantSetMs = Date.now() - offset;
+    } else {
+      tile.variantSetMs = Date.now();
+    }
+  }
+  registerAgingTile(tile);
+}

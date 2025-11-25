@@ -38,11 +38,13 @@ export interface TerrainVariationDef {
     key: string; // unique variant image key (e.g. 'plains_coast_a')
     weight?: number; // relative selection weight among other valid variants
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
+    // Optional timed growth configuration: after ageMs, variant auto-transitions to next variant (or null for base)
+    // biomeScale: per-biome multiplier applied to ageMs for tiles whose tile.biome matches the key.
+    growth?: { next: string | null; ageMs: number; biomeScale?: Partial<Record<string, number>> };
 }
 
 interface TerrainDefsMap {
     forest: TerrainDef;
-    chopped_forest: TerrainDef;
     plains: TerrainDef;
     water: TerrainDef;
     mountain: TerrainDef;
@@ -72,15 +74,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 2.5,
         variations: [
             { key: 'chopped_forest', weight: 5 },
-            { key: 'young_forest', weight: 2 },
+            { key: 'young_forest', weight: 2, growth: { next: null, ageMs: 600000, biomeScale: { forest: 0.8, plains: 1, mountain: 1.3, snow: 1.4, dessert: 1.5, lake: 0.9, dirt: 1.1 } } }, // young forest matures to base forest (10m base; faster in forest biome, slower in harsh biomes)
         ],
-    },
-    chopped_forest: {
-        color: '#14532d',
-        baseWeight: 0,
-        walkable: true,
-        moveCost: 1.2,
-        adjacency: {},
     },
     plains: {
         color: '#16a34a',

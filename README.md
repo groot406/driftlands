@@ -179,3 +179,48 @@ Tasks serialize minimal fields under `driftlands_tasks_v2`. Heroes persist separ
 - Negative elapsed or zero elapsed are ignored.
 - Multiple completions in same frame handled by array slice iteration.
 - Offline gap sets baseline timestamp to avoid partial double-counting until heroes restored.
+
+---
+
+## 🌱 Timed Terrain Variant Growth
+Certain terrain variants naturally age over real time. This enables ecological recovery flows (e.g. replanting chopped forests) without manual tasks beyond the initial action.
+
+### How It Works
+- Variants can declare a `growth` config in `src/core/terrainDefs.ts`:
+  - `growth: { next: string | null; ageMs: number }`
+  - `next: null` means the tile returns to its base terrain appearance (variant cleared).
+  - If `next` points to another variant that itself has `growth`, the chain continues.
+- When a variant with growth is applied, the tile records `variantSetMs = Date.now()` and is added to the aging tracker.
+- Each frame (`idleStore` loop) `updateTileGrowth()` checks aging tiles and transitions those whose elapsed time >= `ageMs`.
+- World redraw is triggered via `worldVersion` bumps.
+
+### Current Chain
+- `forest` variant `young_forest` → (after 120000 ms) `null` (base forest art).
+
+### Adding New Growth Stages
+1. Add or modify a variant entry in its terrain definition:
+```ts
+{ key: 'sapling_forest', weight: 1, growth: { next: 'young_forest', ageMs: 60000 } }
+{ key: 'young_forest', weight: 2, growth: { next: null, ageMs: 120000 } }
+```
+2. Ensure any code that manually sets a variant also updates:
+```ts
+ tile.variant = 'young_forest';
+ tile.variantSetMs = Date.now();
+ registerAgingTile(tile);
+```
+(You can alternatively create a helper if many call sites emerge.)
+
+### Persistence
+- `variantSetMs` is stored with each tile via existing world save serialization. On load we re-register aging tiles; matured variants will advance automatically after the required time passes.
+
+### Edge Handling
+- If a tile's variant changes early (e.g. by another task), its growth entry is removed automatically.
+- Missing `variantSetMs` or removed growth definitions are cleaned during update passes.
+
+### Performance
+- Only tiles with active aging are tracked in a `Set`; per-frame work is proportional to aging tile count.
+
+### Biome Scaling
+Variants can define `biomeScale` multipliers inside their `growth` config. The effective maturation time = `ageMs * (biomeScale[biome] ?? 1)`.
+Example (`young_forest`): faster in `forest` biome (0.8x), slower in harsh biomes like `dessert` (1.5x) or `snow` (1.4x).

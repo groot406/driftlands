@@ -24,7 +24,6 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
     // Base weights copy per terrain type
     const weights: Record<TerrainKey, number> = {
         forest: TERRAIN_DEFS.forest.baseWeight,
-        chopped_forest: TERRAIN_DEFS.chopped_forest.baseWeight,
         plains: TERRAIN_DEFS.plains.baseWeight,
         water: TERRAIN_DEFS.water.baseWeight,
         mountain: TERRAIN_DEFS.mountain.baseWeight,

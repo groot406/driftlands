@@ -2,6 +2,7 @@ import {watch} from 'vue';
 import {type Tile, tiles, worldVersion} from '../core/world';
 import { updateActiveTasks } from './taskStore';
 import { heroes } from './heroStore';
+import { updateTileGrowth } from '../core/growth';
 
 interface IdleState {
     tiles: Tile[];
@@ -51,5 +52,6 @@ async function loop() {
     if (!idleStore.running) return;
     idleStore.tick++;
     updateActiveTasks(heroes);
+    updateTileGrowth();
     requestAnimationFrame(loop);
 }

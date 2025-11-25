@@ -4,6 +4,8 @@ import type {TerrainKey} from './terrainDefs';
 import {idleStore as store} from "../store/idleStore.ts";
 import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
 import {TERRAIN_DEFS} from './terrainDefs';
+import { applyVariant } from './variants';
+import { registerExistingAgingTiles } from './growth';
 
 export type Terrain = TerrainKey;
 export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
@@ -18,6 +20,8 @@ export interface Tile {
     discovered: boolean;
     // Variant key if a terrain variation was selected (e.g. 'plains_coast_a'). Null if base terrain.
     variant?: string | null;
+    // Timestamp when current variant was set (for growth progression)
+    variantSetMs?: number;
     // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
     neighbors?: TileNeighborMap;
 }
@@ -140,7 +144,6 @@ export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
 
 export const terrainPositions: Record<TerrainKey, Set<string>> = {
     forest: new Set(),
-    chopped_forest: new Set(), // added for chopped forest tiles
     plains: new Set(),
     water: new Set(),
     mountain: new Set(),
@@ -148,7 +151,19 @@ export const terrainPositions: Record<TerrainKey, Set<string>> = {
     dirt: new Set(),
     snow: new Set(),
     dessert: new Set(),
+    // Add chopped_forest variant tracking (not a base TerrainKey, keep separate Set outside type cast logic)
+} as any;
+// Provide a dedicated set for chopped_forest variant tiles
+(terrainPositions as any).chopped_forest = (terrainPositions as any).chopped_forest || new Set();
+
+export const variantPositions: Record<string, Set<string>> = {
+    chopped_forest: new Set<string>(),
 };
+export function getVariantSet(key: string): Set<string> {
+    let s = variantPositions[key];
+    if (!s) { s = new Set<string>(); variantPositions[key] = s; }
+    return s;
+}
 
 export function discoverTile(tile: Tile) {
     if (tile.discovered && tile.terrain) return;
@@ -207,6 +222,10 @@ export function discoverTile(tile: Tile) {
                         roll -= v.weight;
                     }
                 }
+            }
+            // If selected variant has growth config, record timestamp and track aging
+            if (tile.variant) {
+                applyVariant(tile, tile.variant, { stagger: true, respectBiome: true });
             }
         }
     }
@@ -357,6 +376,8 @@ export function loadWorld(tileData: Tile[]) {
         }
         ensureTileNeighbors(t);
     }
+    // Re-register aging tiles after load
+    registerExistingAgingTiles(tiles);
     worldVersion.value++;
 }
 
