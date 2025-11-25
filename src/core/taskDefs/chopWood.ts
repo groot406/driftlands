@@ -12,8 +12,16 @@ const service = new HexMapService();
 
 // Helper to find nearest towncenter tile (warehouse)
 function findNearestTowncenter(q: number, r: number) {
-    let best: { q: number; r: number } | null = null;
-    let bestDist = Infinity;
+    let best;
+    let bestDist;
+
+    // First distance to origin (0,0) as fallback
+    const dq = Math.abs(0 - q);
+    const dr = Math.abs(0 - r);
+    const ds = Math.abs(0 - (-q - r));
+    bestDist = Math.max(dq, dr, ds);
+    best = { q: 0, r: 0 };
+
     for (const id of terrainPositions.towncenter) {
         const t = tileIndex[id];
         if (!t) continue;

@@ -1,8 +1,9 @@
 <template>
-  <div ref="container" class="w-full h-full relative map-container" >
-    <canvas ref="canvas" class="absolute inset-0 pixel-art" />
+  <div ref="container" class="w-full h-full relative map-container">
+    <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
-      <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks" @close="showTaskMenu=false; taskMenuTile=null"  />
+      <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
+                @close="showTaskMenu=false; taskMenuTile=null"/>
     </transition>
   </div>
 </template>
@@ -12,8 +13,6 @@ import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import type {Hero} from '../store/heroStore';
-import TaskMenu from './TaskMenu.vue';
-
 import {
   getSelectedHero,
   heroes,
@@ -23,6 +22,7 @@ import {
   updateHeroFacing,
   updateHeroMovements
 } from '../store/heroStore';
+import TaskMenu from './TaskMenu.vue';
 import {
   createPointerHandlers,
   dragged,
@@ -37,6 +37,7 @@ import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
+import {TERRAIN_DEFS} from "../core/terrainDefs.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -61,9 +62,17 @@ const containerSize = ref({width: 0, height: 0});
 
 // Service instance
 const service = new HexMapService();
+
 // NEW: Named resize/orientation handlers so we can properly remove them.
-function onWindowResize() { service.resize(); updateContainerSize(); }
-function onOrientationChange() { service.resize(); updateContainerSize(); }
+function onWindowResize() {
+  service.resize();
+  updateContainerSize();
+}
+
+function onOrientationChange() {
+  service.resize();
+  updateContainerSize();
+}
 
 let rafId: number | null = null;
 let lastClickTime = 0;
@@ -79,7 +88,12 @@ function animationLoop() {
   } else if (selectedHeroId.value && hoveredTile.value) {
     pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
   }
-  service.draw({hoveredTile: hoveredTile.value, hoveredHero: hoveredHero.value, pathCoords: pathCoords.value, taskMenuTile: taskMenuTile.value});
+  service.draw({
+    hoveredTile: hoveredTile.value,
+    hoveredHero: hoveredHero.value,
+    pathCoords: pathCoords.value,
+    taskMenuTile: taskMenuTile.value
+  });
   rafId = requestAnimationFrame(animationLoop);
 }
 
@@ -88,7 +102,7 @@ function updatePath() {
 }
 
 function handleClick(e: PointerEvent) {
-  if(e.type !== 'pointerup') return;
+  if (e.type !== 'pointerup') return;
 
   // If menu just opened, ignore further taps briefly to avoid flicker-close
   const nowTs = performance.now();
@@ -144,11 +158,18 @@ function handleClick(e: PointerEvent) {
   }
 
   // movement logic (only runs if no task menu opened)
+  if(!tile.terrain || !TERRAIN_DEFS[tile.terrain].walkable) {
+    // Cannot walk to this tile
+    return;
+  }
   const path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
   if (path.length) {
     const originTile = ensureTileExists(selHero.q, selHero.r);
     const targetTile = ensureTileExists(tile.q, tile.r);
-    if (!(!originTile.discovered && !targetTile.discovered) || (selHero.prevPos && hexDistance(selHero.prevPos, {q: tile.q, r: tile.r}) === 1)) {
+    if (!(!originTile.discovered && !targetTile.discovered) || (selHero.prevPos && hexDistance(selHero.prevPos, {
+      q: tile.q,
+      r: tile.r
+    }) === 1)) {
       detachHeroFromCurrentTask(selHero);
       startHeroMovement(selHero.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
       pathCoords.value = path;
