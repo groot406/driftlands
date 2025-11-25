@@ -1,11 +1,12 @@
 import {reactive} from 'vue';
 import type {TaskInstance, TaskType} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
-import {hexDistance, type Tile, tileIndex} from '../core/world';
+import {hexDistance, type Tile, tileIndex, ensureTileExists} from '../core/world';
 import type {Hero} from './heroStore';
-import {heroes} from './heroStore';
+import {heroes, startHeroMovement} from './heroStore';
 import type {HeroStats} from './heroStore';
 import {idleStore} from './idleStore';
+import { HexMapService } from '../core/HexMapService';
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -163,6 +164,7 @@ export function updateActiveTasks(heroes: Hero[]) {
             inst.completedMs = nowMs;
             inst.active = false;
             def.onComplete(tile, inst, parts);
+            autoChainAdjacent(inst, tile, parts); // new chaining step before rewards
             rewardXpToParticipants(inst, parts);
             cleanupCompletedTasks();
         }
@@ -253,6 +255,39 @@ export function restoreTasks() {
     } catch {}
 }
 
+function autoChainAdjacent(inst: TaskInstance, tile: Tile, participants: Hero[]) {
+    const def = getTaskDefinition(inst.type);
+    if (!def?.chainAdjacentSameTerrain) return;
+    if (!tile.discovered || !tile.terrain) return;
+    const service = new HexMapService();
+    for (const hero of participants) {
+        if (hero.carryingResources || hero.carryingPayload || hero.movement) continue;
+        const nm = tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors!;
+        const candidates: Tile[] = [];
+        for (const side of ['a','b','c','d','e','f'] as const) {
+            const nt = nm[side];
+            if (!nt.discovered || nt.terrain !== tile.terrain) continue;
+            if (getTaskByTile(nt.id, inst.type)) continue;
+            if (!def.canStart(nt, hero)) continue;
+            candidates.push(nt);
+        }
+        if (!candidates.length) continue;
+        candidates.sort((a,b) => {
+            const da = hexDistance(a.q, a.r);
+            const db = hexDistance(b.q, b.r);
+            if (da !== db) return da - db;
+            const ak = a.q === b.q ? (a.r - b.r) : (a.q - b.q);
+            return ak;
+        });
+        for (const targetTile of candidates) {
+            const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
+            if (!path.length) continue;
+            startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, inst.type);
+            break;
+        }
+    }
+}
+
 function offlineCatchUp() {
     const nowMs = Date.now();
     for (const inst of taskStore.tasks.slice()) {
@@ -285,6 +320,7 @@ function offlineCatchUp() {
             inst.completedMs = nowMs;
             inst.active = false;
             def.onComplete(tile, inst, parts);
+            autoChainAdjacent(inst, tile, parts); // chaining during offline progression
             rewardXpToParticipants(inst, parts);
             cleanupCompletedTasks();
         }

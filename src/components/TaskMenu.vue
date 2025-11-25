@@ -3,7 +3,7 @@
   <div v-if="tile" class="task-overlay" @pointerdown.stop.prevent @pointerup.stop :style="menuStyle">
     <div class="task-container flex flex-row items-center justify-center gap-6">
       <!-- Center hex (close) -->
-      <div class="hex-btn hex-center" @click.stop.prevent="close" title="Close">
+      <div class="hex-btn hex-center opacity-70 hover:opacity-100" @click.stop.prevent="close" title="Close">
         ✕
       </div>
       <!-- Task options around -->
@@ -123,4 +123,8 @@ const menuStyle = computed(() => {
   top: -36px;
 }
 
+.fade-task-leave-to, .fade-task-enter-from {
+  transition: opacity 0.2s, transform 0.2s;
+  transform: scale(0.2);
+}
 </style>

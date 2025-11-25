@@ -40,7 +40,7 @@ export interface TerrainVariationDef {
     assetKey?: string; // optional override for image filename base if different from key
     growth?: { next: string | null; ageMs: number }; // biome scaling moved to biomes
     // NEW: optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
-    overlayAssetKey?: string;
+    overlayAssetKey?: string|false;
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
 }
 

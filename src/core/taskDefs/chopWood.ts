@@ -37,6 +37,7 @@ function findNearestTowncenter(q: number, r: number) {
 const chopWoodTask: TaskDefinition = {
     key: 'chopWood',
     label: 'Chop Wood',
+    chainAdjacentSameTerrain: true,
 
     canStart(tile, hero) {
         return hero.carryingResources === false && tile.terrain === 'forest' && !tile.variant;

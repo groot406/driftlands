@@ -37,6 +37,8 @@ export interface TaskDefinition {
 
     // Optional base reward XP for participants collectively (split proportionally)
     totalRewardedStats(distance: number): Record<HeroStat, number>;
+
+    chainAdjacentSameTerrain?: boolean; // new optional flag to auto-chain task to neighboring same-terrain tiles
 }
 
 export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;

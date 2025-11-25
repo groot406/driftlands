@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
-import {ensureTileExists} from '../core/world';
+import {ensureTileExists, tileIndex} from '../core/world';
 import type {Hero} from '../store/heroStore';
 import {
   getSelectedHero,
@@ -59,6 +59,8 @@ const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
 const taskMenuTile = ref<Tile | null>(null);
 const containerSize = ref({width: 0, height: 0});
+const clusterBoundaryTiles = ref<Tile[]>([]); // boundary tiles for same-terrain cluster highlighting
+const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id set)
 
 // Service instance
 const service = new HexMapService();
@@ -92,7 +94,8 @@ function animationLoop() {
     hoveredTile: hoveredTile.value,
     hoveredHero: hoveredHero.value,
     pathCoords: pathCoords.value,
-    taskMenuTile: taskMenuTile.value
+    taskMenuTile: taskMenuTile.value,
+    clusterBoundaryTiles: clusterBoundaryTiles.value
   });
   rafId = requestAnimationFrame(animationLoop);
 }
@@ -222,6 +225,52 @@ function updateContainerSize() {
   const el = container.value;
   if (!el) return;
   containerSize.value = {width: el.clientWidth, height: el.clientHeight};
+}
+
+function computeTerrainCluster(base: Tile | null) {
+  clusterBoundaryTiles.value = [];
+  clusterTiles.value.clear();
+  if (!base || !base.discovered || !base.terrain) return;
+  const terrain = base.terrain;
+  const maxSize = 500; // safety cap
+  const queue: Tile[] = [base];
+  const visited = new Set<string>();
+  while (queue.length && visited.size < maxSize) {
+    const t = queue.shift()!;
+    if (!t.discovered || t.terrain !== terrain) continue;
+    if (visited.has(t.id)) continue;
+    visited.add(t.id);
+    clusterTiles.value.add(t.id);
+    const nm = t.neighbors ?? ensureTileExists(t.q, t.r).neighbors ?? undefined;
+    if (nm) {
+      for (const side of ['a','b','c','d','e','f'] as const) {
+        const nt = nm[side];
+        if (nt.discovered && nt.terrain === terrain && !visited.has(nt.id)) queue.push(nt);
+      }
+    }
+  }
+  for (const id of clusterTiles.value) {
+    const baseTile = tileIndex[id];
+    if (!baseTile) continue;
+    const nm = baseTile.neighbors ?? ensureTileExists(baseTile.q, baseTile.r).neighbors!;
+    let isBoundary = false;
+    for (const side of ['a','b','c','d','e','f'] as const) {
+      const nt = nm[side];
+      if (!nt.discovered || nt.terrain !== terrain || !clusterTiles.value.has(nt.id)) { isBoundary = true; break; }
+    }
+    if (isBoundary) clusterBoundaryTiles.value.push(baseTile);
+  }
+}
+
+watch(taskMenuTile, (val) => {
+  // Recompute cluster when task menu tile changes
+  computeTerrainCluster(val);
+});
+
+function resetHoverState() {
+  hoveredTile.value = null;
+  hoveredHero.value = null;
+  pathCoords.value = [];
 }
 
 onMounted(async () => {

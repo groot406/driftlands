@@ -46,7 +46,8 @@ interface DrawOptions {
     hoveredTile: Tile | null;
     hoveredHero: Hero | null;
     taskMenuTile: Tile | null;
-    pathCoords: PathCoord[]
+    pathCoords: PathCoord[];
+    clusterBoundaryTiles?: Tile[]; // new: boundary tiles of same-terrain cluster for menu highlighting
 }
 
 export class HexMapService {
@@ -668,6 +669,21 @@ export class HexMapService {
             }
         }
 
+        // Existing task menu tile highlight retained; add cluster border if provided
+        if (opts.taskMenuTile && opts.clusterBoundaryTiles && opts.clusterBoundaryTiles.length) {
+            // Draw border strokes around boundary tiles (after hover/path but before heroes for clarity)
+            for (const bt of opts.clusterBoundaryTiles) {
+                if (hexDistance(camera, bt) > camera.radius + 1) continue;
+                const dist = hexDistance(camera, bt);
+                const opacity = (() => {
+                    const f = this.computeFade(dist, camera.innerRadius, camera.radius);
+                    return f * f;
+                })();
+                // Use semi-transparent stroke without fill
+                this.drawHexHighlight(ctx, bt.q, bt.r, 'rgba(255,201,77,0.10)', 'rgba(255,201,77,0.85)', opacity);
+            }
+        }
+
         // Hover highlight
         if (opts.taskMenuTile) {
             const ht = opts.taskMenuTile;
@@ -677,7 +693,7 @@ export class HexMapService {
                     const f = this.computeFade(dist, camera.innerRadius, camera.radius);
                     return f * f;
                 })();
-                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgb(243,45,7,0.40)', '#d0423d00', opacity);
+                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgba(163,255,61,0.00)', '#91fa31', opacity);
             }
         }
 
