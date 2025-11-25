@@ -56,16 +56,7 @@ const chopWoodTask: TaskDefinition = {
         return { xp: 10, hp: 0, atk: 0, spd: 0 };
     },
     onStart(tile, participants) {
-        // Ensure tile is forest; otherwise abort by marking inactive immediately (fallback safety)
-        if (tile.terrain !== 'forest') {
-            // Not forest: mark task instantly complete with zero rewards
-            // (Rely on onComplete to convert terrain, but we skip here)
-        }
-        for (const hero of participants) {
-            // Snapshot original position before chopping (for return after delivery)
-            if (!hero.returnPos) hero.returnPos = { q: hero.q, r: hero.r };
-        }
-        persistHeroes();
+        // No special per-hero flags needed.
     },
     onComplete(tile, _instance, participants) {
         // Replace forest with chopped_forest (only if still forest)
@@ -78,7 +69,6 @@ const chopWoodTask: TaskDefinition = {
             hero.carryingPayload = { type: 'wood', amount: 1 };
             hero.carryingResources = true; // legacy flag for gating other tasks
             hero.carryingResourcesCount = (hero.carryingResourcesCount || 0) + 1; // legacy cumulative deliveries
-            if (!hero.returnPos) hero.returnPos = { q: hero.q, r: hero.r }; // fallback
 
             const tc = findNearestTowncenter(hero.q, hero.r);
             if (tc) {

@@ -10,7 +10,7 @@ import { applyVariant } from '../variants';
 const plantTreesTask: TaskDefinition = {
     key: 'plantTrees',
     label: 'Plant Trees',
-
+    chainAdjacentSameTerrain: true,
     canStart(tile, hero) {
         return !hero.carryingPayload && hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },

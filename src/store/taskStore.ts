@@ -1,12 +1,11 @@
 import {reactive} from 'vue';
 import type {TaskInstance, TaskType} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
-import {hexDistance, type Tile, tileIndex, ensureTileExists} from '../core/world';
-import type {Hero} from './heroStore';
+import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
+import type {Hero, HeroStats} from './heroStore';
 import {heroes, startHeroMovement} from './heroStore';
-import type {HeroStats} from './heroStore';
 import {idleStore} from './idleStore';
-import { HexMapService } from '../core/HexMapService';
+import {HexMapService} from '../core/HexMapService';
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -164,7 +163,7 @@ export function updateActiveTasks(heroes: Hero[]) {
             inst.completedMs = nowMs;
             inst.active = false;
             def.onComplete(tile, inst, parts);
-            autoChainAdjacent(inst, tile, parts); // new chaining step before rewards
+            autoChainInCluster(inst, tile, parts); // renamed chaining step before rewards
             rewardXpToParticipants(inst, parts);
             cleanupCompletedTasks();
         }
@@ -184,7 +183,7 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
     for (const hero of participants) {
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
-        const statKeys: (keyof HeroStats)[] = ['xp','hp','atk','spd'];
+        const statKeys: (keyof HeroStats)[] = ['xp', 'hp', 'atk', 'spd'];
         for (const stat of statKeys) {
             const statReward = rewards[stat];
             const rewardAmount = Math.ceil(statReward * share);
@@ -219,7 +218,8 @@ function persistTasks() {
             active: t.active,
         }));
         localStorage.setItem(TASKS_KEY, JSON.stringify({tasks: serializable, ts: Date.now()}));
-    } catch {}
+    } catch {
+    }
 }
 
 export function restoreTasks() {
@@ -252,38 +252,71 @@ export function restoreTasks() {
         }
         // Offline catch-up: apply one update based on elapsed since lastUpdateMs
         offlineCatchUp();
-    } catch {}
+    } catch {
+    }
 }
 
-function autoChainAdjacent(inst: TaskInstance, tile: Tile, participants: Hero[]) {
+function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]) {
     const def = getTaskDefinition(inst.type);
     if (!def?.chainAdjacentSameTerrain) return;
     if (!tile.discovered || !tile.terrain) return;
-    const service = new HexMapService();
-    for (const hero of participants) {
-        if (hero.carryingResources || hero.carryingPayload || hero.movement) continue;
-        const nm = tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors!;
-        const candidates: Tile[] = [];
+    const terrain = tile.terrain;
+
+    // Build full cluster via BFS (discovered tiles sharing terrain)
+    const visited = new Set<string>();
+    const cluster: Tile[] = [];
+    const queue: Tile[] = [tile];
+    const MAX_CLUSTER = 800; // safety cap
+    while (queue.length && visited.size < MAX_CLUSTER) {
+        const cur = queue.shift()!;
+        if (visited.has(cur.id)) continue;
+        if (!cur.discovered || cur.terrain !== terrain) continue;
+        visited.add(cur.id);
+        cluster.push(cur);
+        const nm = cur.neighbors ?? ensureTileExists(cur.q, cur.r).neighbors!;
         for (const side of ['a','b','c','d','e','f'] as const) {
             const nt = nm[side];
-            if (!nt.discovered || nt.terrain !== tile.terrain) continue;
-            if (getTaskByTile(nt.id, inst.type)) continue;
-            if (!def.canStart(nt, hero)) continue;
-            candidates.push(nt);
+            if (!nt) continue;
+            if (!visited.has(nt.id) && nt.discovered && nt.terrain === terrain) queue.push(nt);
+        }
+    }
+
+    const service = new HexMapService();
+    for (const hero of participants) {
+        // If hero is carrying resources/payload, defer chaining until after delivery and return.
+        if (hero.carryingResources || hero.carryingPayload) {
+            // Preserve existing pendingChain if already set for same source to avoid overwrite.
+            if (!hero.pendingChain) hero.pendingChain = { sourceTileId: tile.id, taskType: inst.type };
+            continue;
+        }
+        // Skip heroes still moving.
+        if (hero.movement) continue;
+
+        // Build candidate tiles from entire cluster (exclude current tile & tiles already hosting the task or failing canStart)
+        const candidates: Tile[] = [];
+        for (const ct of cluster) {
+            if (ct.id === tile.id) continue; // skip original completed tile
+            if (getTaskByTile(ct.id, inst.type)) continue; // already has this task type
+            if (!def.canStart(ct, hero)) continue; // hero cannot start here
+            candidates.push(ct);
         }
         if (!candidates.length) continue;
-        candidates.sort((a,b) => {
+
+        // Sort by distance from world center (tie-break by q then r for determinism)
+        candidates.sort((a, b) => {
             const da = hexDistance(a.q, a.r);
             const db = hexDistance(b.q, b.r);
             if (da !== db) return da - db;
-            const ak = a.q === b.q ? (a.r - b.r) : (a.q - b.q);
-            return ak;
+            if (a.q !== b.q) return a.q - b.q;
+            return a.r - b.r;
         });
+
+        // Try each candidate until a path is found
         for (const targetTile of candidates) {
             const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
             if (!path.length) continue;
             startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, inst.type);
-            break;
+            break; // only chain to one tile per hero
         }
     }
 }
@@ -303,7 +336,10 @@ function offlineCatchUp() {
             const h = heroes.find(hh => hh.id === heroId);
             if (h) parts.push(h);
         }
-        if (!parts.length) { removeTask(inst); continue; }
+        if (!parts.length) {
+            removeTask(inst);
+            continue;
+        }
         const elapsedSeconds = elapsedMs / 1000;
         let totalContribution = 0;
         for (const hero of parts) {
@@ -320,7 +356,7 @@ function offlineCatchUp() {
             inst.completedMs = nowMs;
             inst.active = false;
             def.onComplete(tile, inst, parts);
-            autoChainAdjacent(inst, tile, parts); // chaining during offline progression
+            autoChainInCluster(inst, tile, parts); // renamed chaining during offline progression
             rewardXpToParticipants(inst, parts);
             cleanupCompletedTasks();
         }
@@ -339,10 +375,14 @@ export function clearAllTasks() {
         for (const hero of heroes) {
             if (hero.currentTaskId) hero.currentTaskId = undefined;
         }
-    } catch {}
+    } catch {
+    }
     taskStore.tasks.length = 0;
     for (const k of Object.keys(taskStore.taskIndex)) delete taskStore.taskIndex[k];
     for (const k of Object.keys(taskStore.tasksByTile)) delete taskStore.tasksByTile[k];
     taskStore.nextId = 1;
-    try { localStorage.removeItem(TASKS_KEY); } catch {}
+    try {
+        localStorage.removeItem(TASKS_KEY);
+    } catch {
+    }
 }

@@ -43,7 +43,8 @@ export interface Hero {
     carryingResources?: boolean; // indicator hero is carrying wood to warehouse (legacy)
     carryingResourcesCount?: number; // number of wood deliveries completed (legacy cumulative deliveries)
     carryingPayload?: { type: 'wood' | string; amount: number }; // new payload model for carried resources
-    returnPos?: { q: number; r: number }; // original position to return after delivery
+    pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
+    returnPos?: { q: number; r: number }; // restore optional original position for return flows
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
@@ -77,7 +78,8 @@ function persistHeroes() {
             carryingResources: h.carryingResources || false,
             carryingResourcesCount: h.carryingResourcesCount || 0,
             carryingPayload: h.carryingPayload ? { ...h.carryingPayload } : undefined,
-            returnPos: h.returnPos ? { ...h.returnPos} : undefined
+            pendingChain: h.pendingChain ? { ...h.pendingChain } : undefined,
+            returnPos: h.returnPos ? { ...h.returnPos } : undefined,
         }));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
@@ -164,6 +166,16 @@ function restoreHeroes() {
             if (hero.carryingResources && !hero.carryingPayload) {
                 hero.carryingResources = false;
             }
+            if (saved.pendingChain && typeof saved.pendingChain.sourceTileId === 'string' && typeof saved.pendingChain.taskType === 'string') {
+                hero.pendingChain = { sourceTileId: saved.pendingChain.sourceTileId, taskType: saved.pendingChain.taskType };
+            } else {
+                hero.pendingChain = undefined;
+            }
+            if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
+                hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
+            } else {
+                hero.returnPos = undefined;
+            }
         }
     } catch (e) {
         // ignore
@@ -191,10 +203,15 @@ export function updateHeroMovements(now: number) {
             // Arrival if all steps completed
             if (completedSteps >= m.path.length) {
                 const targetTile = ensureTileExists(m.target.q, m.target.r);
-                handleHeroArrival(hero, targetTile);
+                // Move hero to final tile before arrival handling so path origin for any new movement is correct
                 hero.q = m.target.q;
                 hero.r = m.target.r;
-                hero.movement = undefined;
+                const originalMovement = m;
+                handleHeroArrival(hero, targetTile);
+                // Only clear movement if arrival did not start a new one
+                if (hero.movement === originalMovement) {
+                    hero.movement = undefined;
+                }
                 persistHeroes();
                 continue;
             }
@@ -234,10 +251,13 @@ export function updateHeroMovements(now: number) {
         const stepsAdvanced = Math.floor((now - m.startMs) / m.stepMs);
         if (stepsAdvanced >= m.path.length) {
             const targetTile = ensureTileExists(m.target.q, m.target.r);
-            handleHeroArrival(hero, targetTile);
             hero.q = m.target.q;
             hero.r = m.target.r;
-            hero.movement = undefined;
+            const originalMovement = m;
+            handleHeroArrival(hero, targetTile);
+            if (hero.movement === originalMovement) {
+                hero.movement = undefined;
+            }
             persistHeroes();
             continue;
         }
@@ -269,26 +289,18 @@ export function updateHeroMovements(now: number) {
     }
 }
 
-export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: {
-    q: number;
-    r: number
-}, taskType?: string) {
+export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: { q: number; r: number }, taskType?: string) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
-    // Prevent exploit: ignore if hero already moving and target unchanged
     if (hero.movement) {
         const m = hero.movement;
         if (m.target.q === target.q && m.target.r === target.r) {
-            return; // already en route to this target; ignore repeated clicks
+            return; // already en route
         }
-        // Additionally, if hero hasn't completed the first step yet (elapsed < first duration), block re-pathing to any intermediate of current path
         if (m.stepDurations && m.cumulative) {
             const elapsed = performance.now() - m.startMs;
-            if (elapsed < m.stepDurations[0]! * 0.5) {
-                // Early in first step; disallow new movement to avoid jump
-                return;
-            }
+            if (elapsed < m.stepDurations[0]! * 0.5) return; // early in first step
         }
     }
     const originTile = ensureTileExists(hero.q, hero.r);
@@ -299,11 +311,10 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         if (!allow) return;
     }
     const baseStepMs = 550;
-    const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04); // spd reduces time (cap at 50%)
-    // Build per-step durations factoring terrain moveCost using edge-average (0.5*from + 0.5*to)
+    const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
     const durations: number[] = [];
     for (let i = 0; i < path.length; i++) {
-        const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
+        const fromCoord = (i === 0) ? { q: hero.q, r: hero.r } : path[i - 1]!;
         const toCoord = path[i]!;
         const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
         const toTile = ensureTileExists(toCoord.q, toCoord.r);
@@ -311,22 +322,16 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         const toDef = toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
         const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
         const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
-        const edgeCost = 0.5 * fromCost + 0.5 * toCost; // include half of origin + half of destination
-        const stepDuration = Math.max(120, baseStepMs * edgeCost * speedAdj);
-        durations.push(stepDuration);
+        const edgeCost = 0.5 * fromCost + 0.5 * toCost;
+        durations.push(Math.max(120, baseStepMs * edgeCost * speedAdj));
     }
-    // Compute cumulative end times
     const cumulative: number[] = [];
     let acc = 0;
-    for (const d of durations) {
-        acc += d;
-        cumulative.push(acc);
-    }
-    // Keep uniform stepMs for interpolation fallback (average)
+    for (const d of durations) { acc += d; cumulative.push(acc); }
     const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
     hero.movement = {
         path: path.slice(),
-        origin: {q: hero.q, r: hero.r},
+        origin: { q: hero.q, r: hero.r },
         target,
         taskType,
         startMs: performance.now(),

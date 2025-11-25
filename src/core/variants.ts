@@ -27,7 +27,12 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
   }
   if (opts.setTimestamp !== false) {
     // Compute effective age (only needed for stagger offset). Timestamp always set to now unless stagger indicates backdating.
-    let effectiveAge = variantDef.growth.ageMs;
+    let effectiveAge = variantDef.growth.ageMs ?? 0;
+    if(variantDef.growth.ageMsRange) {
+        const [minAge, maxAge] = variantDef.growth.ageMsRange;
+        effectiveAge = Math.floor(Math.random() * (maxAge - minAge + 1)) + minAge;
+    }
+
     if (opts.respectBiome) {
       effectiveAge = getEffectiveAgeMs(tile, variantDef.growth);
     }

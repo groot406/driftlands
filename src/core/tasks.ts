@@ -1,4 +1,4 @@
-import type {Tile} from './world';
+import {type Tile, worldVersion} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
 import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
 import { HexMapService } from './HexMapService';
@@ -64,40 +64,24 @@ export interface TaskInstance {
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
+    const pending = hero.pendingChain; // capture before potential clearing
     // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
     if (hero.carryingPayload && tile.terrain === 'towncenter') {
         depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
         hero.carryingPayload = undefined;
         hero.carryingResources = false; // legacy flag
-        const dest = hero.returnPos;
-        if (dest) {
-            const service = new HexMapService();
-            const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);
-            if (path.length) {
-                startHeroMovement(hero.id, path, { q: dest.q, r: dest.r });
-                return; // defer task start until after return
-            }
-        }
-        hero.returnPos = undefined;
     }
-    // Legacy wood delivery (fallback if payload not used yet)
     else if (hero.carryingResources && tile.terrain === 'towncenter') {
         hero.carryingResources = false;
-        const dest = hero.returnPos;
-        if (dest) {
-            const service = new HexMapService();
-            const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);
-            if (path.length) {
-                startHeroMovement(hero.id, path, { q: dest.q, r: dest.r });
-                return; // defer task start until after return
-            }
-        }
-        hero.returnPos = undefined;
     }
+
     if (!hero.movement?.taskType) {
-        // If hero ended a return movement (no taskType) and reached returnPos, clear returnPos
-        if (hero.returnPos && hero.q === hero.returnPos.q && hero.r === hero.returnPos.r) {
-            hero.returnPos = undefined;
+        hero.movement = undefined; // clear movement on arrival
+        // Trigger deferred chain now if pending and hero back at source tile
+        if (pending) {
+            hero.movement = undefined;
+            attemptDeferredChain(hero, pending);
+            hero.pendingChain = undefined;
         }
         return;
     }
@@ -110,9 +94,75 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             joinTask(existing.id, hero);
         }
     }
+    // After starting/joining, if pendingChain present AND hero at source, trigger it too
+    if (pending && hero.q === tileIndex[pending.sourceTileId]?.q && hero.r === tileIndex[pending.sourceTileId]?.r) {
+        hero.movement = undefined; // clear movement on arrival
+        attemptDeferredChain(hero, pending);
+        hero.pendingChain = undefined;
+    }
+}
+
+import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from './world';
+import { getTaskDefinition } from './taskRegistry';
+
+function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskType: string }) {
+    const source = tileIndex[pending.sourceTileId];
+    if (!source || !source.discovered || !source.terrain) return;
+    const def = getTaskDefinition(pending.taskType);
+    if (!def?.chainAdjacentSameTerrain) return;
+
+    // Do not start if hero still busy or carrying
+    if (hero.carryingResources || hero.carryingPayload || hero.movement) return;
+
+    const terrain = source.terrain;
+    // BFS full cluster of same terrain
+    const visited = new Set<string>();
+    const cluster: Tile[] = [];
+    const queue: Tile[] = [source];
+    const MAX_CLUSTER = 800; // safety cap
+    while (queue.length && visited.size < MAX_CLUSTER) {
+        const cur = queue.shift()!;
+        if (visited.has(cur.id)) continue;
+        if (!cur.discovered || cur.terrain !== terrain) continue;
+        visited.add(cur.id);
+        cluster.push(cur);
+        const nm = cur.neighbors ?? ensureTileExists(cur.q, cur.r).neighbors!;
+        for (const side of ['a','b','c','d','e','f'] as const) {
+            const nt = nm[side];
+            if (!nt) continue;
+            if (!visited.has(nt.id) && nt.discovered && nt.terrain === terrain) queue.push(nt);
+        }
+    }
+
+    // Build candidate tiles excluding source, requiring canStart and no existing task instance of this type
+    const candidates: Tile[] = [];
+    for (const ct of cluster) {
+        if (ct.id === source.id) continue;
+        if (getTaskByTile(ct.id, pending.taskType)) continue;
+        if (!def.canStart(ct, hero)) continue;
+        candidates.push(ct);
+    }
+    if (!candidates.length) return;
+
+    candidates.sort((a,b) => {
+        const da = worldHexDistance(a.q, a.r);
+        const db = worldHexDistance(b.q, b.r);
+        if (da !== db) return da - db;
+        if (a.q !== b.q) return a.q - b.q;
+        return a.r - b.r;
+    });
+
+    const service = new HexMapService();
+    for (const targetTile of candidates) {
+        const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
+        if (!path.length) continue;
+        worldVersion.value++;
+        startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, pending.taskType);
+        worldVersion.value++;
+        break;
+    }
 }
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
-    // Loop through registered tasks from taskRegistry and check canStart
-    return listTaskDefinitions().filter((taskDefinition) => taskDefinition.canStart(tile, hero));
+    return listTaskDefinitions().filter(def => def.canStart(tile, hero));
 }

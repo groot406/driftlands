@@ -38,7 +38,7 @@ export interface TerrainVariationDef {
     weight?: number; // relative selection weight among other valid variants
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
     assetKey?: string; // optional override for image filename base if different from key
-    growth?: { next: string | null; ageMs: number }; // biome scaling moved to biomes
+    growth?: { next: string | null; ageMs?: number, ageMsRange: number[] }; // biome scaling moved to biomes
     // NEW: optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
     overlayAssetKey?: string|false;
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
@@ -77,7 +77,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 2.5,
         variations: [
             {key: 'chopped_forest', weight: 5, overlayAssetKey: false},
-            {key: 'young_forest', weight: 2, growth: {next: null, ageMs: 600000}, overlayAssetKey: false},
+            {key: 'young_forest', weight: 2, growth: {next: null, ageMsRange: [600000, 6000000]}, overlayAssetKey: false},
         ],
         overlayAssetKey: 'forest_overlay',
         overlayOffset: { x: 0, y: -4}
