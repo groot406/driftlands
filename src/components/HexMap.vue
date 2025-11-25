@@ -1,17 +1,19 @@
 <template>
-  <div ref="container" class="w-full h-full relative map-container" @pointerdown="hideTaskBubble">
-    <canvas ref="canvas" class="absolute inset-0" />
-    <transition name="fade-menu" mode="out-in">
-      <TaskBubble :tile="taskBubbleTile" :show="showTaskBubble" :container-bounds="containerBounds" @close="hideTaskBubble" :style="taskBubbleStyle" />
+  <div ref="container" class="w-full h-full relative map-container" >
+    <canvas ref="canvas" class="absolute inset-0 pixel-art" />
+    <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
+      <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks" @close="showTaskMenu=false; taskMenuTile=null"  />
     </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, shallowRef, watch, computed} from 'vue';
+import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import type {Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import type {Hero} from '../store/heroStore';
+import TaskMenu from './TaskMenu.vue';
+
 import {
   getSelectedHero,
   heroes,
@@ -33,9 +35,8 @@ import {
 } from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
-// UPDATED: import task helpers (startTask/getTaskByTile/joinTask) and unify path (remove .ts suffix)
-import {detachHeroFromCurrentTask, startTask, getTaskByTile, joinTask} from '../store/taskStore';
-import TaskBubble from './TaskBubble.vue';
+import {detachHeroFromCurrentTask} from '../store/taskStore';
+import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -53,20 +54,20 @@ const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
 const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
 
-const showTaskBubble = ref(false);
-const taskBubbleTile = ref<Tile | null>(null);
-
-const containerBounds = ref<{left:number;top:number}>({left:0,top:0});
-const bubbleScreen = ref<{x:number;y:number}>({x:0,y:0});
+const availableTasks = ref<TaskDefinition[]>([]);
+const showTaskMenu = ref(false);
+const taskMenuTile = ref<Tile | null>(null);
+const containerSize = ref({width: 0, height: 0});
 
 // Service instance
 const service = new HexMapService();
 // NEW: Named resize/orientation handlers so we can properly remove them.
-function onWindowResize() { service.resize(); }
-function onOrientationChange() { service.resize(); }
+function onWindowResize() { service.resize(); updateContainerSize(); }
+function onOrientationChange() { service.resize(); updateContainerSize(); }
 
 let rafId: number | null = null;
 let lastClickTime = 0;
+let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mobile short taps
 
 function animationLoop() {
   const now = performance.now();
@@ -78,7 +79,7 @@ function animationLoop() {
   } else if (selectedHeroId.value && hoveredTile.value) {
     pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
   }
-  service.draw({hoveredTile: hoveredTile.value, hoveredHero: hoveredHero.value, pathCoords: pathCoords.value});
+  service.draw({hoveredTile: hoveredTile.value, hoveredHero: hoveredHero.value, pathCoords: pathCoords.value, taskMenuTile: taskMenuTile.value});
   rafId = requestAnimationFrame(animationLoop);
 }
 
@@ -87,9 +88,16 @@ function updatePath() {
 }
 
 function handleClick(e: PointerEvent) {
+  if(e.type !== 'pointerup') return;
+
+  // If menu just opened, ignore further taps briefly to avoid flicker-close
+  const nowTs = performance.now();
+  if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
+    return;
+  }
+
   if (isPaused()) return;
   if (dragged) return;
-  if(showTaskBubble.value) return;
 
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
@@ -98,101 +106,59 @@ function handleClick(e: PointerEvent) {
     emit('hero-click', hero);
     return;
   }
+
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
+
   const selHero = getSelectedHero();
-  // Allow unloading wood: if hero carryingWood and clicks a plains or towncenter tile they're standing on, drop wood.
-  if (selHero && selHero.carryingWood && selHero.q === tile.q && selHero.r === tile.r && tile.discovered && (tile.terrain === 'plains' || tile.terrain === 'towncenter')) {
-    selHero.carryingWood = false;
-    selHero.returnPos = undefined;
-  }
+
   const now = performance.now();
-  if ((now - lastClickTime) < 300) {
-    emit('tile-doubleclick', tile);
-    lastClickTime = 0;
-    // retain direct double-click chop/plant option and allow action if already on tile
-    const sel = getSelectedHero();
-    if (sel && tile.discovered) {
-      if (tile.terrain === 'forest') {
-        if (sel.q === tile.q && sel.r === tile.r) {
-          // Already on tile: start or join task immediately
-          detachHeroFromCurrentTask(sel);
-          const existing = getTaskByTile(tile.id, 'chopWood');
-          if (!existing) {
-            startTask(tile, 'chopWood', sel);
-          } else if (existing.active && !existing.completedMs) {
-            joinTask(existing.id, sel);
-          }
-          hideTaskBubble();
-        } else {
-          const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-          if (path.length) {
-            detachHeroFromCurrentTask(sel);
-            startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'chopWood');
-            hideTaskBubble();
-          }
-        }
-      } else if (tile.terrain === 'chopped_forest') {
-        if (sel.q === tile.q && sel.r === tile.r) {
-          detachHeroFromCurrentTask(sel);
-          const existing = getTaskByTile(tile.id, 'plantTrees');
-          if (!existing) {
-            startTask(tile, 'plantTrees', sel);
-          } else if (existing.active && !existing.completedMs) {
-            joinTask(existing.id, sel);
-          }
-          hideTaskBubble();
-        } else {
-          const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-          if (path.length) {
-            detachHeroFromCurrentTask(sel);
-            startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, 'plantTrees');
-            hideTaskBubble();
-          }
-        }
-      }
+  const doubleClick = (now - lastClickTime) < 300;
+  lastClickTime = doubleClick ? 0 : now;
+  hoveredTile.value = tile;
+  if (doubleClick) emit('tile-doubleclick', tile); else emit('tile-click', tile);
+
+  if (!selHero) {
+    selectHero(null, false);
+    return;
+  }
+
+  // Refresh available tasks for this tile & hero
+  availableTasks.value = getAvailableTasks(tile, selHero);
+
+  // Task menu opening logic (no toggle auto-close; only explicit close or selecting other tile without tasks)
+  if (tile.discovered && availableTasks.value.length > 0) {
+    // If menu already open on this tile, keep it open (do nothing)
+    if (!(showTaskMenu.value && taskMenuTile.value === tile)) {
+      taskMenuTile.value = tile;
+      showTaskMenu.value = true;
+      lastMenuOpenTime = performance.now(); // start cooldown
     }
-  } else {
-    lastClickTime = now;
-    hoveredTile.value = tile;
-    emit('tile-click', tile);
-    // Show task bubble if forest OR chopped_forest tile discovered
-    if (tile.discovered && (tile.terrain === 'forest' || tile.terrain === 'chopped_forest')) {
-      taskBubbleTile.value = tile;
-      showTaskBubble.value = true;
-      // compute screen position
-      if (container.value) {
-        const rect = container.value.getBoundingClientRect();
-        containerBounds.value = {left: rect.left, top: rect.top};
-      }
-      const center = service.getTileScreenCenter(tile.q, tile.r);
-      bubbleScreen.value = center;
-    } else {
-      hideTaskBubble();
-    }
-    // movement logic (unchanged) if hero selected and not forest OR chopped_forest OR if bubble hidden
-    const sel = getSelectedHero();
-    if (sel && (!tile.discovered || (tile.terrain !== 'forest' && tile.terrain !== 'chopped_forest'))) {
-      const path = service.findWalkablePath(sel.q, sel.r, tile.q, tile.r);
-      if (path.length) {
-        const originTile = ensureTileExists(sel.q, sel.r);
-        const targetTile = ensureTileExists(tile.q, tile.r);
-        if (!(originTile.discovered === false && targetTile.discovered === false) || (sel.prevPos && hexDistance(sel.prevPos, {q: tile.q, r: tile.r}) === 1)) {
-          detachHeroFromCurrentTask(sel);
-          startHeroMovement(sel.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
-          pathCoords.value = path;
-        }
-      }
-    }
-    if (!sel) {
-      selectHero(null, false);
+
+    // Skip movement logic while menu open
+    return;
+  } else if (showTaskMenu.value) {
+    // Close if switching to a tile without tasks
+    showTaskMenu.value = false;
+    taskMenuTile.value = null;
+  }
+
+  // movement logic (only runs if no task menu opened)
+  const path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+  if (path.length) {
+    const originTile = ensureTileExists(selHero.q, selHero.r);
+    const targetTile = ensureTileExists(tile.q, tile.r);
+    if (!(!originTile.discovered && !targetTile.discovered) || (selHero.prevPos && hexDistance(selHero.prevPos, {q: tile.q, r: tile.r}) === 1)) {
+      detachHeroFromCurrentTask(selHero);
+      startHeroMovement(selHero.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
+      pathCoords.value = path;
     }
   }
   updatePath();
 }
 
 function updateHover(e: PointerEvent) {
-  if (isPaused() || dragging) {
+  if (isPaused() || dragging || showTaskMenu.value) {
     hoveredTile.value = null;
     hoveredHero.value = null;
     pathCoords.value = [];
@@ -231,9 +197,20 @@ watch([pathCoords, selectedHeroId], () => {
   if (facing !== hero.facing) updateHeroFacing(hero.id, facing);
 });
 
+function updateContainerSize() {
+  const el = container.value;
+  if (!el) return;
+  containerSize.value = {width: el.clientWidth, height: el.clientHeight};
+}
+
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
+  // Pre-capture size so menus position correctly immediately
+  updateContainerSize();
   await service.init(canvas.value, container.value);
+  // Re-capture after init & next frame (handles potential layout shifts)
+  updateContainerSize();
+  requestAnimationFrame(updateContainerSize);
   // Ignore if modifier keys pressed to avoid interfering with shortcuts
   window.addEventListener('orientationchange', onOrientationChange);
   window.addEventListener('resize', onWindowResize);
@@ -249,7 +226,8 @@ onMounted(async () => {
     el.addEventListener('pointerup', (ev) => {
       pointerUp();
       handleClick(ev as PointerEvent);
-      updateHover(ev as PointerEvent);
+      // Skip hover update right after opening menu to avoid interfering state changes
+      if (!showTaskMenu.value) updateHover(ev as PointerEvent);
     }, {passive: false});
     el.addEventListener('pointercancel', () => {
       pointerCancel();
@@ -279,19 +257,6 @@ onBeforeUnmount(() => {
   stopCameraAnimation();
 });
 
-function hideTaskBubble() {
-  showTaskBubble.value = false;
-  taskBubbleTile.value = null;
-}
-
-const taskBubbleStyle = computed(() => {
-  return {
-    position: 'absolute',
-    left: `${bubbleScreen.value.x}px`,
-    top: `${bubbleScreen.value.y}px`,
-    transform: 'translate(-50%, -100%)'
-  };
-});
 </script>
 
 <style scoped>

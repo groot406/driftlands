@@ -72,6 +72,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 2.5,
         variations: [
             { key: 'chopped_forest', weight: 5 },
+            { key: 'young_forest', weight: 2 },
         ],
     },
     chopped_forest: {

@@ -35,7 +35,7 @@ function moveToTile(tile: Tile) {
 }
 
 function handleTileClick(_tile: Tile) {
-  // TODO: create 'explore' task and assign the selected hero to it
+
 }
 </script>
 

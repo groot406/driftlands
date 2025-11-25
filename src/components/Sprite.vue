@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center justify-center" :class="{'-scale-x-100' : flipped }" :style="containerStyle">
-    <div class="sprite" :style="style"/>
+    <div class="sprite pixel-art" :style="style"/>
   </div>
 </template>
 

@@ -121,6 +121,7 @@ function computeThrowVelocity() {
         vq *= s;
         vr *= s;
     }
+
     camera.velQ = vq;
     camera.velR = vr;
 }

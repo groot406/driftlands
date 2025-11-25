@@ -22,6 +22,7 @@ import { worldOuterRadius } from './world';
 // Tile assets (importing here to keep service encapsulated)
 import forest from '../assets/tiles/forest.png';
 import chopped_forest from '../assets/tiles/chopped_forest.png';
+import young_forest from '../assets/tiles/young_forest.png';
 import plains from '../assets/tiles/plains.png';
 import plains2 from '../assets/tiles/plains2.png';
 import plains_puddle from '../assets/tiles/plains_puddle.png';
@@ -48,6 +49,7 @@ interface PathCoord {
 interface DrawOptions {
     hoveredTile: Tile | null;
     hoveredHero: Hero | null;
+    taskMenuTile: Tile | null;
     pathCoords: PathCoord[]
 }
 
@@ -98,6 +100,7 @@ export class HexMapService {
     private readonly tileImgSources: Record<string, string> = {
         forest,
         chopped_forest,
+        young_forest,
         plains,
         plains2,
         plains_puddle,
@@ -680,6 +683,19 @@ export class HexMapService {
             }
         }
 
+        // Hover highlight
+        if (opts.taskMenuTile) {
+            const ht = opts.taskMenuTile;
+            if (hexDistance(camera, ht) <= camera.radius + 1) {
+                const dist = hexDistance(camera, ht);
+                const opacity = (() => {
+                    const f = this.computeFade(dist, camera.innerRadius, camera.radius);
+                    return f * f;
+                })();
+                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgb(243,45,7,0.40)', '#d0423d00', opacity);
+            }
+        }
+
         // Heroes
         this.drawHeroes(ctx, opts.hoveredHero, selectedHeroIdle);
 
@@ -834,7 +850,7 @@ export class HexMapService {
                 }
             }
             // Wood carry indicator
-            if (h.carryingWood) {
+            if (h.carryingResources) {
                 ctx.save();
                 ctx.globalAlpha = opacity;
                 const iconY = destY; // above head

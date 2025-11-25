@@ -1,13 +1,13 @@
 import {reactive, ref} from 'vue';
-import {moveCamera, hexDistance} from '../core/camera';
+import {hexDistance, moveCamera} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
 import boy from '../assets/heroes/boy.png';
 import girl from '../assets/heroes/girl.png';
 import loophead from '../assets/heroes/loophead.png';
+import type {Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
-import type { Tile } from '../core/world';
-import { TERRAIN_DEFS } from '../core/terrainDefs';
-import { handleHeroArrival } from '../core/tasks';
+import {TERRAIN_DEFS} from '../core/terrainDefs';
+import {handleHeroArrival} from '../core/tasks';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -19,9 +19,9 @@ export interface HeroStats {
 export type HeroStat = keyof HeroStats;
 
 export interface HeroMovementState {
-    path: {q:number;r:number}[]; // sequence of tiles to traverse (excluding origin, including destination)
-    origin: {q:number;r:number};
-    target: {q:number;r:number};
+    path: { q: number; r: number }[]; // sequence of tiles to traverse (excluding origin, including destination)
+    origin: { q: number; r: number };
+    target: { q: number; r: number };
     taskType?: string; // optional task type to start upon arrival
     startMs: number; // performance.now() when movement started
     stepMs: number; // legacy uniform ms per tile (kept for backward compatibility / interpolation fallback)
@@ -40,14 +40,23 @@ export interface Hero {
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
     prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
-    carryingWood?: boolean; // indicator hero is carrying wood to warehouse
-    carryingWoodCount?: number; // number of wood deliveries completed
+    carryingResources?: boolean; // indicator hero is carrying wood to warehouse
+    carryingResourcesCount?: number; // number of wood deliveries completed
     returnPos?: { q: number; r: number }; // original position to return after delivery
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa', avatar: santa, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 18, spd: 1}, facing: 'down', currentTaskId: undefined},
+    {
+        id: 'h1',
+        name: 'Santa',
+        avatar: santa,
+        q: 0,
+        r: 0,
+        stats: {xp: 0, hp: 100, atk: 18, spd: 1},
+        facing: 'down',
+        currentTaskId: undefined
+    },
     {id: 'h2', name: 'Harm', avatar: boy, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
     {id: 'h3', name: 'Jess', avatar: girl, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
     {id: 'h4', name: 'Jacky', avatar: loophead, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
@@ -59,13 +68,22 @@ const LS_KEY = 'driftlands_heroes_v1';
 
 function persistHeroes() {
     try {
-        const plain = heroes.map(h => ({...h, movement: h.movement ? {...h.movement} : undefined, currentTaskId: h.currentTaskId, prevPos: h.prevPos ? {...h.prevPos} : undefined, carryingWood: h.carryingWood || false, carryingWoodCount: h.carryingWoodCount || 0, returnPos: h.returnPos ? {...h.returnPos} : undefined}));
+        const plain = heroes.map(h => ({
+            ...h,
+            movement: h.movement ? {...h.movement} : undefined,
+            currentTaskId: h.currentTaskId,
+            prevPos: h.prevPos ? {...h.prevPos} : undefined,
+            carryingResources: h.carryingResources || false,
+            carryingResourcesCount: h.carryingResourcesCount || 0,
+            returnPos: h.returnPos ? {...h.returnPos} : undefined
+        }));
         localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
     } catch (e) {
         // ignore persistence errors
     }
 }
-export { persistHeroes }; // export for task completion side-effects
+
+export {persistHeroes}; // export for task completion side-effects
 
 function restoreHeroes() {
     if (typeof window === 'undefined') return;
@@ -125,15 +143,15 @@ function restoreHeroes() {
             }
             // restore previous position snapshot if present
             if (saved.prevPos && typeof saved.prevPos.q === 'number' && typeof saved.prevPos.r === 'number') {
-                hero.prevPos = { q: saved.prevPos.q, r: saved.prevPos.r };
+                hero.prevPos = {q: saved.prevPos.q, r: saved.prevPos.r};
             } else {
                 hero.prevPos = undefined;
             }
-            // restore carryingWood & returnPos
-            hero.carryingWood = !!saved.carryingWood;
-            if (typeof saved.carryingWoodCount === 'number') hero.carryingWoodCount = saved.carryingWoodCount;
+
+            hero.carryingResources = !!saved.carryingResourcesCount;
+            if (typeof saved.carryingResourcesCount === 'number') hero.carryingResourcesCount = saved.carryingResourcesCount;
             if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
-                hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
+                hero.returnPos = {q: saved.returnPos.q, r: saved.returnPos.r};
             } else {
                 hero.returnPos = undefined;
             }
@@ -242,7 +260,10 @@ export function updateHeroMovements(now: number) {
     }
 }
 
-export function startHeroMovement(heroId: string, path: {q:number;r:number}[], target: {q:number;r:number}, taskType?: string) {
+export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: {
+    q: number;
+    r: number
+}, taskType?: string) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
@@ -273,7 +294,7 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     // Build per-step durations factoring terrain moveCost using edge-average (0.5*from + 0.5*to)
     const durations: number[] = [];
     for (let i = 0; i < path.length; i++) {
-        const fromCoord = (i === 0) ? { q: hero.q, r: hero.r } : path[i - 1]!;
+        const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
         const toCoord = path[i]!;
         const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
         const toTile = ensureTileExists(toCoord.q, toCoord.r);
@@ -288,9 +309,12 @@ export function startHeroMovement(heroId: string, path: {q:number;r:number}[], t
     // Compute cumulative end times
     const cumulative: number[] = [];
     let acc = 0;
-    for (const d of durations) { acc += d; cumulative.push(acc); }
+    for (const d of durations) {
+        acc += d;
+        cumulative.push(acc);
+    }
     // Keep uniform stepMs for interpolation fallback (average)
-    const avg = durations.reduce((a,b)=>a+b,0) / durations.length;
+    const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
     hero.movement = {
         path: path.slice(),
         origin: {q: hero.q, r: hero.r},
@@ -340,8 +364,11 @@ if (typeof window !== 'undefined') {
 }
 
 export function resetHeroes() {
-    try { localStorage.removeItem(LS_KEY); } catch {}
-    for(const hero of heroes) {
+    try {
+        localStorage.removeItem(LS_KEY);
+    } catch {
+    }
+    for (const hero of heroes) {
         hero.q = 0;
         hero.r = 0;
         hero.facing = 'down';
@@ -349,7 +376,7 @@ export function resetHeroes() {
         hero.currentTaskId = undefined;
         hero.prevPos = undefined;
         // Reset wood-carry state
-        hero.carryingWood = false;
+        hero.carryingResources = false;
         hero.returnPos = undefined;
         // Reset stats to seed values if available
         const seed = seedHeroes.find(s => s.id === hero.id);

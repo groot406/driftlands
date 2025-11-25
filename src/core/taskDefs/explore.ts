@@ -1,5 +1,5 @@
 import {type Hero, startHeroMovement} from '../../store/heroStore';
-import {discoverTile} from '../world';
+import {discoverTile, type Tile} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import { TERRAIN_DEFS } from '../terrainDefs';
@@ -26,6 +26,11 @@ const exploreTask: TaskDefinition = {
 
         return { xp: Math.ceil(10* (distance * distance) / (6 * distance)), hp: 0, atk: 0, spd: 0 };
     },
+
+    canStart(tile: Tile, hero: Hero): boolean {
+        return hero.carryingResources === false && tile.discovered === false;
+    },
+
     onStart(_tile, _participants) {
     },
     onComplete(tile, _instance, participants) {

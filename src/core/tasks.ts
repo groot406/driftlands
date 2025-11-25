@@ -8,10 +8,14 @@ import '../core/taskDefs/explore';
 import '../core/taskDefs/chopWood'; // register chop wood task
 import '../core/taskDefs/plantTrees'; // register plant trees task
 import {startHeroMovement} from '../store/heroStore';
+import {listTaskDefinitions} from "./taskRegistry.ts";
 // Task definition interfaces enable future extension.
 export interface TaskDefinition {
     key: TaskType;
     label: string;
+
+    // Whether a hero can start this task on the given tile
+    canStart(tile: Tile, hero: Hero): boolean;
 
     // Total XP required for completion (can depend on tile distance)
     requiredXp(distance: number): number;
@@ -56,9 +60,9 @@ export interface TaskInstance {
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
     // Wood delivery: if carrying wood and tile is towncenter, send hero back to original returnPos
-    if (hero.carryingWood && tile.terrain === 'towncenter') {
+    if (hero.carryingResources && tile.terrain === 'towncenter') {
         const dest = hero.returnPos;
-        hero.carryingWood = false;
+        hero.carryingResources = false;
         if (dest) {
             const service = new HexMapService();
             const path = service.findWalkablePath(hero.q, hero.r, dest.q, dest.r);
@@ -85,4 +89,9 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             joinTask(existing.id, hero);
         }
     }
+}
+
+export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
+    // Loop through registered tasks from taskRegistry and check canStart
+    return listTaskDefinitions().filter((taskDefinition) => taskDefinition.canStart(tile, hero));
 }

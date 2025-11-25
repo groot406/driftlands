@@ -27,6 +27,11 @@ function findNearestTowncenter(q: number, r: number) {
 const chopWoodTask: TaskDefinition = {
     key: 'chopWood',
     label: 'Chop Wood',
+
+    canStart(tile, hero) {
+        return hero.carryingResources === false && tile.terrain === 'forest' && !tile.variant;
+    },
+
     requiredXp(_distance: number) {
         // Fixed effort per forest tile for now
         return 120 * _distance; // tune later
@@ -55,14 +60,14 @@ const chopWoodTask: TaskDefinition = {
         // Replace forest with chopped_forest (only if still forest)
         if (tile.terrain === 'forest') {
             terrainPositions.forest.delete(tile.id);
-            tile.terrain = 'chopped_forest';
+            tile.variant = 'chopped_forest';
             terrainPositions.chopped_forest.add(tile.id);
             worldVersion.value++; // trigger redraw
         }
         // For each participating hero: mark carrying wood and send to nearest towncenter
         for (const hero of participants) {
-            hero.carryingWood = true;
-            hero.carryingWoodCount = (hero.carryingWoodCount || 0) + 1;
+            hero.carryingResources = true;
+            hero.carryingResourcesCount = (hero.carryingResourcesCount || 0) + 1;
             if (!hero.returnPos) hero.returnPos = { q: hero.q, r: hero.r }; // fallback
             const tc = findNearestTowncenter(hero.q, hero.r);
             if (tc) {

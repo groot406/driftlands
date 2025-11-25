@@ -60,7 +60,7 @@ export function detachHeroFromCurrentTask(hero: Hero) {
 
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     // Prevent starting a new task while carrying resources
-    if ((starter as any).carryingWood) return null;
+    if ((starter as any).carryingResources) return null;
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
@@ -98,7 +98,7 @@ export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || !inst.active || inst.completedTick) return;
     // Block joining if hero is carrying resources
-    if ((hero as any).carryingWood) return;
+    if ((hero as any).carryingResources) return;
     if (hero.currentTaskId === inst.id) return;
     detachHeroFromCurrentTask(hero);
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
