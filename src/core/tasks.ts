@@ -7,6 +7,8 @@ import { HexMapService } from './HexMapService';
 import '../core/taskDefs/explore';
 import '../core/taskDefs/chopWood'; // register chop wood task
 import '../core/taskDefs/plantTrees'; // register plant trees task
+import '../core/taskDefs/removeTrunks'; // register remove trunks task
+
 import {startHeroMovement} from '../store/heroStore';
 import {listTaskDefinitions} from "./taskRegistry.ts";
 // Task definition interfaces enable future extension.

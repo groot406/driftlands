@@ -75,8 +75,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
         moveCost: 2.5,
         variations: [
-            { key: 'chopped_forest', weight: 5 },
-            { key: 'young_forest', weight: 2, growth: { next: null, ageMs: 600000 } }, // young forest matures to base forest (10m base; faster in forest biome, slower in harsh biomes)
+            {key: 'chopped_forest', weight: 5},
+            {key: 'young_forest', weight: 2, growth: {next: null, ageMs: 600000}},
         ],
     },
     plains: {
@@ -90,8 +90,11 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
         moveCost: 1,
         variations: [
-            { key: 'plains2', weight: 5 },
-            { key: 'plains_puddle', weight: 1 },
+            {key: 'plains2', weight: 5},
+            {key: 'plains_puddle', weight: 1},
+            // { key: 'road_ad', weight: 4 },
+            // { key: 'road_be', weight: 4 },
+            // { key: 'road_cf', weight: 4 },
         ]
     },
     water: {
@@ -102,11 +105,11 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         adjacency: {
             water: 60,
             plains: 20,
-            dirt:25,
+            dirt: 25,
         },
         frameTime: 220,
         variations: [
-            { key: 'water_lily', weight: 2 },
+            {key: 'water_lily', weight: 2},
         ]
     },
     mountain: {
@@ -129,11 +132,11 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             forest: 5,
             plains: 5,
             dirt: 60,
-            water:20
+            water: 20
         },
         variations: [
-            { key: 'dirt2', weight: 20 },
-            { key: 'dirt_rock', weight: 2 },
+            {key: 'dirt2', weight: 20},
+            {key: 'dirt_rock', weight: 2},
         ]
     },
     snow: {
@@ -147,7 +150,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             snow: 100,
         },
         variations: [
-            { key: 'snow_rock', weight: 2 },
+            {key: 'snow_rock', weight: 2},
         ]
     },
     dessert: {
@@ -160,10 +163,10 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             dessert: 50,
         },
         variations: [
-            { key: 'dessert_rock', weight: 10 },
-            { key: 'dessert_rock2', weight: 10 },
-            { key: 'cactus', weight: 10 },
-            { key: 'dessert2', weight: 10 },
+            {key: 'dessert_rock', weight: 10},
+            {key: 'dessert_rock2', weight: 10},
+            {key: 'cactus', weight: 10},
+            {key: 'dessert2', weight: 10},
         ]
     }
 };
