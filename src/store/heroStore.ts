@@ -66,7 +66,28 @@ const seedHeroes: Hero[] = [
 
 export const heroes = reactive<Hero[]>(seedHeroes);
 
-const LS_KEY = 'driftlands_heroes_v1';
+const LEGACY_HERO_KEY = 'driftlands_heroes_v1';
+let currentWorldId: string = 'default';
+function heroKey(worldId: string) { return `driftlands_heroes_${worldId}_v1`; }
+
+function migrateLegacyIfNeeded(worldId: string) {
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_HERO_KEY);
+    if (!legacyRaw) return;
+    const targetKey = heroKey(worldId);
+    if (localStorage.getItem(targetKey)) return; // already has world-specific save
+    localStorage.setItem(targetKey, legacyRaw);
+    // Optionally keep legacy to allow fallback; remove if we want one-time migration
+    // localStorage.removeItem(LEGACY_HERO_KEY);
+  } catch {
+  }
+}
+
+export function setCurrentWorldId(worldId: string) {
+  currentWorldId = worldId || 'default';
+  migrateLegacyIfNeeded(currentWorldId);
+  restoreHeroes();
+}
 
 function persistHeroes() {
     try {
@@ -80,8 +101,9 @@ function persistHeroes() {
             carryingPayload: h.carryingPayload ? { ...h.carryingPayload } : undefined,
             pendingChain: h.pendingChain ? { ...h.pendingChain } : undefined,
             returnPos: h.returnPos ? { ...h.returnPos } : undefined,
+            stats: { ...h.stats },
         }));
-        localStorage.setItem(LS_KEY, JSON.stringify({heroes: plain, ts: Date.now()}));
+        localStorage.setItem(heroKey(currentWorldId), JSON.stringify({heroes: plain, ts: Date.now(), worldId: currentWorldId}));
     } catch (e) {
         // ignore persistence errors
     }
@@ -92,7 +114,7 @@ export {persistHeroes}; // export for task completion side-effects
 function restoreHeroes() {
     if (typeof window === 'undefined') return;
     try {
-        const raw = localStorage.getItem(LS_KEY);
+        const raw = localStorage.getItem(heroKey(currentWorldId));
         if (!raw) return;
         const data = JSON.parse(raw);
         if (!data || !Array.isArray(data.heroes)) return;
@@ -103,7 +125,6 @@ function restoreHeroes() {
             hero.r = saved.r;
             hero.facing = saved.facing || hero.facing;
             if (saved.stats) {
-                // Restore individual stat fields to preserve reactivity
                 const stats = saved.stats as Partial<HeroStats>;
                 if ('xp' in stats && typeof stats.xp === 'number') hero.stats.xp = stats.xp;
                 if ('hp' in stats && typeof stats.hp === 'number') hero.stats.hp = stats.hp;
@@ -181,6 +202,12 @@ function restoreHeroes() {
         // ignore
     }
 }
+
+// Remove immediate restore on module load; worldId must be set first.
+// if (typeof window !== 'undefined') {
+//    restoreHeroes();
+//    updateHeroMovements(performance.now());
+// }
 
 function isTileWalkable(tile: Tile): boolean {
     return !!(tile.terrain && TERRAIN_DEFS[tile.terrain]?.walkable);
@@ -371,15 +398,9 @@ export function updateHeroFacing(id: string, facing: Hero['facing']) {
     if (hero) hero.facing = facing;
 }
 
-// Initialize persisted state, then immediately advance positions based on elapsed time since movement start
-if (typeof window !== 'undefined') {
-    restoreHeroes();
-    updateHeroMovements(performance.now());
-}
-
 export function resetHeroes() {
     try {
-        localStorage.removeItem(LS_KEY);
+        localStorage.removeItem(heroKey(currentWorldId));
     } catch {
     }
     for (const hero of heroes) {
@@ -393,29 +414,26 @@ export function resetHeroes() {
         hero.carryingResources = false;
         hero.carryingPayload = undefined;
         hero.returnPos = undefined;
-        // Reset stats to seed values if available
+        // Restore baseline stats from seeds to clear progression
         const seed = seedHeroes.find(s => s.id === hero.id);
         if (seed) {
-            //hero.stats.xp = seed.stats.xp;
+            hero.stats.xp = seed.stats.xp;
+            hero.stats.hp = seed.stats.hp;
+            hero.stats.atk = seed.stats.atk;
+            hero.stats.spd = seed.stats.spd;
+        } else {
+            // Fallback: zero progression and keep reasonable defaults
+            hero.stats.xp = 0;
         }
     }
     persistHeroes();
 }
 
 export function ensureHeroSelected(focus: boolean = true) {
-    if (selectedHeroId.value && heroes.find(h => h.id === selectedHeroId.value)) {
-        if (focus) {
-            const hero = heroes.find(h => h.id === selectedHeroId.value)!;
-            focusHero(hero);
-        }
-        return;
-    }
-    const first = heroes[0];
-    if (first) {
-        selectedHeroId.value = first.id;
-        if (focus) focusHero(first);
+    const current = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) : null;
+    const hero = current || heroes[0] || null;
+    if (hero) {
+        selectedHeroId.value = hero.id;
+        if (focus) focusHero(hero);
     }
 }
-
-
-

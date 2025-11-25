@@ -1,7 +1,8 @@
 import {reactive} from 'vue';
 import {loadWorld, startWorldGeneration, tiles as worldTiles} from '../core/world';
 import {idleStore, startIdle} from './idleStore';
-import {ensureHeroSelected, resetHeroes, selectedHeroId} from './heroStore';
+import {ensureHeroSelected, resetHeroes, selectedHeroId, setCurrentWorldId} from './heroStore';
+import { setCurrentWorldIdForResources, clearResourcePersistence } from './resourceStore';
 import {camera, moveCamera} from '../core/camera';
 import {clearAllTasks} from './taskStore';
 
@@ -15,6 +16,7 @@ interface UIState {
 
 const SAVE_KEY = 'driftlands-save';
 const STATE_KEY = 'driftlands-ui-state-v1';
+const WORLD_META_KEY = 'driftlands-world-meta-v1';
 const NEW_GAME_RADIUS = 0;
 
 function hasSave(): boolean {
@@ -59,7 +61,27 @@ function restoreUIState() {
     }
 }
 
+function loadWorldMeta(): { worldId: string } | null {
+  try {
+    const raw = localStorage.getItem(WORLD_META_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data && typeof data.worldId === 'string') return { worldId: data.worldId };
+  } catch {}
+  return null;
+}
+function saveWorldMeta(worldId: string) {
+  try { localStorage.setItem(WORLD_META_KEY, JSON.stringify({ worldId, ts: Date.now() })); } catch {}
+}
+
 export function startNewGame() {
+    // Assign new world id
+    const worldId = 'world_' + Date.now().toString(36);
+    saveWorldMeta(worldId);
+    setCurrentWorldId(worldId);
+    setCurrentWorldIdForResources(worldId);
+    // Clear resource stats for this new world
+    clearResourcePersistence();
     // Clear & generate a fresh world
     startWorldGeneration(NEW_GAME_RADIUS);
     // Reset tasks & heroes
@@ -67,7 +89,7 @@ export function startNewGame() {
     resetHeroes();
     // Stub save marker so Continue is enabled next launch.
     try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ts: Date.now(), radius: NEW_GAME_RADIUS}));
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ts: Date.now(), radius: NEW_GAME_RADIUS, worldId}));
     } catch {
     }
     uiStore.canContinue = true;
@@ -78,6 +100,15 @@ export function startNewGame() {
 
 export function continueGame() {
     if (!uiStore.canContinue) return;
+    const meta = loadWorldMeta();
+    const rawSave = localStorage.getItem(SAVE_KEY);
+    let worldId: string | null = meta?.worldId || null;
+    if (!worldId && rawSave) {
+        try { const data = JSON.parse(rawSave); if (data && typeof data.worldId === 'string') worldId = data.worldId; } catch {}
+    }
+    if (!worldId) worldId = 'world_default';
+    setCurrentWorldId(worldId);
+    setCurrentWorldIdForResources(worldId);
     // Load saved idleStore tiles if world not yet initialized.
     if (worldTiles.length === 0 && idleStore.tiles.length) {
         loadWorld(idleStore.tiles);

@@ -243,3 +243,9 @@ Future Enhancements Ideas:
 - Add multi-slot profiles (prefix key)
 - Add cloud sync layer gated behind auth
 - Track lifetime totals separately for statistics/achievements
+
+---
+
+## Per-World Hero Stats
+Hero positions, movement, and stats now persist per worldId (key format: `driftlands_heroes_<worldId>_v1`). Starting a new game creates a unique world id; continuing restores the associated hero data. Legacy global hero save is migrated on first load. This enables multiple distinct progression worlds without overwriting hero XP.
+

@@ -161,11 +161,6 @@ function handleClick(e: PointerEvent) {
     taskMenuTile.value = null;
   }
 
-  // movement logic (only runs if no task menu opened)
-  if(!tile.terrain || !TERRAIN_DEFS[tile.terrain].walkable) {
-    // Cannot walk to this tile
-    return;
-  }
   const path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
   if (path.length) {
     const originTile = ensureTileExists(selHero.q, selHero.r);

@@ -2,9 +2,11 @@ import { reactive, ref, watch } from 'vue';
 import type { ResourceType } from '../core/world';
 
 // Persistence config
-const RES_KEY = 'driftlands_resources_v1';
+const GLOBAL_RES_KEY = 'driftlands_resources_v1'; // legacy global
 const RES_VERSION = 1;
 const SAVE_DEBOUNCE_MS = 500;
+let currentWorldId: string = 'default';
+function resKey(worldId: string) { return `driftlands_resources_${worldId}_v1`; }
 
 // Reactive inventory of delivered (warehouse-deposited) resources.
 export const resourceInventory: Record<ResourceType, number> = reactive({
@@ -28,6 +30,7 @@ function serializeInventory(): string {
   const payload = {
     version: RES_VERSION,
     ts: Date.now(),
+    worldId: currentWorldId,
     inventory: { ...resourceInventory },
   };
   return JSON.stringify(payload);
@@ -38,7 +41,7 @@ function persistResourcesImmediate() {
   try {
     const json = serializeInventory();
     if (json === lastSerialized) return; // skip unchanged
-    localStorage.setItem(RES_KEY, json);
+    localStorage.setItem(resKey(currentWorldId), json);
     lastSerialized = json;
   } catch {
     // ignore storage errors
@@ -62,10 +65,21 @@ function sanitizeNumber(v: any): number {
   return Math.max(0, Math.floor(v));
 }
 
+function migrateLegacyIfNeeded(worldId: string) {
+  try {
+    const legacyRaw = localStorage.getItem(GLOBAL_RES_KEY);
+    if (!legacyRaw) return;
+    const targetKey = resKey(worldId);
+    if (localStorage.getItem(targetKey)) return; // already has world-specific save
+    localStorage.setItem(targetKey, legacyRaw);
+    // optional: keep legacy for fallback
+  } catch {}
+}
+
 function restoreResources() {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem(RES_KEY);
+    const raw = localStorage.getItem(resKey(currentWorldId));
     if (!raw) return;
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return;
@@ -86,6 +100,12 @@ function restoreResources() {
   }
 }
 
+export function setCurrentWorldIdForResources(worldId: string) {
+  currentWorldId = worldId || 'default';
+  migrateLegacyIfNeeded(currentWorldId);
+  restoreResources();
+}
+
 export function depositResource(type: ResourceType, amount: number = 1) {
   if (amount <= 0) return;
   resourceInventory[type] += amount;
@@ -100,7 +120,7 @@ export function resetResourceInventory() {
 }
 
 export function clearResourcePersistence() {
-  try { localStorage.removeItem(RES_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(resKey(currentWorldId)); } catch { /* ignore */ }
   resetResourceInventory();
   lastSerialized = null;
 }
@@ -108,7 +128,7 @@ export function clearResourcePersistence() {
 // Watch mutations and persist (debounced)
 if (typeof window !== 'undefined') {
   watch(resourceVersion, () => schedulePersist(), { flush: 'post' });
-  restoreResources();
+  // Do not restore until worldId is provided by UI; default world can be used if needed elsewhere.
   // Ensure last state saved on unload (final flush)
   window.addEventListener('beforeunload', () => {
     if (saveTimer) {
