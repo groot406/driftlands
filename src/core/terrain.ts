@@ -1,7 +1,7 @@
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {applyBiomeModifiers, detectBiome} from './biomes';
-import {terrainPositions} from './world'; // use sets for fast lookup
+import {terrainPositions} from './terrainRegistry';
 
 export {TERRAIN_DEFS};
 
@@ -16,30 +16,32 @@ function makeCacheKey(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[
     return nKey + '|' + bKey;
 }
 
+// Build a fresh base weight map from current TERRAIN_DEFS (no hard-coded keys)
+function buildBaseWeights(): Record<TerrainKey, number> {
+    const weights = {} as Record<TerrainKey, number>;
+    for (const key of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
+        // towncenter (and any future special terrains) can define baseWeight=0 to avoid selection
+        const def = TERRAIN_DEFS[key];
+        weights[key] = def?.baseWeight ?? 0;
+    }
+    return weights;
+}
+
 function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[]) {
     const key = makeCacheKey(neighborTerrains, biomeTerrains);
     const cached = terrainWeightCache.get(key);
     if (cached) return cached;
 
-    // Base weights copy per terrain type
-    const weights: Record<TerrainKey, number> = {
-        forest: TERRAIN_DEFS.forest.baseWeight,
-        plains: TERRAIN_DEFS.plains.baseWeight,
-        water: TERRAIN_DEFS.water.baseWeight,
-        mountain: TERRAIN_DEFS.mountain.baseWeight,
-        dirt: TERRAIN_DEFS.dirt.baseWeight,
-        snow: TERRAIN_DEFS.snow.baseWeight,
-        dessert: TERRAIN_DEFS.dessert.baseWeight,
-        towncenter: 0,
-    };
+    // Base weights copy per terrain type (dynamic)
+    const weights: Record<TerrainKey, number> = buildBaseWeights();
 
     // Apply adjacency deltas
     neighborTerrains.forEach(nt => {
-        for (const key of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
-            if(!TERRAIN_DEFS[key]) continue;
-            if(!TERRAIN_DEFS[key]?.adjacency) continue;
-            const delta = TERRAIN_DEFS[key]?.adjacency[nt];
-            if (delta !== undefined) weights[key] += delta;
+        for (const tKey of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
+            const def = TERRAIN_DEFS[tKey];
+            if (!def) continue;
+            const delta = def.adjacency?.[nt];
+            if (delta !== undefined) weights[tKey] += delta;
         }
     });
 
@@ -104,16 +106,16 @@ export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerra
         }
     }
 
-    const entries = (Object.entries(candidate) as [TerrainKey, number][]) // exclude towncenter
+    const entries = (Object.entries(candidate) as [TerrainKey, number][]) // exclude towncenter by weight=0
         .filter(([k, w]) => k !== 'towncenter' && w > 0 && w !== Infinity && !Number.isNaN(w));
     const total = entries.reduce((acc, [, w]) => acc + w, 0);
-    if (total <= 0) return {biome, terrain: 'plains'};
+    if (total <= 0) return {biome, terrain: 'plains'}; // fallback terrain if all weights zero
     let roll = Math.random() * total;
     for (const [terrain, w] of entries) {
         if (roll < w) return {biome, terrain};
         roll -= w;
     }
-    return {biome, terrain: 'plains'};
+    return {biome, terrain: 'plains'}; // safety fallback
 }
 
 export function resetTerrainWeightCache() {

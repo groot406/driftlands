@@ -1,7 +1,7 @@
 import { tileIndex, worldVersion } from './world';
 import type { Tile } from './world';
 import { TERRAIN_DEFS } from './terrainDefs';
-import type { BiomeKey } from './biomes';
+import { BIOME_DEFS } from './biomes';
 
 // Track tiles with aging variants
 const agingTiles = new Set<string>();
@@ -23,12 +23,12 @@ export function registerExistingAgingTiles(tiles: Tile[]) {
   }
 }
 
-export function getEffectiveAgeMs(tile: Tile, growth: { ageMs: number; biomeScale?: Partial<Record<string, number>> }): number {
-  const biome = tile.biome as BiomeKey | null;
+export function getEffectiveAgeMs(tile: Tile, growth: { ageMs: number }): number {
+  const biome = tile.biome as keyof typeof BIOME_DEFS | null;
   if (!biome) return growth.ageMs;
-  const scale = growth.biomeScale?.[biome];
-  if (!scale || scale === 1) return growth.ageMs;
-  return growth.ageMs * scale;
+  const mult = BIOME_DEFS[biome]?.variantGrowthScale?.[tile.variant ?? ''];
+  if (!mult || mult === 1) return growth.ageMs;
+  return growth.ageMs * mult;
 }
 
 export function updateTileGrowth(nowMs: number = Date.now()) {

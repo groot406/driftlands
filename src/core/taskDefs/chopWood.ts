@@ -2,8 +2,10 @@ import { registerTask } from '../taskRegistry';
 import type { TaskDefinition } from '../tasks';
 import { startHeroMovement, persistHeroes } from '../../store/heroStore';
 import type { Hero } from '../../store/heroStore';
-import { terrainPositions, tileIndex, worldVersion, getVariantSet } from '../world';
+import { tileIndex, worldVersion } from '../world';
 import { HexMapService } from '../HexMapService';
+import { terrainPositions } from '../terrainRegistry';
+import { applyVariant } from '../variants';
 
 // Service instance for pathfinding (stateless enough to create locally)
 const service = new HexMapService();
@@ -59,9 +61,7 @@ const chopWoodTask: TaskDefinition = {
     onComplete(tile, _instance, participants) {
         // Replace forest with chopped_forest (only if still forest)
         if (tile.terrain === 'forest') {
-            // Keep forest membership for adjacency logic; just apply variant tracking
-            tile.variant = 'chopped_forest';
-            getVariantSet('chopped_forest').add(tile.id);
+            applyVariant(tile, 'chopped_forest', { stagger: false, respectBiome: true });
             worldVersion.value++; // trigger redraw
         }
         // For each participating hero: mark carrying wood and send to nearest towncenter

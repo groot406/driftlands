@@ -23,6 +23,8 @@ export interface TerrainDef {
     variations?: TerrainVariationDef[];
     // Relative weight for choosing "no variation" when variants are available. Defaults to sum(variant weights) if omitted.
     variationBaseWeight?: number;
+    // optional override for image filename base
+    assetKey?: string;
 }
 
 // Side names reused from world.ts (keep string literals to avoid circular import)
@@ -39,8 +41,8 @@ export interface TerrainVariationDef {
     weight?: number; // relative selection weight among other valid variants
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
     // Optional timed growth configuration: after ageMs, variant auto-transitions to next variant (or null for base)
-    // biomeScale: per-biome multiplier applied to ageMs for tiles whose tile.biome matches the key.
-    growth?: { next: string | null; ageMs: number; biomeScale?: Partial<Record<string, number>> };
+    assetKey?: string; // optional override for image filename base if different from key
+    growth?: { next: string | null; ageMs: number }; // biome scaling moved to biomes
 }
 
 interface TerrainDefsMap {
@@ -74,7 +76,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 2.5,
         variations: [
             { key: 'chopped_forest', weight: 5 },
-            { key: 'young_forest', weight: 2, growth: { next: null, ageMs: 600000, biomeScale: { forest: 0.8, plains: 1, mountain: 1.3, snow: 1.4, dessert: 1.5, lake: 0.9, dirt: 1.1 } } }, // young forest matures to base forest (10m base; faster in forest biome, slower in harsh biomes)
+            { key: 'young_forest', weight: 2, growth: { next: null, ageMs: 600000 } }, // young forest matures to base forest (10m base; faster in forest biome, slower in harsh biomes)
         ],
     },
     plains: {
@@ -116,6 +118,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             mountain: 30,
         },
         moveCost: 5,
+        assetKey: 'mountains',
     },
     dirt: {
         minDistanceFromCenter: 6,

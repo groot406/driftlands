@@ -11,6 +11,9 @@ export interface BiomeDef {
 
     // Additive weight adjustments applied
     weightAdjust?: Partial<Record<TerrainKey, number>>;
+
+    // variantKey -> multiplier applied to ageMs
+    variantGrowthScale?: Record<string, number>;
 }
 
 export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
@@ -18,36 +21,43 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
         when: {'forest': 4},
         allowedTerrains: ['forest', 'plains'],
         weightAdjust: {forest: 3, plains: 1},
+        variantGrowthScale: { young_forest: 0.8 }
     },
     mountain: {
         when: {'mountain': 4},
         allowedTerrains: ['mountain', 'plains'],
         weightAdjust: {mountain: 3},
+        variantGrowthScale: { young_forest: 1.3 }
     },
     lake: {
         when: {'water': 5},
         allowedTerrains: ['water', 'plains', 'forest'],
         weightAdjust: {water: 2, plains: 1, forest: 0.5},
+        variantGrowthScale: { young_forest: 0.9 }
     },
     plains: {
         when: {'plains': 4},
         allowedTerrains: ['plains', 'forest', 'mountain', 'water'],
         weightAdjust: {plains: 3},
+        variantGrowthScale: { young_forest: 1 }
     },
     dessert: {
         when: {'dessert': 3},
         allowedTerrains: ['dessert', 'plains', 'dirt', 'mountain'],
         weightAdjust: {dessert: 8, plains: 0.5},
+        variantGrowthScale: { young_forest: 1.5 }
     },
     snow: {
         when: {'snow': 3},
         allowedTerrains: ['snow', 'mountain', 'plains', 'dessert', 'dirt'],
         weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+        variantGrowthScale: { young_forest: 1.4 }
     },
     dirt: {
         when: {'dirt': 3},
         allowedTerrains: ['dirt', 'mountain', 'plains', 'forest', 'dessert', 'snow'],
         weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+        variantGrowthScale: { young_forest: 1.1 }
     }
 };
 
@@ -97,4 +107,3 @@ export function applyBiomeModifiers(
 
     return weights;
 }
-

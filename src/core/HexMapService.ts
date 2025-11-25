@@ -20,26 +20,22 @@ import type {TaskInstance} from './tasks';
 import { worldOuterRadius } from './world';
 
 // Tile assets (importing here to keep service encapsulated)
-import forest from '../assets/tiles/forest.png';
-import chopped_forest from '../assets/tiles/chopped_forest.png';
-import young_forest from '../assets/tiles/young_forest.png';
-import plains from '../assets/tiles/plains.png';
-import plains2 from '../assets/tiles/plains2.png';
-import plains_puddle from '../assets/tiles/plains_puddle.png';
-import mountain from '../assets/tiles/mountains.png';
-import water from '../assets/tiles/water.png';
-import water_lily from '../assets/tiles/water_lily.png';
-import towncenter from '../assets/tiles/towncenter.png';
-import dirt from '../assets/tiles/dirt.png';
-import dirt2 from '../assets/tiles/dirt2.png';
-import dirt_rock from '../assets/tiles/dirt_rock.png';
-import snow from '../assets/tiles/snow.png';
-import snow_rock from '../assets/tiles/snow_rock.png';
-import dessert from '../assets/tiles/dessert.png';
-import dessert2 from '../assets/tiles/dessert2.png';
-import cactus from '../assets/tiles/cactus.png';
-import dessert_rock from '../assets/tiles/dessert_rock.png';
-import dessert_rock2 from '../assets/tiles/dessert_rock2.png';
+// Remove individual static imports for each tile image
+// Dynamically import all png files in assets/tiles
+const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
+// Build runtime map from filename (without extension) to URL
+function buildTileSources(): Record<string, string> {
+    const sources: Record<string, string> = {};
+    for (const path in tileImageModules) {
+        const mod: any = tileImageModules[path];
+        const url: string = mod.default || mod;
+        const nameMatch = path.match(/([^/]+)\.png$/);
+        if (!nameMatch) continue;
+        const key = nameMatch[1]!;
+        sources[key] = url;
+    }
+    return sources;
+}
 
 interface PathCoord {
     q: number;
@@ -97,29 +93,7 @@ export class HexMapService {
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
 
     // Asset sources
-    private readonly tileImgSources: Record<string, string> = {
-        forest,
-        chopped_forest,
-        young_forest,
-        plains,
-        plains2,
-        plains_puddle,
-        mountain,
-        water,
-        water_lily,
-        towncenter,
-        dirt,
-        dirt2,
-        dirt_rock,
-        snow,
-        snow_rock,
-        dessert,
-        dessert2,
-        dessert_rock,
-        dessert_rock2,
-        cactus,
-
-    };
+    private readonly tileImgSources: Record<string, string> = buildTileSources();
 
     async init(canvasEl: HTMLCanvasElement, containerEl: HTMLDivElement) {
         this._canvas = canvasEl;
@@ -924,69 +898,50 @@ export class HexMapService {
         return result;
     }
 
-    private getTileImageKey(t: Tile) {
-        // Prefer variant key if present and loaded, else base terrain
-        if (t.variant && this._images[t.variant]) return t.variant;
-        return t.terrain;
-    }
-
-    private createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
-        const c = document.createElement('canvas');
-        c.width = this.TILE_DRAW_SIZE;
-        c.height = this.TILE_DRAW_SIZE;
-        const g = c.getContext('2d')!;
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        g.save();
-        g.beginPath();
-        g.moveTo(0.5 * w, 0);
-        g.lineTo(w, 0.25 * h);
-        g.lineTo(w, 0.75 * h);
-        g.lineTo(0.5 * w, h);
-        g.lineTo(0, 0.75 * h);
-        g.lineTo(0, 0.25 * h);
-        g.closePath();
-        g.clip();
-        g.drawImage(img, 0, 0, w, h);
-        g.restore();
-        return c;
-    }
-
-    private buildMaskedImages() {
-        for (const [key, img] of Object.entries(this._images)) {
-            if (!this._maskedImages[key] && img.width > 0 && img.height > 0) {
-                this._maskedImages[key] = this.createMaskedImage(img);
-            }
+    private getTileImageKey(t: Tile): string | null {
+        if (!t.terrain) return null;
+        const def: any = (TERRAIN_DEFS as any)[t.terrain];
+        if (t.variant) {
+            // Variant override assetKey else variant key
+            const variantDef = def?.variations?.find((v: any) => v.key === t.variant);
+            const vk = variantDef?.assetKey || t.variant;
+            if (this.tileImgSources[vk]) return vk;
         }
+        const baseKey = def?.assetKey || t.terrain;
+        return this.tileImgSources[baseKey] ? baseKey : null;
     }
 
     private async loadTileImages() {
-        const sources: Record<string, string> = {...this.tileImgSources};
-        // Glob all png assets in tiles folder (Vite eager import ensures bundling)
-        const globbed: Record<string, any> = import.meta.glob('../assets/tiles/*.png', {eager: true});
-        for (const [path, mod] of Object.entries(globbed)) {
-            const fileName = path.split('/').pop() || '';
-            const key = fileName.replace(/\.png$/i, '');
-            if (!sources[key] && mod && mod.default) sources[key] = mod.default;
-        }
-        // Ensure variant keys from definitions are present (assets may be missing; that's OK -> fallback to base terrain art)
-        const variantKeys: string[] = [];
-        for (const def of Object.values(TERRAIN_DEFS)) {
-            if (def.variations) for (const v of def.variations) variantKeys.push(v.key);
-        }
-        // No extra dynamic import; rely solely on globbed assets. Missing variants will simply not appear visually.
-        const promises = Object.entries(sources).map(([key, src]) => new Promise<void>(resolve => {
+        // Pre-mask all static images; if animated frames needed later, handled per draw.
+        const canvasCache: Record<string, HTMLCanvasElement> = {};
+        for (const [key, src] of Object.entries(this.tileImgSources)) {
             const img = new Image();
-            img.onload = () => {
-                this._images[key] = img;
-                resolve();
-            };
-            img.onerror = () => resolve();
             img.src = src;
-        }));
-        await Promise.all(promises);
+            await img.decode().catch(() => {});
+            this._images[key] = img;
+            // Build masked hex canvas
+            const c = document.createElement('canvas');
+            c.width = this.TILE_DRAW_SIZE;
+            c.height = this.TILE_DRAW_SIZE;
+            const g = c.getContext('2d')!;
+            g.save();
+            g.beginPath();
+            const w = this.TILE_DRAW_SIZE;
+            const h = this.TILE_DRAW_SIZE;
+            g.moveTo(0.5 * w, 0);
+            g.lineTo(w, 0.25 * h);
+            g.lineTo(w, 0.75 * h);
+            g.lineTo(0.5 * w, h);
+            g.lineTo(0, 0.75 * h);
+            g.lineTo(0, 0.25 * h);
+            g.closePath();
+            g.clip();
+            g.drawImage(img, 0, 0, w, h);
+            g.restore();
+            canvasCache[key] = c;
+        }
+        this._maskedImages = canvasCache;
         this._imagesLoaded = true;
-        this.buildMaskedImages();
     }
 
     private buildHeroMasks(img: HTMLImageElement, avatar: string) {

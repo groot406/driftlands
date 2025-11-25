@@ -6,6 +6,7 @@ import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
 import { registerExistingAgingTiles } from './growth';
+import { terrainPositions } from './terrainRegistry';
 
 export type Terrain = TerrainKey;
 export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
@@ -140,29 +141,6 @@ export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
         }
     }
     return neighbors;
-}
-
-export const terrainPositions: Record<TerrainKey, Set<string>> = {
-    forest: new Set(),
-    plains: new Set(),
-    water: new Set(),
-    mountain: new Set(),
-    towncenter: new Set(),
-    dirt: new Set(),
-    snow: new Set(),
-    dessert: new Set(),
-    // Add chopped_forest variant tracking (not a base TerrainKey, keep separate Set outside type cast logic)
-} as any;
-// Provide a dedicated set for chopped_forest variant tiles
-(terrainPositions as any).chopped_forest = (terrainPositions as any).chopped_forest || new Set();
-
-export const variantPositions: Record<string, Set<string>> = {
-    chopped_forest: new Set<string>(),
-};
-export function getVariantSet(key: string): Set<string> {
-    let s = variantPositions[key];
-    if (!s) { s = new Set<string>(); variantPositions[key] = s; }
-    return s;
 }
 
 export function discoverTile(tile: Tile) {

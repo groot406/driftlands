@@ -2,8 +2,7 @@ import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import type {Hero} from '../../store/heroStore';
 import { worldVersion } from '../world';
-import { terrainPositions } from '../world';
-import { getVariantSet } from '../world';
+import { terrainPositions } from '../terrainRegistry';
 import { applyVariant } from '../variants';
 
 // Task: Restore chopped_forest back into forest.
@@ -36,8 +35,7 @@ const plantTreesTask: TaskDefinition = {
     onComplete(tile, _instance, _participants) {
         // Only convert if still chopped_forest (another task might have altered it).
         if (tile.variant === 'chopped_forest') {
-            getVariantSet('chopped_forest').delete(tile.id);
-            applyVariant(tile, 'young_forest', { stagger: false, respectBiome: true }); // respect biome scaling for future chains but no random offset
+            applyVariant(tile, 'young_forest', { stagger: false, respectBiome: true });
             terrainPositions.forest.add(tile.id);
             worldVersion.value++;
         }

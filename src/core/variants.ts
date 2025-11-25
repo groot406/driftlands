@@ -1,7 +1,7 @@
 import type { Tile } from './world';
 import { registerAgingTile, getEffectiveAgeMs } from './growth';
 import { TERRAIN_DEFS } from './terrainDefs';
-import { getVariantSet } from './world';
+import { updateTileVariantIndex } from './terrainRegistry';
 
 interface ApplyVariantOptions {
   stagger?: boolean; // apply random backward offset across effective age window
@@ -12,16 +12,12 @@ interface ApplyVariantOptions {
 export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyVariantOptions = {}) {
   const prev = tile.variant;
   tile.variant = variantKey;
-  if (prev && prev !== variantKey) {
-    // Remove previous variant tracking set if known
-    if (prev === 'chopped_forest') getVariantSet('chopped_forest').delete(tile.id);
-  }
+  updateTileVariantIndex(tile.id, prev, variantKey);
+
   if (!variantKey) {
     tile.variantSetMs = undefined;
     return;
   }
-  // Track certain explicit variants
-  if (variantKey === 'chopped_forest') getVariantSet('chopped_forest').add(tile.id);
 
   const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
   const variantDef = def?.variations?.find(v => v.key === variantKey);
