@@ -625,8 +625,6 @@ export class HexMapService {
                 if (selectedHero.q === m.origin.q && selectedHero.r === m.origin.r) currentIndex = -1;
             }
             const remaining = m.path.slice(Math.max(0, currentIndex + 1));
-            // prepend remaining with current position to highlight from there
-            //remaining.unshift({q: selectedHero.q, r: selectedHero.r});
             if (remaining.length) {
                 for (let i = 0; i < remaining.length; i++) {
                     const pc = remaining[i]!;
