@@ -163,6 +163,20 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     }
 }
 
+// New: helper to resume pending auto-chain after reload
+export function resumePendingChainsFor(hero: Hero) {
+    const pending = hero.pendingChain;
+    if (!pending) return;
+    // Only attempt if not carrying and not already moving
+    if (hero.carryingResources || hero.carryingPayload || hero.movement) return;
+    const before = hero.movement;
+    attemptDeferredChain(hero, pending);
+    // If a movement was scheduled, clear the pending flag to avoid repeated attempts
+    if (hero.movement && hero.movement !== before) {
+        hero.pendingChain = undefined;
+    }
+}
+
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     return listTaskDefinitions().filter(def => def.canStart(tile, hero));
 }

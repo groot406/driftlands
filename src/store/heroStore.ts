@@ -8,6 +8,7 @@ import type {Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
+import { resumePendingChainsFor } from '../core/tasks';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -143,6 +144,8 @@ function restoreHeroes() {
                 // If hero already at target, discard movement
                 if (hero.q === m.target.q && hero.r === m.target.r) {
                     hero.movement = undefined;
+                    // Attempt to resume any pending chain since arrival is completed
+                    resumePendingChainsFor(hero);
                     continue;
                 }
                 // Determine progress index based on current hero position within path.
@@ -159,6 +162,8 @@ function restoreHeroes() {
                 hero.movement = m;
             } else {
                 hero.movement = undefined;
+                // Try to resume pending chain when not moving
+                resumePendingChainsFor(hero);
             }
             // restore currentTaskId safely (may be stale if task was removed; taskStore will reconcile)
             if (typeof saved.currentTaskId === 'string') {
@@ -192,6 +197,8 @@ function restoreHeroes() {
             } else {
                 hero.pendingChain = undefined;
             }
+            // After restoring pendingChain, attempt resume if safe
+            resumePendingChainsFor(hero);
             if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
                 hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
             } else {
@@ -289,7 +296,7 @@ export function updateHeroMovements(now: number) {
             continue;
         }
         if (stepsAdvanced < 0) continue; // not started yet
-        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1];
+        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1]!;
         hero.prevPos = prevCoord;
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue;
@@ -300,9 +307,8 @@ export function updateHeroMovements(now: number) {
                 persistHeroes();
                 continue;
             }
-            const prev = stepsAdvanced === 0 ? m.origin : m.path[stepsAdvanced - 1];
-            const dq = prev ? (currentCoord.q - prev.q) : 0;
-            const dr = prev ? (currentCoord.r - prev.r) : 0;
+            const dq = currentCoord.q - prevCoord.q;
+            const dr = currentCoord.r - prevCoord.r;
             let facing: Hero['facing'] = hero.facing;
             if (dr < 0) facing = 'up';
             else if (dr > 0) facing = 'down';
