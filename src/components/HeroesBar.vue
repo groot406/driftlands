@@ -1,6 +1,6 @@
 <template>
-  <div class="absolute left-0 bottom-0 w-full z-30 m-2">
-    <div class="w-full overflow-x-auto flex gap-3 p-2 pointer-events-auto">
+  <div class="absolute left-0 bottom-0 w-full z-30 m-2 pointer-events-none">
+    <div class="w-full overflow-x-auto flex gap-3 p-2">
       <template v-if="heroes.length">
         <div
           v-for="h in heroes"
