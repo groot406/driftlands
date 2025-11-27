@@ -138,6 +138,3 @@ if (typeof window !== 'undefined') {
     persistResourcesImmediate();
   });
 }
-
-// Convenience: derive in-transit resources (heroes carrying) if needed later.
-// (Not implemented yet; placeholder for future UI enhancements.)

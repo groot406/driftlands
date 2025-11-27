@@ -5,11 +5,7 @@ import { HexMapService } from './HexMapService';
 import { depositResource } from '../store/resourceStore';
 
 // Import task definitions to register them
-import '../core/taskDefs/explore';
-import '../core/taskDefs/chopWood';
-import '../core/taskDefs/plantTrees';
-import '../core/taskDefs/removeTrunks';
-import '../core/taskDefs/mineOre.ts';
+import.meta.glob('../core/taskDefs/*', { eager: true });
 
 import {startHeroMovement} from '../store/heroStore';
 import {listTaskDefinitions} from "./taskRegistry.ts";

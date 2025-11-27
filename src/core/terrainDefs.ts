@@ -19,7 +19,7 @@ export interface TerrainDef {
     variations?: TerrainVariationDef[];
     variationBaseWeight?: number;
     assetKey?: string;
-    // NEW: optional second render layer (unmasked) drawn with vertical stacking among heroes/other overlays
+    // optional second render layer (unmasked) drawn with vertical stacking among heroes/other overlays
     overlayAssetKey?: string; // image key (filename without extension) for overlay (e.g. 'cactus_top')
     overlayOffset?: { x: number; y: number }; // optional pixel offset applied to overlay drawing (top-left origin)
 }
@@ -39,8 +39,8 @@ export interface TerrainVariationDef {
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
     assetKey?: string; // optional override for image filename base if different from key
     growth?: { next: string | null; ageMs?: number, ageMsRange: number[] }; // biome scaling moved to biomes
-    // NEW: optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
-    overlayAssetKey?: string|false;
+
+    overlayAssetKey?: string|false; // optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
 }
 

@@ -358,7 +358,6 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
     persistHeroes();
 }
 
-// Focus camera on hero
 export function focusHero(hero: Hero) {
     moveCamera(hero.q, hero.r);
 }

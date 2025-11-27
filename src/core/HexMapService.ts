@@ -334,14 +334,6 @@ export class HexMapService {
         return {cx: this._canvas.width / this._dpr / 2, cy: this._canvas.height / this._dpr / 2};
     }
 
-    // Public helper to convert axial coords to screen center position
-    public getTileScreenCenter(q: number, r: number) {
-        const camPx = axialToPixel(camera.q, camera.r);
-        const {cx, cy} = this.getCanvasCenter();
-        const tilePx = axialToPixel(q, r);
-        return {x: tilePx.x - camPx.x + cx, y: tilePx.y - camPx.y + cy};
-    }
-
     private screenToWorld(x: number, y: number) {
         const camPx = axialToPixel(camera.q, camera.r);
         const {cx, cy} = this.getCanvasCenter();
@@ -906,7 +898,7 @@ export class HexMapService {
                     ctx.restore();
                 }
             }
-            // Wood carry indicator
+            // payload carry indicator
             if (h.carryingPayload) {
                 ctx.save();
                 ctx.globalAlpha = opacity;
