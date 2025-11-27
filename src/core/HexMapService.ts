@@ -466,7 +466,7 @@ export class HexMapService {
                 const centerDist = this.axialDistance(0, 0, t.q, t.r);
                 ctx.globalAlpha = opacity * 0.95;
                 ctx.font = '600 12px system-ui, sans-serif';
-                ctx.fillStyle = '#d8eefa';
+                ctx.fillStyle = 'rgba(255,255,255, '+ opacity + ')';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.save();

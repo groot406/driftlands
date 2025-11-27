@@ -43,7 +43,7 @@ export interface Hero {
     carryingPayload?: { type: ResourceType; amount: number }; // new payload model for carried resources
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows
-    delayedMovementTimer?: number;
+    delayedMovementTimer?: ReturnType<typeof setTimeout>;
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
