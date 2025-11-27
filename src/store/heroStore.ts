@@ -235,13 +235,13 @@ export function updateHeroMovements(now: number) {
             const currentCoord = (completedSteps === 0) ? m.origin : m.path[completedSteps - 1]!;
             const nextCoord = m.path[completedSteps]; // in-progress destination (not yet reached)
             hero.prevPos = currentCoord;
+
             // Validate destination walkability ahead of time
             if (nextCoord) {
                 const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
                 if (nextTile.discovered && !isTileWalkable(nextTile)) {
                     hero.movement = undefined;
                     persistHeroes();
-                    continue;
                 }
             }
             // Facing toward next tile if exists
