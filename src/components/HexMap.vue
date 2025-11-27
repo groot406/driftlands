@@ -280,7 +280,7 @@ function computeTerrainCluster(base: Tile | null) {
   }
 }
 
-watch([taskMenuTile, hoveredTask], (val) => {
+watch([taskMenuTile, hoveredTask], () => {
   // Recompute cluster when task menu tile changes
   computeTerrainCluster(taskMenuTile.value);
 });

@@ -2,7 +2,7 @@ import { registerTask } from '../taskRegistry';
 import type { TaskDefinition } from '../tasks';
 import type { Hero } from '../../store/heroStore';
 import { applyVariant } from '../variants';
-import {ensureTileExists, type Tile, type TileNeighborMap} from "../world.ts";
+import {type Tile } from "../world.ts";
 
 const tillLandTask: TaskDefinition = {
     key: 'tillLand',
