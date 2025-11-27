@@ -72,10 +72,6 @@ function selectTask(def: TaskDefinition) {
       startHeroMovement(hero.id, path, {q: props.tile.q, r: props.tile.r}, def.key);
       emit('started', def.key, props.tile);
 
-      // cancel any delayed movement
-      if (hero.delayedMovementTimer) {
-        clearTimeout(hero.delayedMovementTimer)
-      }
       persistHeroes()
     }
   }

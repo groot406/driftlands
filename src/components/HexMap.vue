@@ -29,7 +29,6 @@ import {
   createPointerHandlers,
   dragged,
   dragging,
-  hexDistance,
   isKeyboardNavigating,
   keyDown,
   keyUp,
@@ -146,11 +145,6 @@ function handleClick(e: PointerEvent) {
   if (!selHero) {
     selectHero(null, false);
     return;
-  }
-
-  // cancel any delayed movement
-  if (selHero.delayedMovementTimer) {
-    clearTimeout(selHero.delayedMovementTimer)
   }
 
   // Refresh available tasks for this tile & hero

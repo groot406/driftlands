@@ -324,6 +324,13 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
+
+    if(hero.delayedMovementTimer) {
+        console.log('clearing delayedMovementTimer for hero', hero.id);
+        clearTimeout(hero.delayedMovementTimer);
+        hero.delayedMovementTimer = undefined;
+    }
+
     if (hero.movement) {
         const m = hero.movement;
         if (m.target.q === target.q && m.target.r === target.r) {

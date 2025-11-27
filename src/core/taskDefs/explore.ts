@@ -64,6 +64,9 @@ const exploreTask: TaskDefinition = {
 function continueExploration(tile: Tile, participants: Hero[]) {
     // find lowest distance neighboring tile that is not discovered and start moving there to chain
     for (const participant of participants) {
+        if(!participant.delayedMovementTimer) {
+            return;
+        }
         const nm = tile.neighbors;
         let closestUndiscovered: Tile|null = null;
 
