@@ -3,7 +3,9 @@
     <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
-                @close="showTaskMenu=false; taskMenuTile=null"/>
+                @close="showTaskMenu=false; taskMenuTile=null"
+                @hover="(task) => hoveredTask = task"
+      />
     </transition>
   </div>
 </template>
@@ -60,6 +62,7 @@ const taskMenuTile = ref<Tile | null>(null);
 const containerSize = ref({width: 0, height: 0});
 const clusterBoundaryTiles = ref<Tile[]>([]); // boundary tiles for same-terrain cluster highlighting
 const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id set)
+const hoveredTask = ref<TaskDefinition | null>(null);
 
 // Service instance
 const service = new HexMapService();
@@ -111,6 +114,11 @@ function handleClick(e: PointerEvent) {
   const nowTs = performance.now();
   if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
     return;
+  } else if(showTaskMenu.value) {
+    // If menu is open, close it on any click outside
+    showTaskMenu.value = false;
+    taskMenuTile.value = null;
+    return;
   }
 
   if (isPaused()) return;
@@ -138,6 +146,11 @@ function handleClick(e: PointerEvent) {
   if (!selHero) {
     selectHero(null, false);
     return;
+  }
+
+  // cancel any delayed movement
+  if(selHero.delayedMovementTimer) {
+    clearTimeout(selHero.delayedMovementTimer)
   }
 
   // Refresh available tasks for this tile & hero
@@ -223,8 +236,18 @@ function updateContainerSize() {
 }
 
 function computeTerrainCluster(base: Tile | null) {
+
   clusterBoundaryTiles.value = [];
   clusterTiles.value.clear();
+
+  // only if hoveredTask has chainAdjacentSameTerrain
+  if (!hoveredTask.value) return;
+  if (!hoveredTask.value.chainAdjacentSameTerrain) return;
+
+  if (typeof hoveredTask.value.chainAdjacentSameTerrain === 'function') {
+    if (!hoveredTask.value.chainAdjacentSameTerrain(base)) return;
+  }
+
   if (!base || !base.discovered || !base.terrain) return;
   const terrain = base.terrain;
   const maxSize = 500; // safety cap
@@ -257,9 +280,9 @@ function computeTerrainCluster(base: Tile | null) {
   }
 }
 
-watch(taskMenuTile, (val) => {
+watch([taskMenuTile, hoveredTask], (val) => {
   // Recompute cluster when task menu tile changes
-  computeTerrainCluster(val);
+  computeTerrainCluster(taskMenuTile.value);
 });
 
 onMounted(async () => {

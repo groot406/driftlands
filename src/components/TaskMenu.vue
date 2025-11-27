@@ -9,9 +9,12 @@
       <!-- Task options around -->
       <div class="relative left-16">
         <transition-group name="fade-task" tag="div">
-          <div v-for="(t, idx) in availableTasks" class="bg-slate-800/50 backdrop-blur-sm  px-3 mb-1.5  hover:bg-slate-900/60 shadow-md rounded-full  w-max  text-white drop-shadow-md left-4 pointer-events-auto cursor-pointer relative text-sm p-1.5  text-center flex items-center"
-              :key="idx"
+          <div v-for="(t, idx) in availableTasks"
+               class="bg-slate-800/50 backdrop-blur-sm  px-3 mb-1.5  hover:bg-slate-900/60 shadow-md rounded-full  w-max  text-white drop-shadow-md left-4 pointer-events-auto cursor-pointer relative text-sm p-1.5  text-center flex items-center"
+               :key="idx"
                @click="selectTask(t)"
+               @mouseover="hoverTask(t)"
+               @mouseleave="unHoverTask(t)"
                :title="t.label">
             <span class="label">{{ t.label }}</span>
           </div>
@@ -21,26 +24,32 @@
   </div>
 </template>
 <script setup lang="ts">
-import {computed} from 'vue';
+import {ref, computed} from 'vue';
 import type {Tile} from '../core/world';
-import {getSelectedHero, startHeroMovement} from '../store/heroStore';
-import {detachHeroFromCurrentTask} from '../store/taskStore';
-import {startTask, getTaskByTile, joinTask} from '../store/taskStore';
+import {getSelectedHero, persistHeroes, startHeroMovement} from '../store/heroStore';
+import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 import type {TaskDefinition} from '../core/tasks';
-import {camera, axialToPixel} from '../core/camera';
+import {axialToPixel, camera} from '../core/camera';
 
 interface Props {
   tile: Tile | null;
   availableTasks: TaskDefinition[];
   containerSize?: { width: number; height: number };
 }
+
 const props = defineProps<Props>();
-const emit = defineEmits<{(e:'close'):void;(e:'started', type:string, tile:Tile):void}>();
+const emit = defineEmits<{
+  (e: 'close'): void;
+  (e: 'started', type: string, tile: Tile): void;
+  (e: 'hover', task: null|TaskDefinition ): void;
+}>();
 
 const service = new HexMapService();
 
-function close() { emit('close'); }
+function close() {
+  emit('close');
+}
 
 function selectTask(def: TaskDefinition) {
   if (!props.tile) return;
@@ -62,6 +71,12 @@ function selectTask(def: TaskDefinition) {
       detachHeroFromCurrentTask(hero);
       startHeroMovement(hero.id, path, {q: props.tile.q, r: props.tile.r}, def.key);
       emit('started', def.key, props.tile);
+
+      // cancel any delayed movement
+      if (hero.delayedMovementTimer) {
+        clearTimeout(hero.delayedMovementTimer)
+      }
+      persistHeroes()
     }
   }
   close();
@@ -88,6 +103,20 @@ const menuStyle = computed(() => {
   } as const;
 });
 
+const hoveredTask = ref<TaskDefinition | null>(null);
+
+function hoverTask(t: TaskDefinition) {
+  hoveredTask.value = t;
+  emit('hover', hoveredTask.value);
+}
+
+function unHoverTask(t: TaskDefinition) {
+  if (hoveredTask.value === t) {
+    hoveredTask.value = null;
+    emit('hover', hoveredTask.value);
+  }
+}
+
 </script>
 
 <style scoped>
@@ -97,12 +126,14 @@ const menuStyle = computed(() => {
   pointer-events: none; /* allow map events except on ring */
   z-index: 40; /* above canvas */
 }
+
 .task-container {
   position: relative; /* now children positioned relative to center */
   width: 0; /* size determined by children */
   height: 0;
   pointer-events: none;
 }
+
 .hex-btn {
   position: absolute;
   width: 79px;

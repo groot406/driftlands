@@ -179,7 +179,10 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     def.onComplete?.(tile, inst, participants);
 
     // Auto-chain to adjacent tiles in cluster after short delay, to allow for any movement to initiate first
-    setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
+    let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
+    for (const hero of participants) {
+        hero.delayedMovementTimer = timer;
+    }
 
     cleanupCompletedTasks();
 }

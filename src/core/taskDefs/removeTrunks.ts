@@ -9,7 +9,7 @@ import { terrainPositions } from '../terrainRegistry';
 const removeTrunksTask: TaskDefinition = {
     key: 'removeTrunks',
     label: 'Remove Trunks',
-    chainAdjacentSameTerrain: true,
+    chainAdjacentSameTerrain: false,
     canStart(tile, hero) {
         return !hero.carryingPayload && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },

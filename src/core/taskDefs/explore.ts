@@ -11,7 +11,7 @@ const service = new HexMapService();
 const exploreTask: TaskDefinition = {
     key: 'explore',
     label: 'Explore',
-    chainAdjacentSameTerrain: true,
+    chainAdjacentSameTerrain: false,
     requiredXp(distance: number) {
         return (Math.pow(distance * 4, 3));
     },
@@ -33,8 +33,10 @@ const exploreTask: TaskDefinition = {
     onStart(_tile, _participants) {
         if(_tile.discovered) {
             // Tile already discovered; abort explore task implicitly by not setting any special flags.
-            setTimeout(() => continueExploration(_tile, _participants), 1500);
-
+            let timer = setTimeout(() => continueExploration(_tile, _participants), 1500);
+            for (const hero of _participants) {
+                hero.delayedMovementTimer = timer;
+            }
         }
         return;
     },
@@ -51,7 +53,10 @@ const exploreTask: TaskDefinition = {
             persistHeroes();
         }
 
-        setTimeout(() => continueExploration(tile, participants), 1500);
+        let timer = setTimeout(() => continueExploration(tile, participants), 1500);
+        for (const hero of participants) {
+            hero.delayedMovementTimer = timer;
+        }
         persistHeroes();
     },
 };
