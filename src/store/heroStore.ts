@@ -1,13 +1,14 @@
 import {reactive, ref} from 'vue';
-import {hexDistance, moveCamera} from '../core/camera';
+import {moveCamera} from '../core/camera';
 import santa from '../assets/heroes/santa.png';
 import boy from '../assets/heroes/boy.png';
 import girl from '../assets/heroes/girl.png';
 import loophead from '../assets/heroes/loophead.png';
-import type {Tile, ResourceType} from '../core/world';
+import {getNeighborBySide, getTilesInRadius, type ResourceType, type Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
+import {HexMapService} from "../core/HexMapService.ts";
 
 export interface HeroStats {
     xp: number; // experience points
@@ -67,25 +68,28 @@ export const heroes = reactive<Hero[]>(seedHeroes);
 
 const LEGACY_HERO_KEY = 'driftlands_heroes_v1';
 let currentWorldId: string = 'default';
-function heroKey(worldId: string) { return `driftlands_heroes_${worldId}_v1`; }
+
+function heroKey(worldId: string) {
+    return `driftlands_heroes_${worldId}_v1`;
+}
 
 function migrateLegacyIfNeeded(worldId: string) {
-  try {
-    const legacyRaw = localStorage.getItem(LEGACY_HERO_KEY);
-    if (!legacyRaw) return;
-    const targetKey = heroKey(worldId);
-    if (localStorage.getItem(targetKey)) return; // already has world-specific save
-    localStorage.setItem(targetKey, legacyRaw);
-    // Optionally keep legacy to allow fallback; remove if we want one-time migration
-    // localStorage.removeItem(LEGACY_HERO_KEY);
-  } catch {
-  }
+    try {
+        const legacyRaw = localStorage.getItem(LEGACY_HERO_KEY);
+        if (!legacyRaw) return;
+        const targetKey = heroKey(worldId);
+        if (localStorage.getItem(targetKey)) return; // already has world-specific save
+        localStorage.setItem(targetKey, legacyRaw);
+        // Optionally keep legacy to allow fallback; remove if we want one-time migration
+        // localStorage.removeItem(LEGACY_HERO_KEY);
+    } catch {
+    }
 }
 
 export function setCurrentWorldId(worldId: string) {
-  currentWorldId = worldId || 'default';
-  migrateLegacyIfNeeded(currentWorldId);
-  restoreHeroes();
+    currentWorldId = worldId || 'default';
+    migrateLegacyIfNeeded(currentWorldId);
+    restoreHeroes();
 }
 
 function persistHeroes() {
@@ -95,12 +99,16 @@ function persistHeroes() {
             movement: h.movement ? {...h.movement} : undefined,
             currentTaskId: h.currentTaskId,
             prevPos: h.prevPos ? {...h.prevPos} : undefined,
-            carryingPayload: h.carryingPayload ? { ...h.carryingPayload } : undefined,
-            pendingChain: h.pendingChain ? { ...h.pendingChain } : undefined,
-            returnPos: h.returnPos ? { ...h.returnPos } : undefined,
-            stats: { ...h.stats },
+            carryingPayload: h.carryingPayload ? {...h.carryingPayload} : undefined,
+            pendingChain: h.pendingChain ? {...h.pendingChain} : undefined,
+            returnPos: h.returnPos ? {...h.returnPos} : undefined,
+            stats: {...h.stats},
         }));
-        localStorage.setItem(heroKey(currentWorldId), JSON.stringify({heroes: plain, ts: Date.now(), worldId: currentWorldId}));
+        localStorage.setItem(heroKey(currentWorldId), JSON.stringify({
+            heroes: plain,
+            ts: Date.now(),
+            worldId: currentWorldId
+        }));
     } catch (e) {
         // ignore persistence errors
     }
@@ -172,18 +180,21 @@ function restoreHeroes() {
 
             const savedHasPayload = saved.carryingPayload && typeof saved.carryingPayload.type === 'string' && typeof saved.carryingPayload.amount === 'number';
             if (savedHasPayload) {
-                hero.carryingPayload = { type: saved.carryingPayload.type, amount: saved.carryingPayload.amount };
+                hero.carryingPayload = {type: saved.carryingPayload.type, amount: saved.carryingPayload.amount};
             } else {
                 hero.carryingPayload = undefined;
             }
 
             if (saved.pendingChain && typeof saved.pendingChain.sourceTileId === 'string' && typeof saved.pendingChain.taskType === 'string') {
-                hero.pendingChain = { sourceTileId: saved.pendingChain.sourceTileId, taskType: saved.pendingChain.taskType };
+                hero.pendingChain = {
+                    sourceTileId: saved.pendingChain.sourceTileId,
+                    taskType: saved.pendingChain.taskType
+                };
             } else {
                 hero.pendingChain = undefined;
             }
             if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
-                hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
+                hero.returnPos = {q: saved.returnPos.q, r: saved.returnPos.r};
             } else {
                 hero.returnPos = undefined;
             }
@@ -306,7 +317,10 @@ export function updateHeroMovements(now: number) {
     }
 }
 
-export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: { q: number; r: number }, taskType?: string) {
+export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: {
+    q: number;
+    r: number
+}, taskType?: string) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
@@ -322,16 +336,29 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
     }
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
+    const service = new HexMapService();
     if (!originTile.discovered && !targetTile.discovered) {
-        const prev = hero.prevPos;
-        const allow = prev && hexDistance(prev, target) === 1;
+        // Closest discovered & walkable tile to hero's current position
+        let allow = false;
+
+        const neighbors = getTilesInRadius(originTile.q, originTile.r, 1);
+        for (const neighborIdx in neighbors) {
+            const neighbor = neighbors[neighborIdx];
+            if (neighbor && neighbor.discovered && neighbor.terrain && TERRAIN_DEFS[neighbor.terrain]?.walkable) {
+                const path = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r);
+                if (path.length > 0) {
+                    allow = true
+                    break;
+                }
+            }
+        }
         if (!allow) return;
     }
     const baseStepMs = 550;
     const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
     const durations: number[] = [];
     for (let i = 0; i < path.length; i++) {
-        const fromCoord = (i === 0) ? { q: hero.q, r: hero.r } : path[i - 1]!;
+        const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
         const toCoord = path[i]!;
         const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
         const toTile = ensureTileExists(toCoord.q, toCoord.r);
@@ -344,11 +371,14 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
     }
     const cumulative: number[] = [];
     let acc = 0;
-    for (const d of durations) { acc += d; cumulative.push(acc); }
+    for (const d of durations) {
+        acc += d;
+        cumulative.push(acc);
+    }
     const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
     hero.movement = {
         path: path.slice(),
-        origin: { q: hero.q, r: hero.r },
+        origin: {q: hero.q, r: hero.r},
         target,
         taskType,
         startMs: performance.now(),

@@ -114,7 +114,7 @@ function handleClick(e: PointerEvent) {
   const nowTs = performance.now();
   if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
     return;
-  } else if(showTaskMenu.value) {
+  } else if (showTaskMenu.value) {
     // If menu is open, close it on any click outside
     showTaskMenu.value = false;
     taskMenuTile.value = null;
@@ -149,7 +149,7 @@ function handleClick(e: PointerEvent) {
   }
 
   // cancel any delayed movement
-  if(selHero.delayedMovementTimer) {
+  if (selHero.delayedMovementTimer) {
     clearTimeout(selHero.delayedMovementTimer)
   }
 
@@ -173,18 +173,11 @@ function handleClick(e: PointerEvent) {
     taskMenuTile.value = null;
   }
 
-  const path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+  let path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
   if (path.length) {
-    const originTile = ensureTileExists(selHero.q, selHero.r);
-    const targetTile = ensureTileExists(tile.q, tile.r);
-    if (!(!originTile.discovered && !targetTile.discovered) || (selHero.prevPos && hexDistance(selHero.prevPos, {
-      q: tile.q,
-      r: tile.r
-    }) === 1)) {
-      detachHeroFromCurrentTask(selHero);
-      startHeroMovement(selHero.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
-      pathCoords.value = path;
-    }
+    detachHeroFromCurrentTask(selHero);
+    startHeroMovement(selHero.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
+    pathCoords.value = path;
   }
   updatePath();
 }
@@ -261,7 +254,7 @@ function computeTerrainCluster(base: Tile | null) {
     clusterTiles.value.add(t.id);
     const nm = t.neighbors ?? ensureTileExists(t.q, t.r).neighbors ?? undefined;
     if (nm) {
-      for (const side of ['a','b','c','d','e','f'] as const) {
+      for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
         const nt = nm[side];
         if (nt.discovered && nt.terrain === terrain && !visited.has(nt.id)) queue.push(nt);
       }
@@ -272,9 +265,12 @@ function computeTerrainCluster(base: Tile | null) {
     if (!baseTile) continue;
     const nm = baseTile.neighbors ?? ensureTileExists(baseTile.q, baseTile.r).neighbors!;
     let isBoundary = false;
-    for (const side of ['a','b','c','d','e','f'] as const) {
+    for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
       const nt = nm[side];
-      if (!nt.discovered || nt.terrain !== terrain || !clusterTiles.value.has(nt.id)) { isBoundary = true; break; }
+      if (!nt.discovered || nt.terrain !== terrain || !clusterTiles.value.has(nt.id)) {
+        isBoundary = true;
+        break;
+      }
     }
     if (isBoundary) clusterBoundaryTiles.value.push(baseTile);
   }
