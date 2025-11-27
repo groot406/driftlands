@@ -1,4 +1,4 @@
-import {type Tile, worldVersion} from './world';
+import {type ResourceType, type Tile, worldVersion} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
 import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
 import { HexMapService } from './HexMapService';
@@ -6,9 +6,10 @@ import { depositResource } from '../store/resourceStore';
 
 // Import task definitions to register them
 import '../core/taskDefs/explore';
-import '../core/taskDefs/chopWood'; // register chop wood task
-import '../core/taskDefs/plantTrees'; // register plant trees task
-import '../core/taskDefs/removeTrunks'; // register remove trunks task
+import '../core/taskDefs/chopWood';
+import '../core/taskDefs/plantTrees';
+import '../core/taskDefs/removeTrunks';
+import '../core/taskDefs/mineOre.ts';
 
 import {startHeroMovement} from '../store/heroStore';
 import {listTaskDefinitions} from "./taskRegistry.ts";
@@ -33,12 +34,15 @@ export interface TaskDefinition {
     onProgress?(tile: Tile, instance: TaskInstance): void;
 
     // Completion hook (e.g. discover tile, distribute rewards)
-    onComplete(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
+    onComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
 
     // Optional base reward XP for participants collectively (split proportionally)
-    totalRewardedStats(distance: number): Record<HeroStat, number>;
+    totalRewardedStats?(distance: number): Record<HeroStat, number>;
 
-    chainAdjacentSameTerrain?: boolean; // new optional flag to auto-chain task to neighboring same-terrain tiles
+    // Optional base reward resources for participants collectively (split proportionally)
+    totalRewardedResources?(distance: number): { type: ResourceType, amount: number };
+    repeatTask?: boolean; // whether task can be repeated on same tile
+    chainAdjacentSameTerrain?: boolean; // optional flag to auto-chain task to neighboring same-terrain tiles
 }
 
 export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;
@@ -69,10 +73,6 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (hero.carryingPayload && tile.terrain === 'towncenter') {
         depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
         hero.carryingPayload = undefined;
-        hero.carryingResources = false; // legacy flag
-    }
-    else if (hero.carryingResources && tile.terrain === 'towncenter') {
-        hero.carryingResources = false;
     }
 
     if (!hero.movement?.taskType) {
@@ -109,10 +109,11 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     const source = tileIndex[pending.sourceTileId];
     if (!source || !source.discovered || !source.terrain) return;
     const def = getTaskDefinition(pending.taskType);
+
     if (!def?.chainAdjacentSameTerrain) return;
 
     // Do not start if hero still busy or carrying
-    if (hero.carryingResources || hero.carryingPayload || hero.movement) return;
+    if (hero.carryingPayload || hero.movement) return;
 
     const terrain = source.terrain;
     // BFS full cluster of same terrain
@@ -134,10 +135,9 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
         }
     }
 
-    // Build candidate tiles excluding source, requiring canStart and no existing task instance of this type
+    // Build candidate tiles, requiring canStart and no existing task instance of this type
     const candidates: Tile[] = [];
     for (const ct of cluster) {
-        if (ct.id === source.id) continue;
         if (getTaskByTile(ct.id, pending.taskType)) continue;
         if (!def.canStart(ct, hero)) continue;
         candidates.push(ct);
@@ -148,8 +148,9 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
         const da = worldHexDistance(a.q, a.r);
         const db = worldHexDistance(b.q, b.r);
         if (da !== db) return da - db;
-        if (a.q !== b.q) return a.q - b.q;
-        return a.r - b.r;
+
+        // final tiebreaker: random
+        return Math.random() - 0.5;
     });
 
     const service = new HexMapService();
@@ -168,7 +169,7 @@ export function resumePendingChainsFor(hero: Hero) {
     const pending = hero.pendingChain;
     if (!pending) return;
     // Only attempt if not carrying and not already moving
-    if (hero.carryingResources || hero.carryingPayload || hero.movement) return;
+    if (hero.carryingPayload || hero.movement) return;
     const before = hero.movement;
     attemptDeferredChain(hero, pending);
     // If a movement was scheduled, clear the pending flag to avoid repeated attempts

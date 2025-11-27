@@ -8,7 +8,6 @@ import { applyVariant } from './variants';
 const agingTiles = new Set<string>();
 
 export function registerAgingTile(tile: Tile) {
-    console.log('registerAgingTile called for tile:', tile);
   if (!tile.variant) return;
   const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
   const variantDef = def?.variations?.find(v => v.key === tile.variant);

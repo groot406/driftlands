@@ -1,14 +1,17 @@
 import {reactive} from 'vue';
-import type {TaskInstance, TaskType} from '../core/tasks';
+import type {TaskDefinition, TaskInstance, TaskType} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
 import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
 import type {Hero, HeroStats} from './heroStore';
 import {heroes, startHeroMovement} from './heroStore';
 import {idleStore} from './idleStore';
 import {HexMapService} from '../core/HexMapService';
+import {terrainPositions} from "../core/terrainRegistry.ts";
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
+
+const service = new HexMapService();
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -40,11 +43,8 @@ function removeTask(inst: TaskInstance) {
     const tileTasks = taskStore.tasksByTile[inst.tileId];
     if (tileTasks) {
         delete tileTasks[inst.type];
-        if (!Object.keys(tileTasks).length) {
-            // could delete taskStore.tasksByTile[inst.tileId]
-        }
     }
-    // NEW: detach any heroes that still reference this task
+    // detach any heroes that still reference this task
     for (const hero of heroes) {
         if (hero.currentTaskId === inst.id) {
             hero.currentTaskId = undefined;
@@ -60,10 +60,12 @@ export function detachHeroFromCurrentTask(hero: Hero) {
 
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     // Prevent starting a new task while carrying resources
-    if ((starter as any).carryingResources) return null;
+    if (starter.carryingPayload) return null;
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
+    if (!def.canStart(tile, starter)) return null;
+
     if (!taskStore.tasksByTile[tile.id]) {
         taskStore.tasksByTile[tile.id] = {};
     }
@@ -98,7 +100,7 @@ export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || !inst.active || inst.completedTick) return;
     // Block joining if hero is carrying resources
-    if ((hero as any).carryingResources) return;
+    if (hero.carryingPayload) return;
     if (hero.currentTaskId === inst.id) return;
     detachHeroFromCurrentTask(hero);
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
@@ -158,22 +160,32 @@ export function updateActiveTasks(heroes: Hero[]) {
         inst.lastUpdateMs = nowMs;
         def.onProgress?.(tile, inst);
         if (inst.progressXp >= inst.requiredXp) {
-            inst.progressXp = inst.requiredXp;
-            inst.completedTick = idleStore.tick; // maintain legacy
-            inst.completedMs = nowMs;
-            inst.active = false;
-            def.onComplete(tile, inst, parts);
-            autoChainInCluster(inst, tile, parts); // renamed chaining step before rewards
-            rewardXpToParticipants(inst, parts);
-            cleanupCompletedTasks();
+            completeTask(inst, def, tile, parts);
         }
     }
     persistTasks();
 }
 
-function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
+function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, participants: Hero[]) {
+    const nowMs = Date.now();
+    inst.progressXp = inst.requiredXp;
+    inst.completedTick = idleStore.tick;
+    inst.completedMs = nowMs;
+    inst.active = false;
+
+    rewardStatsToParticipants(inst, participants);
+    rewardResourcesToParticipants(inst, participants);
+
+    def.onComplete?.(tile, inst, participants);
+    autoChainInCluster(inst, tile, participants);
+
+    cleanupCompletedTasks();
+}
+
+function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[]) {
     const def = getTaskDefinition(instance.type);
     if (!def) return;
+    if(!def.totalRewardedStats) return;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
@@ -191,6 +203,59 @@ function rewardXpToParticipants(instance: TaskInstance, participants: Hero[]) {
         }
     }
 }
+
+
+function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]) {
+    const def = getTaskDefinition(instance.type);
+    if (!def) return;
+    if(!def.totalRewardedResources) return;
+
+    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
+    const tile = tileIndex[instance.tileId];
+    if (!tile) return;
+    const distance = hexDistance(tile.q, tile.r);
+    const rewards = def.totalRewardedResources(distance);
+    for (const hero of participants) {
+        const contrib = instance.participants[hero.id] || 0;
+        const share = contrib / totalContrib;
+
+        rewards.amount = Math.ceil(rewards.amount * share);
+        hero.carryingPayload = rewards;
+
+        const tc = findNearestTowncenter(hero.q, hero.r);
+        if (tc) {
+            const path = service.findWalkablePath(hero.q, hero.r, tc.q, tc.r);
+            if (path && path.length) {
+                startHeroMovement(hero.id, path, tc);
+            }
+        }
+    }
+}
+
+function findNearestTowncenter(q: number, r: number) {
+    let best;
+    let bestDist;
+
+    // First distance to origin (0,0) as fallback
+    const dq = Math.abs(0 - q);
+    const dr = Math.abs(0 - r);
+    const ds = Math.abs(0 - (-q - r));
+    bestDist = Math.max(dq, dr, ds);
+    best = { q: 0, r: 0 };
+
+    for (const id of terrainPositions.towncenter) {
+        const t = tileIndex[id];
+        if (!t) continue;
+        const dq = Math.abs(t.q - q);
+        const dr = Math.abs(t.r - r);
+        const ds = Math.abs((-t.q - t.r) - (-q - r));
+        const dist = Math.max(dq, dr, ds);
+        if (dist < bestDist) { bestDist = dist; best = { q: t.q, r: t.r }; }
+    }
+
+    return best;
+}
+
 
 export function cleanupCompletedTasks() {
     for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
@@ -266,7 +331,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
     const visited = new Set<string>();
     const cluster: Tile[] = [];
     const queue: Tile[] = [tile];
-    const MAX_CLUSTER = 800; // safety cap
+    const MAX_CLUSTER = 999; // safety cap
     while (queue.length && visited.size < MAX_CLUSTER) {
         const cur = queue.shift()!;
         if (visited.has(cur.id)) continue;
@@ -284,7 +349,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
     const service = new HexMapService();
     for (const hero of participants) {
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
-        if (hero.carryingResources || hero.carryingPayload) {
+        if (hero.carryingPayload) {
             // Preserve existing pendingChain if already set for same source to avoid overwrite.
             if (!hero.pendingChain) hero.pendingChain = { sourceTileId: tile.id, taskType: inst.type };
             continue;
@@ -351,14 +416,7 @@ function offlineCatchUp() {
         inst.progressXp += totalContribution;
         inst.lastUpdateMs = nowMs;
         if (inst.progressXp >= inst.requiredXp) {
-            inst.progressXp = inst.requiredXp;
-            inst.completedTick = idleStore.tick;
-            inst.completedMs = nowMs;
-            inst.active = false;
-            def.onComplete(tile, inst, parts);
-            autoChainInCluster(inst, tile, parts); // renamed chaining during offline progression
-            rewardXpToParticipants(inst, parts);
-            cleanupCompletedTasks();
+            completeTask(inst, def, tile, parts);
         }
     }
     persistTasks();

@@ -25,7 +25,6 @@ function loadState(): IdleState | null {
 
 function saveState(_state: IdleState) {
     try {
-        console.log('save');
         localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
     } catch (e) {
         console.log('save error', e);

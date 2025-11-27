@@ -11,7 +11,7 @@ const removeTrunksTask: TaskDefinition = {
     label: 'Remove Trunks',
     chainAdjacentSameTerrain: true,
     canStart(tile, hero) {
-        return !hero.carryingPayload && hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
+        return !hero.carryingPayload && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },
 
     requiredXp(_distance: number) {

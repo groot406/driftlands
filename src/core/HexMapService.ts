@@ -17,7 +17,7 @@ import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
 import type {TaskInstance} from './tasks';
-import { worldOuterRadius } from './world';
+import { worldOuterRadius, type ResourceType } from './world';
 
 // Tile assets (importing here to keep service encapsulated)
 // Remove individual static imports for each tile image
@@ -907,7 +907,7 @@ export class HexMapService {
                 }
             }
             // Wood carry indicator
-            if (h.carryingResources) {
+            if (h.carryingPayload) {
                 ctx.save();
                 ctx.globalAlpha = opacity;
                 const iconY = destY; // above head
@@ -923,14 +923,22 @@ export class HexMapService {
                 ctx.fillStyle = '#fff6d7';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('🪵', iconX, iconY + 1);
+                ctx.fillText(this.RESOURCE_ICON_MAP[h.carryingPayload.type], iconX, iconY + 1);
                 ctx.restore();
             }
         }
         ctx.globalAlpha = 1;
     }
 
-    // NEW: resolve optional overlay key (variant override > base)
+    RESOURCE_ICON_MAP: Record<ResourceType, string> = {
+        wood: '🪵',
+        ore: '⛏️',
+        stone: '🪨',
+        food: '🍎',
+        crystal: '🔮',
+        artifact: '🗿',
+    };
+
     private getTileOverlayKey(t: Tile): string | null {
         if (!t.terrain) return null;
         const def: any = (TERRAIN_DEFS as any)[t.terrain];

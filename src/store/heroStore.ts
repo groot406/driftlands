@@ -4,11 +4,10 @@ import santa from '../assets/heroes/santa.png';
 import boy from '../assets/heroes/boy.png';
 import girl from '../assets/heroes/girl.png';
 import loophead from '../assets/heroes/loophead.png';
-import type {Tile} from '../core/world';
+import type {Tile, ResourceType} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
-import { resumePendingChainsFor } from '../core/tasks';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -41,9 +40,7 @@ export interface Hero {
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
     prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
-    carryingResources?: boolean; // indicator hero is carrying wood to warehouse (legacy)
-    carryingResourcesCount?: number; // number of wood deliveries completed (legacy cumulative deliveries)
-    carryingPayload?: { type: 'wood' | string; amount: number }; // new payload model for carried resources
+    carryingPayload?: { type: ResourceType; amount: number }; // new payload model for carried resources
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows
 }
@@ -97,8 +94,6 @@ function persistHeroes() {
             movement: h.movement ? {...h.movement} : undefined,
             currentTaskId: h.currentTaskId,
             prevPos: h.prevPos ? {...h.prevPos} : undefined,
-            carryingResources: h.carryingResources || false,
-            carryingResourcesCount: h.carryingResourcesCount || 0,
             carryingPayload: h.carryingPayload ? { ...h.carryingPayload } : undefined,
             pendingChain: h.pendingChain ? { ...h.pendingChain } : undefined,
             returnPos: h.returnPos ? { ...h.returnPos } : undefined,
@@ -144,8 +139,6 @@ function restoreHeroes() {
                 // If hero already at target, discard movement
                 if (hero.q === m.target.q && hero.r === m.target.r) {
                     hero.movement = undefined;
-                    // Attempt to resume any pending chain since arrival is completed
-                    resumePendingChainsFor(hero);
                     continue;
                 }
                 // Determine progress index based on current hero position within path.
@@ -162,8 +155,6 @@ function restoreHeroes() {
                 hero.movement = m;
             } else {
                 hero.movement = undefined;
-                // Try to resume pending chain when not moving
-                resumePendingChainsFor(hero);
             }
             // restore currentTaskId safely (may be stale if task was removed; taskStore will reconcile)
             if (typeof saved.currentTaskId === 'string') {
@@ -178,27 +169,18 @@ function restoreHeroes() {
                 hero.prevPos = undefined;
             }
 
-            // Legacy restore of carrying state: only set carryingResources if actively carrying (payload or explicit flag), not from delivery count
-            // Previous logic incorrectly set carryingResources from carryingResourcesCount (total delivered), causing false positives after reload.
             const savedHasPayload = saved.carryingPayload && typeof saved.carryingPayload.type === 'string' && typeof saved.carryingPayload.amount === 'number';
             if (savedHasPayload) {
                 hero.carryingPayload = { type: saved.carryingPayload.type, amount: saved.carryingPayload.amount };
             } else {
                 hero.carryingPayload = undefined;
             }
-            hero.carryingResources = !!saved.carryingResources || !!hero.carryingPayload; // derive from actual payload or persisted flag
-            if (typeof saved.carryingResourcesCount === 'number') hero.carryingResourcesCount = saved.carryingResourcesCount; // keep historical deliveries
-            // If flag set but no payload, clear to avoid blocking tasks
-            if (hero.carryingResources && !hero.carryingPayload) {
-                hero.carryingResources = false;
-            }
+
             if (saved.pendingChain && typeof saved.pendingChain.sourceTileId === 'string' && typeof saved.pendingChain.taskType === 'string') {
                 hero.pendingChain = { sourceTileId: saved.pendingChain.sourceTileId, taskType: saved.pendingChain.taskType };
             } else {
                 hero.pendingChain = undefined;
             }
-            // After restoring pendingChain, attempt resume if safe
-            resumePendingChainsFor(hero);
             if (saved.returnPos && typeof saved.returnPos.q === 'number' && typeof saved.returnPos.r === 'number') {
                 hero.returnPos = { q: saved.returnPos.q, r: saved.returnPos.r };
             } else {
@@ -296,7 +278,7 @@ export function updateHeroMovements(now: number) {
             continue;
         }
         if (stepsAdvanced < 0) continue; // not started yet
-        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1]!;
+        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1];
         hero.prevPos = prevCoord;
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue;
@@ -307,8 +289,9 @@ export function updateHeroMovements(now: number) {
                 persistHeroes();
                 continue;
             }
-            const dq = currentCoord.q - prevCoord.q;
-            const dr = currentCoord.r - prevCoord.r;
+            const prev = stepsAdvanced === 0 ? m.origin : m.path[stepsAdvanced - 1];
+            const dq = prev ? (currentCoord.q - prev.q) : 0;
+            const dr = prev ? (currentCoord.r - prev.r) : 0;
             let facing: Hero['facing'] = hero.facing;
             if (dr < 0) facing = 'up';
             else if (dr > 0) facing = 'down';
@@ -417,7 +400,6 @@ export function resetHeroes() {
         hero.currentTaskId = undefined;
         hero.prevPos = undefined;
         // Reset wood-carry state
-        hero.carryingResources = false;
         hero.carryingPayload = undefined;
         hero.returnPos = undefined;
         // Restore baseline stats from seeds to clear progression
@@ -443,3 +425,6 @@ export function ensureHeroSelected(focus: boolean = true) {
         if (focus) focusHero(hero);
     }
 }
+
+
+

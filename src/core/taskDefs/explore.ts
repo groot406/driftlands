@@ -1,5 +1,5 @@
 import {type Hero, persistHeroes, startHeroMovement} from '../../store/heroStore';
-import {discoverTile, hexDistance, type Tile, type TileNeighborMap} from '../world';
+import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import {TERRAIN_DEFS} from '../terrainDefs';
@@ -13,8 +13,7 @@ const exploreTask: TaskDefinition = {
     label: 'Explore',
     chainAdjacentSameTerrain: true,
     requiredXp(distance: number) {
-        // Reduced required XP to fit real-time (per-second) progression; original was very high for tick-based system.
-        return (distance * distance) * Math.max(1, distance * 6 * distance); // simple linear scaling for now
+        return (Math.pow(distance * 4, 3));
     },
     heroRate(hero: Hero, _tile) {
         return 10 * Math.max(1, hero.stats.xp);
@@ -24,11 +23,11 @@ const exploreTask: TaskDefinition = {
         const tilesInRing = 6 * distance;
         rewardedXp /= tilesInRing;
 
-        return {xp: Math.ceil(10 * (distance * distance) / (6 * distance)), hp: 0, atk: 0, spd: 0};
+        return {xp: Math.ceil(5 * (distance * distance) / (6 * distance)), hp: 0, atk: 0, spd: 0};
     },
 
     canStart(tile: Tile, hero: Hero): boolean {
-        return !hero.carryingPayload && hero.carryingResources === false && !tile.discovered;
+        return !hero.carryingPayload && !tile.discovered;
     },
 
     onStart(_tile, _participants) {
@@ -43,15 +42,7 @@ const exploreTask: TaskDefinition = {
 
         // After discovery, if terrain is non-walkable, move heroes back to their previous tile (if recorded)
         const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
-        if (def && def.walkable === false) {
-            for (const hero of participants) {
-                if (hero.prevPos) {
-                    const path = service.findWalkablePath(hero.q, hero.r, hero.prevPos.q, hero.prevPos.r);
-                    startHeroMovement(hero.id, path, hero.prevPos, 'explore');
-                }
-            }
-            persistHeroes();
-        } else {
+        if (def && def.walkable) {
             // Clear prevPos snapshot on successful, walkable discovery
             for (const hero of participants) {
                 hero.prevPos = undefined;
@@ -70,11 +61,12 @@ function continueExploration(tile: Tile, participants: Hero[]) {
         const nm = tile.neighbors;
         let closestUndiscovered: Tile|null = null;
 
-        let sides = ['a', 'b', 'c', 'd', 'e', 'f'];
+        let sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
         // shuffle sides to add some randomness to exploration direction
         sides = sides.sort(() => Math.random() - 0.5);
-        for (const side of sides as const) {
-            const neighbor = (nm as TileNeighborMap)[side];
+        for (const side of sides) {
+            if(!nm) break;
+            const neighbor = nm[side];
 
             if (neighbor && !neighbor.discovered) {
                 if (!closestUndiscovered) {

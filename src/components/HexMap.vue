@@ -37,7 +37,6 @@ import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
-import {TERRAIN_DEFS} from "../core/terrainDefs.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -262,12 +261,6 @@ watch(taskMenuTile, (val) => {
   // Recompute cluster when task menu tile changes
   computeTerrainCluster(val);
 });
-
-function resetHoverState() {
-  hoveredTile.value = null;
-  hoveredHero.value = null;
-  pathCoords.value = [];
-}
 
 onMounted(async () => {
   if (!canvas.value || !container.value) return;

@@ -12,12 +12,12 @@ const plantTreesTask: TaskDefinition = {
     label: 'Plant Trees',
     chainAdjacentSameTerrain: true,
     canStart(tile, hero) {
-        return !hero.carryingPayload && hero.carryingResources === false && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
+        return !hero.carryingPayload && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },
 
     requiredXp(_distance: number) {
         // Flat effort for now; slightly higher than chop to slow regrowth pacing.
-        return 500 * _distance;
+        return 3000 * _distance;
     },
     heroRate(hero: Hero) {
         // Use a mix of base + scaled by hero XP & ATK so experienced heroes replant faster.
