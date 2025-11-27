@@ -100,6 +100,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
 import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from './world';
 import { getTaskDefinition } from './taskRegistry';
+import {TERRAIN_DEFS} from "./terrainDefs.ts";
 
 function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskType: string }) {
     const source = tileIndex[pending.sourceTileId];
@@ -160,20 +161,18 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     }
 }
 
-// New: helper to resume pending auto-chain after reload
-export function resumePendingChainsFor(hero: Hero) {
-    const pending = hero.pendingChain;
-    if (!pending) return;
-    // Only attempt if not carrying and not already moving
-    if (hero.carryingPayload || hero.movement) return;
-    const before = hero.movement;
-    attemptDeferredChain(hero, pending);
-    // If a movement was scheduled, clear the pending flag to avoid repeated attempts
-    if (hero.movement && hero.movement !== before) {
-        hero.pendingChain = undefined;
-    }
-}
-
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
-    return listTaskDefinitions().filter(def => def.canStart(tile, hero));
+    let tasks = listTaskDefinitions().filter(def => def.canStart(tile, hero));
+    const terrainDef = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
+    if(tasks.length > 0 && terrainDef?.walkable) {
+        tasks.push({
+            key: 'walk',
+            label: 'Go here',
+            canStart: (_tile, _hero) => true,
+            requiredXp: (_distance: number) => 0,
+            heroRate: (_hero: Hero, _tile: Tile) => 1,
+        })
+    }
+
+    return tasks;
 }
