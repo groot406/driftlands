@@ -140,8 +140,10 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             water: 20
         },
         variations: [
-            {key: 'dirt2', weight: 20},
-            {key: 'dirt_rock', weight: 2},
+            {key: 'dirt_rocks', weight: 40},
+            {key: 'dirt_big_rock', weight: 2},
+            {key: 'dirt_tilled_draught', weight: 0},
+            {key: 'dirt_tilled', weight: 0},
         ]
     },
     snow: {

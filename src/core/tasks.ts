@@ -38,7 +38,7 @@ export interface TaskDefinition {
     // Optional base reward resources for participants collectively (split proportionally)
     totalRewardedResources?(distance: number): { type: ResourceType, amount: number };
     repeatTask?: boolean; // whether task can be repeated on same tile
-    chainAdjacentSameTerrain?: boolean; // optional flag to auto-chain task to neighboring same-terrain tiles
+    chainAdjacentSameTerrain?: boolean|Function; // optional flag to auto-chain task to neighboring same-terrain tiles
 }
 
 export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;
@@ -108,6 +108,14 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     const def = getTaskDefinition(pending.taskType);
 
     if (!def?.chainAdjacentSameTerrain) return;
+
+    let canChain = false;
+    if (typeof def.chainAdjacentSameTerrain === 'function') {
+        canChain = def.chainAdjacentSameTerrain(source, hero);
+    } else {
+        canChain = true;
+    }
+    if(!canChain) return;
 
     // Do not start if hero still busy or carrying
     if (hero.carryingPayload || hero.movement) return;
