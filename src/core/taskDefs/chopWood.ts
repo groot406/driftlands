@@ -9,7 +9,7 @@ const chopWoodTask: TaskDefinition = {
     chainAdjacentSameTerrain: true,
 
     canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'forest' && !tile.variant;
+        return !hero.carryingPayload && tile.terrain === 'forest' && (!tile.variant || tile.variant === '');
     },
 
     requiredXp(_distance: number) {

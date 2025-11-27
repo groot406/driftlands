@@ -177,7 +177,9 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     rewardResourcesToParticipants(inst, participants);
 
     def.onComplete?.(tile, inst, participants);
-    autoChainInCluster(inst, tile, participants);
+
+    // Auto-chain to adjacent tiles in cluster after short delay, to allow for any movement to initiate first
+    setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
 
     cleanupCompletedTasks();
 }

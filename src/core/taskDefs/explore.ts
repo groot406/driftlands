@@ -33,7 +33,8 @@ const exploreTask: TaskDefinition = {
     onStart(_tile, _participants) {
         if(_tile.discovered) {
             // Tile already discovered; abort explore task implicitly by not setting any special flags.
-            continueExploration(_tile, _participants);
+            setTimeout(() => continueExploration(_tile, _participants), 1500);
+
         }
         return;
     },
@@ -50,7 +51,7 @@ const exploreTask: TaskDefinition = {
             persistHeroes();
         }
 
-        continueExploration(tile, participants);
+        setTimeout(() => continueExploration(tile, participants), 1500);
         persistHeroes();
     },
 };
