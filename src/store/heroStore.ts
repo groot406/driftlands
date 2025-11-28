@@ -326,7 +326,6 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
     if (!path.length) return; // nothing to do
 
     if(hero.delayedMovementTimer) {
-        console.log('clearing delayedMovementTimer for hero', hero.id);
         clearTimeout(hero.delayedMovementTimer);
         hero.delayedMovementTimer = undefined;
     }
