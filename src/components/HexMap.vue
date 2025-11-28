@@ -66,7 +66,7 @@ const hoveredTask = ref<TaskDefinition | null>(null);
 // Service instance
 const service = new HexMapService();
 
-// NEW: Named resize/orientation handlers so we can properly remove them.
+// Named resize/orientation handlers so we can properly remove them.
 function onWindowResize() {
   service.resize();
   updateContainerSize();

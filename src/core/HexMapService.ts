@@ -88,7 +88,7 @@ export class HexMapService {
 
     private _tileAnimStart = performance.now();
 
-    // NEW: stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
+    //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
     private _sortedHeroes: Hero[] = [];
 
     // Pathfinding statics
