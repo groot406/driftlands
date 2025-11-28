@@ -9,7 +9,7 @@ import { registerExistingAgingTiles } from './growth';
 import { terrainPositions } from './terrainRegistry';
 
 export type Terrain = TerrainKey;
-export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact';
+export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact' | 'water';
 
 export interface Tile {
     id: string;
@@ -338,6 +338,7 @@ export function loadWorld(tileData: Tile[]) {
         indexTile(t);
     }
     for (const t of tiles) {
+        if (t.terrain) terrainPositions[t.terrain].add(t.id);
         if (!t.discovered) continue;
         const legacy = (t as any).neighbors;
         if (Array.isArray(legacy)) {

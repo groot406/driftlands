@@ -1,5 +1,5 @@
 import {reactive} from 'vue';
-import type {TaskDefinition, TaskInstance, TaskType} from '../core/tasks';
+import type {TaskDefinition, TaskInstance, TaskType, ResourceAmount} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
 import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
 import type {Hero, HeroStats} from './heroStore';
@@ -7,6 +7,8 @@ import {heroes, startHeroMovement} from './heroStore';
 import {idleStore} from './idleStore';
 import {HexMapService} from '../core/HexMapService';
 import {terrainPositions} from "../core/terrainRegistry.ts";
+import {resourceInventory} from './resourceStore';
+import {TERRAIN_DEFS} from '../core/terrainDefs';
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -58,13 +60,99 @@ export function detachHeroFromCurrentTask(hero: Hero) {
     }
 }
 
+// Check if hero needs to fetch resources and initiate the fetch if needed
+function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: ResourceAmount[], hero: Hero, taskType: TaskType): boolean {
+    // If hero is already carrying required resource, they're ready to work
+    if (hero.carryingPayload) {
+        const carrying = hero.carryingPayload;
+        const hasRequired = requiredResources.some(
+            req => req.type === carrying.type && carrying.amount >= req.amount
+        );
+        if (hasRequired) {
+            return false; // Hero has resource, can start task
+        }
+    }
+
+    // Find the first required resource and fetch location
+    for (const resource of requiredResources) {
+        let fetchLocation: { q: number; r: number } | null = null;
+        let waterSourceTileId: string | undefined;
+
+        if (resource.type === 'water') {
+            // For water, find nearest walkable tile adjacent to water
+            const waterLocation = findNearestWaterTile(hero.q, hero.r);
+            if (waterLocation) {
+                fetchLocation = { q: waterLocation.q, r: waterLocation.r };
+                waterSourceTileId = waterLocation.waterTileId;
+            }
+        } else {
+            // For other resources, find nearest warehouse with the resource
+            fetchLocation = findNearestWarehouseWithResource(hero.q, hero.r, resource.type, resource.amount);
+        }
+
+        if (fetchLocation) {
+            // Find path to fetch location
+            const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r);
+            if (pathToFetch && pathToFetch.length > 0) {
+                // Store task info so hero can return after fetching
+                hero.pendingChain = {
+                    sourceTileId: targetTile.id,
+                    taskType: taskType // Store the actual task type to start later
+                };
+                hero.returnPos = { q: targetTile.q, r: targetTile.r };
+
+                // Mark hero as preparing to fetch this resource
+                // Store negative amount to indicate needed amount
+                hero.carryingPayload = {
+                    type: resource.type as any,
+                    amount: -resource.amount,
+                    ...(waterSourceTileId && { waterSourceTileId }) // Store water source if applicable
+                } as any;
+
+                // Start movement to fetch location
+                startHeroMovement(hero.id, pathToFetch, fetchLocation, taskType);
+
+                return true; // Resource fetch initiated
+            }
+        }
+    }
+
+    return false; // No fetch needed or no path found
+}
+
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
-    // Prevent starting a new task while carrying resources
-    if (starter.carryingPayload) return null;
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
     if (!def.canStart(tile, starter)) return null;
+
+    // Check if task requires resources
+    const distance = hexDistance(tile.q, tile.r);
+    const requiredResources = def.requiredResources?.(distance);
+    if (requiredResources && requiredResources.length > 0) {
+        // Check if hero is carrying the required resource
+        if (starter.carryingPayload) {
+            const carrying = starter.carryingPayload;
+            const hasRequired = requiredResources.some(
+                req => req.type === carrying.type && carrying.amount >= req.amount
+            );
+            if (hasRequired) {
+                // Hero has the resource, consume it and start task
+                starter.carryingPayload = undefined;
+                starter.returnPos = undefined;
+            } else {
+                // Hero is carrying wrong resource, can't start
+                return null;
+            }
+        } else {
+            // Hero doesn't have resource, initiate fetch
+            checkAndInitiateResourceFetch(tile, requiredResources, starter, type);
+            return null;
+        }
+    } else {
+        // No resources required, but prevent starting if carrying something
+        if (starter.carryingPayload) return null;
+    }
 
     if (!taskStore.tasksByTile[tile.id]) {
         taskStore.tasksByTile[tile.id] = {};
@@ -72,7 +160,6 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 
     const tasksForTile = taskStore.tasksByTile[tile.id]!;
     if (tasksForTile[type]) return taskStore.taskIndex[tasksForTile[type]] || null;
-    const distance = hexDistance(tile.q, tile.r);
     const nowMs = Date.now();
     const inst: TaskInstance = {
         id: makeId(taskStore),
@@ -259,6 +346,85 @@ function findNearestTowncenter(q: number, r: number) {
     }
 
     return best;
+}
+
+// Find nearest warehouse (towncenter) that has the required resource in stock
+function findNearestWarehouseWithResource(q: number, r: number, resourceType: string, amount: number): { q: number; r: number } | null {
+    // Check if warehouse has enough resources
+    if (resourceInventory[resourceType as keyof typeof resourceInventory] < amount) {
+        return null;
+    }
+
+    let best = null;
+    let bestDist = Infinity;
+
+    // Check origin (0,0)
+    const originTile = tileIndex[ensureTileExists(0, 0).id];
+    if (originTile && originTile.terrain === 'towncenter') {
+        const dq = Math.abs(0 - q);
+        const dr = Math.abs(0 - r);
+        const ds = Math.abs(0 - (-q - r));
+        bestDist = Math.max(dq, dr, ds);
+        best = { q: 0, r: 0 };
+    }
+
+    // Check all towncenters
+    for (const id of terrainPositions.towncenter) {
+        const t = tileIndex[id];
+        if (!t) continue;
+        const dq = Math.abs(t.q - q);
+        const dr = Math.abs(t.r - r);
+        const ds = Math.abs((-t.q - t.r) - (-q - r));
+        const dist = Math.max(dq, dr, ds);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = { q: t.q, r: t.r };
+        }
+    }
+
+    return best;
+}
+
+// Find nearest walkable tile adjacent to water
+function findNearestWaterTile(q: number, r: number): { q: number; r: number; waterTileId: string } | null {
+    let best = null;
+    let bestDist = Infinity;
+    let bestWaterTileId = '';
+
+    // Check all water tiles
+    for (const id of terrainPositions.water || []) {
+        const waterTile = tileIndex[id];
+        if (!waterTile || !waterTile.discovered) continue;
+
+        // Check neighbors of water tile for walkable tiles
+        const neighbors = waterTile.neighbors ?? ensureTileExists(waterTile.q, waterTile.r).neighbors;
+        if (!neighbors) continue;
+
+        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
+            const neighborTile = neighbors[side];
+            if (!neighborTile || !neighborTile.discovered) continue;
+
+            // Check if neighbor is walkable
+            const terrain = neighborTile.terrain;
+            if (!terrain) continue;
+            const terrainDef = (TERRAIN_DEFS as any)[terrain];
+            if (!terrainDef?.walkable) continue;
+
+            // Calculate distance from hero to this walkable neighbor
+            const dq = Math.abs(neighborTile.q - q);
+            const dr = Math.abs(neighborTile.r - r);
+            const ds = Math.abs((-neighborTile.q - neighborTile.r) - (-q - r));
+            const dist = Math.max(dq, dr, ds);
+
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = { q: neighborTile.q, r: neighborTile.r };
+                bestWaterTileId = waterTile.id;
+            }
+        }
+    }
+
+    return best ? { ...best, waterTileId: bestWaterTileId } : null;
 }
 
 

@@ -227,6 +227,8 @@ function computeTerrainCluster(base: Tile | null) {
   clusterBoundaryTiles.value = [];
   clusterTiles.value.clear();
 
+  if (!base || !base.discovered || !base.terrain) return;
+
   // only if hoveredTask has chainAdjacentSameTerrain
   if (!hoveredTask.value) return;
   if (!hoveredTask.value.chainAdjacentSameTerrain) return;
@@ -235,7 +237,6 @@ function computeTerrainCluster(base: Tile | null) {
     if (!hoveredTask.value.chainAdjacentSameTerrain(base)) return;
   }
 
-  if (!base || !base.discovered || !base.terrain) return;
   const terrain = base.terrain;
   const maxSize = 500; // safety cap
   const queue: Tile[] = [base];

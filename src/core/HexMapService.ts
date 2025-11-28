@@ -901,10 +901,10 @@ export class HexMapService {
                 const iconX = destX + (this.heroFrameSize * this.heroZoom) / 2;
                 ctx.beginPath();
                 ctx.arc(iconX, iconY, 14, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(29,29,33,0.95)'; // wood colored circle
+                ctx.fillStyle = h.carryingPayload.amount > 0 ?  'rgba(29,29,33,0.95)' : 'rgba(122,122,122,0.55)';
                 ctx.fill();
                 ctx.lineWidth = 2;
-                ctx.strokeStyle = 'rgba(70,70,70,0.9)';
+                ctx.strokeStyle = h.carryingPayload.amount > 0 ? 'rgba(70,70,70,0.9)' : 'rgba(75,0,0,0.85)';
                 ctx.stroke();
                 ctx.font = '700 16px system-ui';
                 ctx.fillStyle = '#fff6d7';
@@ -924,6 +924,7 @@ export class HexMapService {
         food: '🍎',
         crystal: '🔮',
         artifact: '🗿',
+        water: '💧',
     };
 
     private getTileOverlayKey(t: Tile): string | null {
