@@ -118,10 +118,6 @@ function ensureTileNeighbors(tile: Tile): TileNeighborMap {
     return tile.neighbors!;
 }
 
-export function getNeighborBySide(tile: Tile, side: TileSide): Tile {
-    return (tile.neighbors ?? ensureTileNeighbors(tile))[side];
-}
-
 export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
     if (radius === 1) {
         const nm = tile.neighbors ?? ensureTileNeighbors(tile);

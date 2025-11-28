@@ -37,6 +37,7 @@ export function getEffectiveAgeMs(tile: Tile, growth: { ageMs?: number; ageMsRan
 
 export function updateTileGrowth(nowMs: number = Date.now()) {
     if (agingTiles.size === 0) return;
+
     const toRemove: string[] = [];
     for (const id of agingTiles) {
         const t = tileIndex[id];
@@ -87,10 +88,12 @@ export function fastForwardGrowthOffline(lastMs: number, nowMs: number) {
         if (!t.discovered || !t.terrain) continue;
         let currentVariant = t.variant;
         if (!currentVariant) continue;
+
         const def = TERRAIN_DEFS[t.terrain];
         const getVarDef = (key: string | null) => def?.variations?.find(v => v.key === key);
         let vDef = getVarDef(currentVariant);
         if (!vDef?.growth) continue;
+
         const startMs = t.variantSetMs ?? lastMs; // if missing, assume started at lastMs
         // Progress already accumulated up to lastMs
         let remainingMs = elapsed;

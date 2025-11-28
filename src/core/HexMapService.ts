@@ -134,7 +134,7 @@ export class HexMapService {
         this._layerCtx = this._layerCanvas.getContext('2d');
         if (this._layerCtx) this._layerCtx.imageSmoothingEnabled = false;
         this.adaptiveCameraRadius();
-        // NEW: recenter camera if entire world comfortably fits inside current camera radius.
+        // recenter camera if entire world comfortably fits inside current camera radius.
         this.recenterIfWorldFits();
         // Ensure current target is clamped after potential radius change.
         moveCamera(camera.targetQ, camera.targetR);
@@ -177,20 +177,15 @@ export class HexMapService {
         if (!selectedId || !hoveredTile) return [];
         const hero = heroes.find(h => h.id === selectedId);
         if (!hero) return [];
-        // Block path preview if hero stands on an undiscovered tile and hovered tile also undiscovered
-        const originTile = tileIndex[axialKey(hero.q, hero.r)];
-        if (originTile && !originTile.discovered && !hoveredTile.discovered) {
-            const prev = hero.prevPos;
-            const allow = prev && this.axialDistance(prev.q, prev.r, hoveredTile.q, hoveredTile.r) === 1;
-            if (!allow) return [];
-        }
+
         // Only allow path preview if hero is idle
         if (!this.isHeroIdle(hero)) return [];
+
         if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
         return this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
     }
 
-    // New: expose pathfinding for external movement start
+    // expose pathfinding for external movement start
     public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number, maxNodes = 9999): PathCoord[] {
         interface PathNode {
             q: number;
@@ -477,7 +472,7 @@ export class HexMapService {
                 ctx.fillText(String(centerDist), x - 2, y - 2);
                 ctx.restore();
             }
-            // NEW: collect optional overlay second layer (only for discovered tiles)
+            // collect optional overlay second layer (only for discovered tiles)
             if (t.discovered) {
                 const overlayKey = this.getTileOverlayKey(t);
                 if (overlayKey) {
@@ -489,7 +484,7 @@ export class HexMapService {
                     }
                 }
             }
-            // NEW: active task highlight overlay (after drawing base tile)
+            // active task highlight overlay (after drawing base tile)
             const activeTasksForTile = taskStore.tasksByTile[t.id];
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
@@ -1072,7 +1067,7 @@ export class HexMapService {
         updateCameraRadius(targetRadius, inner);
     }
 
-    // NEW: Recenter camera when world smaller than view radius so map stays centered on resize.
+    // Recenter camera when world smaller than view radius so map stays centered on resize.
     private recenterIfWorldFits() {
         // Margin so we don't over-recenter for worlds just barely smaller than radius.
         const margin = 3;

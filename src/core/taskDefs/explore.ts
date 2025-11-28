@@ -2,7 +2,6 @@ import {type Hero, persistHeroes, startHeroMovement} from '../../store/heroStore
 import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
-import {TERRAIN_DEFS} from '../terrainDefs';
 import {HexMapService} from '../HexMapService';
 
 const service = new HexMapService();
@@ -42,16 +41,6 @@ const exploreTask: TaskDefinition = {
     },
     onComplete(tile, _instance, participants) {
         discoverTile(tile);
-
-        // After discovery, if terrain is non-walkable, move heroes back to their previous tile (if recorded)
-        const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
-        if (def && def.walkable) {
-            // Clear prevPos snapshot on successful, walkable discovery
-            for (const hero of participants) {
-                hero.prevPos = undefined;
-            }
-            persistHeroes();
-        }
 
         let timer = setTimeout(() => continueExploration(tile, participants), 1500);
         for (const hero of participants) {

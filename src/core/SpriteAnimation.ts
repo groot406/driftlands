@@ -11,7 +11,6 @@ export interface AnimationDef {
   frames: number; // number of frames in the row for this animation
   frameDuration: number; // ms per frame
   cooldown?: number; // optional pause after one cycle (ms)
-  // Horizontal flip is handled externally (e.g., for left using right row)
 }
 
 export interface AnimationSetOptions {
@@ -28,14 +27,5 @@ export class SpriteAnimationSet {
   }
   get(name: string): AnimationDef | undefined { return this._map[name]; }
   list(): AnimationDef[] { return Object.values(this._map); }
-}
-
-// Utility to compute next frame index given time; kept simple (looping)
-export function computeFrame(anim: AnimationDef, elapsedMs: number): number {
-  if (anim.frames <= 1) return 0;
-  const cycle = anim.frames * anim.frameDuration + (anim.cooldown || 0);
-  const inCycle = elapsedMs % cycle;
-  if (inCycle >= anim.frames * anim.frameDuration) return anim.frames - 1; // hold last during cooldown
-  return Math.floor(inCycle / anim.frameDuration);
 }
 

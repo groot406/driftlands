@@ -4,7 +4,7 @@ import santa from '../assets/heroes/santa.png';
 import boy from '../assets/heroes/boy.png';
 import girl from '../assets/heroes/girl.png';
 import loophead from '../assets/heroes/loophead.png';
-import {getNeighborBySide, getTilesInRadius, type ResourceType, type Tile} from '../core/world';
+import {getTilesInRadius, type ResourceType, type Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
@@ -40,7 +40,6 @@ export interface Hero {
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
-    prevPos?: { q: number; r: number }; // previous tile before starting current task (for retrace on invalid discovery)
     carryingPayload?: { type: ResourceType; amount: number }; // new payload model for carried resources
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows
@@ -80,8 +79,6 @@ function migrateLegacyIfNeeded(worldId: string) {
         const targetKey = heroKey(worldId);
         if (localStorage.getItem(targetKey)) return; // already has world-specific save
         localStorage.setItem(targetKey, legacyRaw);
-        // Optionally keep legacy to allow fallback; remove if we want one-time migration
-        // localStorage.removeItem(LEGACY_HERO_KEY);
     } catch {
     }
 }
@@ -98,7 +95,6 @@ function persistHeroes() {
             ...h,
             movement: h.movement ? {...h.movement} : undefined,
             currentTaskId: h.currentTaskId,
-            prevPos: h.prevPos ? {...h.prevPos} : undefined,
             carryingPayload: h.carryingPayload ? {...h.carryingPayload} : undefined,
             pendingChain: h.pendingChain ? {...h.pendingChain} : undefined,
             returnPos: h.returnPos ? {...h.returnPos} : undefined,
@@ -171,12 +167,6 @@ function restoreHeroes() {
             } else {
                 hero.currentTaskId = undefined;
             }
-            // restore previous position snapshot if present
-            if (saved.prevPos && typeof saved.prevPos.q === 'number' && typeof saved.prevPos.r === 'number') {
-                hero.prevPos = {q: saved.prevPos.q, r: saved.prevPos.r};
-            } else {
-                hero.prevPos = undefined;
-            }
 
             const savedHasPayload = saved.carryingPayload && typeof saved.carryingPayload.type === 'string' && typeof saved.carryingPayload.amount === 'number';
             if (savedHasPayload) {
@@ -246,7 +236,6 @@ export function updateHeroMovements(now: number) {
             // Current coord = last fully completed tile (origin if none yet)
             const currentCoord = (completedSteps === 0) ? m.origin : m.path[completedSteps - 1]!;
             const nextCoord = m.path[completedSteps]; // in-progress destination (not yet reached)
-            hero.prevPos = currentCoord;
 
             // Validate destination walkability ahead of time
             if (nextCoord) {
@@ -290,8 +279,7 @@ export function updateHeroMovements(now: number) {
             continue;
         }
         if (stepsAdvanced < 0) continue; // not started yet
-        const prevCoord = (stepsAdvanced === 0) ? m.origin : m.path[stepsAdvanced - 1];
-        hero.prevPos = prevCoord;
+
         const currentCoord = m.path[stepsAdvanced];
         if (!currentCoord) continue;
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
@@ -434,7 +422,6 @@ export function resetHeroes() {
         hero.facing = 'down';
         hero.movement = undefined;
         hero.currentTaskId = undefined;
-        hero.prevPos = undefined;
         // Reset wood-carry state
         hero.carryingPayload = undefined;
         hero.returnPos = undefined;

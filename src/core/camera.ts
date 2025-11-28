@@ -1,20 +1,19 @@
 import {reactive} from 'vue';
 import {getMaxRadiusFor} from './world';
-import { isPaused } from '../store/uiStore';
+import {isPaused} from '../store/uiStore';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
-export const MOVE_SPEED = 50; // axial units per second base
 export const HEX_SIZE = 34;
 export const HEX_SPACE = 2;
+export const MOVE_SPEED = 50;                   // axial units per second base
 
 // Interaction constants
-const DRAG_THRESHOLD = 4; // px before treating pointer as drag
-const VELOCITY_SAMPLE_WINDOW_MS = 120; // window for throw velocity sampling
-const FRICTION = 8; // exponential friction factor
-const MAX_THROW_SPEED = 100; // axial units per second cap
+const DRAG_THRESHOLD = 4;                       // px before treating pointer as drag
+const VELOCITY_SAMPLE_WINDOW_MS = 120;        // window for throw velocity sampling
+const FRICTION = 8;                             // exponential friction factor
+const MAX_THROW_SPEED = 100;                  // axial units per second cap
 
-// Precomputed factors for axial <-> pixel transforms
 const SQRT3 = Math.sqrt(3);
 export const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
 export const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
@@ -28,7 +27,6 @@ export interface CameraState {
     innerRadius: number;
     velQ: number;
     velR: number;
-    // instantaneous smoothed movement speed in axial units / second (used for motion blur)
     speed: number;
 }
 
@@ -62,7 +60,7 @@ export function pixelToAxial(x: number, y: number) {
     const dr = Math.abs(rr - r);
     const ds = Math.abs(rs - s);
     if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs; // else s adjusts implicitly
-    return { q: rq, r: rr };
+    return {q: rq, r: rr};
 }
 
 // Hex distance between two axial coordinates
@@ -81,7 +79,7 @@ const samples: { t: number; x: number; y: number }[] = [];
 
 async function clampCameraTargets() {
     const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
-    if(maxRad < 0) {
+    if (maxRad < 0) {
         camera.targetQ = 0;
         camera.targetR = 0;
         return;
@@ -99,23 +97,28 @@ async function clampCameraTargets() {
 
 function pixelDeltaToAxial(dx: number, dy: number) {
     const dr = dy / HEX_Y_FACTOR;
-    const dq = (dx / HEX_X_FACTOR) - dr / 2; // derived from x = factor*(q + r/2)
+    const dq = (dx / HEX_X_FACTOR) - dr / 2;
     return {dq, dr};
 }
 
 function computeThrowVelocity() {
     if (samples.length < 2) return;
+
     const first = samples[0]!;
     const last = samples[samples.length - 1]!;
+
     const dt = (last.t - first.t) / 1000;
     if (dt <= 0) return;
+
     const dx = last.x - first.x;
     const dy = last.y - first.y;
     const {dq, dr} = pixelDeltaToAxial(dx, dy);
     let vq = -dq / dt; // negative to continue map motion
     let vr = -dr / dt;
+
     const speed = Math.sqrt(vq * vq + vr * vr);
     if (speed < 15) return; // ignore tiny throws
+
     if (speed > MAX_THROW_SPEED) {
         const s = MAX_THROW_SPEED / speed;
         vq *= s;
@@ -126,7 +129,6 @@ function computeThrowVelocity() {
     camera.velR = vr;
 }
 
-// Pointer handlers
 export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     function pointerDown(e: PointerEvent) {
         if (isPaused()) { // ignore presses when paused
@@ -146,22 +148,26 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     }
 
     function pointerMove(e: PointerEvent) {
-        if (isPaused()) return; // no camera dragging while paused
+        if (isPaused()) return;
         if (!mouseDownRef.value) return;
+
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
         const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
+
         if (!dragging && maxRad >= 0) {
             const dist2 = (e.clientX - dragStartX) ** 2 + (e.clientY - dragStartY) ** 2;
             if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) dragging = true;
             if (dragging) dragged = true;
         }
+
         if (dragging) {
             const {dq, dr} = pixelDeltaToAxial(dx, dy);
             camera.targetQ -= dq; // subtract so map moves with pointer drag
             camera.targetR -= dr;
             clampCameraTargets();
         }
+
         lastX = e.clientX;
         lastY = e.clientY;
         const now = performance.now();
@@ -200,7 +206,10 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 
 // Keyboard handlers
 const heldKeys = new Set<string>();
-export function isKeyboardNavigating(): boolean { return heldKeys.size > 0; }
+
+export function isKeyboardNavigating(): boolean {
+    return heldKeys.size > 0;
+}
 
 export function keyDown(e: KeyboardEvent) {
     if (isPaused()) return; // suppress movement key capture while paused
@@ -226,7 +235,6 @@ export async function animateCamera() {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     if (isPaused()) {
-        // When menu open, suppress input sampling but continue inertial motion decay
         heldKeys.clear();
         camera.velQ = camera.velQ * 0.9; // gentle decay
         camera.velR = camera.velR * 0.9;
@@ -248,6 +256,7 @@ export async function animateCamera() {
             dqInput += 1;
         }
     }
+
     if (dqInput !== 0 || drInput !== 0) {
         const mag = Math.sqrt(dqInput * dqInput + drInput * drInput);
         if (mag > 0) {
@@ -261,6 +270,7 @@ export async function animateCamera() {
         camera.velQ = 0;
         camera.velR = 0; // cancel inertial velocity on active input
     }
+
     if (camera.velQ !== 0 || camera.velR !== 0) {
         camera.targetQ += camera.velQ * dt;
         camera.targetR += camera.velR * dt;
@@ -271,6 +281,7 @@ export async function animateCamera() {
         if (Math.abs(camera.velQ) < 0.02) camera.velQ = 0;
         if (Math.abs(camera.velR) < 0.02) camera.velR = 0;
     }
+
     const dq = camera.targetQ - camera.q;
     const dr = camera.targetR - camera.r;
     const dist = Math.sqrt(dq * dq + dr * dr);
@@ -285,6 +296,7 @@ export async function animateCamera() {
     const moveDQ = camera.q - lastQ;
     const moveDR = camera.r - lastR;
     const instSpeed = dt > 0 ? Math.sqrt(moveDQ * moveDQ + moveDR * moveDR) / dt : 0;
+
     // Exponential smoothing for nicer blur transitions
     camera.speed = camera.speed * 0.85 + instSpeed * 0.15;
     lastQ = camera.q;
@@ -312,8 +324,7 @@ export function updateCameraRadius(radius: number, innerRadius?: number) {
     const r = Math.max(1, Math.round(radius));
     camera.radius = r;
     if (innerRadius !== undefined) {
-        const inner = Math.max(1, Math.min(r - 1, Math.round(innerRadius)));
-        camera.innerRadius = inner;
+        camera.innerRadius = Math.max(1, Math.min(r - 1, Math.round(innerRadius)));;
     } else if (camera.innerRadius >= r) {
         camera.innerRadius = Math.max(1, Math.round(r * 0.35));
     }
