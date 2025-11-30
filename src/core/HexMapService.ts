@@ -18,6 +18,7 @@ import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './her
 import {taskStore} from '../store/taskStore';
 import type {TaskInstance} from './tasks';
 import { worldOuterRadius, type ResourceType } from './world';
+import {getTextIndicators} from "./textIndicators.ts";
 
 // Tile assets (importing here to keep service encapsulated)
 // Remove individual static imports for each tile image
@@ -50,6 +51,7 @@ interface DrawOptions {
     clusterBoundaryTiles?: Tile[]; // boundary tiles of same-terrain cluster for menu highlighting
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
 }
+
 
 export class HexMapService {
 
@@ -85,6 +87,8 @@ export class HexMapService {
 
     private _heroAnimStart = performance.now();
     private _lastHeroFrame = 0;
+
+    private _textIndicators: TextIndicator[] = [];
 
     private _tileAnimStart = performance.now();
 
@@ -720,6 +724,7 @@ export class HexMapService {
 
         // Heroes & overlays combined layering
         this.drawHeroes(ctx, opts.hoveredHero, overlayRecords);
+        this.drawTextIndicators(ctx);
         ctx.restore();
     }
 
@@ -1037,6 +1042,31 @@ export class HexMapService {
         }
     }
 
+    private drawTextIndicators(ctx: CanvasRenderingContext2D) {
+        for (const ind of getTextIndicators()) {
+            const dist = hexDistance(camera, {q: ind.position.q, r: ind.position.r});
+            if (dist > camera.radius + 1) continue;
+
+            const {x, y} = axialToPixel(ind.position.q, ind.position.r);
+            const progress = Math.min(1, (performance.now() - ind.created) / ind.duration);
+            const floatY = y - HEX_SIZE - 14 - (progress * 32); // float up
+            const alpha = 1 - progress;
+
+            console.log('draw indicator');
+            console.log(x, floatY, alpha);
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, alpha);
+            ctx.font = 'bold 14px system-ui, sans-serif';
+            ctx.fillStyle = ind.color || '#ffe066';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = '#222';
+            ctx.shadowBlur = 4;
+            ctx.fillText(ind.text, x + ind.position?.currentOffset.x - 10, floatY + ind.position?.currentOffset.y);
+            ctx.restore();
+        }
+    }
+
     private async ensureHeroAssets() {
         const unique = Array.from(new Set(heroes.map(h => h.avatar)));
         const promises = unique.map(src => new Promise<void>(resolve => {
@@ -1196,10 +1226,12 @@ export class HexMapService {
                 if (!variantOffset && def?.heroOffset) variantOffset = def.heroOffset;
             }
             const multiOffset = mutliplayerTileOffset[h.id] || {x: 0, y: 0};
-            result[h.id] = {
+            let offset = {
                 x: multiOffset.x + (variantOffset ? variantOffset.x : 0),
                 y: multiOffset.y + (variantOffset ? variantOffset.y : 0),
-            };
+            }
+            result[h.id] = offset;
+            h.currentOffset = offset;
         }
         return result;
     }
@@ -1233,5 +1265,14 @@ export class HexMapService {
         }
         const baseKey = def?.assetKey || t.terrain;
         return this.tileImgSources[baseKey] ? baseKey : null;
+    }
+
+    public addTextIndicator(q: number, r: number, text: string, color = '#ffe066', duration = 1200) {
+        this._textIndicators.push({q, r, text, color, created: performance.now(), duration});
+    }
+
+    private updateTextIndicators() {
+        const now = performance.now();
+        this._textIndicators = this._textIndicators.filter(ind => now - ind.created < ind.duration);
     }
 }

@@ -38,6 +38,7 @@ import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
+import {getTextIndicators} from "../core/textIndicators.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -66,7 +67,6 @@ const hoveredTask = ref<TaskDefinition | null>(null);
 // Service instance
 const service = new HexMapService();
 
-// Named resize/orientation handlers so we can properly remove them.
 function onWindowResize() {
   service.resize();
   updateContainerSize();
@@ -97,7 +97,7 @@ function animationLoop() {
     pathCoords: pathCoords.value,
     taskMenuTile: taskMenuTile.value,
     clusterBoundaryTiles: clusterBoundaryTiles.value,
-    clusterTileIds: clusterTiles.value
+    clusterTileIds: clusterTiles.value,
   });
   rafId = requestAnimationFrame(animationLoop);
 }

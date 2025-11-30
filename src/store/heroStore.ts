@@ -44,6 +44,7 @@ export interface Hero {
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows
     delayedMovementTimer?: ReturnType<typeof setTimeout>;
+    currentOffset?: { x: number; y: number }; // store current pixel offset for rendering hero related things
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)

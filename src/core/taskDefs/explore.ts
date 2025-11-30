@@ -3,6 +3,7 @@ import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import {HexMapService} from '../HexMapService';
+import {addTextIndicator} from "../textIndicators.ts";
 
 const service = new HexMapService();
 
@@ -41,7 +42,13 @@ const exploreTask: TaskDefinition = {
     },
     onComplete(tile, _instance, participants) {
         discoverTile(tile);
-
+        // Show XP indicator for each participant
+        for (const hero of participants) {
+            const xp = this.totalRewardedStats(hexDistance(hero.q, hero.r)).xp;
+            if (xp > 0) {
+                addTextIndicator(hero, `+${xp}`, '#ffff00', 2000);
+            }
+        }
         let timer = setTimeout(() => continueExploration(tile, participants), 1500);
         for (const hero of participants) {
             hero.delayedMovementTimer = timer;
