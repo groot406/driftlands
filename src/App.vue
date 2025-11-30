@@ -22,4 +22,8 @@ body, html {
   overflow:hidden;
   user-select: none;
 }
+
+.pixelfont {
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+}
 </style>

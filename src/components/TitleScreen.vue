@@ -3,10 +3,10 @@
     <!-- Procedural scrolling blurred hex background -->
     <TitleBackground :move="true" />
     <!-- Foreground content -->
-    <div class="flex flex-col items-center gap-8 p-6 rounded-xl z-10 bg-black/10 backdrop-blur-md border-2 border-white/20 -m-2">
-      <h1 class="text-5xl font-bold tracking-wide">Driftlands</h1>
-      <p class="text-white max-w-md text-center">Windswept hexes. Hidden secrets. This is only the beginning.</p>
-      <div class="flex flex-col gap-3 min-w-[240px]">
+    <div class="flex flex-col items-center gap-8 p-6 rounded-xl z-10 bg-black/10 backdrop-blur-md border-2 border-white/20 -m-2 pixelfont">
+      <h1 class="text-2xl font-bold tracking-wide">Driftlands</h1>
+      <p class="text-white max-w-md text-center text-xs text-opacity-60">Windswept hexes. Hidden secrets. This is only the beginning.</p>
+      <div class="flex flex-col gap-3 min-w-[240px] text-sm">
         <button class="menu-btn" @click="startNewGame">New Game</button>
         <button class="menu-btn" :disabled="!uiStore.canContinue" @click="continueGame">Continue</button>
         <button class="menu-btn" @click="showSettings" disabled>Settings</button>
@@ -27,7 +27,7 @@ function showCredits() {}
 
 <style scoped>
 .menu-btn {
-  @apply px-4 py-2 rounded-xl bg-black/20 bg-opacity-40 hover:bg-opacity-60 backdrop-blur-md hover:bg-black/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left;
+  @apply px-4 py-2 rounded-xl bg-black/20 bg-opacity-40 hover:bg-opacity-60 backdrop-blur-md hover:bg-black/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-center;
 }
 .title-screen {
   background: radial-gradient(circle at center, #1e293b, #0f172a);

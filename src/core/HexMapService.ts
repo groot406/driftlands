@@ -88,8 +88,6 @@ export class HexMapService {
     private _heroAnimStart = performance.now();
     private _lastHeroFrame = 0;
 
-    private _textIndicators: TextIndicator[] = [];
-
     private _tileAnimStart = performance.now();
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
@@ -1049,20 +1047,20 @@ export class HexMapService {
 
             const {x, y} = axialToPixel(ind.position.q, ind.position.r);
             const progress = Math.min(1, (performance.now() - ind.created) / ind.duration);
-            const floatY = y - HEX_SIZE - 14 - (progress * 32); // float up
+            const floatY = y - HEX_SIZE - 10 - (progress * 28); // float up
             const alpha = 1 - progress;
 
             console.log('draw indicator');
             console.log(x, floatY, alpha);
             ctx.save();
             ctx.globalAlpha = Math.max(0, alpha);
-            ctx.font = 'bold 14px system-ui, sans-serif';
+            ctx.font = "12px 'Press Start 2P', 'VT323', 'Courier New', monospace";
             ctx.fillStyle = ind.color || '#ffe066';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.shadowColor = '#222';
             ctx.shadowBlur = 4;
-            ctx.fillText(ind.text, x + ind.position?.currentOffset.x - 10, floatY + ind.position?.currentOffset.y);
+            ctx.fillText(ind.text, x + (ind.position?.currentOffset?.x ?? 0) - 16, floatY + (ind.position?.currentOffset?.y ?? 0));
             ctx.restore();
         }
     }
@@ -1265,14 +1263,5 @@ export class HexMapService {
         }
         const baseKey = def?.assetKey || t.terrain;
         return this.tileImgSources[baseKey] ? baseKey : null;
-    }
-
-    public addTextIndicator(q: number, r: number, text: string, color = '#ffe066', duration = 1200) {
-        this._textIndicators.push({q, r, text, color, created: performance.now(), duration});
-    }
-
-    private updateTextIndicators() {
-        const now = performance.now();
-        this._textIndicators = this._textIndicators.filter(ind => now - ind.created < ind.duration);
     }
 }

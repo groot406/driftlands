@@ -46,4 +46,6 @@ function handleTileClick(_tile: Tile) {
   user-select: none;
   overscroll-behavior: contain;
 }
+
+
 </style>

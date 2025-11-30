@@ -9,6 +9,7 @@ import {HexMapService} from '../core/HexMapService';
 import {terrainPositions} from "../core/terrainRegistry.ts";
 import {resourceInventory} from './resourceStore';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
+import {addTextIndicator} from "../core/textIndicators.ts";
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -349,10 +350,24 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
             const statReward = rewards[stat];
             const rewardAmount = Math.ceil(statReward * share);
             hero.stats[stat] += rewardAmount;
+
+            if (rewardAmount > 0) {
+                setTimeout(() => {
+                    addTextIndicator(hero, `+${rewardAmount}`, STAT_COLOR_MAP[stat], 1800);
+                }, Math.random() * 300);
+
+            }
+
         }
     }
 }
 
+const STAT_COLOR_MAP: Record<keyof HeroStats, string> = {
+    xp: '#FFD700', // Gold for XP
+    hp: '#FF4500', // OrangeRed for HP
+    atk: '#1E90FF', // DodgerBlue for ATK
+    spd: '#32CD32', // LimeGreen for SPD
+}
 
 function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]) {
     const def = getTaskDefinition(instance.type);
