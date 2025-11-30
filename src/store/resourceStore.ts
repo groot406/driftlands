@@ -9,7 +9,7 @@ let currentWorldId: string = 'default';
 function resKey(worldId: string) { return `driftlands_resources_${worldId}_v1`; }
 
 // Reactive inventory of delivered (warehouse-deposited) resources.
-export const resourceInventory: Record<ResourceType, number> = reactive({
+export const resourceInventory: Partial<Record<ResourceType, number>> = reactive({
   wood: 0,
   ore: 0,
   stone: 0,
@@ -108,6 +108,7 @@ export function setCurrentWorldIdForResources(worldId: string) {
 
 export function depositResource(type: ResourceType, amount: number = 1) {
   if (amount <= 0) return;
+  if(!resourceInventory[type]) resourceInventory[type] = 0;
   resourceInventory[type] += amount;
   resourceVersion.value++;
 }

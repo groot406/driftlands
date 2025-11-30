@@ -9,7 +9,7 @@ const irregateDirtTask: TaskDefinition = {
     label: 'Irregate',
     chainAdjacentSameTerrain: true,
 
-    canStart(tile, hero) {
+    canStart(tile) {
         const neighborTerrains = getNeighborTerrains(tile, 1);
         if(neighborTerrains.includes('water')) {
             return false;
@@ -24,7 +24,7 @@ const irregateDirtTask: TaskDefinition = {
     },
 
     requiredResources(): ResourceAmount[] {
-        return [{ type: 'wood', amount: 10 }];
+        return [{ type: 'water', amount: 1 }];
     },
 
     heroRate(hero: Hero) {

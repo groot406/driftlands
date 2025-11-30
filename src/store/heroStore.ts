@@ -48,19 +48,10 @@ export interface Hero {
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {
-        id: 'h1',
-        name: 'Santa',
-        avatar: santa,
-        q: 0,
-        r: 0,
-        stats: {xp: 0, hp: 100, atk: 18, spd: 1},
-        facing: 'down',
-        currentTaskId: undefined
-    },
-    {id: 'h2', name: 'Harm', avatar: boy, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
-    {id: 'h3', name: 'Jess', avatar: girl, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
-    {id: 'h4', name: 'Jacky', avatar: loophead, q: 0, r: 0, stats: {xp: 25, hp: 180, atk: 24, spd: 3}, facing: 'down'},
+    {id: 'h1', name: 'Santa',avatar: santa,q: 0,r: 0,stats: {xp: 0, hp: 100, atk: 10, spd: 1},facing: 'down',},
+    {id: 'h2', name: 'Harm', avatar: boy, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
+    {id: 'h3', name: 'Jess', avatar: girl, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
+    {id: 'h4', name: 'Jacky', avatar: loophead, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -193,12 +184,6 @@ function restoreHeroes() {
         // ignore
     }
 }
-
-// Remove immediate restore on module load; worldId must be set first.
-// if (typeof window !== 'undefined') {
-//    restoreHeroes();
-//    updateHeroMovements(performance.now());
-// }
 
 function isTileWalkable(tile: Tile): boolean {
     return !!(tile.terrain && TERRAIN_DEFS[tile.terrain]?.walkable);
@@ -348,7 +333,7 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         }
         if (!allow) return;
     }
-    const baseStepMs = 550;
+    const baseStepMs = 750;
     const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
     const durations: number[] = [];
     for (let i = 0; i < path.length; i++) {
@@ -361,7 +346,7 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
         const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
         const edgeCost = 0.5 * fromCost + 0.5 * toCost;
-        durations.push(Math.max(120, baseStepMs * edgeCost * speedAdj));
+        durations.push(Math.min(Math.max(120, baseStepMs * edgeCost * speedAdj), 5000));
     }
     const cumulative: number[] = [];
     let acc = 0;
@@ -391,10 +376,6 @@ export const selectedHeroId = ref<string | null>(null);
 
 export function selectHero(hero: Hero | null, focus: boolean = true) {
     if (hero) {
-        if (selectedHeroId.value === hero.id) {
-            selectedHeroId.value = null;
-            return;
-        }
         selectedHeroId.value = hero.id;
         if (focus) focusHero(hero);
     } else {
@@ -448,6 +429,7 @@ export function ensureHeroSelected(focus: boolean = true) {
         if (focus) focusHero(hero);
     }
 }
+
 
 
 

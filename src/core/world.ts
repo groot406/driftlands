@@ -120,10 +120,11 @@ function ensureTileNeighbors(tile: Tile): TileNeighborMap {
 
 export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
     if (radius === 1) {
-        const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+        const nm = tile.neighbors ?? { a: null, b: null, c: null, d: null, e: null, f: null };
         const terrains: TerrainKey[] = [];
         for (const side of SIDE_NAMES) {
             const nt = nm[side];
+            if(nt === null) continue;
             if (nt.discovered && nt.terrain) terrains.push(nt.terrain);
         }
         return terrains;

@@ -7,7 +7,7 @@ const mineOreTask: TaskDefinition = {
     label: 'Mine Ore',
     chainAdjacentSameTerrain: true,
     canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'mountain';
+        return !hero.carryingPayload && tile.terrain === 'mountain' && tile.variant === 'mountains_with_mine';
     },
 
     requiredXp(_distance: number) {

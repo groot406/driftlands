@@ -40,7 +40,7 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
         for (const tKey of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
             const def = TERRAIN_DEFS[tKey];
             if (!def) continue;
-            const delta = def.adjacency?.[nt];
+            const delta = def.  adjacency?.[nt];
             if (delta !== undefined) weights[tKey] += delta;
         }
     });

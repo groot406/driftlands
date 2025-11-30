@@ -71,10 +71,9 @@ function selectTask(def: TaskDefinition) {
       detachHeroFromCurrentTask(hero);
       startHeroMovement(hero.id, path, {q: props.tile.q, r: props.tile.r}, def.key);
       emit('started', def.key, props.tile);
-
-      persistHeroes()
     }
   }
+  persistHeroes()
   close();
 }
 

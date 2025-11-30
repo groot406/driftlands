@@ -1,8 +1,8 @@
 import {type ResourceType, type Tile, worldVersion} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
-import {startTask, joinTask, getTaskByTile} from '../store/taskStore';
+import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} from '../store/taskStore';
 import { HexMapService } from './HexMapService';
-import { depositResource } from '../store/resourceStore';
+import { depositResource, resourceInventory, resourceVersion } from '../store/resourceStore';
 
 // Import task definitions to register them
 import.meta.glob('../core/taskDefs/*', { eager: true });
@@ -60,60 +60,89 @@ export interface TaskInstance {
     completedMs?: number; // Date.now() when completed
     participants: Record<string, number>; // heroId -> contributedXp (time-scaled cumulative)
     active: boolean;
+    // Resource tracking for tasks that require resources
+    requiredResources?: ResourceAmount[]; // Resources needed to start/continue task
+    collectedResources?: ResourceAmount[]; // resourceType -> amount collected so far
 }
 
-// Removed local registry & explore task definition; see taskRegistry.ts and taskDefs/explore.ts
+const MAX_CARRY_AMOUNT = 10;
+
+function isFetching(hero: Hero): boolean {
+    return !!(hero.carryingPayload && hero.carryingPayload.amount < 0);
+}
+
+function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
+    const carrying = hero.carryingPayload;
+    if (tile.terrain !== 'towncenter' || !carrying || carrying?.amount > 0) {
+        return
+    }
+
+    // Pick up resource from warehouse - take what's available (up to needed amount)
+    const resourceType = carrying.type;
+    const available = resourceInventory[resourceType] || 0;
+    const amountToTake = Math.min(Math.abs(carrying.amount), available, MAX_CARRY_AMOUNT);
+
+    if (amountToTake > 0) {
+        // Deduct from warehouse inventory
+        if (!resourceInventory[resourceType]) {
+            resourceInventory[resourceType] = 0;
+        }
+        resourceInventory[resourceType] -= amountToTake;
+        resourceVersion.value++;
+
+        hero.carryingPayload = { type: resourceType, amount: amountToTake };
+    }
+}
+
+function tryToFetchWater(hero: Hero, tile: Tile) {
+    const carrying = hero.carryingPayload;
+    if(!carrying || carrying.amount > 0 || carrying.type !== 'water') return;
+
+    // Check if hero is adjacent to the water tile
+    const neighbors = tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
+    let isAdjacentToWater = false;
+
+    if (neighbors) {
+        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
+            if (neighbors[side]?.terrain === 'water') {
+                isAdjacentToWater = true;
+                break;
+            }
+        }
+    }
+
+    if (isAdjacentToWater) {
+        // Pick up water
+        hero.carryingPayload = { type: 'water' as any, amount: 1 };
+    }
+}
 
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
+
     const pending = hero.pendingChain; // capture before potential clearing
 
     // Handle resource fetch: if hero is fetching a resource and arrived at source
-    if (hero.carryingPayload && hero.carryingPayload.amount < 0 && pending && hero.returnPos) {
+    if (isFetching(hero)) {
+        const carrying = hero.carryingPayload;
+        if (!carrying) return;
+
         // Hero arrived at resource location to pick it up
-        const resourceType = hero.carryingPayload.type;
-        const neededAmount = Math.abs(hero.carryingPayload.amount);
-        const payload = hero.carryingPayload as any;
+        const resourceType = carrying.type;
+        if(resourceType === 'water') {
+            tryToFetchWater(hero, tile)
+        } else {
+            tryToFetchFromWarehouse(hero, tile)
+        }
 
-        if (resourceType === 'water' && payload.waterSourceTileId) {
-            // Check if hero is adjacent to the water tile
-            const waterTile = tileIndex[payload.waterSourceTileId];
-            if (waterTile) {
-                const neighbors = tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
-                let isAdjacentToWater = false;
-
-                if (neighbors) {
-                    for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-                        if (neighbors[side]?.id === waterTile.id) {
-                            isAdjacentToWater = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (isAdjacentToWater) {
-                    // Pick up water
-                    hero.carryingPayload = { type: 'water' as any, amount: neededAmount };
-                    // Now return to task location
-                    const service = new HexMapService();
-                    const pathBack = service.findWalkablePath(hero.q, hero.r, hero.returnPos.q, hero.returnPos.r);
-                    if (pathBack && pathBack.length > 0) {
-                        const taskType = pending.taskType;
-                        startHeroMovement(hero.id, pathBack, hero.returnPos, taskType);
-                        return;
-                    }
-                }
-            }
-        } else if (tile.terrain === 'towncenter' && resourceType !== 'water') {
-            // Pick up resource from warehouse
-            hero.carryingPayload = { type: resourceType, amount: neededAmount };
-            // Deduct from warehouse inventory would happen here if tracked per-warehouse
-            // Now return to task location
+        // Now return to task location
+        if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
             const service = new HexMapService();
             const pathBack = service.findWalkablePath(hero.q, hero.r, hero.returnPos.q, hero.returnPos.r);
             if (pathBack && pathBack.length > 0) {
-                const taskType = pending.taskType;
+                const taskType = pending?.taskType ?? undefined;
+
                 startHeroMovement(hero.id, pathBack, hero.returnPos, taskType);
                 return;
             }
@@ -121,9 +150,21 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     }
 
     // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
-    if (hero.carryingPayload && hero.carryingPayload.amount > 0 && tile.terrain === 'towncenter' && !pending) {
-        depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-        hero.carryingPayload = undefined;
+    if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
+        if (tile.terrain === 'towncenter') {
+            depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
+            hero.carryingPayload = undefined;
+        } else if(hero.currentTaskId) {
+            // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
+            const task = getTaskById(hero.currentTaskId);
+            if (task) {
+                addResourcesToTask(task, hero.carryingPayload);
+                hero.carryingPayload = undefined;
+                joinTask(task.id, hero);
+                return;
+            }
+        }
+
     }
 
     if (!hero.movement?.taskType) {
@@ -136,6 +177,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         }
         return;
     }
+
     const selected = hero.movement?.taskType;
     if (selected) {
         const existing = getTaskByTile(tile.id, selected);
@@ -145,6 +187,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             joinTask(existing.id, hero);
         }
     }
+
     // After starting/joining, if pendingChain present AND hero at source, trigger it too
     if (pending && hero.q === tileIndex[pending.sourceTileId]?.q && hero.r === tileIndex[pending.sourceTileId]?.r) {
         hero.movement = undefined; // clear movement on arrival

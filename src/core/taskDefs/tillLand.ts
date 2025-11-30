@@ -42,7 +42,7 @@ const tillLandTask: TaskDefinition = {
             }
 
             if(hasWaterNearby) {
-                applyVariant(tile, 'dirt_tilled', {stagger: false, respectBiome: true});
+                applyVariant(tile, 'dirt_tilled_hydrated', {stagger: false, respectBiome: true});
             } else {
                 applyVariant(tile, 'dirt_tilled_draught', {stagger: false, respectBiome: true});
             }

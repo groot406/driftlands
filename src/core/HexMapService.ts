@@ -719,11 +719,11 @@ export class HexMapService {
         }
 
         // Heroes & overlays combined layering
-        this.drawHeroes(ctx, opts.hoveredHero, selectedHeroIdle, overlayRecords);
+        this.drawHeroes(ctx, opts.hoveredHero, overlayRecords);
         ctx.restore();
     }
 
-    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, selectedHeroIdle: boolean, overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }> = []) {
+    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }> = []) {
         // If hero assets not yet loaded, just draw overlays and return
         if (!this._heroImagesLoaded) {
             for (const ov of overlayRecords) {
@@ -871,7 +871,7 @@ export class HexMapService {
                 ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * this.heroZoom, frameSize * this.heroZoom);
             }
 
-            const selected = (selectedHeroId.value === h.id) && selectedHeroIdle;
+            const selected = (selectedHeroId.value === h.id);
             const hovered = hoveredHero && hoveredHero.id === h.id;
             if ((selected || hovered)) {
                 const edgeFrames = this._heroEdgePixelsByRow[h.avatar]?.[animRow];
@@ -886,8 +886,8 @@ export class HexMapService {
                         ctx.translate(destX, destY);
                     }
                     ctx.scale(this.heroZoom, this.heroZoom);
-                    ctx.fillStyle = selected ? '#ffe080' : '#ffffff';
-                    ctx.shadowColor = selected ? 'rgba(255,224,128,0.9)' : 'rgba(255,255,255,0.6)';
+                    ctx.fillStyle = selected ? '#c5cbcc' : '#ffffff';
+                    ctx.shadowColor = selected ? 'rgba(63,83,94,0.9)' : 'rgba(255,255,255,0.6)';
                     ctx.shadowBlur = selected ? 12 : 8;
                     for (const p of edgePixels) ctx.fillRect(p.x, p.y, 1, 1);
                     ctx.restore();
@@ -1128,6 +1128,7 @@ export class HexMapService {
             if (!from || !to) return axialToPixel(hero.q, hero.r);
             const fromPx = axialToPixel(from.q, from.r);
             const toPx = axialToPixel(to.q, to.r);
+
             return {x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress};
         }
 
@@ -1179,8 +1180,31 @@ export class HexMapService {
         ctx.closePath();
     }
 
-    // RESTORED: compute hero offsets by number of heroes on a tile
     private computeTileHeroOffsets(list: Hero[]): Record<string, { x: number; y: number }> {
+        const mutliplayerTileOffset = this.computeMultiplayerTileHeroOffsets(list);
+        // Apply tile (variant) heroOffset if defined
+        const result: Record<string, { x: number; y: number }> = {};
+        for (const h of list) {
+            const t = tileIndex[axialKey(h.q, h.r)];
+            let variantOffset: { x: number; y: number } | null = null;
+            if (t && t.terrain) {
+                const def: any = (TERRAIN_DEFS as any)[t.terrain];
+                if (t.variant && def?.variations) {
+                    const vDef = def.variations.find((v: any) => v.key === t.variant);
+                    if (vDef?.heroOffset) variantOffset = vDef.heroOffset;
+                }
+                if (!variantOffset && def?.heroOffset) variantOffset = def.heroOffset;
+            }
+            const multiOffset = mutliplayerTileOffset[h.id] || {x: 0, y: 0};
+            result[h.id] = {
+                x: multiOffset.x + (variantOffset ? variantOffset.x : 0),
+                y: multiOffset.y + (variantOffset ? variantOffset.y : 0),
+            };
+        }
+        return result;
+    }
+
+    private computeMultiplayerTileHeroOffsets(list: Hero[]): Record<string, { x: number; y: number }> {
         const result: Record<string, { x: number; y: number }> = {};
         const count = list.length;
         if (count === 0) return result;

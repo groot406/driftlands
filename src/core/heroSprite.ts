@@ -44,6 +44,6 @@ export function shouldFlip(facing: 'up'|'down'|'right'|'left'): boolean {
 
 // Simple state resolver: choose walk when path preview length > 1 else idle.
 export function resolveActivity(pathLen: number): HeroActivity {
-  return pathLen > 1 ? 'walk' : 'idle';
+  return pathLen > 0 ? 'walk' : 'idle';
 }
 

@@ -20,43 +20,43 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
     forest: {
         when: {'forest': 4},
         allowedTerrains: ['forest', 'plains'],
-        weightAdjust: {forest: 3, plains: 1},
+        weightAdjust: {forest: 20, plains: 1},
         variantGrowthScale: { young_forest: 0.8 }
     },
     mountain: {
-        when: {'mountain': 4},
-        allowedTerrains: ['mountain', 'plains'],
-        weightAdjust: {mountain: 3},
+        when: {'mountain': 3},
+        allowedTerrains: ['mountain', 'plains', "snow"],
+        weightAdjust: {mountain: 10, snow: 1},
         variantGrowthScale: { young_forest: 1.3 }
     },
     lake: {
         when: {'water': 5},
         allowedTerrains: ['water', 'plains', 'forest'],
-        weightAdjust: {water: 2, plains: 1, forest: 0.5},
-        variantGrowthScale: { young_forest: 0.9 }
+        weightAdjust: {water: 10, plains: 1, forest: 0.5},
+        variantGrowthScale: { young_forest: 0.9, dirt_tilled: 2 }
     },
     plains: {
         when: {'plains': 4},
         allowedTerrains: ['plains', 'forest', 'mountain', 'water'],
-        weightAdjust: {plains: 3},
+        weightAdjust: {plains: 10},
         variantGrowthScale: { young_forest: 1 }
     },
     dessert: {
-        when: {'dessert': 3},
+        when: {'dessert': 2},
         allowedTerrains: ['dessert', 'plains', 'dirt', 'mountain'],
-        weightAdjust: {dessert: 8, plains: 0.5},
-        variantGrowthScale: { young_forest: 3.5 }
+        weightAdjust: {dessert: 20, plains: 0.5},
+        variantGrowthScale: { young_forest: 3.5, dirt_tilled: 0.3 }
     },
     snow: {
-        when: {'snow': 3},
+        when: {'snow': 2},
         allowedTerrains: ['snow', 'mountain', 'plains', 'dessert', 'dirt'],
-        weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+        weightAdjust: {snow: 20, mountain: 1, plains: 0.5},
         variantGrowthScale: { young_forest: 2.4 }
     },
     dirt: {
-        when: {'dirt': 3},
+        when: {'dirt': 2},
         allowedTerrains: ['dirt', 'mountain', 'plains', 'forest', 'dessert', 'snow'],
-        weightAdjust: {snow: 8, mountain: 1, plains: 0.5},
+        weightAdjust: {dirt: 20, snow: 8, mountain: 1, plains: 0.5},
         variantGrowthScale: { young_forest: 1.2 }
     }
 };

@@ -17,7 +17,7 @@ interface UIState {
 const SAVE_KEY = 'driftlands-save';
 const STATE_KEY = 'driftlands-ui-state-v1';
 const WORLD_META_KEY = 'driftlands-world-meta-v1';
-const NEW_GAME_RADIUS = 0;
+const NEW_GAME_RADIUS = 1;
 
 function hasSave(): boolean {
     try {

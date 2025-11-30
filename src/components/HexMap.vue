@@ -134,6 +134,8 @@ function handleClick(e: PointerEvent) {
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
 
+  console.log('Clicked tile', tile);
+
   const selHero = getSelectedHero();
 
   const now = performance.now();

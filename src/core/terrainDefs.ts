@@ -22,6 +22,7 @@ export interface TerrainDef {
     // optional second render layer (unmasked) drawn with vertical stacking among heroes/other overlays
     overlayAssetKey?: string; // image key (filename without extension) for overlay (e.g. 'cactus_top')
     overlayOffset?: { x: number; y: number }; // optional pixel offset applied to overlay drawing (top-left origin)
+    heroOffset?: { x: number; y: number }; // optional pixel offset applied to hero drawing on this terrain
 }
 
 // Side names reused from world.ts (keep string literals to avoid circular import)
@@ -38,18 +39,19 @@ export interface TerrainVariationDef {
     weight?: number; // relative selection weight among other valid variants
     constraints?: TerrainVariationConstraint[]; // all constraints must pass for variant to be eligible
     assetKey?: string; // optional override for image filename base if different from key
-    growth?: { next: string | null; ageMs?: number, ageMsRange: number[] }; // biome scaling moved to biomes
+    growth?: { next: string | null; ageMs?: number, ageMsRange?: number[] }; // biome scaling moved to biomes
 
     overlayAssetKey?: string|false; // optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
+    heroOffset?: { x: number; y: number }; // optional pixel offset applied to hero drawing on this terrain
 }
 
 interface TerrainDefsMap {
-    forest: TerrainDef;
+    towncenter: TerrainDef;
     plains: TerrainDef;
+    forest: TerrainDef;
     water: TerrainDef;
     mountain: TerrainDef;
-    towncenter: TerrainDef;
     dirt: TerrainDef;
     snow: TerrainDef;
     dessert: TerrainDef;
@@ -64,7 +66,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         preserveIsolation: true,
         moveCost: 3,
         overlayAssetKey: 'towncenter_overlay',
-        overlayOffset: { x: 0, y: -11}
+        overlayOffset: { x: 0, y: -11},
+        heroOffset: { x: 0, y: 10}
     },
     forest: {
         color: '#14532d',
@@ -118,15 +121,19 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
     mountain: {
         minDistanceFromCenter: 3,
         color: '#475569',
-        baseWeight: 40,
+        baseWeight: 15,
         walkable: true,
         adjacency: {
-            mountain: 30,
+            mountain: 25,
         },
-        moveCost: 5,
+        moveCost: 50,
         assetKey: 'mountains',
         overlayAssetKey: 'mountains_overhang',
-        overlayOffset: { x: 0, y: -4 }
+        overlayOffset: { x: 0, y: -4 },
+        heroOffset: { x: 0, y: 10 },
+        variations: [
+            {key: 'mountains_with_mine', weight: 0, heroOffset: { x:0, y: 15 }},
+        ]
     },
     dirt: {
         minDistanceFromCenter: 6,
@@ -143,11 +150,12 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_rocks', weight: 40},
             {key: 'dirt_big_rock', weight: 5},
             {key: 'dirt_tilled_draught', weight: 0},
-            {key: 'dirt_tilled', weight: 0},
+            {key: 'dirt_tilled_hydrated', weight: 0},
+            {key: 'dirt_tilled', weight: 0, growth: {next: 'dirt_tilled_draught', ageMs: 600000}},
         ]
     },
     snow: {
-        minDistanceFromCenter: 18,
+        minDistanceFromCenter: 15,
         color: '#a0522d',
         baseWeight: 10,
         walkable: true,
@@ -161,7 +169,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         ]
     },
     dessert: {
-        minDistanceFromCenter: 25,
+        minDistanceFromCenter: 12,
         color: '#a0522d',
         baseWeight: 20,
         walkable: true,
