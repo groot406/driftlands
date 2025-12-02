@@ -56,6 +56,7 @@ interface TerrainDefsMap {
     snow: TerrainDef;
     dessert: TerrainDef;
     vulcano: TerrainDef;
+    grain: TerrainDef;
 }
 
 export const TERRAIN_DEFS: TerrainDefsMap = {
@@ -167,6 +168,19 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_tilled_hydrated', weight: 0},
             {key: 'dirt_tilled', weight: 0, growth: {next: 'dirt_tilled_draught', ageMs: 600000}},
         ]
+    },
+    grain: {
+        minDistanceFromCenter: 6,
+        color: '#fbbf24',
+        baseWeight: 20,
+        walkable: true,
+        adjacency: {
+            plains: 5,
+            dirt: 3,
+            grain: 50,
+        },
+        overlayAssetKey: 'grain_overhang',
+        overlayOffset: { x: 0, y: 6 },
     },
     snow: {
         minDistanceFromCenter: 15,
