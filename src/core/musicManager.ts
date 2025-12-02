@@ -1,24 +1,47 @@
 import { watch } from 'vue';
 import { setBackgroundMusic } from '../store/soundStore';
 import { uiStore } from '../store/uiStore';
-import { camera } from './camera';
-import { tileIndex, axialKey } from './world';
 
-// Music tracks (you'll need to add these files to your assets)
-const MUSIC_TRACKS = {
-    title: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    ambient: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    forest: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    desert: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    mountain: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    action: '/src/assets/sounds/music/Peaceful Frontier.mp3',
-} as const;
+// Music playlist - add your music tracks here
+// Tracks will play in order, then loop back to the first track
+// Each track plays for approximately 3.5 minutes before switching
+//
+// To add new tracks:
+// 1. Place your music files in /src/assets/sounds/music/
+// 2. Add the path to the array below
+// 3. Supported formats: MP3, WAV, OGG
+//
+// Example with multiple tracks:
+// const MUSIC_PLAYLIST = [
+//     '/src/assets/sounds/music/Peaceful Frontier.mp3',
+//     '/src/assets/sounds/music/Forest Adventure.mp3',
+//     '/src/assets/sounds/music/Desert Journey.mp3',
+//     '/src/assets/sounds/music/Mountain Peaks.mp3',
+//     '/src/assets/sounds/music/Ocean Voyage.mp3',
+// ] as const;
+
+const MUSIC_PLAYLIST = [
+    '/src/assets/sounds/music/Peaceful Frontier.mp3',
+    '/src/assets/sounds/music/Peaceful Frontier-2.mp3',
+    '/src/assets/sounds/music/Peaceful Frontier-3.mp3',
+    '/src/assets/sounds/music/Fields of the Brave.mp3',
+    '/src/assets/sounds/music/Fields of the Brave-2.mp3',
+    '/src/assets/sounds/music/Pixel Harvest.mp3',
+    '/src/assets/sounds/music/Pixel Harvest-2.mp3',
+    '/src/assets/sounds/music/Fields of Quiet.mp3',
+    '/src/assets/sounds/music/Fields of Quiet-2.mp3',
+    '/src/assets/sounds/music/Wandering Hands.mp3',
+    '/src/assets/sounds/music/Wandering Hands-2.mp3',
+] as const;
+
+const TITLE_MUSIC = '/src/assets/sounds/music/Peaceful Frontier.mp3';
 
 export class MusicManager {
     private currentTrack: string | null = null;
-    private lastBiomeCheck = { q: 0, r: 0 };
-    private biomeCheckInterval: number | null = null;
+    private currentPlaylistIndex = 0;
+    private playlistTimer: number | null = null;
     private initialized = false;
+    private isInGame = false;
 
     initialize() {
         if (this.initialized) return;
@@ -28,8 +51,7 @@ export class MusicManager {
             if (phase === 'title') {
                 this.playTitleMusic();
             } else if (phase === 'playing') {
-                this.playGameMusic();
-                this.startBiomeTracking();
+                this.startGamePlaylist();
             }
         }, { immediate: true });
 
@@ -37,110 +59,87 @@ export class MusicManager {
     }
 
     private async playTitleMusic() {
-        if (this.currentTrack === MUSIC_TRACKS.title) return;
+        if (this.currentTrack === TITLE_MUSIC) return;
 
-        this.stopBiomeTracking();
-        await setBackgroundMusic(MUSIC_TRACKS.title, true);
-        this.currentTrack = MUSIC_TRACKS.title;
+        this.stopPlaylist();
+        this.isInGame = false;
+        await setBackgroundMusic(TITLE_MUSIC, true);
+        this.currentTrack = TITLE_MUSIC;
     }
 
-    private async playGameMusic() {
-        // Start with ambient music, then let biome tracking take over
-        if (this.currentTrack !== MUSIC_TRACKS.ambient) {
-            await setBackgroundMusic(MUSIC_TRACKS.ambient, true);
-            this.currentTrack = MUSIC_TRACKS.ambient;
-        }
+    private async startGamePlaylist() {
+        if (this.isInGame) return;
+
+        this.isInGame = true;
+        // Random start index
+        this.currentPlaylistIndex = Math.floor(Math.random() * MUSIC_PLAYLIST.length);
+        await this.playCurrentPlaylistTrack();
+        this.scheduleNextTrack();
     }
 
-    private startBiomeTracking() {
-        if (this.biomeCheckInterval) return;
+    private async playCurrentPlaylistTrack() {
+        if (MUSIC_PLAYLIST.length < 1) return;
 
-        // Check biome every 2 seconds
-        this.biomeCheckInterval = window.setInterval(() => {
-            this.checkBiomeMusic();
-        }, 2000);
-    }
-
-    private stopBiomeTracking() {
-        if (this.biomeCheckInterval) {
-            clearInterval(this.biomeCheckInterval);
-            this.biomeCheckInterval = null;
-        }
-    }
-
-    private checkBiomeMusic() {
-        // Only check if camera moved significantly
-        const moved = Math.abs(camera.q - this.lastBiomeCheck.q) > 5 ||
-                     Math.abs(camera.r - this.lastBiomeCheck.r) > 5;
-
-        if (!moved) return;
-
-        this.lastBiomeCheck = { q: camera.q, r: camera.r };
-
-        const tileId = axialKey(Math.round(camera.q), Math.round(camera.r));
-        const tile = tileIndex[tileId];
-        if (!tile || !tile.terrain || !tile.biome) return;
-
-        const biomeMusic = this.getBiomeMusic(tile.terrain, tile.biome);
-        if (biomeMusic && biomeMusic !== this.currentTrack) {
-            this.playBiomeMusic(biomeMusic);
-        }
-    }
-
-    private getBiomeMusic(terrain: string, biome?: string): string | null {
-        // Priority: specific terrain types, then biome
-        switch (terrain) {
-            case 'forest':
-            case 'young_forest':
-                return MUSIC_TRACKS.forest;
-            case 'mountains':
-            case 'mountains_with_mine':
-                return MUSIC_TRACKS.mountain;
-            case 'desert':
-            case 'desert_rock':
-                return MUSIC_TRACKS.desert;
-            default:
-                // Fall back to biome-based music
-                switch (biome) {
-                    case 'forest':
-                        return MUSIC_TRACKS.forest;
-                    case 'desert':
-                        return MUSIC_TRACKS.desert;
-                    case 'mountain':
-                        return MUSIC_TRACKS.mountain;
-                    default:
-                        return MUSIC_TRACKS.ambient;
-                }
-        }
-    }
-
-    private async playBiomeMusic(track: string) {
-        try {
-            await setBackgroundMusic(track, true);
-            this.currentTrack = track;
-        } catch (error) {
-            console.warn('Failed to play biome music:', error);
-            // Fall back to ambient if specific track fails
-            if (track !== MUSIC_TRACKS.ambient) {
-                await setBackgroundMusic(MUSIC_TRACKS.ambient, true);
-                this.currentTrack = MUSIC_TRACKS.ambient;
+        const track = MUSIC_PLAYLIST[this.currentPlaylistIndex];
+        if (track && track !== this.currentTrack) {
+            try {
+                await setBackgroundMusic(track, true);
+                this.currentTrack = track;
+                console.log(`Now playing: ${track} (${this.currentPlaylistIndex + 1}/${MUSIC_PLAYLIST.length})`);
+            } catch (error) {
+                console.warn('Failed to play playlist track:', error);
+                this.skipToNextTrack();
             }
         }
     }
 
-    async playActionMusic() {
-        // Temporarily play action music (e.g., during combat or intense activities)
-        await setBackgroundMusic(MUSIC_TRACKS.action, true);
-        this.currentTrack = MUSIC_TRACKS.action;
+    private scheduleNextTrack() {
+        if (!this.isInGame) return;
+
+        this.clearPlaylistTimer();
+
+        // Schedule next track to play after current track duration
+        // Since we don't have track duration info, use a reasonable default of 3-4 minutes
+        const trackDuration = 3.5 * 60 * 1000; // 3.5 minutes in milliseconds
+
+        this.playlistTimer = window.setTimeout(() => {
+            if (this.isInGame) {
+                this.playNextTrack();
+            }
+        }, trackDuration);
     }
 
-    async returnToBiomeMusic() {
-        // Return to biome-appropriate music after action music
-        this.checkBiomeMusic();
+    private async playNextTrack() {
+        if (!this.isInGame || MUSIC_PLAYLIST.length <= 1) return;
+
+        this.currentPlaylistIndex = (this.currentPlaylistIndex + 1) % MUSIC_PLAYLIST.length;
+        await this.playCurrentPlaylistTrack();
+        this.scheduleNextTrack();
     }
+
+    private skipToNextTrack() {
+        if (!this.isInGame) return;
+
+        this.clearPlaylistTimer();
+        this.playNextTrack();
+    }
+
+    private stopPlaylist() {
+        this.clearPlaylistTimer();
+        this.isInGame = false;
+    }
+
+    private clearPlaylistTimer() {
+        if (this.playlistTimer) {
+            clearTimeout(this.playlistTimer);
+            this.playlistTimer = null;
+        }
+    }
+
+
 
     destroy() {
-        this.stopBiomeTracking();
+        this.stopPlaylist();
         this.initialized = false;
     }
 }

@@ -8,7 +8,7 @@ This sound system provides comprehensive audio management for the Driftlands gam
 
 ### 🎵 Background Music
 - **Crossfading**: Smooth transitions between tracks (configurable fade time)
-- **Automatic biome-based music**: Music changes based on camera location and terrain
+- **Playlist system**: Music plays from a configurable playlist that cycles through tracks
 - **Volume controls**: Separate master, music, and effects volume controls
 - **Pause/resume**: Automatically pauses when game is paused
 
@@ -104,23 +104,27 @@ const exampleTask: TaskDefinition = {
 
 ## Music Manager
 
-The music manager automatically handles biome-based music:
+The music manager handles playlist-based music:
 
-- **Title screen**: Plays title theme music
-- **Forest areas**: Plays forest ambient music  
-- **Desert areas**: Plays desert music
-- **Mountain areas**: Plays mountain music
-- **Default**: Falls back to ambient exploration music
+- **Title screen**: Plays dedicated title music
+- **Gameplay**: Cycles through a playlist of tracks (each plays for ~3.5 minutes)
+- **Automatic progression**: When one track ends, the next begins with crossfading
+- **Loop playlist**: After the last track, returns to the first track
 
-Music files should be placed in: `/src/assets/sounds/music/`
+### Adding Music Tracks
 
-Expected files:
-- `title-theme.mp3`
-- `ambient-exploration.mp3` 
-- `forest-theme.mp3`
-- `desert-theme.mp3`
-- `mountain-theme.mp3`
-- `action-theme.mp3`
+1. Place music files in: `/src/assets/sounds/music/`
+2. Add them to the `MUSIC_PLAYLIST` array in `/src/core/musicManager.ts`:
+
+```typescript
+const MUSIC_PLAYLIST = [
+    '/src/assets/sounds/music/Peaceful Frontier.mp3',
+    '/src/assets/sounds/music/Your New Track.mp3',
+    '/src/assets/sounds/music/Another Track.mp3',
+] as const;
+```
+
+Supported formats: MP3, WAV, OGG
 
 ## Settings & Persistence
 
