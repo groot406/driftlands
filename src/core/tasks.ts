@@ -42,9 +42,21 @@ export interface TaskDefinition {
 
     repeatTask?: boolean; // whether task can be repeated on same tile
     chainAdjacentSameTerrain?: boolean|Function; // optional flag to auto-chain task to neighboring same-terrain tiles
+
+    // Sound configuration methods - return sound config or null if no sound
+    getSoundOnStart?(tile: Tile, participants: Hero[]): TaskSoundConfig | null;
+    getSoundOnComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): TaskSoundConfig | null;
 }
 export type ResourceAmount = { type: ResourceType; amount: number };
 export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;
+
+// Sound configuration for tasks
+export interface TaskSoundConfig {
+    soundPath: string;
+    baseVolume: number;
+    maxDistance: number;
+    loop: boolean;
+}
 
 export interface TaskInstance {
     id: string;
@@ -88,6 +100,8 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
         resourceVersion.value++;
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
+
+        playPositionalSound('take-' + tile.q + '.' + tile.r, '/src/assets/sounds/take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -150,12 +164,14 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
+            playPositionalSound('drop-' + tile.q + '.' + tile.r, '/src/assets/sounds/drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
             hero.carryingPayload = undefined;
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
                 addResourcesToTask(task, hero.carryingPayload);
+                playPositionalSound('drop-' + tile.q + '.' + tile.r, '/src/assets/sounds/drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
                 hero.carryingPayload = undefined;
                 joinTask(task.id, hero);
                 return;
@@ -196,6 +212,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from './world';
 import { getTaskDefinition } from './taskRegistry';
 import {TERRAIN_DEFS} from "./terrainDefs.ts";
+import {playPositionalSound} from "../store/soundStore.ts";
 
 function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskType: string }) {
     const source = tileIndex[pending.sourceTileId];

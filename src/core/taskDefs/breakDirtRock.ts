@@ -1,5 +1,5 @@
 import { registerTask } from '../taskRegistry';
-import type { TaskDefinition } from '../tasks';
+import type {TaskDefinition, TaskSoundConfig} from '../tasks';
 import type { Hero } from '../../store/heroStore';
 import { applyVariant } from '../variants';
 
@@ -19,6 +19,15 @@ const breakDirtRockTask: TaskDefinition = {
     heroRate(hero: Hero) {
         // Use attack stat for chopping efficiency; add small base
         return 10 * hero.stats.atk * 2;
+    },
+
+    getSoundOnStart(): TaskSoundConfig {
+        return {
+            soundPath: '/src/assets/sounds/mining.mp3',
+            baseVolume: 0.8,
+            maxDistance: 12,
+            loop: true
+        };
     },
 
     onComplete(tile, _instance) {

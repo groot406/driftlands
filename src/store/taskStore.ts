@@ -1,16 +1,15 @@
 import {reactive} from 'vue';
-import type {TaskDefinition, TaskInstance, TaskType, ResourceAmount} from '../core/tasks';
+import type {ResourceAmount, TaskDefinition, TaskInstance, TaskType} from '../core/tasks';
 import {getTaskDefinition} from '../core/taskRegistry';
 import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
-import {type Hero, type HeroStats } from './heroStore';
-import {heroes, startHeroMovement} from './heroStore';
+import {type Hero, heroes, type HeroStats, startHeroMovement} from './heroStore';
 import {idleStore} from './idleStore';
 import {HexMapService} from '../core/HexMapService';
 import {terrainPositions} from "../core/terrainRegistry.ts";
 import {resourceInventory} from './resourceStore';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {addTextIndicator} from "../core/textIndicators.ts";
-import { removePositionalSound, playPositionalSound } from './soundStore';
+import {playPositionalSound, removePositionalSound} from './soundStore';
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -58,8 +57,7 @@ function removeTask(inst: TaskInstance) {
     // Clean up any positional sounds for this task
     const tile = tileIndex[inst.tileId];
     if (tile) {
-        const soundId = `${inst.type}-${tile.q}-${tile.r}`;
-        removePositionalSound(soundId);
+        stopTaskSound(tile, inst.type);
     }
 }
 
@@ -77,7 +75,7 @@ function getRemainingResources(task: TaskInstance): ResourceAmount[] {
         const collected = task.collectedResources?.find((collected) => collected.type === required.type)?.amount || 0;
         const stillNeeded = required.amount - collected;
         if (stillNeeded > 0) {
-            remaining.push({ type: required.type, amount: stillNeeded });
+            remaining.push({type: required.type, amount: stillNeeded});
         }
     }
     return remaining;
@@ -97,7 +95,7 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     if (existingResource) {
         existingResource.amount = newAmount;
     } else {
-        task.collectedResources.push({ type: resourceType, amount: newAmount });
+        task.collectedResources.push({type: resourceType, amount: newAmount});
     }
 
     persistTasks();
@@ -130,7 +128,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             // For water, find nearest walkable tile adjacent to water
             const waterLocation = findNearestWaterTile(hero.q, hero.r);
             if (waterLocation) {
-                fetchLocation = { q: waterLocation.q, r: waterLocation.r };
+                fetchLocation = {q: waterLocation.q, r: waterLocation.r};
             } else {
                 continue;
             }
@@ -148,7 +146,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     sourceTileId: targetTile.id,
                     taskType: taskType // Store the actual task type to start later
                 };
-                hero.returnPos = { q: targetTile.q, r: targetTile.r };
+                hero.returnPos = {q: targetTile.q, r: targetTile.r};
 
                 // Mark hero as preparing to fetch this resource
                 // Store negative amount to indicate needed amount
@@ -205,7 +203,13 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     taskStore.tasks.push(inst);
     taskStore.taskIndex[inst.id] = inst;
     taskStore.tasksByTile[tile.id]![type] = inst.id;
+
+    // Call task's onStart hook
     def.onStart?.(tile, [starter]);
+
+    // Start task sound automatically
+    startTaskSound(tile, type, [starter]);
+
     starter.currentTaskId = inst.id;
     persistTasks();
 
@@ -232,7 +236,7 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
     const type = inst.type;
     const def = getTaskDefinition(type);
     const tile = tileIndex[inst.tileId];
-    if(!def || !tile) return;
+    if (!def || !tile) return;
 
     const distance = hexDistance(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(distance);
@@ -329,7 +333,32 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     rewardStatsToParticipants(inst, participants);
     rewardResourcesToParticipants(inst, participants);
 
+    // Stop ongoing task sound
+    stopTaskSound(tile, inst.type);
+
+    // Call task's onComplete hook
     def.onComplete?.(tile, inst, participants);
+
+    // Play completion sound if defined
+    if (def.getSoundOnComplete) {
+        const completionSoundConfig = def.getSoundOnComplete(tile, inst, participants);
+        if (completionSoundConfig) {
+            const completionSoundId = `${inst.type}-complete-${tile.q}-${tile.r}`;
+            playPositionalSound(
+                completionSoundId,
+                completionSoundConfig.soundPath,
+                tile.q,
+                tile.r,
+                {
+                    baseVolume: completionSoundConfig.baseVolume,
+                    maxDistance: completionSoundConfig.maxDistance,
+                    loop: completionSoundConfig.loop
+                }
+            ).catch(error => {
+                console.warn(`Failed to play completion sound for ${inst.type}:`, error);
+            });
+        }
+    }
 
     // Auto-chain to adjacent tiles in cluster after short delay, to allow for any movement to initiate first
     let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
@@ -343,7 +372,7 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
 function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[]) {
     const def = getTaskDefinition(instance.type);
     if (!def) return;
-    if(!def.totalRewardedStats) return;
+    if (!def.totalRewardedStats) return;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
@@ -365,9 +394,14 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
                 }, Math.random() * 300);
 
             }
-
         }
     }
+    playPositionalSound(
+        'stat-reward.' + tile.q + '.' + tile.r,
+        '/src/assets/sounds/success.mp3',
+        tile.q, tile.r,
+        {baseVolume: 0.6, maxDistance: 15, loop: false}
+    )
 }
 
 const STAT_COLOR_MAP: Record<keyof HeroStats, string> = {
@@ -380,7 +414,7 @@ const STAT_COLOR_MAP: Record<keyof HeroStats, string> = {
 function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]) {
     const def = getTaskDefinition(instance.type);
     if (!def) return;
-    if(!def.totalRewardedResources) return;
+    if (!def.totalRewardedResources) return;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
@@ -413,7 +447,7 @@ function findNearestTowncenter(q: number, r: number) {
     const dr = Math.abs(0 - r);
     const ds = Math.abs(0 - (-q - r));
     bestDist = Math.max(dq, dr, ds);
-    best = { q: 0, r: 0 };
+    best = {q: 0, r: 0};
 
     for (const id of terrainPositions.towncenter) {
         const t = tileIndex[id];
@@ -422,7 +456,10 @@ function findNearestTowncenter(q: number, r: number) {
         const dr = Math.abs(t.r - r);
         const ds = Math.abs((-t.q - t.r) - (-q - r));
         const dist = Math.max(dq, dr, ds);
-        if (dist < bestDist) { bestDist = dist; best = { q: t.q, r: t.r }; }
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = {q: t.q, r: t.r};
+        }
     }
 
     return best;
@@ -430,7 +467,11 @@ function findNearestTowncenter(q: number, r: number) {
 
 // Find nearest warehouse (towncenter) that has the required resource in stock
 // Returns warehouse location even if it has less than requested amount (partial fetching)
-function findNearestWarehouseWithResource(q: number, r: number, resourceType: string): { q: number; r: number; availableAmount: number } | null {
+function findNearestWarehouseWithResource(q: number, r: number, resourceType: string): {
+    q: number;
+    r: number;
+    availableAmount: number
+} | null {
     // Check if warehouse has any of this resource
     const available = resourceInventory[resourceType as keyof typeof resourceInventory] || 0;
     if (available <= 0) {
@@ -447,7 +488,7 @@ function findNearestWarehouseWithResource(q: number, r: number, resourceType: st
         const dr = Math.abs(0 - r);
         const ds = Math.abs(0 - (-q - r));
         bestDist = Math.max(dq, dr, ds);
-        best = { q: 0, r: 0, availableAmount: available };
+        best = {q: 0, r: 0, availableAmount: available};
     }
 
     // Check all towncenters (they all share same inventory for now)
@@ -460,7 +501,7 @@ function findNearestWarehouseWithResource(q: number, r: number, resourceType: st
         const dist = Math.max(dq, dr, ds);
         if (dist < bestDist) {
             bestDist = dist;
-            best = { q: t.q, r: t.r, availableAmount: available };
+            best = {q: t.q, r: t.r, availableAmount: available};
         }
     }
 
@@ -500,13 +541,13 @@ function findNearestWaterTile(q: number, r: number): { q: number; r: number; wat
 
             if (dist < bestDist) {
                 bestDist = dist;
-                best = { q: neighborTile.q, r: neighborTile.r };
+                best = {q: neighborTile.q, r: neighborTile.r};
                 bestWaterTileId = waterTile.id;
             }
         }
     }
 
-    return best ? { ...best, waterTileId: bestWaterTileId } : null;
+    return best ? {...best, waterTileId: bestWaterTileId} : null;
 }
 
 
@@ -596,7 +637,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         visited.add(cur.id);
         cluster.push(cur);
         const nm = cur.neighbors ?? ensureTileExists(cur.q, cur.r).neighbors!;
-        for (const side of ['a','b','c','d','e','f'] as const) {
+        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
             const nt = nm[side];
             if (!nt) continue;
             if (!visited.has(nt.id) && nt.discovered && nt.terrain === terrain) queue.push(nt);
@@ -608,7 +649,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
         if (hero.carryingPayload) {
             // Preserve existing pendingChain if already set for same source to avoid overwrite.
-            if (!hero.pendingChain) hero.pendingChain = { sourceTileId: tile.id, taskType: inst.type };
+            if (!hero.pendingChain) hero.pendingChain = {sourceTileId: tile.id, taskType: inst.type};
             continue;
         }
         // Skip heroes still moving.
@@ -637,7 +678,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         for (const targetTile of candidates) {
             const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
             if (!path.length) continue;
-            startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, inst.type);
+            startHeroMovement(hero.id, path, {q: targetTile.q, r: targetTile.r}, inst.type);
             break; // only chain to one tile per hero
         }
     }
@@ -658,7 +699,8 @@ export async function restoreActiveTaskSounds() {
             }
 
             // Check if this task type has sound support
-            if (!TASK_SOUND_CONFIG[inst.type]) {
+            const def = getTaskDefinition(inst.type);
+            if (!def?.getSoundOnStart) {
                 // Silently skip tasks without sound config (this is normal)
                 continue;
             }
@@ -679,37 +721,46 @@ export async function restoreActiveTaskSounds() {
     }
 }
 
-// Task sound configuration - centralized sound parameters for each task type
-interface TaskSoundConfig {
-    soundPath: string;
-    baseVolume: number;
-    maxDistance: number;
-    loop: boolean;
+// Sound management functions for tasks
+function startTaskSound(tile: Tile, taskType: string, participants: Hero[]) {
+    const def = getTaskDefinition(taskType);
+    if (!def?.getSoundOnStart) return;
+
+    const soundConfig = def.getSoundOnStart(tile, participants);
+    if (!soundConfig) return;
+
+    const soundId = `${taskType}-${tile.q}-${tile.r}`;
+    playPositionalSound(
+        soundId,
+        soundConfig.soundPath,
+        tile.q,
+        tile.r,
+        {
+            baseVolume: soundConfig.baseVolume,
+            maxDistance: soundConfig.maxDistance,
+            loop: soundConfig.loop
+        }
+    ).catch(error => {
+        console.warn(`Failed to play start sound for ${taskType}:`, error);
+    });
 }
 
-const TASK_SOUND_CONFIG: Record<string, TaskSoundConfig> = {
-    chopWood: {
-        soundPath: '/src/assets/sounds/chopping.wav',
-        baseVolume: 0.6,
-        maxDistance: 15,
-        loop: true
-    },
-    mineOre: {
-        soundPath: '/src/assets/sounds/mining.mp3', // Using chopping as placeholder
-        baseVolume: 0.8,
-        maxDistance: 12,
-        loop: true
-    },
-    // Add more task types here as they get sound support
-};
+function stopTaskSound(tile: Tile, taskType: string) {
+    const soundId = `${taskType}-${tile.q}-${tile.r}`;
+    removePositionalSound(soundId);
+}
 
 // Helper function to restore specific task sounds based on task type
 async function restoreTaskSound(taskType: string, tile: Tile) {
-    const config = TASK_SOUND_CONFIG[taskType];
-    if (!config) return; // No sound configuration for this task type
+    const def = getTaskDefinition(taskType);
+    if (!def?.getSoundOnStart) return; // No sound support for this task type
+
+    // Get sound config from task definition (pass empty participants array for restoration)
+    const soundConfig = def.getSoundOnStart(tile, []);
+    if (!soundConfig) return; // No sound configured
 
     // Only restore looping sounds - non-looping sounds should not be restored on game reload
-    if (!config.loop) {
+    if (!soundConfig.loop) {
         return;
     }
 
@@ -718,13 +769,13 @@ async function restoreTaskSound(taskType: string, tile: Tile) {
     try {
         await playPositionalSound(
             soundId,
-            config.soundPath,
+            soundConfig.soundPath,
             tile.q,
             tile.r,
             {
-                baseVolume: config.baseVolume,
-                maxDistance: config.maxDistance,
-                loop: config.loop
+                baseVolume: soundConfig.baseVolume,
+                maxDistance: soundConfig.maxDistance,
+                loop: soundConfig.loop
             }
         );
     } catch (error) {

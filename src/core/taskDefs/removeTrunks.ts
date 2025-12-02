@@ -1,5 +1,5 @@
 import {registerTask} from '../taskRegistry';
-import type {TaskDefinition} from '../tasks';
+import type {TaskDefinition, TaskSoundConfig} from '../tasks';
 import type {Hero} from '../../store/heroStore';
 import { worldVersion } from '../world';
 import { terrainPositions } from '../terrainRegistry';
@@ -41,7 +41,15 @@ const removeTrunksTask: TaskDefinition = {
             terrainPositions.plains.add(tile.id);
             worldVersion.value++;
         }
-    }
+    },
+    getSoundOnStart(): TaskSoundConfig {
+        return {
+            soundPath: '/src/assets/sounds/chopping.wav',
+            baseVolume: 0.8,
+            maxDistance: 12,
+            loop: true
+        };
+    },
 };
 
 registerTask(removeTrunksTask);
