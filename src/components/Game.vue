@@ -18,16 +18,34 @@ import LoadingOverlay from './LoadingOverlay.vue';
 import GameGui from './GameGui.vue';
 import type { Tile } from '../core/world';
 import { isPlaying } from '../store/uiStore';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import TitleBackground from "./TitleBackground.vue";
+import { soundService } from '../core/soundService';
+import { musicManager } from '../core/musicManager';
+import { restoreActiveTaskSounds } from '../store/taskStore';
 
 const playing = computed(() => isPlaying());
 
-onMounted(() => {
+onMounted(async () => {
   // If we have saved tiles (continue) and world isn't loaded yet, load them.
   if (worldTiles.length === 0 && store.tiles.length) {
     loadWorld(store.tiles);
   }
+
+  // Initialize sound system
+  await soundService.initialize();
+
+  // Initialize music manager
+  musicManager.initialize();
+
+  // Restore sounds for any active tasks (important for game reload)
+  await restoreActiveTaskSounds();
+});
+
+onUnmounted(() => {
+  // Cleanup sound system
+  soundService.destroy();
+  musicManager.destroy();
 });
 
 function moveToTile(tile: Tile) {

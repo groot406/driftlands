@@ -11,6 +11,7 @@
     </div>
     <HeroesBar />
   </div>
+  <InGameMenu />
 </template>
 
 <script setup lang="ts">
@@ -19,6 +20,7 @@ import ResourceBar from './ResourceBar.vue';
 import WorldControls from './WorldControls.vue';
 import DebugPanel from "./DebugPanel.vue";
 import HeroesBar from './HeroesBar.vue';
+import InGameMenu from './InGameMenu.vue';
 
 const showHelpers = ref(false);
 

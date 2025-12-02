@@ -3,6 +3,7 @@ import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import {HexMapService} from '../HexMapService';
+import {playPositionalSound} from "../../store/soundStore.ts";
 
 const service = new HexMapService();
 
@@ -42,6 +43,19 @@ const exploreTask: TaskDefinition = {
         for (const hero of participants) {
             hero.delayedMovementTimer = timer;
         }
+        const soundId = `explore-${tile.q}-${tile.r}`;
+        playPositionalSound(
+            soundId,
+            '/src/assets/sounds/success.mp3',
+            tile.q,
+            tile.r,
+            {
+                baseVolume: 0.8,
+                maxDistance: 20,
+                loop: false
+            }
+        );
+
         persistHeroes();
     },
 };

@@ -10,6 +10,7 @@ import {terrainPositions} from "../core/terrainRegistry.ts";
 import {resourceInventory} from './resourceStore';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {addTextIndicator} from "../core/textIndicators.ts";
+import { removePositionalSound, playPositionalSound } from './soundStore';
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
@@ -52,6 +53,13 @@ function removeTask(inst: TaskInstance) {
         if (hero.currentTaskId === inst.id) {
             hero.currentTaskId = undefined;
         }
+    }
+
+    // Clean up any positional sounds for this task
+    const tile = tileIndex[inst.tileId];
+    if (tile) {
+        const soundId = `${inst.type}-${tile.q}-${tile.r}`;
+        removePositionalSound(soundId);
     }
 }
 
@@ -632,6 +640,96 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
             startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, inst.type);
             break; // only chain to one tile per hero
         }
+    }
+}
+
+// Restore sounds for active tasks after game reload - exported to be called after sound system init
+export async function restoreActiveTaskSounds() {
+    let restoredCount = 0;
+
+    try {
+        for (const inst of taskStore.tasks) {
+            if (!inst.active || inst.completedMs) continue;
+
+            const tile = tileIndex[inst.tileId];
+            if (!tile) {
+                console.warn(`restoreActiveTaskSounds: Could not find tile for task ${inst.id} (${inst.type})`);
+                continue;
+            }
+
+            // Check if this task type has sound support
+            if (!TASK_SOUND_CONFIG[inst.type]) {
+                // Silently skip tasks without sound config (this is normal)
+                continue;
+            }
+
+            try {
+                await restoreTaskSound(inst.type, tile);
+                restoredCount++;
+            } catch (error) {
+                console.warn(`Failed to restore sound for task ${inst.id} (${inst.type}):`, error);
+            }
+        }
+
+        if (restoredCount > 0) {
+            console.log(`Restored sounds for ${restoredCount} active tasks`);
+        }
+    } catch (error) {
+        console.error('Error in restoreActiveTaskSounds:', error);
+    }
+}
+
+// Task sound configuration - centralized sound parameters for each task type
+interface TaskSoundConfig {
+    soundPath: string;
+    baseVolume: number;
+    maxDistance: number;
+    loop: boolean;
+}
+
+const TASK_SOUND_CONFIG: Record<string, TaskSoundConfig> = {
+    chopWood: {
+        soundPath: '/src/assets/sounds/chopping.wav',
+        baseVolume: 0.6,
+        maxDistance: 15,
+        loop: true
+    },
+    mineOre: {
+        soundPath: '/src/assets/sounds/mining.mp3', // Using chopping as placeholder
+        baseVolume: 0.8,
+        maxDistance: 12,
+        loop: true
+    },
+    // Add more task types here as they get sound support
+};
+
+// Helper function to restore specific task sounds based on task type
+async function restoreTaskSound(taskType: string, tile: Tile) {
+    const config = TASK_SOUND_CONFIG[taskType];
+    if (!config) return; // No sound configuration for this task type
+
+    // Only restore looping sounds - non-looping sounds should not be restored on game reload
+    if (!config.loop) {
+        return;
+    }
+
+    const soundId = `${taskType}-${tile.q}-${tile.r}`;
+
+    try {
+        await playPositionalSound(
+            soundId,
+            config.soundPath,
+            tile.q,
+            tile.r,
+            {
+                baseVolume: config.baseVolume,
+                maxDistance: config.maxDistance,
+                loop: config.loop
+            }
+        );
+    } catch (error) {
+        console.warn(`Failed to restore sound for ${taskType} at ${tile.q},${tile.r}:`, error);
+        throw error; // Re-throw so parent can handle
     }
 }
 
