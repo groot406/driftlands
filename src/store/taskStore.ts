@@ -403,7 +403,7 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
         'stat-reward.' + tile.q + '.' + tile.r,
         successSound,
         tile.q, tile.r,
-        {baseVolume: 0.6, maxDistance: 15, loop: false}
+        {baseVolume: 0.8, maxDistance: 20, loop: false}
     )
 }
 

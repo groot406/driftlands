@@ -55,6 +55,7 @@ interface TerrainDefsMap {
     dirt: TerrainDef;
     snow: TerrainDef;
     dessert: TerrainDef;
+    vulcano: TerrainDef;
 }
 
 export const TERRAIN_DEFS: TerrainDefsMap = {
@@ -134,6 +135,19 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         variations: [
             {key: 'mountains_with_mine', weight: 0, heroOffset: { x:0, y: 15 }},
         ]
+    },
+    vulcano: {
+        minDistanceFromCenter: 7,
+        color: '#475569',
+        baseWeight: 7,
+        walkable: true,
+        adjacency: {
+            mountain: 25,
+        },
+        overlayAssetKey: 'vulcano_overhang',
+        overlayOffset: { x: 0, y: -18 },
+        moveCost: 50,
+        assetKey: 'vulcano',
     },
     dirt: {
         minDistanceFromCenter: 6,

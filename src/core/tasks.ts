@@ -7,6 +7,7 @@ import { depositResource, resourceInventory, resourceVersion } from '../store/re
 // Import sound files
 import takeSound from '../assets/sounds/take.mp3';
 import dropSound from '../assets/sounds/drop.mp3';
+import splashSound from '../assets/sounds/splash.mp3';
 
 // Import task definitions to register them
 import.meta.glob('../core/taskDefs/*', { eager: true });
@@ -129,6 +130,8 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
     if (isAdjacentToWater) {
         // Pick up water
         hero.carryingPayload = { type: 'water' as any, amount: 1 };
+
+        playPositionalSound('splash-' + tile.q + '.' + tile.r, splashSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
