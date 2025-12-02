@@ -706,19 +706,26 @@ export class HexMapService {
 
         // Draw the text above the tile
         ctx.save();
+
+        // Add a rounded rectangle background with some padding
+        const paddingX = 10;
+        const paddingY = 6;
+        const textMetrics = ctx.measureText(text);
+        const rectWidth = textMetrics.width + paddingX * 2;
+        const rectHeight = 12 + paddingY * 2; // Approximate height for 9px font
+
+        ctx.globalAlpha = opacity * 0.6;
+        this.drawRoundedRect(ctx, x - rectWidth / 2, y - HEX_SIZE - rectHeight + 7, rectWidth, rectHeight, 6);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
         ctx.globalAlpha = opacity;
-        ctx.font = '9px \'Press Start 2P\', \'VT323\', \'Courier New\', monospace';
+        ctx.font = '8px \'Press Start 2P\', \'VT323\', \'Courier New\', monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
 
-        // Add shadow for better readability
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-        ctx.shadowBlur = 3;
-        ctx.shadowOffsetX = 1;
-        ctx.shadowOffsetY = 1;
-
-        ctx.fillStyle = '#fff6d7';
-        ctx.fillText(text, x, y - (HEX_SIZE/2));
+        ctx.fillStyle = '#fff6d7aa';
+        ctx.fillText(text, x, y - HEX_SIZE);
 
         ctx.restore();
     }
