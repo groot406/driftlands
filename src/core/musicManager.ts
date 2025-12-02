@@ -10,10 +10,15 @@ import fieldsOfTheBrave from '../assets/sounds/music/Fields of the Brave.mp3';
 import fieldsOfTheBrave2 from '../assets/sounds/music/Fields of the Brave-2.mp3';
 import pixelHarvest from '../assets/sounds/music/Pixel Harvest.mp3';
 import pixelHarvest2 from '../assets/sounds/music/Pixel Harvest-2.mp3';
+import pixelHarvestCover from '../assets/sounds/music/Pixel Harvest (Cover).mp3';
 import fieldsOfQuiet from '../assets/sounds/music/Fields of Quiet.mp3';
 import fieldsOfQuiet2 from '../assets/sounds/music/Fields of Quiet-2.mp3';
 import wanderingHands from '../assets/sounds/music/Wandering Hands.mp3';
 import wanderingHands2 from '../assets/sounds/music/Wandering Hands-2.mp3';
+import pixelOdyssey from '../assets/sounds/music/Pixel Odyssey.mp3';
+import pixelOdyssey2 from '../assets/sounds/music/Pixel Odyssey-2.mp3';
+import exploringTheUnknown from '../assets/sounds/music/Exploring the Unknown-2.mp3';
+import exploringTheUnknown2 from '../assets/sounds/music/Exploring the Unknown.mp3';
 
 // Music playlist - add your music tracks here
 // Tracks will play in order, then loop back to the first track
@@ -33,10 +38,15 @@ const MUSIC_PLAYLIST = [
     fieldsOfTheBrave2,
     pixelHarvest,
     pixelHarvest2,
+    pixelHarvestCover,
     fieldsOfQuiet,
     fieldsOfQuiet2,
     wanderingHands,
     wanderingHands2,
+    pixelOdyssey,
+    pixelOdyssey2,
+    exploringTheUnknown,
+    exploringTheUnknown2,
 ] as const;
 
 const TITLE_MUSIC = peacefulFrontier;

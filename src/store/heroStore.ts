@@ -232,6 +232,8 @@ export function updateHeroMovements(now: number) {
             if (nextCoord) {
                 const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
                 if (nextTile.discovered && !isTileWalkable(nextTile)) {
+                    const targetTile = ensureTileExists(m.target.q, m.target.r);
+                    handleHeroArrival(hero, targetTile);
                     hero.movement = undefined;
                     updateHeroActivity(hero);
                     persistHeroes();
