@@ -5,7 +5,7 @@
       <button @click="$emit('back')" class="text-slate-400 hover:text-white transition-colors">
         ← Back
       </button>
-      <h2 class="pixelfont text-xl">Settings</h2>
+      <h2 class="pixel-font text-xl">Settings</h2>
     </div>
 
     <!-- Tab Navigation -->

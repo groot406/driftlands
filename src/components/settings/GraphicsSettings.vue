@@ -198,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue';
+import { reactive } from 'vue';
 
 interface GraphicsSettingsData {
   renderingQuality: string;

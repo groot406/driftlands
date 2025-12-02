@@ -26,7 +26,7 @@ const chopWoodTask: TaskDefinition = {
         return { type: 'wood', amount: 4 *_distance };
     },
 
-    getSoundOnStart(tile, participants) {
+    getSoundOnStart() {
         // Return sound configuration for chopping
         return {
             soundPath: '/src/assets/sounds/chopping.wav',

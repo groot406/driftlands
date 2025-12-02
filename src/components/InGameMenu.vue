@@ -8,8 +8,8 @@
       >
         <!-- Main Menu -->
         <div v-if="!showSettings" class="animate-in slide-in-from-left-2 duration-500">
-          <h2 class="pixelfont text-xl mb-4">Menu</h2>
-          <div class="flex flex-col gap-2 pixelfont text-xs">
+          <h2 class="pixel-font text-xl mb-4">Menu</h2>
+          <div class="flex flex-col gap-2 pixel-font text-xs">
             <button class="menu-btn" @click="resumeGame">Back to Game</button>
             <button class="menu-btn" @click="showSettings = true">Settings</button>
             <button class="menu-btn" @click="returnToTitle">Return to Title</button>

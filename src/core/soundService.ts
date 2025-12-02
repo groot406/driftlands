@@ -29,9 +29,9 @@ export const soundState: SoundState = reactive({
     musicVolume: 0.8,
     effectsVolume: 1.0,
     currentMusic: null,
-    musicCrossfadeTime: 2000, // ms
+    musicCrossfadeTime: 3500, // ms
     maxAudioDistance: 20, // hex distance
-    panningStrength: 0.7,
+    panningStrength: 1,
     positionalSounds: new Map()
 });
 
@@ -110,8 +110,8 @@ class SoundService {
             }
 
             // Calculate panning based on relative position
-            const deltaQ = sound.q - camera.q * 2;
-            const deltaR = sound.r - camera.r * 2;
+            const deltaQ = sound.q - camera.q;
+            const deltaR = sound.r - camera.r;
 
             // Convert hex coordinates to screen-relative positioning for panning
             const screenX = deltaQ + deltaR * 0.5;

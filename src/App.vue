@@ -23,7 +23,7 @@ body, html {
   user-select: none;
 }
 
-.pixelfont {
+.pixel-font {
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
 }
 </style>
