@@ -574,99 +574,80 @@ export class HexMapService {
             const activeTasksForTile = taskStore.tasksByTile[t.id];
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
-                let hasActive = false;
-                let chosen: TaskInstance | null = null; // for progress bar
+                let hasActiveTask = false;
+                let chosenTask: TaskInstance | null = null; // for progress bar
                 for (const taskId of Object.values(activeTasksForTile)) {
                     const inst = taskStore.taskIndex[taskId];
                     if (inst && inst.active && !inst.completedMs) {
-                        hasActive = true;
+                        hasActiveTask = true;
                         // select task with highest progress ratio (tie break earliest createdMs)
                         const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
-                        if (!chosen) {
-                            chosen = inst;
+                        if (!chosenTask) {
+                            chosenTask = inst;
                         } else {
-                            const chosenRatio = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
-                            if (ratio > chosenRatio || (Math.abs(ratio - chosenRatio) < 0.0001 && inst.createdMs < chosen.createdMs)) {
-                                chosen = inst;
+                            const chosenRatio = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
+                            if (ratio > chosenRatio || (Math.abs(ratio - chosenRatio) < 0.0001 && inst.createdMs < chosenTask.createdMs)) {
+                                chosenTask = inst;
                             }
                         }
                     }
                 }
-                if (hasActive) {
+
+                if (hasActiveTask) {
                     const pulse = (Math.sin(performance.now() / 400) + 1) / 2; // 0..1
-                    this.drawTileHighlight(ctx, t, 'rgba(0, 225, 255, 1)', 'rgba(0,225,255,0.8)', opacity * (0.5 + 0.4 * pulse))
+                    this.drawHexHighlight(ctx, t.q, t.r, null,'rgba(0, 225, 255, 1)',  opacity * (0.5 + 0.4 * pulse));
 
-                    // --- Progress bar (small) ---
-                    if (chosen && opacity > 0.05) {
-                        const progressRatioRaw = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
+                    if (chosenTask && opacity > 0.05) {
+                        const progressRatioRaw = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
                         const progressRatio = Math.min(1, Math.max(0, progressRatioRaw));
-                        // Tile bounds
-                        const tileLeft = x - HEX_SIZE;
-                        const tileTop = y - HEX_SIZE;
-                        const tileWidth = this.TILE_DRAW_SIZE;
-                        const tileHeight = this.TILE_DRAW_SIZE;
-                        // Bar dimensions
-                        const barWidth = Math.round(tileWidth * 0.55);
-                        const barHeight = 7; // small bar
-                        const marginBottom = 8; // space from bottom edge
-                        let barX = x - barWidth / 2; // center
-                        const barY = tileTop + tileHeight - marginBottom - barHeight;
-                        // Clamp horizontally within tile
-                        const minX = tileLeft + 4;
-                        const maxX = tileLeft + tileWidth - barWidth - 4;
-                        if (barX < minX) barX = minX;
-                        if (barX > maxX) barX = maxX;
-
-                        ctx.save();
-                        ctx.globalAlpha = opacity; // integrate camera fade
-                        // Background with rounded corners
-                        const radius = 16;
-                        this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
-                        ctx.fillStyle = 'rgba(8,24,36,0.55)';
-                        ctx.fill();
-                        // Border
-                        ctx.strokeStyle = 'rgba(255,183,0,0.8)';
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-                        // Fill portion (rounded left, full rounding if complete)
-                        const filled = Math.max(1, Math.round(barWidth * progressRatio)); // ensure at least 1px if >0
-                        if (progressRatio > 0) {
-                            const grad = ctx.createLinearGradient(barX, barY, barX + filled, barY);
-                            grad.addColorStop(0, 'rgba(246,255,120,0.9)');
-                            grad.addColorStop(1, 'rgba(255,242,0,0.95)');
-                            ctx.fillStyle = grad;
-                            if (progressRatio >= 0.999) {
-                                this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
-                            } else {
-                                this.drawLeftRoundedRect(ctx, barX, barY, filled, barHeight, radius);
-                            }
-                            ctx.fill();
-                        }
-                        ctx.restore();
+                        this.drawProgressBar(ctx, t, progressRatio, 'rgba(255,223,12,0.9)', opacity)
                     }
                 }
             }
         }
     }
 
-    private drawTileHighlight(ctx: CanvasRenderingContext2D, t: Tile, strokeColor: string, shadowColor: string, opacity: number) {
+    private drawProgressBar(ctx: CanvasRenderingContext2D, t: Tile, progressRatio: number, fillStyle: string, opacity: number) {
+        // Tile bounds
         const {x, y} = axialToPixel(t.q, t.r);
+        const tileLeft = x - HEX_SIZE;
+        const tileTop = y - HEX_SIZE;
+        const tileWidth = this.TILE_DRAW_SIZE;
+        const tileHeight = this.TILE_DRAW_SIZE;
+        // Bar dimensions
+        const barWidth = Math.round(tileWidth * 0.55);
+        const barHeight = 7; // small bar
+        const marginBottom = 8; // space from bottom edge
+        let barX = x - barWidth / 2; // center
+        const barY = tileTop + tileHeight - marginBottom - barHeight;
+        // Clamp horizontally within tile
+        const minX = tileLeft + 4;
+        const maxX = tileLeft + tileWidth - barWidth - 4;
+        if (barX < minX) barX = minX;
+        if (barX > maxX) barX = maxX;
+
         ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.beginPath();
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-        ctx.closePath();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = strokeColor;
-        ctx.shadowColor = shadowColor
+        ctx.globalAlpha = opacity; // integrate camera fade
+        // Background with rounded corners
+        const radius = 16;
+        this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+        ctx.fillStyle = 'rgba(8,24,36,0.55)';
+        ctx.fill();
+        // Border
+        ctx.strokeStyle = fillStyle;
+        ctx.lineWidth = 1;
         ctx.stroke();
+        // Fill portion (rounded left, full rounding if complete)
+        const filled = Math.max(1, Math.round(barWidth * progressRatio)); // ensure at least 1px if >0
+        if (progressRatio > 0) {
+            ctx.fillStyle = fillStyle;
+            if (progressRatio >= 0.999) {
+                this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+            } else {
+                this.drawLeftRoundedRect(ctx, barX, barY, filled, barHeight, radius);
+            }
+            ctx.fill();
+        }
         ctx.restore();
     }
 
@@ -763,6 +744,7 @@ export class HexMapService {
             ctx.globalAlpha = 1;
             return;
         }
+
         const radius = camera.radius + 1;
         // Rebuild layout map (group heroes by tile first)
         const map = new Map<string, Hero[]>();
