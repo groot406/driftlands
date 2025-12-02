@@ -9,7 +9,7 @@ import { registerExistingAgingTiles } from './growth';
 import { terrainPositions } from './terrainRegistry';
 
 export type Terrain = TerrainKey;
-export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact' | 'water';
+export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact' | 'water' | 'grain';
 
 export interface Tile {
     id: string;

@@ -1018,6 +1018,7 @@ export class HexMapService {
         crystal: '🔮',
         artifact: '🗿',
         water: '💧',
+        grain: '🌾',
     };
 
     private getTileOverlayKey(t: Tile): string | null {
