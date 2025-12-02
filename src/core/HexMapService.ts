@@ -533,6 +533,7 @@ export class HexMapService {
         // Heroes & overlays combined layering
         this.drawHeroes(ctx, opts.hoveredHero, overlayRecords);
         this.drawTextIndicators(ctx);
+        this.drawTaskIndicators(ctx);
         ctx.restore();
     }
 
@@ -574,12 +575,11 @@ export class HexMapService {
             const activeTasksForTile = taskStore.tasksByTile[t.id];
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
-                let hasActiveTask = false;
                 let chosenTask: TaskInstance | null = null; // for progress bar
                 for (const taskId of Object.values(activeTasksForTile)) {
                     const inst = taskStore.taskIndex[taskId];
-                    if (inst && inst.active && !inst.completedMs) {
-                        hasActiveTask = true;
+                    if (inst && !inst.completedMs) {
+
                         // select task with highest progress ratio (tie break earliest createdMs)
                         const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
                         if (!chosenTask) {
@@ -593,14 +593,21 @@ export class HexMapService {
                     }
                 }
 
-                if (hasActiveTask) {
+                if (chosenTask) {
                     const pulse = (Math.sin(performance.now() / 400) + 1) / 2; // 0..1
                     this.drawHexHighlight(ctx, t.q, t.r, null,'rgba(0, 225, 255, 1)',  opacity * (0.5 + 0.4 * pulse));
 
                     if (chosenTask && opacity > 0.05) {
-                        const progressRatioRaw = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
-                        const progressRatio = Math.min(1, Math.max(0, progressRatioRaw));
-                        this.drawProgressBar(ctx, t, progressRatio, 'rgba(255,223,12,0.9)', opacity)
+                        if(chosenTask.active) {
+                            const progressRatioRaw = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
+                            this.drawProgressBar(ctx, t, Math.min(1, Math.max(0, progressRatioRaw)), 'rgba(255,223,12,0.9)', opacity)
+                        } else {
+                            // Progress is total required resources vs. collected resources
+                            const totalRequired = chosenTask.requiredResources?.reduce((sum, req) => sum + req.amount, 0) || 0;
+                            const totalCollected = chosenTask.collectedResources?.reduce((sum, col) => sum + col.amount, 0) || 0;
+                            const progressRatioRaw = totalRequired > 0 ? (totalCollected / totalRequired) : 0;
+                            this.drawProgressBar(ctx, t, Math.min(1, Math.max(0, progressRatioRaw)), 'rgba(129,134,154,0.9)', opacity)
+                        }
                     }
                 }
             }
@@ -648,6 +655,71 @@ export class HexMapService {
             }
             ctx.fill();
         }
+        ctx.restore();
+    }
+
+    private drawTaskIndicators(ctx: CanvasRenderingContext2D) {
+        const cq = Math.round(camera.q);
+        const cr = Math.round(camera.r);
+        const tiles = getTilesInRadius(cq, cr, camera.radius);
+
+        for (const t of tiles) {
+            const dist = hexDistance(camera, t);
+            const opacity = (() => {
+                const f = this.computeFade(dist, camera.innerRadius, camera.radius);
+                return f * f;
+            })();
+
+            const activeTasksForTile = taskStore.tasksByTile[t.id];
+            if (activeTasksForTile) {
+                for (const taskId of Object.values(activeTasksForTile)) {
+                    const inst = taskStore.taskIndex[taskId];
+                    if (inst && !inst.completedMs) {
+                        this.drawResourceIndicator(ctx, t, inst, opacity);
+                    }
+                }
+            }
+        }
+    }
+
+    private drawResourceIndicator(ctx: CanvasRenderingContext2D, t: Tile, task: TaskInstance, opacity: number) {
+        if (!task.requiredResources || task.requiredResources.length === 0) return;
+
+        const {x, y} = axialToPixel(t.q, t.r);
+
+        // Check which resources still need to be collected
+        const pendingResources = task.requiredResources.filter(required => {
+            const collected = task.collectedResources?.find(c => c.type === required.type)?.amount || 0;
+            return collected < required.amount;
+        });
+
+        if (pendingResources.length === 0) return; // All resources collected
+
+        // Build display text
+        const resourceTexts = pendingResources.map(required => {
+            const collected = task.collectedResources?.find(c => c.type === required.type)?.amount || 0;
+            const icon = this.RESOURCE_ICON_MAP[required.type] ?? '?';
+            return `${icon} ${collected}/${required.amount}`;
+        });
+
+        const text = resourceTexts.join('  ');
+
+        // Draw the text above the tile
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.font = '9px \'Press Start 2P\', \'VT323\', \'Courier New\', monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        // Add shadow for better readability
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+
+        ctx.fillStyle = '#fff6d7';
+        ctx.fillText(text, x, y - (HEX_SIZE/2));
+
         ctx.restore();
     }
 
