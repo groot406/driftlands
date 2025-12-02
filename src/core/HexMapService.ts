@@ -145,8 +145,10 @@ export class HexMapService {
     draw(opts: DrawOptions) {
         if (!this._ctx || !this._canvas) return;
         if (!this._imagesLoaded) return;
+
         const ctx = this._ctx;
         ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+
 
         // Motion blur tuning: only engage at higher pixel speeds
         const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
@@ -377,6 +379,7 @@ export class HexMapService {
 
     private drawTilesAndActors(ctx: CanvasRenderingContext2D, opts: DrawOptions) {
         if (!this._canvas) return;
+
         const camPx = axialToPixel(camera.q, camera.r);
         const {cx, cy} = this.getCanvasCenter();
         const translateX = cx - camPx.x;
@@ -385,201 +388,8 @@ export class HexMapService {
         ctx.scale(this._dpr, this._dpr);
         ctx.translate(translateX, translateY);
 
-        const cq = Math.round(camera.q);
-        const cr = Math.round(camera.r);
-        const tiles = getTilesInRadius(cq, cr, camera.radius);
-        const now = performance.now();
         const overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }> = [];
-        for (const t of tiles) {
-            const dist = hexDistance(camera, t);
-            const opacity = (() => {
-                const f = this.computeFade(dist, camera.innerRadius, camera.radius);
-                return f * f;
-            })();
-            const {x, y} = axialToPixel(t.q, t.r);
-            if (t.discovered) {
-                const key = this.getTileImageKey(t);
-                const baseImg = this._images[key ?? 'plains'];
-                if (!baseImg) continue;
-                // Determine animation frame if terrain has frames
-                const def: any = (TERRAIN_DEFS as any)[key ?? 'plains'];
-                let masked: HTMLCanvasElement | null | undefined = null;
-                const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
-                if (!frames) {
-                    masked = this._maskedImages[key ?? 'plains'];
-                } else {
-                    const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
-                    const elapsed = now - this._tileAnimStart;
-                    const frameIndex = Math.floor(elapsed / frameTime) % frames;
-                    // Build per-frame masked canvas lazily (cache by key+frameIndex)
-                    const cacheKey = key + '__f' + frameIndex;
-                    let frameCanvas = this._maskedImages[cacheKey];
-                    if (!frameCanvas) {
-                        const frameWidth = baseImg.width / frames;
-                        const sx = frameIndex * frameWidth;
-                        const c = document.createElement('canvas');
-                        c.width = this.TILE_DRAW_SIZE;
-                        c.height = this.TILE_DRAW_SIZE;
-                        const g = c.getContext('2d')!;
-                        // Clip to hex shape then draw specific frame portion
-                        g.save();
-                        g.beginPath();
-                        const w = this.TILE_DRAW_SIZE;
-                        const h = this.TILE_DRAW_SIZE;
-                        g.moveTo(0.5 * w, 0);
-                        g.lineTo(w, 0.25 * h);
-                        g.lineTo(w, 0.75 * h);
-                        g.lineTo(0.5 * w, h);
-                        g.lineTo(0, 0.75 * h);
-                        g.lineTo(0, 0.25 * h);
-                        g.closePath();
-                        g.clip();
-                        g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, w, h);
-                        g.restore();
-                        this._maskedImages[cacheKey] = c;
-                        frameCanvas = c;
-                    }
-                    masked = frameCanvas;
-                }
-                if (!masked) continue;
-
-                ctx.globalAlpha = opacity;
-
-                ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
-            } else {
-                ctx.globalAlpha = opacity * 0.8;
-                ctx.fillStyle = '#3a4662';
-                ctx.beginPath();
-                const w = this.TILE_DRAW_SIZE;
-                const h = this.TILE_DRAW_SIZE;
-                ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
-                ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-                ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-                ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
-                ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-                ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-                ctx.closePath();
-                ctx.fill();
-                const centerDist = this.axialDistance(0, 0, t.q, t.r);
-                ctx.globalAlpha = opacity * 0.95;
-                ctx.font = '600 12px system-ui, sans-serif';
-                ctx.fillStyle = 'rgba(255,255,255, '+ opacity + ')';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.save();
-                ctx.translate(0, 0);
-                ctx.shadowColor = 'rgba(0,0,0,0.8)';
-                ctx.shadowBlur = 2;
-                ctx.globalAlpha = 0.5 * opacity;
-                ctx.fillText(String(centerDist), x - 2, y - 2);
-                ctx.restore();
-            }
-            // collect optional overlay second layer (only for discovered tiles)
-            if (t.discovered) {
-                const overlayKey = this.getTileOverlayKey(t);
-                if (overlayKey) {
-                    const ovImg = this._images[overlayKey];
-                    if (ovImg) {
-                        const off = this.getTileOverlayOffset(t);
-                        // store axial coords for later layering sort (r,q)
-                        overlayRecords.push({ img: ovImg, x: x - HEX_SIZE + off.x, y: y - HEX_SIZE + off.y, q: t.q, r: t.r, opacity });
-                    }
-                }
-            }
-            // active task highlight overlay (after drawing base tile)
-            const activeTasksForTile = taskStore.tasksByTile[t.id];
-            if (activeTasksForTile) {
-                // If any active task instances are still incomplete, draw a subtle pulsating border
-                let hasActive = false;
-                let chosen: TaskInstance | null = null; // for progress bar
-                for (const taskId of Object.values(activeTasksForTile)) {
-                    const inst = taskStore.taskIndex[taskId];
-                    if (inst && inst.active && !inst.completedMs) {
-                        hasActive = true;
-                        // select task with highest progress ratio (tie break earliest createdMs)
-                        const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
-                        if (!chosen) {
-                            chosen = inst;
-                        } else {
-                            const chosenRatio = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
-                            if (ratio > chosenRatio || (Math.abs(ratio - chosenRatio) < 0.0001 && inst.createdMs < chosen.createdMs)) {
-                                chosen = inst;
-                            }
-                        }
-                    }
-                }
-                if (hasActive) {
-                    const pulse = (Math.sin(performance.now() / 400) + 1) / 2; // 0..1
-                    ctx.save();
-                    ctx.globalAlpha = opacity * (0.5 + 0.4 * pulse);
-                    ctx.beginPath();
-                    const w = this.TILE_DRAW_SIZE;
-                    const h = this.TILE_DRAW_SIZE;
-                    ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
-                    ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-                    ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-                    ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
-                    ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-                    ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-                    ctx.closePath();
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = `rgba(0, 225, 255, 1)`;
-                    ctx.shadowColor = 'rgba(0,225,255,0.8)';
-                    ctx.shadowBlur = 6 * pulse;
-                    ctx.stroke();
-                    ctx.restore();
-
-                    // --- Progress bar (small) ---
-                    if (chosen && opacity > 0.05) {
-                        const progressRatioRaw = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
-                        const progressRatio = Math.min(1, Math.max(0, progressRatioRaw));
-                        // Tile bounds
-                        const tileLeft = x - HEX_SIZE;
-                        const tileTop = y - HEX_SIZE;
-                        const tileWidth = this.TILE_DRAW_SIZE;
-                        const tileHeight = this.TILE_DRAW_SIZE;
-                        // Bar dimensions
-                        const barWidth = Math.round(tileWidth * 0.55);
-                        const barHeight = 7; // small bar
-                        const marginBottom = 8; // space from bottom edge
-                        let barX = x - barWidth / 2; // center
-                        const barY = tileTop + tileHeight - marginBottom - barHeight;
-                        // Clamp horizontally within tile
-                        const minX = tileLeft + 4;
-                        const maxX = tileLeft + tileWidth - barWidth - 4;
-                        if (barX < minX) barX = minX;
-                        if (barX > maxX) barX = maxX;
-
-                        ctx.save();
-                        ctx.globalAlpha = opacity; // integrate camera fade
-                        // Background with rounded corners
-                        const radius = 16;
-                        this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
-                        ctx.fillStyle = 'rgba(8,24,36,0.55)';
-                        ctx.fill();
-                        // Border
-                        ctx.strokeStyle = 'rgba(255,183,0,0.8)';
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-                        // Fill portion (rounded left, full rounding if complete)
-                        const filled = Math.max(1, Math.round(barWidth * progressRatio)); // ensure at least 1px if >0
-                        if (progressRatio > 0) {
-                            const grad = ctx.createLinearGradient(barX, barY, barX + filled, barY);
-                            grad.addColorStop(0, 'rgba(246,255,120,0.9)');
-                            grad.addColorStop(1, 'rgba(255,242,0,0.95)');
-                            ctx.fillStyle = grad;
-                            if (progressRatio >= 0.999) {
-                                this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
-                            } else {
-                                this.drawLeftRoundedRect(ctx, barX, barY, filled, barHeight, radius);
-                            }
-                            ctx.fill();
-                        }
-                        ctx.restore();
-                    }
-                }
-            }
-        }
+        this.drawTiles(ctx, overlayRecords);
 
         // Determine if selected hero is idle (gate path and selected highlight)
         const selectedHero = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) || null : null;
@@ -723,6 +533,222 @@ export class HexMapService {
         // Heroes & overlays combined layering
         this.drawHeroes(ctx, opts.hoveredHero, overlayRecords);
         this.drawTextIndicators(ctx);
+        ctx.restore();
+    }
+
+    private drawTiles(ctx: CanvasRenderingContext2D, overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number }>) {
+        const cq = Math.round(camera.q);
+        const cr = Math.round(camera.r);
+        const tiles = getTilesInRadius(cq, cr, camera.radius);
+        const now = performance.now();
+
+        for (const t of tiles) {
+            const dist = hexDistance(camera, t);
+            const opacity = (() => {
+                const f = this.computeFade(dist, camera.innerRadius, camera.radius);
+                return f * f;
+            })();
+
+            if (t.discovered) {
+                this.drawTile(t, now, ctx, opacity);
+            } else {
+                this.drawUndiscoveredTile(ctx, opacity, t);
+            }
+
+            const {x, y} = axialToPixel(t.q, t.r);
+
+            // collect optional overlay second layer (only for discovered tiles)
+            if (t.discovered) {
+                const overlayKey = this.getTileOverlayKey(t);
+                if (overlayKey) {
+                    const ovImg = this._images[overlayKey];
+                    if (ovImg) {
+                        const off = this.getTileOverlayOffset(t);
+                        // store axial coords for later layering sort (r,q)
+                        overlayRecords.push({ img: ovImg, x: x - HEX_SIZE + off.x, y: y - HEX_SIZE + off.y, q: t.q, r: t.r, opacity });
+                    }
+                }
+            }
+
+            // active task highlight overlay (after drawing base tile)
+            const activeTasksForTile = taskStore.tasksByTile[t.id];
+            if (activeTasksForTile) {
+                // If any active task instances are still incomplete, draw a subtle pulsating border
+                let hasActive = false;
+                let chosen: TaskInstance | null = null; // for progress bar
+                for (const taskId of Object.values(activeTasksForTile)) {
+                    const inst = taskStore.taskIndex[taskId];
+                    if (inst && inst.active && !inst.completedMs) {
+                        hasActive = true;
+                        // select task with highest progress ratio (tie break earliest createdMs)
+                        const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
+                        if (!chosen) {
+                            chosen = inst;
+                        } else {
+                            const chosenRatio = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
+                            if (ratio > chosenRatio || (Math.abs(ratio - chosenRatio) < 0.0001 && inst.createdMs < chosen.createdMs)) {
+                                chosen = inst;
+                            }
+                        }
+                    }
+                }
+                if (hasActive) {
+                    const pulse = (Math.sin(performance.now() / 400) + 1) / 2; // 0..1
+                    this.drawTileHighlight(ctx, t, 'rgba(0, 225, 255, 1)', 'rgba(0,225,255,0.8)', opacity * (0.5 + 0.4 * pulse))
+
+                    // --- Progress bar (small) ---
+                    if (chosen && opacity > 0.05) {
+                        const progressRatioRaw = chosen.requiredXp > 0 ? (chosen.progressXp / chosen.requiredXp) : 0;
+                        const progressRatio = Math.min(1, Math.max(0, progressRatioRaw));
+                        // Tile bounds
+                        const tileLeft = x - HEX_SIZE;
+                        const tileTop = y - HEX_SIZE;
+                        const tileWidth = this.TILE_DRAW_SIZE;
+                        const tileHeight = this.TILE_DRAW_SIZE;
+                        // Bar dimensions
+                        const barWidth = Math.round(tileWidth * 0.55);
+                        const barHeight = 7; // small bar
+                        const marginBottom = 8; // space from bottom edge
+                        let barX = x - barWidth / 2; // center
+                        const barY = tileTop + tileHeight - marginBottom - barHeight;
+                        // Clamp horizontally within tile
+                        const minX = tileLeft + 4;
+                        const maxX = tileLeft + tileWidth - barWidth - 4;
+                        if (barX < minX) barX = minX;
+                        if (barX > maxX) barX = maxX;
+
+                        ctx.save();
+                        ctx.globalAlpha = opacity; // integrate camera fade
+                        // Background with rounded corners
+                        const radius = 16;
+                        this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+                        ctx.fillStyle = 'rgba(8,24,36,0.55)';
+                        ctx.fill();
+                        // Border
+                        ctx.strokeStyle = 'rgba(255,183,0,0.8)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        // Fill portion (rounded left, full rounding if complete)
+                        const filled = Math.max(1, Math.round(barWidth * progressRatio)); // ensure at least 1px if >0
+                        if (progressRatio > 0) {
+                            const grad = ctx.createLinearGradient(barX, barY, barX + filled, barY);
+                            grad.addColorStop(0, 'rgba(246,255,120,0.9)');
+                            grad.addColorStop(1, 'rgba(255,242,0,0.95)');
+                            ctx.fillStyle = grad;
+                            if (progressRatio >= 0.999) {
+                                this.drawRoundedRect(ctx, barX, barY, barWidth, barHeight, radius);
+                            } else {
+                                this.drawLeftRoundedRect(ctx, barX, barY, filled, barHeight, radius);
+                            }
+                            ctx.fill();
+                        }
+                        ctx.restore();
+                    }
+                }
+            }
+        }
+    }
+
+    private drawTileHighlight(ctx: CanvasRenderingContext2D, t: Tile, strokeColor: string, shadowColor: string, opacity: number) {
+        const {x, y} = axialToPixel(t.q, t.r);
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.beginPath();
+        const w = this.TILE_DRAW_SIZE;
+        const h = this.TILE_DRAW_SIZE;
+        ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
+        ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+        ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
+        ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+        ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.closePath();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = strokeColor;
+        ctx.shadowColor = shadowColor
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    private drawTile(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
+        const {x, y} = axialToPixel(t.q, t.r);
+        const key = this.getTileImageKey(t);
+        const baseImg = this._images[key ?? 'plains'];
+        if (!baseImg) return;
+        // Determine animation frame if terrain has frames
+        const def: any = (TERRAIN_DEFS as any)[key ?? 'plains'];
+        let masked: HTMLCanvasElement | null | undefined = null;
+        const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
+        if (!frames) {
+            masked = this._maskedImages[key ?? 'plains'];
+        } else {
+            const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
+            const elapsed = now - this._tileAnimStart;
+            const frameIndex = Math.floor(elapsed / frameTime) % frames;
+            // Build per-frame masked canvas lazily (cache by key+frameIndex)
+            const cacheKey = key + '__f' + frameIndex;
+            let frameCanvas = this._maskedImages[cacheKey];
+            if (!frameCanvas) {
+                const frameWidth = baseImg.width / frames;
+                const sx = frameIndex * frameWidth;
+                const c = document.createElement('canvas');
+                c.width = this.TILE_DRAW_SIZE;
+                c.height = this.TILE_DRAW_SIZE;
+                const g = c.getContext('2d')!;
+                // Clip to hex shape then draw specific frame portion
+                g.save();
+                g.beginPath();
+                const w = this.TILE_DRAW_SIZE;
+                const h = this.TILE_DRAW_SIZE;
+                g.moveTo(0.5 * w, 0);
+                g.lineTo(w, 0.25 * h);
+                g.lineTo(w, 0.75 * h);
+                g.lineTo(0.5 * w, h);
+                g.lineTo(0, 0.75 * h);
+                g.lineTo(0, 0.25 * h);
+                g.closePath();
+                g.clip();
+                g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, w, h);
+                g.restore();
+                this._maskedImages[cacheKey] = c;
+                frameCanvas = c;
+            }
+            masked = frameCanvas;
+        }
+
+        ctx.globalAlpha = opacity;
+        if (masked) {
+            ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
+        }
+    }
+
+    private drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, t: Tile) {
+        const {x, y} = axialToPixel(t.q, t.r);
+        ctx.globalAlpha = opacity * 0.8;
+        ctx.fillStyle = '#3a4662';
+        ctx.beginPath();
+        const w = this.TILE_DRAW_SIZE;
+        const h = this.TILE_DRAW_SIZE;
+        ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
+        ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+        ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
+        ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
+        ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.closePath();
+        ctx.fill();
+        const centerDist = this.axialDistance(0, 0, t.q, t.r);
+        ctx.globalAlpha = opacity * 0.95;
+        ctx.font = '600 12px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255, ' + opacity + ')';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.translate(0, 0);
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 2;
+        ctx.globalAlpha = 0.5 * opacity;
+        ctx.fillText(String(centerDist), x - 2, y - 2);
         ctx.restore();
     }
 
@@ -1050,8 +1076,6 @@ export class HexMapService {
             const floatY = y - HEX_SIZE - 10 - (progress * 28); // float up
             const alpha = 1 - progress;
 
-            console.log('draw indicator');
-            console.log(x, floatY, alpha);
             ctx.save();
             ctx.globalAlpha = Math.max(0, alpha);
             ctx.font = "12px 'Press Start 2P', 'VT323', 'Courier New', monospace";

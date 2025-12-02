@@ -33,7 +33,7 @@ watch(resourceVersion, () => {
     {key: 'crystal', label: 'Crystal', icon: '\uD83D\uDC8E'},
     {key: 'artifact', label: 'Artifact', icon: '\uD83C\uDFFA'},
   ];
-  resources.value = meta.map(m => ({...m, value: resourceInventory[m.key]}));
+  resources.value = meta.map(m => ({...m, value: resourceInventory[m.key] ?? 0}));
 }, {immediate: true});
 </script>
 

@@ -25,7 +25,7 @@ const plantTreesTask: TaskDefinition = {
     },
     totalRewardedStats(_distance: number) {
         // Modest XP reward for ecological effort.
-        return {xp: 12, hp: 0, atk: 0, spd: 0};
+        return {xp: 4 * _distance, hp: 0, atk: 0, spd: 0};
     },
     onStart(tile, _participants) {
         // Guard: If tile changed before start, abort implicitly by leaving logic minimal.

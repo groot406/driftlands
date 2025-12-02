@@ -18,11 +18,7 @@ const exploreTask: TaskDefinition = {
         return 10 * Math.max(1, hero.stats.xp);
     },
     totalRewardedStats(distance: number) {
-        let rewardedXp = distance - 1;
-        const tilesInRing = 6 * distance;
-        rewardedXp /= tilesInRing;
-
-        return {xp: Math.ceil(5 * (distance * distance) / (6 * distance)), hp: 0, atk: 0, spd: 0};
+        return {xp: distance, hp: 0, atk: 0, spd: 0};
     },
 
     canStart(tile: Tile, hero: Hero): boolean {

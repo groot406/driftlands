@@ -38,7 +38,6 @@ import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
-import {getTextIndicators} from "../core/textIndicators.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;

@@ -84,10 +84,7 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
 
     if (amountToTake > 0) {
         // Deduct from warehouse inventory
-        if (!resourceInventory[resourceType]) {
-            resourceInventory[resourceType] = 0;
-        }
-        resourceInventory[resourceType] -= amountToTake;
+        resourceInventory[resourceType] = (resourceInventory[resourceType] ?? amountToTake) - amountToTake;
         resourceVersion.value++;
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
