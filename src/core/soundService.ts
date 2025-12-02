@@ -1,6 +1,10 @@
 import { reactive, watch } from 'vue';
 import { camera, hexDistance } from './camera';
 import { isPaused } from '../store/uiStore';
+import { taskStore } from '../store/taskStore';
+import { getTaskDefinition } from './taskRegistry';
+import { tileIndex } from './world';
+import type { TaskSoundConfig } from './tasks';
 
 export interface PositionalSound {
     id: string;
@@ -146,19 +150,74 @@ class SoundService {
             }
         });
 
+        // Check for active tasks that should have sounds but don't yet
+        this.checkForMissingTaskSounds();
+
         // Remove finished non-looping sounds
         soundsToRemove.forEach(id => this.removePositionalSound(id));
     }
 
-    async setMusic(musicPath: string | null, crossfade: boolean = true) {
-        await this.initialize();
+    private checkForMissingTaskSounds() {
+        // Get all active tasks
+        for (const task of taskStore.tasks) {
+            if (!task.active) continue;
 
+            // Get the tile for this task
+            const tile = tileIndex[task.tileId];
+            if (!tile) continue;
+
+            // Check if task is within audio range
+            const distance = hexDistance(camera, { q: tile.q, r: tile.r });
+            if (distance > soundState.maxAudioDistance) continue;
+
+            // Get task definition to check if it has sound
+            const taskDef = getTaskDefinition(task.type);
+            if (!taskDef?.getSoundOnStart) continue;
+
+            // Get sound configuration
+            const soundConfig = taskDef.getSoundOnStart(tile, []);
+            if (!soundConfig || !soundConfig.loop) continue; // Only auto-start looping sounds
+
+
+            // Check if sound is already playing for this task
+            const soundId = `${task.type}-${tile.q}-${tile.r}`;
+            const existingSound = soundState.positionalSounds.get(soundId);
+            if (existingSound) {
+                existingSound.isPlaying = true;
+                continue;
+            }
+
+            // Start the task sound
+            this.startTaskSoundForTile(tile, task.type, soundConfig);
+        }
+    }
+
+    private startTaskSoundForTile(tile: { q: number; r: number }, taskType: string, soundConfig: TaskSoundConfig) {
+        const soundId = `${taskType}-${tile.q}-${tile.r}`;
+
+        // Use the existing playPositionalSound method but don't await it to avoid blocking
+        this.playPositionalSound(
+            soundId,
+            soundConfig.soundPath,
+            tile.q,
+            tile.r,
+            {
+                baseVolume: soundConfig.baseVolume,
+                maxDistance: soundConfig.maxDistance,
+                loop: soundConfig.loop
+            }
+        ).catch(error => {
+            console.warn(`Failed to auto-start task sound for ${taskType}:`, error);
+        });
+    }
+
+    async setMusic(musicPath: string | null, crossfade: boolean = true) {
         if (!musicPath) {
             this.stopMusic();
             return;
         }
 
-        if (soundState.currentMusic === musicPath) return;
+        await this.initialize();
 
         const newAudio = new Audio(musicPath);
         newAudio.loop = true;
@@ -199,8 +258,6 @@ class SoundService {
             console.warn('Failed to set music:', error);
         }
     }
-
-    // Removed setupCurrentMusicNode - we now handle connection directly in setMusic
 
     private async crossfadeMusic(newAudio: HTMLAudioElement) {
         if (!this.musicGainNode || !this.crossfadeGainNode || !this.musicAudio || !this.audioContext) return;
@@ -382,7 +439,7 @@ class SoundService {
             this.musicAudio.pause();
         }
 
-        this.pauseSounds()
+        this.pauseSounds();
     }
 
     pauseSounds() {
