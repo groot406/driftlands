@@ -12,7 +12,7 @@ import {
     centerCamera,
     moveCamera
 } from './camera';
-import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
+import {type Hero, heroes, selectedHeroId, updateAllHeroActivities} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
@@ -840,6 +840,9 @@ export class HexMapService {
         for (const [k, list] of map) this._heroLayouts.set(k, this.computeTileHeroOffsets(list));
 
         const now = performance.now();
+
+        // Update all hero activities to ensure walking sounds are properly managed
+        updateAllHeroActivities();
 
         // Build hero render records
         const renderRecords: Array<{

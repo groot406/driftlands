@@ -9,6 +9,9 @@ import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
 import {HexMapService} from "../core/HexMapService.ts";
+import {playPositionalSound, removePositionalSound} from './soundStore';
+import walkingSound from '../assets/sounds/walking.mp3';
+import {taskStore} from './taskStore';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -45,6 +48,7 @@ export interface Hero {
     returnPos?: { q: number; r: number }; // restore optional original position for return flows
     delayedMovementTimer?: ReturnType<typeof setTimeout>;
     currentOffset?: { x: number; y: number }; // store current pixel offset for rendering hero related things
+    lastActivity?: 'idle' | 'walk' | 'attack'; // track last known activity for sound management
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
@@ -215,6 +219,7 @@ export function updateHeroMovements(now: number) {
                 // Only clear movement if arrival did not start a new one
                 if (hero.movement === originalMovement) {
                     hero.movement = undefined;
+                    updateHeroActivity(hero);
                 }
                 persistHeroes();
                 continue;
@@ -228,6 +233,7 @@ export function updateHeroMovements(now: number) {
                 const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
                 if (nextTile.discovered && !isTileWalkable(nextTile)) {
                     hero.movement = undefined;
+                    updateHeroActivity(hero);
                     persistHeroes();
                 }
             }
@@ -246,6 +252,7 @@ export function updateHeroMovements(now: number) {
             if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
                 hero.q = currentCoord.q;
                 hero.r = currentCoord.r;
+                updateHeroActivity(hero);
                 persistHeroes();
             }
             continue;
@@ -260,6 +267,7 @@ export function updateHeroMovements(now: number) {
             handleHeroArrival(hero, targetTile);
             if (hero.movement === originalMovement) {
                 hero.movement = undefined;
+                updateHeroActivity(hero);
             }
             persistHeroes();
             continue;
@@ -272,6 +280,7 @@ export function updateHeroMovements(now: number) {
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
             if (stepTile.discovered && !isTileWalkable(stepTile)) {
                 hero.movement = undefined;
+                updateHeroActivity(hero);
                 persistHeroes();
                 continue;
             }
@@ -286,6 +295,7 @@ export function updateHeroMovements(now: number) {
             hero.facing = facing;
             hero.q = currentCoord.q;
             hero.r = currentCoord.r;
+            updateHeroActivity(hero);
             persistHeroes();
         }
     }
@@ -313,6 +323,8 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
             const elapsed = performance.now() - m.startMs;
             if (elapsed < m.stepDurations[0]! * 0.5) return; // early in first step
         }
+        // Update activity when overriding movement
+        updateHeroActivity(hero);
     }
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
@@ -366,6 +378,10 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         stepDurations: durations,
         cumulative,
     };
+
+    // Update activity and manage walking sound
+    updateHeroActivity(hero);
+
     persistHeroes();
 }
 
@@ -399,6 +415,8 @@ export function resetHeroes() {
     } catch {
     }
     for (const hero of heroes) {
+        // Stop any walking sounds
+        stopWalkingSound(hero);
         hero.q = 0;
         hero.r = 0;
         hero.facing = 'down';
@@ -428,6 +446,84 @@ export function ensureHeroSelected(focus: boolean = true) {
     if (hero) {
         selectedHeroId.value = hero.id;
         if (focus) focusHero(hero);
+    }
+}
+
+// Walking sound management
+function getWalkingSoundId(heroId: string): string {
+    return `walking-${heroId}`;
+}
+
+function startWalkingSound(hero: Hero) {
+    const soundId = getWalkingSoundId(hero.id);
+    playPositionalSound(soundId, walkingSound, hero.q, hero.r, {
+        baseVolume: 1,
+        maxDistance: 8,
+        loop: true
+    });
+}
+
+function stopWalkingSound(hero: Hero) {
+    const soundId = getWalkingSoundId(hero.id);
+    removePositionalSound(soundId);
+}
+
+function updateWalkingSoundPosition(hero: Hero) {
+    if (!hero.movement) return;
+    const soundId = getWalkingSoundId(hero.id);
+    // Remove and restart the sound at new position to update its location
+    removePositionalSound(soundId);
+    playPositionalSound(soundId, walkingSound, hero.q, hero.r, {
+        baseVolume: 1,
+        maxDistance: 12,
+        loop: true
+    });
+}
+
+// Determine current hero activity (same logic as HexMapService rendering)
+function determineHeroActivity(hero: Hero): 'idle' | 'walk' | 'attack' {
+    let remaining = hero.movement ? hero.movement.path.length : 0;
+    let activity: 'idle' | 'walk' | 'attack' = remaining > 0 ? 'walk' : 'idle';
+
+    // Check if hero has an active task - this overrides walk activity
+    if (hero.currentTaskId) {
+        const taskInstance = taskStore.taskIndex[hero.currentTaskId];
+        if (taskInstance && taskInstance.active && !taskInstance.completedMs) {
+            activity = 'attack';
+        }
+    }
+
+    return activity;
+}
+
+// Update hero activity and manage walking sounds accordingly
+function updateHeroActivity(hero: Hero) {
+    const currentActivity = determineHeroActivity(hero);
+    const previousActivity = hero.lastActivity;
+    const previousPosition = {q: hero.q, r: hero.r};
+
+    // Update the activity
+    hero.lastActivity = currentActivity;
+
+    // Manage walking sound based on activity change
+    if (currentActivity === 'walk' && previousActivity !== 'walk') {
+        // Started walking
+        startWalkingSound(hero);
+    } else if (currentActivity !== 'walk' && previousActivity === 'walk') {
+        // Stopped walking
+        stopWalkingSound(hero);
+    } else if (currentActivity === 'walk' && previousActivity === 'walk') {
+        // Continue walking - update position
+        if(previousPosition.q !== hero.q || previousPosition.r !== hero.r) {
+            updateWalkingSoundPosition(hero);
+        }
+    }
+}
+
+// Update all heroes' activities - should be called periodically to catch task state changes
+export function updateAllHeroActivities() {
+    for (const hero of heroes) {
+        updateHeroActivity(hero);
     }
 }
 
