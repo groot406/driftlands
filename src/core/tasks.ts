@@ -4,6 +4,10 @@ import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} fro
 import { HexMapService } from './HexMapService';
 import { depositResource, resourceInventory, resourceVersion } from '../store/resourceStore';
 
+// Import sound files
+import takeSound from '../assets/sounds/take.mp3';
+import dropSound from '../assets/sounds/drop.mp3';
+
 // Import task definitions to register them
 import.meta.glob('../core/taskDefs/*', { eager: true });
 
@@ -101,7 +105,7 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
 
-        playPositionalSound('take-' + tile.q + '.' + tile.r, '/src/assets/sounds/take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        playPositionalSound('take-' + tile.q + '.' + tile.r, takeSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -164,14 +168,14 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-            playPositionalSound('drop-' + tile.q + '.' + tile.r, '/src/assets/sounds/drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            playPositionalSound('drop-' + tile.q + '.' + tile.r, dropSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
             hero.carryingPayload = undefined;
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
                 addResourcesToTask(task, hero.carryingPayload);
-                playPositionalSound('drop-' + tile.q + '.' + tile.r, '/src/assets/sounds/drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+                playPositionalSound('drop-' + tile.q + '.' + tile.r, dropSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
                 hero.carryingPayload = undefined;
                 joinTask(task.id, hero);
                 return;

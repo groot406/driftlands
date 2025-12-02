@@ -4,6 +4,9 @@ import type {Hero} from '../../store/heroStore';
 import { worldVersion } from '../world';
 import { terrainPositions } from '../terrainRegistry';
 
+// Import sound files
+import choppingSound from '../../assets/sounds/chopping.wav';
+
 // Task: Restore chopped_forest back plain.
 // Heroes collectively spend time replanting; progress rate uses hero XP & ATK lightly.
 const removeTrunksTask: TaskDefinition = {
@@ -44,7 +47,7 @@ const removeTrunksTask: TaskDefinition = {
     },
     getSoundOnStart(): TaskSoundConfig {
         return {
-            soundPath: '/src/assets/sounds/chopping.wav',
+            soundPath: choppingSound,
             baseVolume: 0.8,
             maxDistance: 12,
             loop: true

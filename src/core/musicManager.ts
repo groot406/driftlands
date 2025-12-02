@@ -2,39 +2,44 @@ import { watch } from 'vue';
 import { setBackgroundMusic } from '../store/soundStore';
 import { uiStore } from '../store/uiStore';
 
+// Import all music files
+import peacefulFrontier from '../assets/sounds/music/Peaceful Frontier.mp3';
+import peacefulFrontier2 from '../assets/sounds/music/Peaceful Frontier-2.mp3';
+import peacefulFrontier3 from '../assets/sounds/music/Peaceful Frontier-3.mp3';
+import fieldsOfTheBrave from '../assets/sounds/music/Fields of the Brave.mp3';
+import fieldsOfTheBrave2 from '../assets/sounds/music/Fields of the Brave-2.mp3';
+import pixelHarvest from '../assets/sounds/music/Pixel Harvest.mp3';
+import pixelHarvest2 from '../assets/sounds/music/Pixel Harvest-2.mp3';
+import fieldsOfQuiet from '../assets/sounds/music/Fields of Quiet.mp3';
+import fieldsOfQuiet2 from '../assets/sounds/music/Fields of Quiet-2.mp3';
+import wanderingHands from '../assets/sounds/music/Wandering Hands.mp3';
+import wanderingHands2 from '../assets/sounds/music/Wandering Hands-2.mp3';
+
 // Music playlist - add your music tracks here
 // Tracks will play in order, then loop back to the first track
 // Each track plays for approximately 3.5 minutes before switching
 //
 // To add new tracks:
 // 1. Place your music files in /src/assets/sounds/music/
-// 2. Add the path to the array below
-// 3. Supported formats: MP3, WAV, OGG
-//
-// Example with multiple tracks:
-// const MUSIC_PLAYLIST = [
-//     '/src/assets/sounds/music/Peaceful Frontier.mp3',
-//     '/src/assets/sounds/music/Forest Adventure.mp3',
-//     '/src/assets/sounds/music/Desert Journey.mp3',
-//     '/src/assets/sounds/music/Mountain Peaks.mp3',
-//     '/src/assets/sounds/music/Ocean Voyage.mp3',
-// ] as const;
+// 2. Import the file above
+// 3. Add the imported variable to the array below
+// 4. Supported formats: MP3, WAV, OGG
 
 const MUSIC_PLAYLIST = [
-    '/src/assets/sounds/music/Peaceful Frontier.mp3',
-    '/src/assets/sounds/music/Peaceful Frontier-2.mp3',
-    '/src/assets/sounds/music/Peaceful Frontier-3.mp3',
-    '/src/assets/sounds/music/Fields of the Brave.mp3',
-    '/src/assets/sounds/music/Fields of the Brave-2.mp3',
-    '/src/assets/sounds/music/Pixel Harvest.mp3',
-    '/src/assets/sounds/music/Pixel Harvest-2.mp3',
-    '/src/assets/sounds/music/Fields of Quiet.mp3',
-    '/src/assets/sounds/music/Fields of Quiet-2.mp3',
-    '/src/assets/sounds/music/Wandering Hands.mp3',
-    '/src/assets/sounds/music/Wandering Hands-2.mp3',
+    peacefulFrontier,
+    peacefulFrontier2,
+    peacefulFrontier3,
+    fieldsOfTheBrave,
+    fieldsOfTheBrave2,
+    pixelHarvest,
+    pixelHarvest2,
+    fieldsOfQuiet,
+    fieldsOfQuiet2,
+    wanderingHands,
+    wanderingHands2,
 ] as const;
 
-const TITLE_MUSIC = '/src/assets/sounds/music/Peaceful Frontier.mp3';
+const TITLE_MUSIC = peacefulFrontier;
 
 export class MusicManager {
     private currentTrack: string | null = null;

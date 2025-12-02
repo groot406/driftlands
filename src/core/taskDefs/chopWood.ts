@@ -3,6 +3,9 @@ import type { TaskDefinition } from '../tasks';
 import type { Hero } from '../../store/heroStore';
 import { applyVariant } from '../variants';
 
+// Import sound files
+import choppingSound from '../../assets/sounds/chopping.wav';
+
 const chopWoodTask: TaskDefinition = {
     key: 'chopWood',
     label: 'Chop Wood',
@@ -29,7 +32,7 @@ const chopWoodTask: TaskDefinition = {
     getSoundOnStart() {
         // Return sound configuration for chopping
         return {
-            soundPath: '/src/assets/sounds/chopping.wav',
+            soundPath: choppingSound,
             baseVolume: 0.6,
             maxDistance: 15,
             loop: true
