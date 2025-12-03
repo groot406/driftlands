@@ -118,6 +118,12 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         frameTime: 220,
         variations: [
             {key: 'water_lily', weight: 2},
+            {key: 'water_dock_a', weight: 0},
+            {key: 'water_dock_b', weight: 0},
+            {key: 'water_dock_c', weight: 0},
+            {key: 'water_dock_d', weight: 0},
+            {key: 'water_dock_e', weight: 0},
+            {key: 'water_dock_f', weight: 0},
         ]
     },
     mountain: {

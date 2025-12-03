@@ -49,8 +49,25 @@ class SoundService {
     private gainNodes: Map<string, GainNode> = new Map();
     private updateInterval: number | null = null;
     private initialized = false;
+    private lastTaskSoundCheck = 0;
+    private audioDataCache: Map<string, string> = new Map(); // Cache blob URLs for audio data
+    private loadingPromises: Map<string, Promise<string>> = new Map(); // Track loading promises
+
+    private initializationPromise: Promise<void> | null = null;
 
     async initialize() {
+        if (this.initialized) return;
+
+        // Prevent multiple simultaneous initializations
+        if (this.initializationPromise) {
+            return this.initializationPromise;
+        }
+
+        this.initializationPromise = this.doInitialize();
+        return this.initializationPromise;
+    }
+
+    private async doInitialize() {
         if (this.initialized) return;
 
         try {
@@ -61,6 +78,8 @@ class SoundService {
             console.log('Sound system initialized');
         } catch (error) {
             console.warn('Failed to initialize audio context:', error);
+        } finally {
+            this.initializationPromise = null;
         }
     }
 
@@ -81,7 +100,7 @@ class SoundService {
 
         this.updateInterval = window.setInterval(() => {
             this.updatePositionalAudio();
-        }, 1000 / 30); // 30 FPS update rate
+        }, 1000 / 15); // 15 FPS update rate - reduced from 30 FPS to improve performance
     }
 
     private updatePositionalAudio() {
@@ -122,17 +141,20 @@ class SoundService {
             const normalizedPan = Math.max(-1, Math.min(1, screenX / maxDist));
             const pan = normalizedPan * soundState.panningStrength;
 
-            // Apply volume and panning
-            sound.audioElement.volume = Math.max(0, Math.min(1, volume));
+            // Apply volume and panning - only update if values have changed significantly
+            const newVolume = Math.max(0, Math.min(1, volume));
+            if (Math.abs(sound.audioElement.volume - newVolume) > 0.01) {
+                sound.audioElement.volume = newVolume;
+            }
 
             const gainNode = this.gainNodes.get(sound.id);
             const pannerNode = this.pannerNodes.get(sound.id);
 
-            if (gainNode) {
+            if (gainNode && Math.abs(gainNode.gain.value - volume) > 0.01) {
                 gainNode.gain.value = volume;
             }
 
-            if (pannerNode) {
+            if (pannerNode && Math.abs(pannerNode.pan.value - pan) > 0.01) {
                 pannerNode.pan.value = pan;
             }
 
@@ -150,8 +172,12 @@ class SoundService {
             }
         });
 
-        // Check for active tasks that should have sounds but don't yet
-        this.checkForMissingTaskSounds();
+        // Check for active tasks that should have sounds but don't yet - throttled to every 500ms
+        const now = performance.now();
+        if (now - this.lastTaskSoundCheck > 500) {
+            this.checkForMissingTaskSounds();
+            this.lastTaskSoundCheck = now;
+        }
 
         // Remove finished non-looping sounds
         soundsToRemove.forEach(id => this.removePositionalSound(id));
@@ -328,9 +354,14 @@ class SoundService {
         // Remove existing sound with same id
         this.removePositionalSound(id);
 
-        const audio = new Audio(soundPath);
+        // Load cached audio data to avoid repeated network requests
+        const cachedAudioUrl = await this.loadAudioData(soundPath);
+
+        // Create fresh audio element using cached data
+        // Audio elements can't be properly shared between multiple simultaneous sounds
+        const audio = new Audio(cachedAudioUrl);
+        audio.preload = 'metadata'; // Use metadata instead of auto to reduce memory usage
         audio.loop = options.loop || false;
-        audio.preload = 'auto';
 
         const sound: PositionalSound = {
             id,
@@ -388,17 +419,71 @@ class SoundService {
         }
     }
 
+    private async loadAudioData(soundPath: string): Promise<string> {
+        // Check if already cached
+        const cached = this.audioDataCache.get(soundPath);
+        if (cached) {
+            return cached;
+        }
+
+        // Check if already loading
+        const loading = this.loadingPromises.get(soundPath);
+        if (loading) {
+            return loading;
+        }
+
+        // Start loading
+        const loadPromise = this.fetchAudioData(soundPath);
+        this.loadingPromises.set(soundPath, loadPromise);
+
+        try {
+            const blobUrl = await loadPromise;
+            this.audioDataCache.set(soundPath, blobUrl);
+            return blobUrl;
+        } finally {
+            this.loadingPromises.delete(soundPath);
+        }
+    }
+
+    private async fetchAudioData(soundPath: string): Promise<string> {
+        try {
+            const response = await fetch(soundPath);
+            if (!response.ok) {
+                throw new Error(`Failed to load audio: ${response.statusText}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            const blob = new Blob([arrayBuffer], { type: response.headers.get('content-type') || 'audio/mpeg' });
+            return URL.createObjectURL(blob);
+        } catch (error) {
+            console.warn(`Failed to cache audio data for ${soundPath}:`, error);
+            // Fallback to original path if caching fails
+            return soundPath;
+        }
+    }
+
     removePositionalSound(id: string) {
         const sound = soundState.positionalSounds.get(id);
         if (sound) {
             sound.audioElement.pause();
+            sound.audioElement.removeAttribute('src');
+            sound.audioElement.load(); // Force cleanup of audio resources
             sound.isPlaying = false;
             soundState.positionalSounds.delete(id);
         }
 
         // Clean up audio nodes
-        this.gainNodes.delete(id);
-        this.pannerNodes.delete(id);
+        const gainNode = this.gainNodes.get(id);
+        const pannerNode = this.pannerNodes.get(id);
+
+        if (gainNode) {
+            gainNode.disconnect();
+            this.gainNodes.delete(id);
+        }
+
+        if (pannerNode) {
+            pannerNode.disconnect();
+            this.pannerNodes.delete(id);
+        }
     }
 
     updateSoundPosition(id: string, q: number, r: number) {
@@ -469,11 +554,26 @@ class SoundService {
 
         soundState.positionalSounds.forEach((sound) => {
             sound.audioElement.pause();
+            sound.audioElement.removeAttribute('src');
+            sound.audioElement.load();
         });
 
         soundState.positionalSounds.clear();
+
+        // Clean up audio nodes
+        this.gainNodes.forEach(node => node.disconnect());
+        this.pannerNodes.forEach(node => node.disconnect());
         this.gainNodes.clear();
         this.pannerNodes.clear();
+
+        // Clean up cached blob URLs
+        this.audioDataCache.forEach(blobUrl => {
+            if (blobUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(blobUrl);
+            }
+        });
+        this.audioDataCache.clear();
+        this.loadingPromises.clear();
 
         if (this.audioContext) {
             this.audioContext.close();

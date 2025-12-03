@@ -23,6 +23,7 @@ import TitleBackground from "./TitleBackground.vue";
 import { soundService } from '../core/soundService';
 import { musicManager } from '../core/musicManager';
 import { restoreActiveTaskSounds } from '../store/taskStore';
+import { startPeriodicHeroUpdates, stopPeriodicHeroUpdates } from '../store/heroStore';
 
 const playing = computed(() => isPlaying());
 
@@ -40,9 +41,15 @@ onMounted(async () => {
 
   // Restore sounds for any active tasks (important for game reload)
   await restoreActiveTaskSounds();
+
+  // Start periodic hero activity updates (replaces expensive 60 FPS updates)
+  startPeriodicHeroUpdates();
 });
 
 onUnmounted(() => {
+  // Stop periodic hero updates
+  stopPeriodicHeroUpdates();
+
   // Cleanup sound system
   soundService.destroy();
   musicManager.destroy();

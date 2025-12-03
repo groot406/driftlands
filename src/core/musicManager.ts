@@ -2,23 +2,8 @@ import { watch } from 'vue';
 import { setBackgroundMusic } from '../store/soundStore';
 import { uiStore } from '../store/uiStore';
 
-// Import all music files
+// Import title music immediately, lazy load game music
 import peacefulFrontier from '../assets/sounds/music/Peaceful Frontier.mp3';
-import peacefulFrontier2 from '../assets/sounds/music/Peaceful Frontier-2.mp3';
-import peacefulFrontier3 from '../assets/sounds/music/Peaceful Frontier-3.mp3';
-import fieldsOfTheBrave from '../assets/sounds/music/Fields of the Brave.mp3';
-import fieldsOfTheBrave2 from '../assets/sounds/music/Fields of the Brave-2.mp3';
-import pixelHarvest from '../assets/sounds/music/Pixel Harvest.mp3';
-import pixelHarvest2 from '../assets/sounds/music/Pixel Harvest-2.mp3';
-import pixelHarvestCover from '../assets/sounds/music/Pixel Harvest (Cover).mp3';
-import fieldsOfQuiet from '../assets/sounds/music/Fields of Quiet.mp3';
-import fieldsOfQuiet2 from '../assets/sounds/music/Fields of Quiet-2.mp3';
-import wanderingHands from '../assets/sounds/music/Wandering Hands.mp3';
-import wanderingHands2 from '../assets/sounds/music/Wandering Hands-2.mp3';
-import pixelOdyssey from '../assets/sounds/music/Pixel Odyssey.mp3';
-import pixelOdyssey2 from '../assets/sounds/music/Pixel Odyssey-2.mp3';
-import exploringTheUnknown from '../assets/sounds/music/Exploring the Unknown-2.mp3';
-import exploringTheUnknown2 from '../assets/sounds/music/Exploring the Unknown.mp3';
 
 // Music playlist - add your music tracks here
 // Tracks will play in order, then loop back to the first track
@@ -30,23 +15,24 @@ import exploringTheUnknown2 from '../assets/sounds/music/Exploring the Unknown.m
 // 3. Add the imported variable to the array below
 // 4. Supported formats: MP3, WAV, OGG
 
-const MUSIC_PLAYLIST = [
-    peacefulFrontier,
-    peacefulFrontier2,
-    peacefulFrontier3,
-    fieldsOfTheBrave,
-    fieldsOfTheBrave2,
-    pixelHarvest,
-    pixelHarvest2,
-    pixelHarvestCover,
-    fieldsOfQuiet,
-    fieldsOfQuiet2,
-    wanderingHands,
-    wanderingHands2,
-    pixelOdyssey,
-    pixelOdyssey2,
-    exploringTheUnknown,
-    exploringTheUnknown2,
+// Lazy loading music paths - loaded on demand to reduce memory usage
+const MUSIC_PLAYLIST_PATHS = [
+    () => import('../assets/sounds/music/Peaceful Frontier.mp3'),
+    () => import('../assets/sounds/music/Peaceful Frontier-2.mp3'),
+    () => import('../assets/sounds/music/Peaceful Frontier-3.mp3'),
+    () => import('../assets/sounds/music/Fields of the Brave.mp3'),
+    () => import('../assets/sounds/music/Fields of the Brave-2.mp3'),
+    () => import('../assets/sounds/music/Pixel Harvest.mp3'),
+    () => import('../assets/sounds/music/Pixel Harvest-2.mp3'),
+    () => import('../assets/sounds/music/Pixel Harvest (Cover).mp3'),
+    () => import('../assets/sounds/music/Fields of Quiet.mp3'),
+    () => import('../assets/sounds/music/Fields of Quiet-2.mp3'),
+    () => import('../assets/sounds/music/Wandering Hands.mp3'),
+    () => import('../assets/sounds/music/Wandering Hands-2.mp3'),
+    () => import('../assets/sounds/music/Pixel Odyssey.mp3'),
+    () => import('../assets/sounds/music/Pixel Odyssey-2.mp3'),
+    () => import('../assets/sounds/music/Exploring the Unknown-2.mp3'),
+    () => import('../assets/sounds/music/Exploring the Unknown.mp3'),
 ] as const;
 
 const TITLE_MUSIC = peacefulFrontier;
@@ -57,6 +43,7 @@ export class MusicManager {
     private playlistTimer: number | null = null;
     private initialized = false;
     private isInGame = false;
+    private loadedTracks: Map<number, string> = new Map(); // Cache loaded track URLs
 
     initialize() {
         if (this.initialized) return;
@@ -87,24 +74,41 @@ export class MusicManager {
 
         this.isInGame = true;
         // Random start index
-        this.currentPlaylistIndex = Math.floor(Math.random() * MUSIC_PLAYLIST.length);
+        this.currentPlaylistIndex = Math.floor(Math.random() * MUSIC_PLAYLIST_PATHS.length);
         await this.playCurrentPlaylistTrack();
         this.scheduleNextTrack();
     }
 
     private async playCurrentPlaylistTrack() {
-        if (MUSIC_PLAYLIST.length < 1) return;
+        if (MUSIC_PLAYLIST_PATHS.length < 1) return;
 
-        const track = MUSIC_PLAYLIST[this.currentPlaylistIndex];
-        if (track && track !== this.currentTrack) {
-            try {
+        try {
+            // Check bounds
+            if (this.currentPlaylistIndex >= MUSIC_PLAYLIST_PATHS.length) {
+                return;
+            }
+
+            // Check if track is already loaded
+            let track = this.loadedTracks.get(this.currentPlaylistIndex);
+
+            if (!track) {
+                // Lazy load the track
+                const trackLoader = MUSIC_PLAYLIST_PATHS[this.currentPlaylistIndex];
+                if (trackLoader) {
+                    const importedTrack = await trackLoader();
+                    track = importedTrack.default;
+                    this.loadedTracks.set(this.currentPlaylistIndex, track);
+                }
+            }
+
+            if (track && track !== this.currentTrack) {
                 await setBackgroundMusic(track, true);
                 this.currentTrack = track;
-                console.log(`Now playing: ${track} (${this.currentPlaylistIndex + 1}/${MUSIC_PLAYLIST.length})`);
-            } catch (error) {
-                console.warn('Failed to play playlist track:', error);
-                this.skipToNextTrack();
+                console.log(`Now playing track ${this.currentPlaylistIndex + 1}/${MUSIC_PLAYLIST_PATHS.length}`);
             }
+        } catch (error) {
+            console.warn('Failed to play playlist track:', error);
+            this.skipToNextTrack();
         }
     }
 
@@ -125,9 +129,9 @@ export class MusicManager {
     }
 
     private async playNextTrack() {
-        if (!this.isInGame || MUSIC_PLAYLIST.length <= 1) return;
+        if (!this.isInGame || MUSIC_PLAYLIST_PATHS.length <= 1) return;
 
-        this.currentPlaylistIndex = (this.currentPlaylistIndex + 1) % MUSIC_PLAYLIST.length;
+        this.currentPlaylistIndex = (this.currentPlaylistIndex + 1) % MUSIC_PLAYLIST_PATHS.length;
         await this.playCurrentPlaylistTrack();
         this.scheduleNextTrack();
     }
@@ -155,6 +159,7 @@ export class MusicManager {
 
     destroy() {
         this.stopPlaylist();
+        this.loadedTracks.clear(); // Clear loaded track cache
         this.initialized = false;
     }
 }

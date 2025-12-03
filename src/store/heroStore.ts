@@ -10,6 +10,7 @@ import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
 import {HexMapService} from "../core/HexMapService.ts";
 import {playPositionalSound, removePositionalSound} from './soundStore';
+import {soundService} from '../core/soundService';
 import walkingSound from '../assets/sounds/walking.mp3';
 import {taskStore} from './taskStore';
 
@@ -49,6 +50,7 @@ export interface Hero {
     delayedMovementTimer?: ReturnType<typeof setTimeout>;
     currentOffset?: { x: number; y: number }; // store current pixel offset for rendering hero related things
     lastActivity?: 'idle' | 'walk' | 'attack'; // track last known activity for sound management
+    lastSoundPosition?: { q: number; r: number }; // track last sound position to avoid unnecessary updates
 }
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
@@ -85,7 +87,30 @@ export function setCurrentWorldId(worldId: string) {
     restoreHeroes();
 }
 
+// Throttle hero persistence to prevent excessive localStorage writes
+let lastPersistTime = 0;
+let persistTimeout: ReturnType<typeof setTimeout> | null = null;
+const PERSIST_THROTTLE_MS = 500; // Only persist every 500ms max
+
 function persistHeroes() {
+    const now = Date.now();
+
+    // If we persisted recently, schedule a delayed persist instead
+    if (now - lastPersistTime < PERSIST_THROTTLE_MS) {
+        if (!persistTimeout) {
+            persistTimeout = setTimeout(() => {
+                persistTimeout = null;
+                doPeristHeroes();
+            }, PERSIST_THROTTLE_MS - (now - lastPersistTime));
+        }
+        return;
+    }
+
+    doPeristHeroes();
+}
+
+function doPeristHeroes() {
+    lastPersistTime = Date.now();
     try {
         const plain = heroes.map(h => ({
             ...h,
@@ -195,9 +220,15 @@ function isTileWalkable(tile: Tile): boolean {
 }
 
 // Advance heroes based on movement timing; called each frame before drawing.
+let lastMovementSoundUpdate = 0;
 export function updateHeroMovements(now: number) {
+    const shouldUpdateSounds = now - lastMovementSoundUpdate > 50; // Throttle sound updates to 20 FPS
+    if (shouldUpdateSounds) {
+        lastMovementSoundUpdate = now;
+    }
     for (const hero of heroes) {
         if (!hero.movement) continue;
+
         const m = hero.movement;
         const durations = m.stepDurations;
         const cumulative = m.cumulative;
@@ -211,6 +242,7 @@ export function updateHeroMovements(now: number) {
             // Arrival if all steps completed
             if (completedSteps >= m.path.length) {
                 const targetTile = ensureTileExists(m.target.q, m.target.r);
+
                 // Move hero to final tile before arrival handling so path origin for any new movement is correct
                 hero.q = m.target.q;
                 hero.r = m.target.r;
@@ -219,7 +251,7 @@ export function updateHeroMovements(now: number) {
                 // Only clear movement if arrival did not start a new one
                 if (hero.movement === originalMovement) {
                     hero.movement = undefined;
-                    updateHeroActivity(hero);
+                    if (shouldUpdateSounds) updateHeroActivity(hero);
                 }
                 persistHeroes();
                 continue;
@@ -232,10 +264,9 @@ export function updateHeroMovements(now: number) {
             if (nextCoord) {
                 const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
                 if (nextTile.discovered && !isTileWalkable(nextTile)) {
-                    const targetTile = ensureTileExists(m.target.q, m.target.r);
-                    handleHeroArrival(hero, targetTile);
+                    handleHeroArrival(hero, nextTile);
                     hero.movement = undefined;
-                    updateHeroActivity(hero);
+                    if (shouldUpdateSounds) updateHeroActivity(hero);
                     persistHeroes();
                 }
             }
@@ -254,7 +285,7 @@ export function updateHeroMovements(now: number) {
             if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
                 hero.q = currentCoord.q;
                 hero.r = currentCoord.r;
-                updateHeroActivity(hero);
+                if (shouldUpdateSounds) updateHeroActivity(hero);
                 persistHeroes();
             }
             continue;
@@ -269,7 +300,7 @@ export function updateHeroMovements(now: number) {
             handleHeroArrival(hero, targetTile);
             if (hero.movement === originalMovement) {
                 hero.movement = undefined;
-                updateHeroActivity(hero);
+                if (shouldUpdateSounds) updateHeroActivity(hero);
             }
             persistHeroes();
             continue;
@@ -282,7 +313,7 @@ export function updateHeroMovements(now: number) {
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
             if (stepTile.discovered && !isTileWalkable(stepTile)) {
                 hero.movement = undefined;
-                updateHeroActivity(hero);
+                if (shouldUpdateSounds) updateHeroActivity(hero);
                 persistHeroes();
                 continue;
             }
@@ -297,7 +328,7 @@ export function updateHeroMovements(now: number) {
             hero.facing = facing;
             hero.q = currentCoord.q;
             hero.r = currentCoord.r;
-            updateHeroActivity(hero);
+            if (shouldUpdateSounds) updateHeroActivity(hero);
             persistHeroes();
         }
     }
@@ -370,6 +401,7 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         cumulative.push(acc);
     }
     const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+
     hero.movement = {
         path: path.slice(),
         origin: {q: hero.q, r: hero.r},
@@ -473,14 +505,14 @@ function stopWalkingSound(hero: Hero) {
 function updateWalkingSoundPosition(hero: Hero) {
     if (!hero.movement) return;
     const soundId = getWalkingSoundId(hero.id);
-    // Remove and restart the sound at new position to update its location
-    removePositionalSound(soundId);
-    playPositionalSound(soundId, walkingSound, hero.q, hero.r, {
-        baseVolume: 1,
-        maxDistance: 12,
-        loop: true
-    });
+    // Use the sound service's updateSoundPosition method instead of recreating
+    soundService.updateSoundPosition(soundId, hero.q, hero.r);
 }
+
+// Cache for task lookups to avoid repeated expensive operations
+let taskLookupCache = new Map<string, boolean>();
+let lastTaskCacheUpdate = 0;
+const TASK_CACHE_TTL = 100; // Cache task lookups for 100ms
 
 // Determine current hero activity (same logic as HexMapService rendering)
 function determineHeroActivity(hero: Hero): 'idle' | 'walk' | 'attack' {
@@ -489,8 +521,21 @@ function determineHeroActivity(hero: Hero): 'idle' | 'walk' | 'attack' {
 
     // Check if hero has an active task - this overrides walk activity
     if (hero.currentTaskId) {
-        const taskInstance = taskStore.taskIndex[hero.currentTaskId];
-        if (taskInstance && taskInstance.active && !taskInstance.completedMs) {
+        // Use cached task lookup to avoid expensive repeated lookups
+        const now = performance.now();
+        if (now - lastTaskCacheUpdate > TASK_CACHE_TTL) {
+            taskLookupCache.clear();
+            lastTaskCacheUpdate = now;
+        }
+
+        let isTaskActive = taskLookupCache.get(hero.currentTaskId);
+        if (isTaskActive === undefined) {
+            const taskInstance = taskStore.taskIndex[hero.currentTaskId];
+            isTaskActive = !!(taskInstance && taskInstance.active && !taskInstance.completedMs);
+            taskLookupCache.set(hero.currentTaskId, isTaskActive);
+        }
+
+        if (isTaskActive) {
             activity = 'attack';
         }
     }
@@ -502,33 +547,60 @@ function determineHeroActivity(hero: Hero): 'idle' | 'walk' | 'attack' {
 function updateHeroActivity(hero: Hero) {
     const currentActivity = determineHeroActivity(hero);
     const previousActivity = hero.lastActivity;
-    const previousPosition = {q: hero.q, r: hero.r};
 
     // Update the activity
     hero.lastActivity = currentActivity;
+
+    // Check if position has changed for walking sounds
+    const positionChanged = !hero.lastSoundPosition ||
+        hero.lastSoundPosition.q !== hero.q ||
+        hero.lastSoundPosition.r !== hero.r;
 
     // Manage walking sound based on activity change
     if (currentActivity === 'walk' && previousActivity !== 'walk') {
         // Started walking
         startWalkingSound(hero);
+        hero.lastSoundPosition = { q: hero.q, r: hero.r };
     } else if (currentActivity !== 'walk' && previousActivity === 'walk') {
         // Stopped walking
         stopWalkingSound(hero);
-    } else if (currentActivity === 'walk' && previousActivity === 'walk') {
-        // Continue walking - update position
-        if(previousPosition.q !== hero.q || previousPosition.r !== hero.r) {
-            updateWalkingSoundPosition(hero);
-        }
+        hero.lastSoundPosition = undefined;
+    } else if (currentActivity === 'walk' && previousActivity === 'walk' && positionChanged) {
+        // Continue walking and position changed - update sound position
+        updateWalkingSoundPosition(hero);
+        hero.lastSoundPosition = { q: hero.q, r: hero.r };
     }
 }
 
 // Update all heroes' activities - should be called periodically to catch task state changes
+// Throttled to prevent excessive updates
+let lastActivityUpdateTime = 0;
 export function updateAllHeroActivities() {
+    const now = performance.now();
+    if (now - lastActivityUpdateTime < 100) return; // Throttle to 10 FPS maximum
+
+    lastActivityUpdateTime = now;
     for (const hero of heroes) {
         updateHeroActivity(hero);
     }
 }
 
+// Periodic hero activity updates to ensure sound management stays in sync
+// This replaces the expensive 60 FPS updates that were in the drawing loop
+let activityUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
+export function startPeriodicHeroUpdates() {
+    if (activityUpdateInterval) return;
 
+    // Update hero activities every 200ms (5 FPS) - much more reasonable than 60 FPS
+    activityUpdateInterval = setInterval(() => {
+        updateAllHeroActivities();
+    }, 200);
+}
 
+export function stopPeriodicHeroUpdates() {
+    if (activityUpdateInterval) {
+        clearInterval(activityUpdateInterval);
+        activityUpdateInterval = null;
+    }
+}
