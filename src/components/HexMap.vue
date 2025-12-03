@@ -80,24 +80,38 @@ let rafId: number | null = null;
 let lastClickTime = 0;
 let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mobile short taps
 
+// Frame rate limiting for graphics performance
+let lastDrawTime = 0;
+const TARGET_FPS = 30; // Reduce from 60 FPS to 30 FPS to reduce graphics load
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
 function animationLoop() {
   const now = performance.now();
+  const deltaTime = now - lastDrawTime;
+
+  // Always update hero movements (this is important for smooth movement)
   updateHeroMovements(now);
 
-  if (isKeyboardNavigating()) {
-    if (hoveredTile.value) hoveredTile.value = null;
-    if (pathCoords.value.length) pathCoords.value = [];
-  } else if (selectedHeroId.value && hoveredTile.value) {
-    pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+  // Limit drawing to 30 FPS to reduce graphics overhead
+  if (deltaTime >= FRAME_INTERVAL) {
+    lastDrawTime = now;
+
+    if (isKeyboardNavigating()) {
+      if (hoveredTile.value) hoveredTile.value = null;
+      if (pathCoords.value.length) pathCoords.value = [];
+    } else if (selectedHeroId.value && hoveredTile.value) {
+      pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+    }
+    service.draw({
+      hoveredTile: hoveredTile.value,
+      hoveredHero: hoveredHero.value,
+      pathCoords: pathCoords.value,
+      taskMenuTile: taskMenuTile.value,
+      clusterBoundaryTiles: clusterBoundaryTiles.value,
+      clusterTileIds: clusterTiles.value,
+    });
   }
-  service.draw({
-    hoveredTile: hoveredTile.value,
-    hoveredHero: hoveredHero.value,
-    pathCoords: pathCoords.value,
-    taskMenuTile: taskMenuTile.value,
-    clusterBoundaryTiles: clusterBoundaryTiles.value,
-    clusterTileIds: clusterTiles.value,
-  });
+
   rafId = requestAnimationFrame(animationLoop);
 }
 
