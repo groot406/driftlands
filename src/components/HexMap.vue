@@ -82,7 +82,7 @@ let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mob
 
 // Frame rate limiting for graphics performance
 let lastDrawTime = 0;
-const TARGET_FPS = 30; // Reduce from 60 FPS to 30 FPS to reduce graphics load
+const TARGET_FPS = 60; // Reduce from 60 FPS to 30 FPS to reduce graphics load
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
 function animationLoop() {

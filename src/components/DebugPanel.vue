@@ -12,10 +12,43 @@
 </template>
 
 <script setup lang="ts">
-import {ref} from 'vue';
+import {ref, onMounted, onUnmounted} from 'vue';
 import {camera} from '../core/camera';
 import {worldVersion} from '../core/world';
 import {idleStore as store} from '../store/idleStore';
+
+// FPS tracking
+const fps = ref(0);
+const frameCount = ref(0);
+let lastTime = performance.now();
+let animationId: number | null = null;
+
+const updateFPS = () => {
+  const now = performance.now();
+  frameCount.value++;
+
+  // Update FPS every second
+  if (now - lastTime >= 1000) {
+    fps.value = Math.round(frameCount.value * 1000 / (now - lastTime));
+    frameCount.value = 0;
+    lastTime = now;
+  }
+
+  animationId = requestAnimationFrame(updateFPS);
+};
+
+onMounted(() => {
+  lastTime = performance.now();
+  frameCount.value = 0;
+  updateFPS();
+});
+
+onUnmounted(() => {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+});
 
 const open = ref(false);
 </script>
