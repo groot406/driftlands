@@ -52,6 +52,7 @@ interface DrawOptions {
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
 }
 
+const maxNodes = 5000; // keep in sync with default
 
 export class HexMapService {
 
@@ -188,7 +189,6 @@ export class HexMapService {
         if (!this.isHeroIdle(hero)) return [];
 
         // Distance guard: skip if far beyond reachable distance for preview
-        const maxNodes = 9999; // keep in sync with default
         const maxDist = this.estimateMaxReachableDistance(maxNodes);
         const dist = this.axialDistance(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
         if (dist > maxDist) return [];
@@ -207,7 +207,7 @@ export class HexMapService {
     }
 
     // expose pathfinding for external movement start
-    public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number, maxNodes = 9999): PathCoord[] {
+    public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number): PathCoord[] {
         // Early exit: if target is clearly beyond reachable distance under node cap
         const maxDist = this.estimateMaxReachableDistance(maxNodes);
         const dist = this.axialDistance(startQ, startR, goalQ, goalR);

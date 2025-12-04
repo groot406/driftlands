@@ -24,6 +24,7 @@ import { soundService } from '../core/soundService';
 import { musicManager } from '../core/musicManager';
 import { restoreActiveTaskSounds } from '../store/taskStore';
 import { startPeriodicHeroUpdates, stopPeriodicHeroUpdates } from '../store/heroStore';
+import { heroes, selectHero, getSelectedHero } from '../store/heroStore';
 
 const playing = computed(() => isPlaying());
 
@@ -44,6 +45,9 @@ onMounted(async () => {
 
   // Start periodic hero activity updates (replaces expensive 60 FPS updates)
   startPeriodicHeroUpdates();
+
+  // Register global hotkeys for hero selection
+  window.addEventListener('keydown', onGlobalKeyDown);
 });
 
 onUnmounted(() => {
@@ -53,6 +57,9 @@ onUnmounted(() => {
   // Cleanup sound system
   soundService.destroy();
   musicManager.destroy();
+
+  // Remove global hotkeys
+  window.removeEventListener('keydown', onGlobalKeyDown);
 });
 
 function moveToTile(tile: Tile) {
@@ -61,6 +68,43 @@ function moveToTile(tile: Tile) {
 
 function handleTileClick(_tile: Tile) {
 
+}
+
+// Global hotkeys: 1-9 select hero, Tab/Shift+Tab cycle through heroes
+function onGlobalKeyDown(e: KeyboardEvent) {
+  // Ignore if focus is in an editable element
+  const target = e.target as HTMLElement | null;
+  const isEditable = !!target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    (target as any).isContentEditable
+  );
+  if (isEditable) return;
+
+  // Number keys 1-9 select hero by index
+  if (e.key >= '1' && e.key <= '9') {
+    const idx = Number(e.key) - 1;
+    if (heroes[idx]) {
+      selectHero(heroes[idx], true);
+    }
+    return;
+  }
+
+  // Tab cycles selection; Shift+Tab cycles backwards
+  if (e.key === 'Tab') {
+    e.preventDefault(); // prevent focus change
+    if (!heroes.length) return;
+    const current = getSelectedHero();
+    const currentIdx = current ? heroes.findIndex(h => h.id === current.id) : -1;
+    let nextIdx = currentIdx;
+    if (e.shiftKey) {
+      nextIdx = currentIdx <= 0 ? heroes.length - 1 : currentIdx - 1;
+    } else {
+      nextIdx = currentIdx >= 0 ? (currentIdx + 1) % heroes.length : 0;
+    }
+    selectHero(heroes[nextIdx], true);
+    return;
+  }
 }
 </script>
 

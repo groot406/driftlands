@@ -1,12 +1,11 @@
 import { registerTask } from '../taskRegistry';
 import type { TaskDefinition } from '../tasks';
 import type { Hero } from '../../store/heroStore';
-import type { Tile } from '../world';
 
 const harvestGrainTask: TaskDefinition = {
     key: 'harvestGrain',
     label: 'Harvest Grain',
-    chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'grain',
+    chainAdjacentSameTerrain: true,
 
     canStart(tile, hero) {
         return !hero.carryingPayload && tile.terrain === 'grain' && !tile.variant;

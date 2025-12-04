@@ -1,12 +1,11 @@
 import { registerTask } from '../taskRegistry';
 import type { ResourceAmount, TaskDefinition } from '../tasks';
 import type { Hero } from '../../store/heroStore';
-import type { Tile } from '../world';
 
 const seedGrainTask: TaskDefinition = {
     key: 'seedGrain',
     label: 'Plant Seeds',
-    chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'dirt' && (tile.variant === 'dirt_tilled_hydrated' || tile.variant === 'dirt_tilled'),
+    chainAdjacentSameTerrain: true,
 
     canStart(tile, hero) {
         return !hero.carryingPayload &&

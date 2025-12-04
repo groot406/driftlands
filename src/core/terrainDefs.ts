@@ -147,7 +147,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         minDistanceFromCenter: 7,
         color: '#475569',
         baseWeight: 7,
-        walkable: true,
+        walkable: false,
         preserveIsolation: true,
         adjacency: {
             mountain: 25,
