@@ -148,6 +148,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         color: '#475569',
         baseWeight: 7,
         walkable: true,
+        preserveIsolation: true,
         adjacency: {
             mountain: 25,
         },

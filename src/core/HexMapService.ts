@@ -99,6 +99,10 @@ export class HexMapService {
     // Asset sources
     private readonly tileImgSources: Record<string, string> = buildTileSources();
 
+    // Path preview memoization
+    private _lastPathKey: string = '';
+    private _lastPath: { q: number; r: number }[] = [];
+
     async init(canvasEl: HTMLCanvasElement, containerEl: HTMLDivElement) {
         this._canvas = canvasEl;
         this._container = containerEl;
@@ -181,16 +185,34 @@ export class HexMapService {
         if (!selectedId || !hoveredTile) return [];
         const hero = heroes.find(h => h.id === selectedId);
         if (!hero) return [];
-
-        // Only allow path preview if hero is idle
         if (!this.isHeroIdle(hero)) return [];
 
+        // Distance guard: skip if far beyond reachable distance for preview
+        const maxNodes = 9999; // keep in sync with default
+        const maxDist = this.estimateMaxReachableDistance(maxNodes);
+        const dist = this.axialDistance(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
+        if (dist > maxDist) return [];
+
+        // Build cache key from hero id/coords and hovered coords
+        const key = `${selectedId}:${hero.q},${hero.r}->${hoveredTile.q},${hoveredTile.r}`;
+        if (this._lastPathKey === key && this._lastPath.length) {
+            return this._lastPath;
+        }
+
         if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
-        return this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
+        const computed = this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
+        this._lastPathKey = key;
+        this._lastPath = computed;
+        return computed;
     }
 
     // expose pathfinding for external movement start
     public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number, maxNodes = 9999): PathCoord[] {
+        // Early exit: if target is clearly beyond reachable distance under node cap
+        const maxDist = this.estimateMaxReachableDistance(maxNodes);
+        const dist = this.axialDistance(startQ, startR, goalQ, goalR);
+        if (dist > maxDist) return [];
+
         interface PathNode {
             q: number;
             r: number;
@@ -1350,5 +1372,12 @@ export class HexMapService {
         }
         const baseKey = def?.assetKey || t.terrain;
         return this.tileImgSources[baseKey] ? baseKey : null;
+    }
+
+    // Estimate maximum axial distance reachable given node cap for hex grid (~3d(d+1) nodes up to ring d)
+    private estimateMaxReachableDistance(maxNodes: number): number {
+        // Solve 3d(d+1) <= maxNodes -> d ≈ (sqrt(12*maxNodes + 3) - 3) / 6
+        const approx = (Math.sqrt(12 * Math.max(0, maxNodes) + 3) - 3) / 6;
+        return Math.max(0, Math.floor(approx));
     }
 }
