@@ -105,7 +105,7 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
 }
 
 // Check if hero needs to fetch resources and initiate the fetch if needed
-function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: ResourceAmount[], hero: Hero, taskType: TaskType): boolean {
+function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: ResourceAmount[], hero: Hero, taskType: TaskType, inst?: TaskInstance): boolean {
     // If hero is already fetching resources for this task, don't initiate another fetch
     if (hero.carryingPayload && hero.returnPos &&
         hero.returnPos.q === targetTile.q && hero.returnPos.r === targetTile.r) {
@@ -152,17 +152,82 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                 hero.returnPos = {q: targetTile.q, r: targetTile.r};
 
                 // Mark hero as preparing to fetch this resource
-                // Store negative amount to indicate needed amount
                 hero.carryingPayload = {
                     type: resource.type as any,
                     amount: -resource.amount,
                 } as any;
 
-
                 // Start movement to fetch location (no taskType - just fetching)
                 startHeroMovement(hero.id, pathToFetch, fetchLocation);
 
                 return true; // Resource fetch initiated
+            }
+
+            // Handle zero-length path: hero already at optimal fetch location
+            if (pathToFetch && pathToFetch.length === 0) {
+                // Ensure we have a task instance to deposit to
+                if (!inst) {
+                    // Without instance, we cannot deposit immediately; treat as no fetch initiated
+                    continue;
+                }
+
+                // Prepare carrying intent
+                hero.pendingChain = {
+                    sourceTileId: targetTile.id,
+                    taskType: taskType
+                };
+                hero.returnPos = {q: targetTile.q, r: targetTile.r};
+                hero.carryingPayload = {
+                    type: resource.type as any,
+                    amount: -resource.amount,
+                } as any;
+
+                // Immediate pickup logic
+                const currentTile = ensureTileExists(hero.q, hero.r);
+
+                if (resource.type === 'water') {
+                    // Check adjacency to water and pick up instantly
+                    const neighbors = currentTile.neighbors;
+                    let adjacentWater = false;
+                    if (neighbors) {
+                        for (const side of ['a','b','c','d','e','f'] as const) {
+                            if (neighbors[side]?.terrain === 'water') { adjacentWater = true; break; }
+                        }
+                    }
+                    if (adjacentWater) {
+                        hero.carryingPayload = { type: 'water' as any, amount: 1 } as any;
+                    } else {
+                        // Not actually adjacent to water; skip
+                        continue;
+                    }
+                } else {
+                    // Warehouse immediate pickup when standing on towncenter with stock
+                    const ctTerrain = currentTile.terrain;
+                    const available = resourceInventory[resource.type as keyof typeof resourceInventory] || 0;
+                    if (ctTerrain === 'towncenter' && available > 0) {
+                        const amountToTake = Math.min(resource.amount, available, 10);
+                        resourceInventory[resource.type as keyof typeof resourceInventory] = available - amountToTake;
+                        hero.carryingPayload = { type: resource.type as any, amount: amountToTake } as any;
+                    } else {
+                        // Can't pick up immediately
+                        continue;
+                    }
+                }
+
+                // Deposit directly into the task and activate it
+                if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
+                    addResourcesToTask(inst, hero.carryingPayload);
+                    hero.carryingPayload = undefined;
+
+                    const stillNeeded = getRemainingResources(inst);
+                    if (stillNeeded.length === 0) {
+                        inst.createdMs = Date.now();
+                        inst.lastUpdateMs = Date.now();
+                        inst.active = true;
+                    }
+
+                    return false; // No movement initiated; task can proceed
+                }
             }
         }
     }
@@ -255,7 +320,7 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
         const stillNeeded = getRemainingResources(inst);
         if (stillNeeded.length > 0) {
             inst.active = false;
-            checkAndInitiateResourceFetch(tile, stillNeeded, hero, type);
+            checkAndInitiateResourceFetch(tile, stillNeeded, hero, type, inst);
         } else {
             inst.createdMs = Date.now();
             inst.lastUpdateMs = Date.now();

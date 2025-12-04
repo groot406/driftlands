@@ -37,8 +37,8 @@ export const BIOME_DEFS: Record<BiomeKey, BiomeDef> = {
     },
     plains: {
         when: {'plains': 4},
-        allowedTerrains: ['plains', 'forest', 'mountain', 'water'],
-        weightAdjust: {plains: 10},
+        allowedTerrains: ['plains', 'forest', 'mountain', 'water', 'grain'],
+        weightAdjust: {plains: 20},
         variantGrowthScale: { young_forest: 1 }
     },
     dessert: {
