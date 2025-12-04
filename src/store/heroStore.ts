@@ -256,21 +256,18 @@ export function updateHeroMovements(now: number) {
                 persistHeroes();
                 continue;
             }
-            // Current coord = last fully completed tile (origin if none yet)
             const currentCoord = (completedSteps === 0) ? m.origin : m.path[completedSteps - 1]!;
-            const nextCoord = m.path[completedSteps]; // in-progress destination (not yet reached)
-
-            // Validate destination walkability ahead of time
+            const nextCoord = m.path[completedSteps];
             if (nextCoord) {
                 const nextTile = ensureTileExists(nextCoord.q, nextCoord.r);
-                if (nextTile.discovered && !isTileWalkable(nextTile)) {
+                const isNextTarget = (nextCoord.q === m.target.q && nextCoord.r === m.target.r);
+                if (nextTile.discovered && !isTileWalkable(nextTile) && !isNextTarget) {
                     handleHeroArrival(hero, nextTile);
                     hero.movement = undefined;
                     if (shouldUpdateSounds) updateHeroActivity(hero);
                     persistHeroes();
                 }
             }
-            // Facing toward next tile if exists
             if (nextCoord) {
                 const dq = nextCoord.q - currentCoord.q;
                 const dr = nextCoord.r - currentCoord.r;
@@ -311,7 +308,8 @@ export function updateHeroMovements(now: number) {
         if (!currentCoord) continue;
         if (hero.q !== currentCoord.q || hero.r !== currentCoord.r) {
             const stepTile = ensureTileExists(currentCoord.q, currentCoord.r);
-            if (stepTile.discovered && !isTileWalkable(stepTile)) {
+            const isStepTarget = (currentCoord.q === m.target.q && currentCoord.r === m.target.r);
+            if (stepTile.discovered && !isTileWalkable(stepTile) && !isStepTarget) {
                 hero.movement = undefined;
                 if (shouldUpdateSounds) updateHeroActivity(hero);
                 persistHeroes();

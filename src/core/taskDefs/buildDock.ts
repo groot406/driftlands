@@ -10,19 +10,13 @@ const buildDockTask: TaskDefinition = {
     label: 'Build Dock',
     chainAdjacentSameTerrain: false,
 
-    onStart(tile, participants) {
-        console.log('buildDock onStart called:', { tileId: tile.id, participants: participants.map(h => h.id) });
-    },
+
     canStart(tile, hero) {
-        const canStart = !hero.carryingPayload && tile.terrain === 'water' && !tile.variant;
-        console.log('buildDock canStart:', { tileId: tile.id, terrain: tile.terrain, variant: tile.variant, carryingPayload: hero.carryingPayload, canStart });
-        return canStart;
+        return !hero.carryingPayload && tile.terrain === 'water' && !tile.variant;
     },
 
     requiredXp(_distance: number) {
-        const xp = Math.max(3000, 3000 * _distance);
-        console.log('buildDock requiredXp:', { distance: _distance, xp });
-        return xp;
+        return Math.max(3000, 3000 * _distance);
     },
     heroRate(hero: Hero) {
         return 10 * hero.stats.atk * 2;
@@ -33,7 +27,6 @@ const buildDockTask: TaskDefinition = {
     },
 
     onComplete(tile, _instance, _participants) {
-        console.log('buildDock onComplete called:', { tileId: tile.id, terrain: tile.terrain });
         if (tile.terrain === 'water') {
             // Find the first adjacent walkable tile to orient the dock toward it
             let dockVariant = 'water_dock_a'; // default fallback
