@@ -309,8 +309,8 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
     const distance = hexDistance(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(distance);
 
-    // add carrying to collected resources if applicable
-    if (hero.carryingPayload) {
+    // add carrying to collected resources if applicable (only positive amounts)
+    if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         addResourcesToTask(inst, hero.carryingPayload);
         hero.carryingPayload = undefined;
     }
