@@ -4,7 +4,7 @@
     class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
     @click.self="closeModal"
   >
-    <div class="bg-gray-900 border border-gray-600 rounded-lg p-6 w-96 max-w-[90vw] max-h-[80vh] flex flex-col">
+    <div class="bg-gray-900 border border-gray-600 rounded-lg p-6 w-96 w-[90vw] max-h-[80vh] flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -22,9 +22,10 @@
       </div>
 
       <!-- Players List -->
-      <div class="mb-4">
-        <h3 class="text-sm font-semibold text-gray-300 mb-2">Players</h3>
-        <div class="space-y-1 max-h-24 overflow-y-auto">
+      <div class="flex flex-row gap-4">
+      <div class="mb-4 w-[250px]">
+        <h3 class="text-sm font-semibold text-gray-300 mb-2">Other Players</h3>
+        <div class="space-y-1 overflow-y-auto max-h-[50vh]">
           <div
             v-for="player in connectedPlayers"
             :key="player.id"
@@ -60,9 +61,9 @@
               <span class="text-xs text-gray-400 shrink-0">
                 {{ formatTime(message.timestamp) }}
               </span>
-              <span class="text-sm font-medium text-blue-300">{{ message.playerName }}:</span>
+              <span class="text-sm font-medium text-blue-300">{{ message.playerName }}</span>
             </div>
-            <div class="text-sm text-gray-200 ml-12 break-words">
+            <div class="text-sm text-gray-200 ml-10 break-words p-1 px-2 mt-1 mb-3 bg-slate-500/20 rounded">
               {{ message.message }}
             </div>
           </div>
@@ -86,6 +87,7 @@
             Send
           </button>
         </div>
+      </div>
       </div>
     </div>
   </div>
