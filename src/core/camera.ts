@@ -1,6 +1,7 @@
 import {reactive} from 'vue';
 import {getMaxRadiusFor} from './world';
 import {isPaused} from '../store/uiStore';
+import {isKeyboardBlocked} from './windowManager';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
@@ -213,6 +214,7 @@ export function isKeyboardNavigating(): boolean {
 
 export function keyDown(e: KeyboardEvent) {
     if (isPaused()) return; // suppress movement key capture while paused
+    if (isKeyboardBlocked.value) return; // don't capture keys when any modal is blocking input
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
         heldKeys.add(e.key);
         e.preventDefault();
@@ -221,6 +223,7 @@ export function keyDown(e: KeyboardEvent) {
 
 export function keyUp(e: KeyboardEvent) {
     if (isPaused()) return; // suppress release processing while paused
+    if (isKeyboardBlocked.value) return; // don't process key releases when any modal is blocking input
     if (heldKeys.delete(e.key)) e.preventDefault();
 }
 

@@ -25,6 +25,7 @@ import { musicManager } from '../core/musicManager';
 import { restoreActiveTaskSounds } from '../store/taskStore';
 import { startPeriodicHeroUpdates, stopPeriodicHeroUpdates } from '../store/heroStore';
 import { heroes, selectHero, getSelectedHero } from '../store/heroStore';
+import { isKeyboardBlocked } from '../core/windowManager';
 
 const playing = computed(() => isPlaying());
 
@@ -72,6 +73,9 @@ function handleTileClick(_tile: Tile) {
 
 // Global hotkeys: 1-9 select hero, Tab/Shift+Tab cycle through heroes
 function onGlobalKeyDown(e: KeyboardEvent) {
+  // Ignore if any modal is blocking keyboard input
+  if (isKeyboardBlocked.value) return;
+
   // Ignore if focus is in an editable element
   const target = e.target as HTMLElement | null;
   const isEditable = !!target && (

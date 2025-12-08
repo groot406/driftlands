@@ -24,18 +24,20 @@
   </div>
 </template>
 <script setup lang="ts">
-import {ref, computed} from 'vue';
+import {ref, computed, onUnmounted, watch} from 'vue';
 import type {Tile} from '../core/world';
 import {getSelectedHero, persistHeroes, startHeroMovement} from '../store/heroStore';
 import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 import type {TaskDefinition} from '../core/tasks';
 import {axialToPixel, camera} from '../core/camera';
+import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
 
 interface Props {
   tile: Tile | null;
   availableTasks: TaskDefinition[];
   containerSize?: { width: number; height: number };
+  visible?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -111,6 +113,37 @@ function unHoverTask(t: TaskDefinition) {
     emit('hover', hoveredTask.value);
   }
 }
+
+// Handle Escape key to close task menu
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isWindowActive(WINDOW_IDS.TASK_MENU)) {
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  }
+}
+
+// Track if event listener is currently active
+let listenerActive = false;
+
+// Watch visibility and manage event listener accordingly
+watch(() => props.visible, (isVisible) => {
+  if (isVisible && !listenerActive) {
+    window.addEventListener('keydown', handleKeydown);
+    listenerActive = true;
+  } else if (!isVisible && listenerActive) {
+    window.removeEventListener('keydown', handleKeydown);
+    listenerActive = false;
+  }
+}, { immediate: true });
+
+// Cleanup on unmount
+onUnmounted(() => {
+  if (listenerActive) {
+    window.removeEventListener('keydown', handleKeydown);
+    listenerActive = false;
+  }
+});
 
 </script>
 

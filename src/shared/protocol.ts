@@ -36,17 +36,26 @@ export interface PlayerActionMessage extends BaseMessage {
   data: any;
 }
 
+export interface ChatMessage extends BaseMessage {
+  type: 'chat:message';
+  playerId: string;
+  playerName: string;
+  message: string;
+}
+
 // Union type for all possible messages
 export type ClientMessage =
   | PlayerJoinMessage
   | PlayerLeaveMessage
-  | PlayerActionMessage;
+  | PlayerActionMessage
+  | ChatMessage;
 
 export type ServerMessage =
   | GameStateMessage
   | PlayerJoinMessage
   | PlayerLeaveMessage
-  | PlayerCountMessage;
+  | PlayerCountMessage
+  | ChatMessage;
 
 export type Message = ClientMessage | ServerMessage;
 
@@ -57,4 +66,5 @@ export const MESSAGE_TYPES = {
   PLAYER_COUNT: 'player:count',
   GAME_STATE: 'game:state',
   PLAYER_ACTION: 'player:action',
+  CHAT_MESSAGE: 'chat:message',
 } as const;

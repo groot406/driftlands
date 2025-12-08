@@ -1,6 +1,7 @@
 import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerCountMessage } from '../../shared/protocol';
 import { clientMessageRouter } from '../messageRouter';
 import { addPlayer, removePlayer, updateOnlinePlayersCount } from '../../store/playerStore';
+import { addNotification } from '../../store/notificationStore';
 
 class PlayerMessageHandler {
   init(): void {
@@ -14,6 +15,14 @@ class PlayerMessageHandler {
 
     addPlayer({ id: message.playerId, name: message.playerName });
 
+    // Show notification for new player
+    addNotification({
+      type: 'player_join',
+      title: 'Player joined',
+      message: `${message.playerName} joined the game`,
+      duration: 3000
+    });
+
     window.dispatchEvent(new CustomEvent('player-join', {
       detail: { playerId: message.playerId, playerName: message.playerName }
     }));
@@ -23,6 +32,14 @@ class PlayerMessageHandler {
     console.log(`Player left: ${message.playerId}`);
 
     removePlayer(message.playerId);
+
+    // Show notification for player leaving
+    addNotification({
+      type: 'player_leave',
+      title: 'Player left',
+      message: `A player left the game`,
+      duration: 3000
+    });
 
     window.dispatchEvent(new CustomEvent('player-leave', {
       detail: { playerId: message.playerId }

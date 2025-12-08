@@ -1,38 +1,43 @@
-import type { BaseMessage } from '../shared/protocol';
+import type { ChatMessage } from '../../shared/protocol';
 import { clientMessageRouter } from '../messageRouter';
+import { addChatMessage } from '../../store/chatStore';
+import { addNotification } from '../../store/notificationStore';
+import { getCurrentPlayerInfo } from '../socket';
+import { isWindowActive, WINDOW_IDS } from '../windowManager';
 
-// Example of adding a new message type
-export interface ChatMessage extends BaseMessage {
-  type: 'chat:message';
-  playerId: string;
-  message: string;
-  channel: string;
-}
-
-// Example client-side chat handler
+// Client-side chat handler
 class ChatMessageHandler {
   init(): void {
     clientMessageRouter.on('chat:message', this.handleChatMessage.bind(this));
   }
 
   private handleChatMessage(message: ChatMessage): void {
-    console.log(`[${message.channel}] Player ${message.playerId}: ${message.message}`);
+    // Add to chat store
+    addChatMessage({
+      playerId: message.playerId,
+      playerName: message.playerName,
+      message: message.message
+    });
 
-    // Emit custom event for UI updates
-    window.dispatchEvent(new CustomEvent('chat-message', {
-      detail: {
-        playerId: message.playerId,
-        message: message.message,
-        channel: message.channel
-      }
-    }));
+    // Show notification if chat modal is not active and message is from another player
+    const currentPlayer = getCurrentPlayerInfo();
+    const isOwnMessage = currentPlayer && message.playerId === currentPlayer.id;
+
+    if (!isOwnMessage && !isWindowActive(WINDOW_IDS.PLAYER_MODAL)) {
+      addNotification({
+        type: 'chat',
+        title: 'New message',
+        message: `${message.playerName}: ${message.message}`,
+        duration: 4000
+      });
+    }
+  }
+
+  sendMessage(message: string): void {
+    // This will be implemented to send to server
+    console.log('Sending message:', message);
   }
 }
 
 export const chatMessageHandler = new ChatMessageHandler();
 
-// To use this handler:
-// 1. Add ChatMessage to ClientMessage union type in protocol.ts
-// 2. Import and initialize in messageHandlers.ts:
-//    import { chatMessageHandler } from './handlers/chatHandler';
-//    chatMessageHandler.init();

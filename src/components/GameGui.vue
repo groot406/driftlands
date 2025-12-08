@@ -13,6 +13,8 @@
     <FpsCounter />
   </div>
   <OnlinePlayersIndicator />
+  <PlayerModal />
+  <NotificationOverlay />
   <InGameMenu />
 </template>
 
@@ -25,6 +27,8 @@ import HeroesBar from './HeroesBar.vue';
 import InGameMenu from './InGameMenu.vue';
 import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
+import PlayerModal from './PlayerModal.vue';
+import NotificationOverlay from './NotificationOverlay.vue';
 
 const showHelpers = ref(false);
 

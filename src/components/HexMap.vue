@@ -3,7 +3,8 @@
     <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
-                @close="showTaskMenu=false; taskMenuTile=null"
+                :visible="showTaskMenu"
+                @close="showTaskMenu=false; taskMenuTile=null; closeWindow(WINDOW_IDS.TASK_MENU)"
                 @hover="(task) => hoveredTask = task"
       />
     </transition>
@@ -36,6 +37,7 @@ import {
 } from '../core/camera';
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
+import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
 import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
 
@@ -130,6 +132,7 @@ function handleClick(e: PointerEvent) {
     // If menu is open, close it on any click outside
     showTaskMenu.value = false;
     taskMenuTile.value = null;
+    closeWindow(WINDOW_IDS.TASK_MENU);
     return;
   }
 
@@ -171,6 +174,7 @@ function handleClick(e: PointerEvent) {
     if (!(showTaskMenu.value && taskMenuTile.value === tile)) {
       taskMenuTile.value = tile;
       showTaskMenu.value = true;
+      openWindow(WINDOW_IDS.TASK_MENU);
       lastMenuOpenTime = performance.now(); // start cooldown
     }
 
@@ -180,6 +184,7 @@ function handleClick(e: PointerEvent) {
     // Close if switching to a tile without tasks
     showTaskMenu.value = false;
     taskMenuTile.value = null;
+    closeWindow(WINDOW_IDS.TASK_MENU);
   }
 
   let path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);

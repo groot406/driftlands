@@ -27,12 +27,12 @@ socket.on('connect', () => {
     // Automatically join the game when connected
     // Generate a simple player ID and name for now
     currentPlayerId = `player-${Date.now()}`;
-    const playerName = `Player ${currentPlayerId.slice(-4)}`;
+    currentPlayerName = `Player ${currentPlayerId.slice(-4)}`;
 
     const joinMessage: ClientMessage = {
         type: 'player:join',
         playerId: currentPlayerId,
-        playerName,
+        playerName: currentPlayerName,
         timestamp: Date.now()
     };
 
@@ -41,6 +41,14 @@ socket.on('connect', () => {
 
 // Store current player info for disconnection
 let currentPlayerId: string | null = null;
+let currentPlayerName: string | null = null;
+
+export function getCurrentPlayerInfo(): { id: string; name: string } | null {
+    if (currentPlayerId && currentPlayerName) {
+        return { id: currentPlayerId, name: currentPlayerName };
+    }
+    return null;
+}
 
 socket.on('disconnect', () => {
     console.log('Disconnected from socket server');

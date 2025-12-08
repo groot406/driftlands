@@ -5,6 +5,7 @@ import {ensureHeroSelected, resetHeroes, selectedHeroId, setCurrentWorldId} from
 import { setCurrentWorldIdForResources, clearResourcePersistence } from './resourceStore';
 import {camera, moveCamera} from '../core/camera';
 import {clearAllTasks} from './taskStore';
+import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
 
 export type Phase = 'title' | 'playing';
 
@@ -121,6 +122,7 @@ export function continueGame() {
 
 export function resumeGame() { // repurposed: close menu
     uiStore.menuOpen = false;
+    closeWindow(WINDOW_IDS.IN_GAME_MENU);
     if (!idleStore.running) startIdle();
     restoreUIState();
     ensureHeroSelected(false);
@@ -130,12 +132,14 @@ export function pauseGame() {
     if (uiStore.phase !== 'playing') return;
 
     uiStore.menuOpen = true;
+    openWindow(WINDOW_IDS.IN_GAME_MENU);
     persistUIState();
 }
 
 export function returnToTitle() {
     uiStore.phase = 'title';
     uiStore.menuOpen = false;
+    closeWindow(WINDOW_IDS.IN_GAME_MENU);
 }
 
 export function isTitle() {

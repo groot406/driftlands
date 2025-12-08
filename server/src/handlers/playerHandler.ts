@@ -1,5 +1,5 @@
 import type { Socket, Server } from 'socket.io';
-import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerActionMessage } from '../../../src/shared/protocol';
+import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerActionMessage, ChatMessage } from '../../../src/shared/protocol';
 import { serverMessageRouter } from '../messageRouter';
 
 export class ServerPlayerHandler {
@@ -11,6 +11,7 @@ export class ServerPlayerHandler {
     serverMessageRouter.on('player:join', this.handlePlayerJoin.bind(this));
     serverMessageRouter.on('player:leave', this.handlePlayerLeave.bind(this));
     serverMessageRouter.on('player:action', this.handlePlayerAction.bind(this));
+    serverMessageRouter.on('chat:message', this.handleChatMessage.bind(this));
   }
 
   private handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): void {
@@ -83,6 +84,19 @@ export class ServerPlayerHandler {
       playerId: message.playerId,
       action: message.action,
       data: message.data,
+      timestamp: Date.now()
+    });
+  }
+
+  private handleChatMessage(socket: Socket, message: ChatMessage): void {
+    console.log(`Chat message from ${message.playerName}: ${message.message}`);
+
+    // Broadcast chat message to all connected players (including sender)
+    this.io.emit('message', {
+      type: 'chat:message',
+      playerId: message.playerId,
+      playerName: message.playerName,
+      message: message.message,
       timestamp: Date.now()
     });
   }

@@ -28,8 +28,9 @@
 
 <script setup lang="ts">
 import { uiStore, resumeGame, returnToTitle } from '../store/uiStore';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import Settings from './Settings.vue';
+import {closeWindow, isWindowActive, WINDOW_IDS} from '../core/windowManager';
 
 const visible = computed(() => uiStore.menuOpen);
 const showSettings = ref(false);
@@ -39,6 +40,26 @@ watch(visible, (isVisible) => {
   if (!isVisible) {
     showSettings.value = false;
   }
+});
+
+// Handle Escape key to close menu
+function handleKeydown(e: KeyboardEvent) {
+  // if (e.key === 'Escape' && isWindowActive(WINDOW_IDS.IN_GAME_MENU)) {
+  //   closeWindow(WINDOW_IDS.IN_GAME_MENU);
+  //   e.preventDefault();
+  //   e.stopPropagation();
+  //   resumeGame();
+  //   return;
+  // }
+}
+
+// Add/remove escape key listener
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
