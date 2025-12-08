@@ -8,4 +8,12 @@ export default defineConfig({
   build: {
     assetsDir: 'assets', // Keep assets organized
   },
+  server: {
+    proxy: {
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+      },
+    },
+  },
 })
