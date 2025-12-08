@@ -23,10 +23,38 @@ initializeClientHandlers();
 
 socket.on('connect', () => {
     console.log('Connected to socket server');
+
+    // Automatically join the game when connected
+    // Generate a simple player ID and name for now
+    currentPlayerId = `player-${Date.now()}`;
+    const playerName = `Player ${currentPlayerId.slice(-4)}`;
+
+    const joinMessage: ClientMessage = {
+        type: 'player:join',
+        playerId: currentPlayerId,
+        playerName,
+        timestamp: Date.now()
+    };
+
+    sendMessage(joinMessage);
 });
+
+// Store current player info for disconnection
+let currentPlayerId: string | null = null;
 
 socket.on('disconnect', () => {
     console.log('Disconnected from socket server');
+
+    // Send leave message if we were connected as a player
+    if (currentPlayerId && socket.connected) {
+        const leaveMessage: ClientMessage = {
+            type: 'player:leave',
+            playerId: currentPlayerId,
+            timestamp: Date.now()
+        };
+
+        sendMessage(leaveMessage);
+    }
 });
 
 // Route all incoming messages through the message router

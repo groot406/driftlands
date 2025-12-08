@@ -1,5 +1,5 @@
 import type { Socket, Server } from 'socket.io';
-import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerActionMessage } from '../../src/shared/protocol';
+import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerActionMessage } from '../../../src/shared/protocol';
 import { serverMessageRouter } from '../messageRouter';
 
 export class ServerPlayerHandler {
@@ -31,6 +31,20 @@ export class ServerPlayerHandler {
       timestamp: Date.now()
     });
 
+    // Send current player count to the newly connected player
+    socket.emit('message', {
+      type: 'player:count',
+      count: this.connectedPlayers.size,
+      timestamp: Date.now()
+    });
+
+    // Broadcast updated player count to all other players
+    socket.broadcast.emit('message', {
+      type: 'player:count',
+      count: this.connectedPlayers.size,
+      timestamp: Date.now()
+    });
+
     console.log(`Total connected players: ${this.connectedPlayers.size}`);
   }
 
@@ -44,6 +58,13 @@ export class ServerPlayerHandler {
     socket.broadcast.emit('message', {
       type: 'player:leave',
       playerId: message.playerId,
+      timestamp: Date.now()
+    });
+
+    // Broadcast updated player count to remaining players
+    this.io.emit('message', {
+      type: 'player:count',
+      count: this.connectedPlayers.size,
       timestamp: Date.now()
     });
 
@@ -82,6 +103,13 @@ export class ServerPlayerHandler {
         timestamp: Date.now()
       });
 
+      // Broadcast updated player count to remaining players
+      this.io.emit('message', {
+        type: 'player:count',
+        count: this.connectedPlayers.size,
+        timestamp: Date.now()
+      });
+
       console.log(`Total connected players: ${this.connectedPlayers.size}`);
     }
   }
@@ -96,4 +124,6 @@ export class ServerPlayerHandler {
       name: player.name
     }));
   }
+
+
 }

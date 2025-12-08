@@ -24,6 +24,11 @@ export interface GameStateMessage extends BaseMessage {
   state: any; // Define your game state structure here
 }
 
+export interface PlayerCountMessage extends BaseMessage {
+  type: 'player:count';
+  count: number;
+}
+
 export interface PlayerActionMessage extends BaseMessage {
   type: 'player:action';
   playerId: string;
@@ -40,7 +45,8 @@ export type ClientMessage =
 export type ServerMessage =
   | GameStateMessage
   | PlayerJoinMessage
-  | PlayerLeaveMessage;
+  | PlayerLeaveMessage
+  | PlayerCountMessage;
 
 export type Message = ClientMessage | ServerMessage;
 
@@ -48,6 +54,7 @@ export type Message = ClientMessage | ServerMessage;
 export const MESSAGE_TYPES = {
   PLAYER_JOIN: 'player:join',
   PLAYER_LEAVE: 'player:leave',
+  PLAYER_COUNT: 'player:count',
   GAME_STATE: 'game:state',
   PLAYER_ACTION: 'player:action',
 } as const;
