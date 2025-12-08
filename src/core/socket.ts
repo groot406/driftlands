@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
 import { clientMessageRouter } from './messageRouter';
 import { initializeClientHandlers } from './messageHandlers';
+import { addPlayer, removePlayer } from '../store/playerStore';
 
 // "undefined" means the URL will be computed from the `window.location` object
 const URL = import.meta.env.PROD ? undefined : 'http://localhost:3000';
@@ -29,6 +30,9 @@ socket.on('connect', () => {
     currentPlayerId = `player-${Date.now()}`;
     currentPlayerName = `Player ${currentPlayerId.slice(-4)}`;
 
+    // Add current player to their own connected players list
+    addPlayer({ id: currentPlayerId, name: currentPlayerName });
+
     const joinMessage: ClientMessage = {
         type: 'player:join',
         playerId: currentPlayerId,
@@ -52,6 +56,11 @@ export function getCurrentPlayerInfo(): { id: string; name: string } | null {
 
 socket.on('disconnect', () => {
     console.log('Disconnected from socket server');
+
+    // Remove current player from connected players list
+    if (currentPlayerId) {
+        removePlayer(currentPlayerId);
+    }
 
     // Send leave message if we were connected as a player
     if (currentPlayerId && socket.connected) {

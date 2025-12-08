@@ -27,14 +27,14 @@
         <h3 class="text-sm font-semibold text-gray-300 mb-2">Other Players</h3>
         <div class="space-y-1 overflow-y-auto max-h-[50vh]">
           <div
-            v-for="player in connectedPlayers"
+            v-for="player in otherPlayers"
             :key="player.id"
             class="flex items-center gap-2 px-2 py-1 rounded bg-gray-800"
           >
             <div class="w-2 h-2 bg-green-400 rounded-full"></div>
             <span class="text-sm text-gray-200">{{ player.name }}</span>
           </div>
-          <div v-if="connectedPlayers.length === 0" class="text-sm text-gray-500 italic px-2">
+          <div v-if="otherPlayers.length === 0" class="text-sm text-gray-500 italic px-2">
             No other players online
           </div>
         </div>
@@ -108,6 +108,14 @@ const isModalOpen = getIsPlayerModalOpen;
 const chatMessages = getChatMessages;
 const connectedPlayers = getConnectedPlayers;
 const playerCount = getOnlinePlayersCount;
+
+// Filter out current player from the list to show only "other players"
+const otherPlayers = computed(() => {
+  const currentPlayer = getCurrentPlayerInfo();
+  if (!currentPlayer) return connectedPlayers.value;
+
+  return connectedPlayers.value.filter(player => player.id !== currentPlayer.id);
+});
 
 function closeModal() {
   setPlayerModalOpen(false);

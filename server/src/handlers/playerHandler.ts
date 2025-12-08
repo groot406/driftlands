@@ -32,6 +32,18 @@ export class ServerPlayerHandler {
       timestamp: Date.now()
     });
 
+    // Send existing players to the newly connected player (excluding themselves)
+    for (const [socketId, player] of this.connectedPlayers) {
+      if (socketId !== socket.id) {
+        socket.emit('message', {
+          type: 'player:join',
+          playerId: player.id,
+          playerName: player.name,
+          timestamp: Date.now()
+        });
+      }
+    }
+
     // Send current player count to the newly connected player
     socket.emit('message', {
       type: 'player:count',
