@@ -42,11 +42,9 @@ export class ServerPlayerHandler {
       }
     }
 
-    // Send current player count to the newly connected player
     socket.emit('message', {
-      type: 'player:count',
-      count: this.connectedPlayers.size,
-      timestamp: Date.now()
+      type: 'world:welcome',
+      timestamp: Date.now(),
     });
 
     // Broadcast updated player count to all other players

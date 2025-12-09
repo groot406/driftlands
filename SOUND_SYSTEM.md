@@ -84,7 +84,7 @@ Tasks can automatically play sounds during their lifecycle:
 const exampleTask: TaskDefinition = {
     // ... other task properties
     
-    onStart(tile, participants) {
+    onStart(tile, instance, participants) {
         const soundId = `task-${tile.q}-${tile.r}`;
         playPositionalSound(
             soundId,

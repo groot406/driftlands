@@ -4,8 +4,6 @@ import {
     animateCamera,
     axialToPixel,
     camera,
-    HEX_SIZE,
-    HEX_SPACE,
     hexDistance,
     pixelToAxial,
     updateCameraRadius,
@@ -56,8 +54,11 @@ const maxNodes = 5000; // keep in sync with default
 
 export class HexMapService {
 
+    readonly HEX_SIZE = 34;
+    readonly HEX_SPACE = 2;
+
     // Config constants (exposed for potential external tuning later)
-    readonly TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE;
+    readonly TILE_DRAW_SIZE = (this.HEX_SIZE * 2) - this.HEX_SPACE;
     readonly heroFrameSize = heroAnimationSet.size;
     // Removed fixed heroFrames/speed/row in favor of animation definitions
     readonly heroZoom = 2;
@@ -157,7 +158,7 @@ export class HexMapService {
 
 
         // Motion blur tuning: only engage at higher pixel speeds
-        const pixelSpeed = camera.speed * (HEX_SIZE * 0.9);
+        const pixelSpeed = camera.speed * (this.HEX_SIZE * 0.9);
         const SPEED_THRESHOLD = 260; // px/sec required before any blur (was effectively ~100 earlier)
         const MAX_SPEED_FOR_SCALING = 1400; // px/sec where blur reaches cap
 
@@ -280,8 +281,8 @@ export class HexMapService {
                 const curTileTerrainDef = currTile && currTile.terrain ? (TERRAIN_DEFS as any)[currTile.terrain] : null;
                 const nextTileTerrainDef = nextTile && nextTile.terrain ? (TERRAIN_DEFS as any)[nextTile.terrain] : null;
 
-                const curTileVariant = curTileTerrainDef && currTile.variant ? curTileTerrainDef.variations?.find((v: any) => v.key === currTile.variant) : null;
-                const nextTileVariant = nextTileTerrainDef && nextTile.variant ? nextTileTerrainDef.variations?.find((v: any) => v.key === nextTile.variant) : null;
+                const curTileVariant = curTileTerrainDef && currTile?.variant ? curTileTerrainDef.variations?.find((v: any) => v.key === currTile?.variant) : null;
+                const nextTileVariant = nextTileTerrainDef && nextTile?.variant ? nextTileTerrainDef.variations?.find((v: any) => v.key === nextTile?.variant) : null;
 
                 const curFenceEdges = curTileVariant && curTileVariant.fencedEdges ? curTileVariant.fencedEdges : (curTileTerrainDef && curTileTerrainDef.fencedEdges ? curTileTerrainDef.fencedEdges : {});
                 const nextFenceEdges = nextTileVariant && nextTileVariant.fencedEdges ? nextTileVariant.fencedEdges : (nextTileTerrainDef && nextTileTerrainDef.fencedEdges ? nextTileTerrainDef.fencedEdges : {});
@@ -390,12 +391,12 @@ export class HexMapService {
     private drawHexPath(ctx: CanvasRenderingContext2D, x: number, y: number) {
         const w = this.TILE_DRAW_SIZE;
         const h = this.TILE_DRAW_SIZE;
-        ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.moveTo(x + 0.5 * w - this.HEX_SIZE, y - this.HEX_SIZE);
+        ctx.lineTo(x + w - this.HEX_SIZE, y + 0.25 * h - this.HEX_SIZE);
+        ctx.lineTo(x + w - this.HEX_SIZE, y + 0.75 * h - this.HEX_SIZE);
+        ctx.lineTo(x + 0.5 * w - this.HEX_SIZE, y + h - this.HEX_SIZE);
+        ctx.lineTo(x - this.HEX_SIZE, y + 0.75 * h - this.HEX_SIZE);
+        ctx.lineTo(x - this.HEX_SIZE, y + 0.25 * h - this.HEX_SIZE);
         ctx.closePath();
     }
 
@@ -531,12 +532,12 @@ export class HexMapService {
                 const w = this.TILE_DRAW_SIZE;
                 const h = this.TILE_DRAW_SIZE;
                 const corners: Array<[number, number]> = [
-                    [cx + 0.5 * w - HEX_SIZE, cy - HEX_SIZE], // 0 top
-                    [cx + w - HEX_SIZE, cy + 0.25 * h - HEX_SIZE], // 1 upper-right
-                    [cx + w - HEX_SIZE, cy + 0.75 * h - HEX_SIZE], // 2 lower-right
-                    [cx + 0.5 * w - HEX_SIZE, cy + h - HEX_SIZE], // 3 bottom
-                    [cx - HEX_SIZE, cy + 0.75 * h - HEX_SIZE], // 4 lower-left
-                    [cx - HEX_SIZE, cy + 0.25 * h - HEX_SIZE], // 5 upper-left
+                    [cx + 0.5 * w - this.HEX_SIZE, cy - this.HEX_SIZE], // 0 top
+                    [cx + w - this.HEX_SIZE, cy + 0.25 * h - this.HEX_SIZE], // 1 upper-right
+                    [cx + w - this.HEX_SIZE, cy + 0.75 * h - this.HEX_SIZE], // 2 lower-right
+                    [cx + 0.5 * w - this.HEX_SIZE, cy + h - this.HEX_SIZE], // 3 bottom
+                    [cx - this.HEX_SIZE, cy + 0.75 * h - this.HEX_SIZE], // 4 lower-left
+                    [cx - this.HEX_SIZE, cy + 0.25 * h - this.HEX_SIZE], // 5 upper-left
                 ];
                 const nm = bt.neighbors;
                 const SIDE_ORDER = ['a','b','c','d','e','f'] as const;
@@ -612,7 +613,7 @@ export class HexMapService {
                     if (ovImg) {
                         const off = this.getTileOverlayOffset(t);
                         // store axial coords for later layering sort (r,q)
-                        overlayRecords.push({ img: ovImg, x: x - HEX_SIZE + off.x, y: y - HEX_SIZE + off.y, q: t.q, r: t.r, opacity });
+                        overlayRecords.push({ img: ovImg, x: x - this.HEX_SIZE + off.x, y: y - this.HEX_SIZE + off.y, q: t.q, r: t.r, opacity });
                     }
                 }
             }
@@ -663,8 +664,8 @@ export class HexMapService {
     private drawProgressBar(ctx: CanvasRenderingContext2D, t: Tile, progressRatio: number, fillStyle: string, opacity: number) {
         // Tile bounds
         const {x, y} = axialToPixel(t.q, t.r);
-        const tileLeft = x - HEX_SIZE;
-        const tileTop = y - HEX_SIZE;
+        const tileLeft = x - this.HEX_SIZE;
+        const tileTop = y - this.HEX_SIZE;
         const tileWidth = this.TILE_DRAW_SIZE;
         const tileHeight = this.TILE_DRAW_SIZE;
         // Bar dimensions
@@ -761,7 +762,7 @@ export class HexMapService {
         const rectHeight = 12 + paddingY * 2; // Approximate height for 9px font
 
         ctx.globalAlpha = opacity * 0.6;
-        this.drawRoundedRect(ctx, x - rectWidth / 2, y - HEX_SIZE - rectHeight + 7, rectWidth, rectHeight, 6);
+        this.drawRoundedRect(ctx, x - rectWidth / 2, y - this.HEX_SIZE - rectHeight + 7, rectWidth, rectHeight, 6);
         ctx.fillStyle = '#000000';
         ctx.fill();
 
@@ -771,7 +772,7 @@ export class HexMapService {
         ctx.textBaseline = 'bottom';
 
         ctx.fillStyle = '#fff6d7aa';
-        ctx.fillText(text, x, y - HEX_SIZE);
+        ctx.fillText(text, x, y - this.HEX_SIZE);
 
         ctx.restore();
     }
@@ -824,7 +825,7 @@ export class HexMapService {
 
         ctx.globalAlpha = opacity;
         if (masked) {
-            ctx.drawImage(masked, x - HEX_SIZE, y - HEX_SIZE);
+            ctx.drawImage(masked, x - this.HEX_SIZE, y - this.HEX_SIZE);
         }
     }
 
@@ -835,12 +836,12 @@ export class HexMapService {
         ctx.beginPath();
         const w = this.TILE_DRAW_SIZE;
         const h = this.TILE_DRAW_SIZE;
-        ctx.moveTo(x + 0.5 * w - HEX_SIZE, y - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
-        ctx.lineTo(x + w - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x + 0.5 * w - HEX_SIZE, y + h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.75 * h - HEX_SIZE);
-        ctx.lineTo(x - HEX_SIZE, y + 0.25 * h - HEX_SIZE);
+        ctx.moveTo(x + 0.5 * w - this.HEX_SIZE, y - this.HEX_SIZE);
+        ctx.lineTo(x + w - this.HEX_SIZE, y + 0.25 * h - this.HEX_SIZE);
+        ctx.lineTo(x + w - this.HEX_SIZE, y + 0.75 * h - this.HEX_SIZE);
+        ctx.lineTo(x + 0.5 * w - this.HEX_SIZE, y + h - this.HEX_SIZE);
+        ctx.lineTo(x - this.HEX_SIZE, y + 0.75 * h - this.HEX_SIZE);
+        ctx.lineTo(x - this.HEX_SIZE, y + 0.25 * h - this.HEX_SIZE);
         ctx.closePath();
         ctx.fill();
         const centerDist = this.axialDistance(0, 0, t.q, t.r);
@@ -1182,7 +1183,7 @@ export class HexMapService {
 
             const {x, y} = axialToPixel(ind.position.q, ind.position.r);
             const progress = Math.min(1, (performance.now() - ind.created) / ind.duration);
-            const floatY = y - HEX_SIZE - 10 - (progress * 28); // float up
+            const floatY = y - this.HEX_SIZE - 10 - (progress * 28); // float up
             const alpha = 1 - progress;
 
             ctx.save();
@@ -1223,7 +1224,7 @@ export class HexMapService {
         const w = this._container.clientWidth;
         const h = this._container.clientHeight;
         const diag = Math.min(w, h);
-        const tilePixelSpan = HEX_SIZE * 2;
+        const tilePixelSpan = this.HEX_SIZE * 2;
         const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
         const inner = Math.max(3, Math.round(targetRadius * 0.33));
         updateCameraRadius(targetRadius, inner);

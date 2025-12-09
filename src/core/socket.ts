@@ -83,4 +83,3 @@ socket.on('message', (message: ServerMessage) => {
 socket.on('connect_error', (error) => {
     console.error('Connection error:', error);
 });
-

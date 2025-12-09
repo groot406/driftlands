@@ -11,7 +11,6 @@
 
 <script setup lang="ts">
 import { idleStore as store } from '../store/idleStore';
-import { loadWorld, tiles as worldTiles } from '../core/world';
 import { moveCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
@@ -31,17 +30,8 @@ import {createLoader, updateLoader, finishLoader} from "../core/loader.ts";
 const playing = computed(() => isPlaying());
 
 onMounted(async () => {
-  const loader = createLoader('init', {
-    message: 'Loading tiles...',
-    progress: 0,
-  });
-
-  // If we have saved tiles (continue) and world isn't loaded yet, load them.
-  if (worldTiles.length === 0 && store.tiles.length) {
-    loadWorld(store.tiles);
-  }
-
-  updateLoader(loader, 0.1, 'Initializing sound system...');
+  createLoader('init', {title: 'Loading world...'});
+  updateLoader('init', {title: 'Initializing sound system...'});
 
   // Initialize sound system
   await soundService.initialize();
@@ -52,7 +42,8 @@ onMounted(async () => {
   // Restore sounds for any active tasks (important for game reload)
   await restoreActiveTaskSounds();
 
-  updateLoader(loader, 0.2, 'Initializing heroes...');
+  updateLoader('init', {title: 'Initializing heroes...'});
+
   // Start periodic hero activity updates (replaces expensive 60 FPS updates)
   startPeriodicHeroUpdates();
 

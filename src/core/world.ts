@@ -205,25 +205,6 @@ export function discoverTile(tile: Tile) {
                 applyVariant(tile, tile.variant, { stagger: true, respectBiome: true });
             }
         }
-        // --- Apply default fencing from terrain and variant defs ---
-        const nm = tile.neighbors ?? ensureTileNeighbors(tile);
-        // Terrain-level default fences
-        if (def?.fencedEdges) {
-            if (!tile.fencedEdges) tile.fencedEdges = {};
-            for (const side of SIDE_NAMES) {
-                if (def.fencedEdges[side]) setTileFence(tile, side, true);
-            }
-        }
-        // Variant-level default fences
-        if (tile.variant && def?.variations) {
-            const vDef = def.variations.find(v => v.key === tile.variant);
-            if (vDef?.fencedEdges) {
-                if (!tile.fencedEdges) tile.fencedEdges = {};
-                for (const side of SIDE_NAMES) {
-                    if (vDef.fencedEdges[side]) setTileFence(tile, side, true);
-                }
-            }
-        }
     }
 
     worldVersion.value++;

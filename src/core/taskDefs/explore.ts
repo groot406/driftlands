@@ -25,7 +25,7 @@ const exploreTask: TaskDefinition = {
         return !hero.carryingPayload && !tile.discovered;
     },
 
-    onStart(_tile, _participants) {
+    onStart(_tile, _instance, _participants) {
         if(_tile.discovered) {
             // Tile already discovered; abort explore task implicitly by not setting any special flags.
             let timer = setTimeout(() => continueExploration(_tile, _participants), 1500);

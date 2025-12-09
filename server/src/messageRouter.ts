@@ -53,12 +53,12 @@ export class ServerMessageRouter {
 }
 
 // Utility function to send a message to a specific socket
-export function sendToSocket(socket: Socket, message: BaseMessage): void {
+export function sendToSocket(socket: Socket, message: any): void {
   socket.emit('message', message);
 }
 
 // Utility function to broadcast a message to all connected sockets
-export function broadcast(io: any, message: BaseMessage): void {
+export function broadcast(io: any, message: any): void {
   io.emit('message', message);
 }
 

@@ -1,5 +1,7 @@
 // Shared protocol definitions for client-server communication
 
+import type {Tile} from "../core/world.ts";
+
 export interface BaseMessage {
   type: string;
   id?: string;
@@ -42,3 +44,32 @@ export interface ChatMessage extends BaseMessage {
   playerName: string;
   message: string;
 }
+
+export interface WorldWelcomeMessage extends BaseMessage {
+    type: 'world:welcome';
+}
+
+export interface WorldRequestMessage extends BaseMessage {
+  type: 'world:request';
+}
+
+export interface WorldSnapshotMessage extends BaseMessage {
+  type: 'world:snapshot';
+  tiles: Tile[];
+}
+
+export type ClientMessage =
+  | PlayerJoinMessage
+  | PlayerLeaveMessage
+  | PlayerActionMessage
+  | ChatMessage
+  | WorldRequestMessage;
+
+export type ServerMessage =
+  | PlayerJoinMessage
+  | PlayerLeaveMessage
+  | PlayerCountMessage
+  | GameStateMessage
+  | ChatMessage
+  | WorldSnapshotMessage
+  | WorldWelcomeMessage;

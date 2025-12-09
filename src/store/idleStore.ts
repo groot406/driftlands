@@ -1,5 +1,4 @@
-import {watch} from 'vue';
-import {type Tile, tiles, worldVersion} from '../core/world';
+import {type Tile, tiles } from '../core/world';
 import { updateActiveTasks } from './taskStore';
 import { heroes } from './heroStore';
 import { updateTileGrowth, fastForwardGrowthOffline } from '../core/growth';
@@ -23,14 +22,6 @@ function loadState(): IdleState | null {
     }
 }
 
-function saveState(_state: IdleState) {
-    try {
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(_state));
-    } catch (e) {
-        console.log('save error', e);
-    }
-}
-
 const initial: IdleState = (loadState() as IdleState) ?? {
     tiles,
     tick: 0,
@@ -38,12 +29,6 @@ const initial: IdleState = (loadState() as IdleState) ?? {
     lastUpdateMs: Date.now(),
 };
 export const idleStore = initial;
-
-watch(worldVersion, () => {
-    idleStore.tiles = tiles;
-    idleStore.lastUpdateMs = Date.now();
-    saveState(idleStore);
-});
 
 export function startIdle() {
     // Apply offline progression based on elapsed time

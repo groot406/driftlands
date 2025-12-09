@@ -1,20 +1,25 @@
 import type { Server } from 'socket.io';
-import { broadcast } from '../messageRouter';
+import { serverMessageRouter, sendToSocket } from '../messageRouter';
+import { worldState } from '../worldState';
+import type { Socket } from 'socket.io';
+import type { WorldRequestMessage, PlayerJoinMessage } from '../../../src/shared/protocol';
 
 export class ServerGameStateHandler {
   constructor(private io: Server) {}
 
   init(): void {
-    // Game state is typically managed server-side and broadcast to clients
-    // You can add handlers here for game state requests or updates
+    worldState.init();
+    serverMessageRouter.on('world:request', this.handleWorldRequest.bind(this));
+    serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
-  // Broadcast current game state to all connected clients
-  broadcastGameState(gameState: any): void {
-    broadcast(this.io, {
-      type: 'game:state',
-      state: gameState,
-      timestamp: Date.now()
-    });
+  private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
+    const snapshot = worldState.getSnapshot();
+    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, timestamp: Date.now() } as any));
+  }
+
+  private handlePlayerJoinSendWorld(socket: Socket, _message: PlayerJoinMessage): void {
+    const snapshot = worldState.getSnapshot();
+    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, timestamp: Date.now() } as any));
   }
 }

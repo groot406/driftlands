@@ -7,10 +7,7 @@
       <h1 class="text-2xl font-bold tracking-wide">Driftlands</h1>
       <p class="text-white max-w-md text-center text-xs text-opacity-60">Windswept hexes. Hidden secrets. This is only the beginning.</p>
       <div class="flex flex-col gap-3 min-w-[240px] text-sm">
-        <button class="menu-btn" @click="startNewGame">New Game</button>
-        <button class="menu-btn" :disabled="!uiStore.canContinue" @click="continueGame">Continue</button>
-        <button class="menu-btn" @click="showSettings" disabled>Settings</button>
-        <button class="menu-btn" @click="showCredits" disabled>Credits</button>
+        <button class="menu-btn" @click="joinGame">Join game</button>
       </div>
       <p class="text-xs text-text-white">Early prototype</p>
     </div>
@@ -18,11 +15,13 @@
 </template>
 
 <script setup lang="ts">
-import { uiStore, startNewGame, continueGame } from '../store/uiStore';
 import TitleBackground from './TitleBackground.vue';
+import {resumeGame} from "../store/uiStore.ts";
 
-function showSettings() {}
-function showCredits() {}
+function joinGame() {
+  resumeGame();
+}
+
 </script>
 
 <style scoped>

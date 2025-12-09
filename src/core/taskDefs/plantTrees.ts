@@ -27,7 +27,7 @@ const plantTreesTask: TaskDefinition = {
         // Modest XP reward for ecological effort.
         return {xp: 4 * _distance, hp: 0, atk: 0, spd: 0};
     },
-    onStart(tile, _participants) {
+    onStart(tile) {
         // Guard: If tile changed before start, abort implicitly by leaving logic minimal.
         if (tile.variant !== 'chopped_forest') return;
         // No special per-hero flags needed.

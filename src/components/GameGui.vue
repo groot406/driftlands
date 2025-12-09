@@ -6,7 +6,6 @@
       </div>
       <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
         <WorldControls/>
-        <DebugPanel/>
       </div>
     </div>
     <HeroesBar />
@@ -22,7 +21,6 @@
 import {onMounted, ref} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import WorldControls from './WorldControls.vue';
-import DebugPanel from "./DebugPanel.vue";
 import HeroesBar from './HeroesBar.vue';
 import InGameMenu from './InGameMenu.vue';
 import FpsCounter from './FpsCounter.vue';

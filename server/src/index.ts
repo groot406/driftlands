@@ -7,6 +7,7 @@ import { initializeServerHandlers } from './messageHandlers';
 import { messageLogger } from './messageLogger';
 
 const app = express();
+// @ts-ignore
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
