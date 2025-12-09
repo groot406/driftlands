@@ -238,11 +238,9 @@ export class HexMapService {
         const open: PathNode[] = [];
         const openMap = new Map<string, PathNode>();
         const closed = new Set<string>();
-        const gScore = new Map<string, number>();
         const startNode: PathNode = {q: startQ, r: startR, g: 0, f: heuristic(startQ, startR)};
         open.push(startNode);
         openMap.set(axialKey(startQ, startR), startNode);
-        gScore.set(axialKey(startQ, startR), 0);
         let iterations = 0;
         while (open.length && iterations < maxNodes) {
             iterations++;
@@ -274,45 +272,46 @@ export class HexMapService {
                 const nq = current.q + dq;
                 const nr = current.r + dr;
                 const key = axialKey(nq, nr);
-                // Fence check first
+                if (closed.has(key)) continue;
+
                 const currTile = tileIndex[axialKey(current.q, current.r)];
                 const nextTile = tileIndex[key];
+
+                const curTileTerrainDef = currTile && currTile.terrain ? (TERRAIN_DEFS as any)[currTile.terrain] : null;
+                const nextTileTerrainDef = nextTile && nextTile.terrain ? (TERRAIN_DEFS as any)[nextTile.terrain] : null;
+
+                const curTileVariant = curTileTerrainDef && currTile.variant ? curTileTerrainDef.variations?.find((v: any) => v.key === currTile.variant) : null;
+                const nextTileVariant = nextTileTerrainDef && nextTile.variant ? nextTileTerrainDef.variations?.find((v: any) => v.key === nextTile.variant) : null;
+
+                const curFenceEdges = curTileVariant && curTileVariant.fencedEdges ? curTileVariant.fencedEdges : (curTileTerrainDef && curTileTerrainDef.fencedEdges ? curTileTerrainDef.fencedEdges : {});
+                const nextFenceEdges = nextTileVariant && nextTileVariant.fencedEdges ? nextTileVariant.fencedEdges : (nextTileTerrainDef && nextTileTerrainDef.fencedEdges ? nextTileTerrainDef.fencedEdges : {});
+
                 const opp: Record<'a'|'b'|'c'|'d'|'e'|'f', 'a'|'b'|'c'|'d'|'e'|'f'> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
+
                 const isFenced = !!(
-                    (currTile && currTile.fencedEdges && currTile.fencedEdges[side]) ||
-                    (nextTile && nextTile.fencedEdges && nextTile.fencedEdges[opp[side]])
+                    (currTile && curFenceEdges && curFenceEdges[side]) ||
+                    (nextTile && nextFenceEdges && nextFenceEdges[opp[side]])
                 );
+
                 if (isFenced) continue;
-                // Walkability (allow stepping onto goal even if not walkable)
                 if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
                 const stepCost = costFor(nq, nr);
                 const tentativeG = current.g + stepCost;
-                const prevG = gScore.get(key);
-                // If node previously processed with better or equal g, skip; else we may (re)open it
-                if (prevG !== undefined && tentativeG >= prevG && closed.has(key)) {
-                    continue;
-                }
                 let node = openMap.get(key);
                 if (!node) {
-                    node = { q: nq, r: nr, g: tentativeG, f: tentativeG + heuristic(nq, nr), parent: current };
+                    node = {
+                        q: nq,
+                        r: nr,
+                        g: tentativeG,
+                        f: tentativeG + heuristic(nq, nr),
+                        parent: current
+                    };
                     open.push(node);
                     openMap.set(key, node);
                 } else if (tentativeG < node.g) {
                     node.g = tentativeG;
                     node.f = tentativeG + heuristic(nq, nr);
                     node.parent = current;
-                }
-                // Track best known g and ensure closed nodes can be reconsidered if we found a better path
-                if (prevG === undefined || tentativeG < prevG) {
-                    gScore.set(key, tentativeG);
-                    if (closed.has(key)) {
-                        closed.delete(key);
-                        // Node might not be in open; ensure it's queued
-                        if (!openMap.get(key)) {
-                            open.push(node);
-                            openMap.set(key, node);
-                        }
-                    }
                 }
             }
         }

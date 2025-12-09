@@ -75,7 +75,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 3,
         overlayAssetKey: 'towncenter_overlay',
         overlayOffset: { x: 0, y: -11},
-        heroOffset: { x: 0, y: 10}
+        heroOffset: { x: 0, y: 10},
+        fencedEdges: { a: true, b: true }
     },
     forest: {
         color: '#14532d',
