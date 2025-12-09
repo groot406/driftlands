@@ -57,8 +57,6 @@ export class ServerPlayerHandler {
       count: this.connectedPlayers.size,
       timestamp: Date.now()
     });
-
-    console.log(`Total connected players: ${this.connectedPlayers.size}`);
   }
 
   private handlePlayerLeave(socket: Socket, message: PlayerLeaveMessage): void {

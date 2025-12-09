@@ -4,7 +4,7 @@
     class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
     @click.self="closeModal"
   >
-    <div class="bg-gray-900 border border-gray-600 rounded-lg p-6 w-96 w-[90vw] max-h-[80vh] flex flex-col">
+    <div class="bg-gray-800/50 backdrop-blur border-2 border-gray-600/10 shadow-lg rounded-lg p-6 w-96 w-[1400px] h-[80vh] flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -25,7 +25,7 @@
       <div class="flex flex-row gap-4">
       <div class="mb-4 w-[250px]">
         <h3 class="text-sm font-semibold text-gray-300 mb-2">Other Players</h3>
-        <div class="space-y-1 overflow-y-auto max-h-[50vh]">
+        <div class="space-y-1 overflow-y-auto h-[50vh]">
           <div
             v-for="player in otherPlayers"
             :key="player.id"
@@ -41,13 +41,13 @@
       </div>
 
       <!-- Chat Section -->
-      <div class="flex-1 flex flex-col min-h-0">
+      <div class="flex-1 flex flex-col h-[72vh]">
         <h3 class="text-sm font-semibold text-gray-300 mb-2">Chat</h3>
 
         <!-- Chat Messages -->
         <div
           ref="chatContainer"
-          class="flex-1 bg-gray-800 rounded-lg p-3 overflow-y-auto min-h-[200px] max-h-[300px] mb-3"
+          class="flex-1 bg-gray-800/70 rounded-lg p-3 overflow-y-auto h-[50vh] mb-3"
         >
           <div v-if="chatMessages.length === 0" class="text-sm text-gray-500 italic">
             No messages yet. Start a conversation!
@@ -56,14 +56,22 @@
             v-for="message in chatMessages"
             :key="message.id"
             class="mb-2 last:mb-0"
+            :class="isOwnMessage(message) ? 'flex flex-col items-end' : 'flex flex-col items-start'"
           >
-            <div class="flex items-start gap-2">
-              <span class="text-xs text-gray-400 shrink-0">
+            <div class="flex flex-row items-center gap-2" :class="isOwnMessage(message) ? 'flex-row-reverse' : ''">
+              <div class="text-xs text-gray-400 shrink-0">
                 {{ formatTime(message.timestamp) }}
-              </span>
-              <span class="text-sm font-medium text-blue-300">{{ message.playerName }}</span>
+              </div>
+              <div class="text-sm font-medium" :class="isOwnMessage(message) ? 'text-green-300' : 'text-blue-300'">
+                {{ isOwnMessage(message) ? 'You' : message.playerName }}
+              </div>
             </div>
-            <div class="text-sm text-gray-200 ml-10 break-words p-1 px-2 mt-1 mb-3 bg-slate-500/20 rounded">
+            <div
+              class="text-sm text-gray-200 break-words p-2 mt-1 mb-3 rounded-full max-w-[80%] min-w-[20%] px-4"
+              :class="isOwnMessage(message) ?
+                'bg-blue-600/10 border-blue-400 ml-auto' :
+                'bg-slate-500/20 mr-auto'"
+            >
               {{ message.message }}
             </div>
           </div>
@@ -76,7 +84,7 @@
             v-model="newMessage"
             @keydown.enter="sendChatMessage"
             placeholder="Type a message..."
-            class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            class="flex-1 bg-gray-800 shadow-md rounded px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
             maxlength="200"
           />
           <button
@@ -125,6 +133,11 @@ function closeModal() {
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function isOwnMessage(message: any): boolean {
+  const currentPlayer = getCurrentPlayerInfo();
+  return currentPlayer && message.playerId === currentPlayer.id;
 }
 
 function sendChatMessage() {

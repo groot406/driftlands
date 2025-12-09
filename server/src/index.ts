@@ -22,6 +22,8 @@ io.on('connection', (socket) => {
 
   // Route all incoming messages through the message router
   socket.on('message', (message: ClientMessage) => {
+    console.log(`>>> ${message.type}`);
+    console.log(message);
     serverMessageRouter.route(socket, message);
   });
 
@@ -39,6 +41,5 @@ io.on('connection', (socket) => {
 
 httpServer.listen(3000, () => {
   console.log('Server listening on *:3000');
-  console.log('Message routing system initialized');
 });
 
