@@ -96,6 +96,7 @@ export class HexMapService {
 
     // Pathfinding statics
     private readonly AXIAL_DELTAS: Array<[number, number]> = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 1], [-1, 0]];
+    private readonly SIDE_NAMES: Array<'a'|'b'|'c'|'d'|'e'|'f'> = ['a','b','c','d','e','f'];
 
     // Asset sources
     private readonly tileImgSources: Record<string, string> = buildTileSources();
@@ -237,9 +238,11 @@ export class HexMapService {
         const open: PathNode[] = [];
         const openMap = new Map<string, PathNode>();
         const closed = new Set<string>();
+        const gScore = new Map<string, number>();
         const startNode: PathNode = {q: startQ, r: startR, g: 0, f: heuristic(startQ, startR)};
         open.push(startNode);
         openMap.set(axialKey(startQ, startR), startNode);
+        gScore.set(axialKey(startQ, startR), 0);
         let iterations = 0;
         while (open.length && iterations < maxNodes) {
             iterations++;
@@ -265,29 +268,51 @@ export class HexMapService {
                 rev.reverse();
                 return rev;
             }
-            for (const [dq, dr] of this.AXIAL_DELTAS) {
+            for (let i = 0; i < this.AXIAL_DELTAS.length; i++) {
+                const [dq, dr] = this.AXIAL_DELTAS[i]!;
+                const side = this.SIDE_NAMES[i]!;
                 const nq = current.q + dq;
                 const nr = current.r + dr;
                 const key = axialKey(nq, nr);
-                if (closed.has(key)) continue;
+                // Fence check first
+                const currTile = tileIndex[axialKey(current.q, current.r)];
+                const nextTile = tileIndex[key];
+                const opp: Record<'a'|'b'|'c'|'d'|'e'|'f', 'a'|'b'|'c'|'d'|'e'|'f'> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
+                const isFenced = !!(
+                    (currTile && currTile.fencedEdges && currTile.fencedEdges[side]) ||
+                    (nextTile && nextTile.fencedEdges && nextTile.fencedEdges[opp[side]])
+                );
+                if (isFenced) continue;
+                // Walkability (allow stepping onto goal even if not walkable)
                 if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
                 const stepCost = costFor(nq, nr);
                 const tentativeG = current.g + stepCost;
+                const prevG = gScore.get(key);
+                // If node previously processed with better or equal g, skip; else we may (re)open it
+                if (prevG !== undefined && tentativeG >= prevG && closed.has(key)) {
+                    continue;
+                }
                 let node = openMap.get(key);
                 if (!node) {
-                    node = {
-                        q: nq,
-                        r: nr,
-                        g: tentativeG,
-                        f: tentativeG + heuristic(nq, nr),
-                        parent: current
-                    };
+                    node = { q: nq, r: nr, g: tentativeG, f: tentativeG + heuristic(nq, nr), parent: current };
                     open.push(node);
                     openMap.set(key, node);
                 } else if (tentativeG < node.g) {
                     node.g = tentativeG;
                     node.f = tentativeG + heuristic(nq, nr);
                     node.parent = current;
+                }
+                // Track best known g and ensure closed nodes can be reconsidered if we found a better path
+                if (prevG === undefined || tentativeG < prevG) {
+                    gScore.set(key, tentativeG);
+                    if (closed.has(key)) {
+                        closed.delete(key);
+                        // Node might not be in open; ensure it's queued
+                        if (!openMap.get(key)) {
+                            open.push(node);
+                            openMap.set(key, node);
+                        }
+                    }
                 }
             }
         }
@@ -1226,6 +1251,11 @@ export class HexMapService {
         if (!t) return false;
         if (!t.terrain) return false;
         const def = (TERRAIN_DEFS as any)[t.terrain];
+        // Variant-level walkable override
+        if (t.variant && def?.variations) {
+            const vDef = def.variations.find((v: any) => v.key === t.variant);
+            if (vDef && typeof vDef.walkable === 'boolean') return vDef.walkable;
+        }
         return !!(def && def.walkable);
     }
 

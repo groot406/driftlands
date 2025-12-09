@@ -25,13 +25,15 @@ export interface Tile {
     variantSetMs?: number;
     // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
     neighbors?: TileNeighborMap;
+    // Optional per-edge fencing: when true for a side, movement cannot cross that edge.
+    fencedEdges?: Partial<Record<TileSide, boolean>>;
 }
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
-const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
+export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
 export type TileSide = typeof SIDE_NAMES[number];
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
-const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
+export const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
 
 // Reactive world version bump for UI invalidation
 export const worldVersion = ref(0);
@@ -201,6 +203,25 @@ export function discoverTile(tile: Tile) {
             // If selected variant has growth config, record timestamp and track aging
             if (tile.variant) {
                 applyVariant(tile, tile.variant, { stagger: true, respectBiome: true });
+            }
+        }
+        // --- Apply default fencing from terrain and variant defs ---
+        const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+        // Terrain-level default fences
+        if (def?.fencedEdges) {
+            if (!tile.fencedEdges) tile.fencedEdges = {};
+            for (const side of SIDE_NAMES) {
+                if (def.fencedEdges[side]) setTileFence(tile, side, true);
+            }
+        }
+        // Variant-level default fences
+        if (tile.variant && def?.variations) {
+            const vDef = def.variations.find(v => v.key === tile.variant);
+            if (vDef?.fencedEdges) {
+                if (!tile.fencedEdges) tile.fencedEdges = {};
+                for (const side of SIDE_NAMES) {
+                    if (vDef.fencedEdges[side]) setTileFence(tile, side, true);
+                }
             }
         }
     }

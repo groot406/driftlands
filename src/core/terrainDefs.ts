@@ -23,6 +23,8 @@ export interface TerrainDef {
     overlayAssetKey?: string; // image key (filename without extension) for overlay (e.g. 'cactus_top')
     overlayOffset?: { x: number; y: number }; // optional pixel offset applied to overlay drawing (top-left origin)
     heroOffset?: { x: number; y: number }; // optional pixel offset applied to hero drawing on this terrain
+    // --- Fencing (optional) ---
+    fencedEdges?: Partial<Record<TerrainSide, boolean>>; // default fences applied to tiles of this terrain
 }
 
 // Side names reused from world.ts (keep string literals to avoid circular import)
@@ -44,6 +46,10 @@ export interface TerrainVariationDef {
     overlayAssetKey?: string|false; // optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
     heroOffset?: { x: number; y: number }; // optional pixel offset applied to hero drawing on this terrain
+    // --- Fencing (optional) ---
+    fencedEdges?: Partial<Record<TerrainSide, boolean>>; // default fences applied when this variant is selected
+    // --- Movement override (optional) ---
+    walkable?: boolean; // if specified, overrides base terrain walkability
 }
 
 interface TerrainDefsMap {
@@ -118,12 +124,12 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         frameTime: 220,
         variations: [
             {key: 'water_lily', weight: 2},
-            {key: 'water_dock_a', weight: 0},
-            {key: 'water_dock_b', weight: 0},
-            {key: 'water_dock_c', weight: 0},
-            {key: 'water_dock_d', weight: 0},
-            {key: 'water_dock_e', weight: 0},
-            {key: 'water_dock_f', weight: 0},
+            {key: 'water_dock_a', weight: 0, walkable: true, fencedEdges: { b: true, c: true, d: true, e: true, f: true }},
+            {key: 'water_dock_b', weight: 0, walkable: true, fencedEdges: { a: true, c: true, d: true, e: true, f: true }},
+            {key: 'water_dock_c', weight: 0, walkable: true, fencedEdges: { a: true, b: true, d: true, e: true, f: true }},
+            {key: 'water_dock_d', weight: 0, walkable: true, fencedEdges: { a: true, b: true, c: true, e: true, f: true }},
+            {key: 'water_dock_e', weight: 0, walkable: true, fencedEdges: { a: true, b: true, c: true, d: true, f: true }},
+            {key: 'water_dock_f', weight: 0, walkable: true, fencedEdges: { a: true, b: true, c: true, d: true, e: true }},
         ]
     },
     mountain: {
