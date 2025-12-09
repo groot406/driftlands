@@ -29,7 +29,7 @@ export interface TaskDefinition {
     heroRate(hero: Hero, tile: Tile): number;
 
     // Optional hook when task starts
-    onStart?(tile: Tile, participants: Hero[]): void;
+    onStart?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
 
     // Optional hook each tick after progress applied
     onProgress?(tile: Tile, instance: TaskInstance): void;
@@ -80,6 +80,8 @@ export interface TaskInstance {
     // Resource tracking for tasks that require resources
     requiredResources?: ResourceAmount[]; // Resources needed to start/continue task
     collectedResources?: ResourceAmount[]; // resourceType -> amount collected so far
+    // Task-specific context to store metadata (e.g., approach side for docks)
+    context?: Record<string, any>;
 }
 
 const MAX_CARRY_AMOUNT = 10;

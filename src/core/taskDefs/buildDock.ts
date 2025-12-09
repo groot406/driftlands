@@ -4,6 +4,7 @@ import type { Hero } from '../../store/heroStore';
 import {applyVariant} from "../variants.ts";
 import type {TileSide} from "../world.ts";
 import { TERRAIN_DEFS } from "../terrainDefs.ts";
+import { getTaskByTile } from "../../store/taskStore.ts";
 
 const buildDockTask: TaskDefinition = {
     key: 'buildDock',
@@ -26,24 +27,52 @@ const buildDockTask: TaskDefinition = {
         return [{ type: 'wood', amount: Math.max(5, 5 * distance) }];
     },
 
+    onStart(tile, instance, participants) {
+        // Determine approach side using the hero's previous stepped tile (second-to-last in path)
+        const starter = participants && participants[0];
+        if (!starter) return;
+        const movement = starter.movement;
+        const neighbors = tile.neighbors;
+        if (movement && neighbors) {
+            const path = movement.path;
+            const prevCoord = (path && path.length >= 2)
+                ? path[path.length - 2]
+                : movement.origin;
+            if (prevCoord) {
+                for (const side of ['a','b','c','d','e','f'] as const) {
+                    const n = neighbors[side];
+                    if (n && n.q === prevCoord.q && n.r === prevCoord.r) {
+                        instance.context = instance.context || {};
+                        instance.context.approachSide = side;
+                        console.log('set approach side to', side);
+                        break;
+                    }
+                }
+            }
+        }
+    },
+
     onComplete(tile, _instance, _participants) {
         if (tile.terrain === 'water') {
-            // Find the first adjacent walkable tile to orient the dock toward it
+            // Prefer explicit approach side stored in task context
+            const inst = getTaskByTile(tile.id, 'buildDock');
             let dockVariant = 'water_dock_a'; // default fallback
-
-            if (tile.neighbors) {
-                // Check each side to find the first walkable adjacent tile
-                const sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
-
-                for (const side of sides) {
-                    const neighbor = tile.neighbors[side];
-                    if (neighbor && neighbor.terrain && neighbor.discovered) {
-                        // Check if the terrain is walkable by looking up terrain definition
-                        const terrainDef = neighbor.terrain ? TERRAIN_DEFS[neighbor.terrain] : null;
-                        if (terrainDef?.walkable) {
-                            // Orient dock toward this walkable tile
-                            dockVariant = `water_dock_${side}`;
-                            break;
+            const approachSide = inst?.context?.approachSide as TileSide | undefined;
+            console.log('completing buildDock, approachSide=', approachSide);
+            if (approachSide) {
+                dockVariant = `water_dock_${approachSide}`;
+            } else {
+                // Fallback: find first adjacent walkable tile to orient the dock toward it
+                if (tile.neighbors) {
+                    const sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
+                    for (const side of sides) {
+                        const neighbor = tile.neighbors[side];
+                        if (neighbor && neighbor.terrain && neighbor.discovered) {
+                            const terrainDef = neighbor.terrain ? TERRAIN_DEFS[neighbor.terrain] : null;
+                            if (terrainDef?.walkable) {
+                                dockVariant = `water_dock_${side}`;
+                                break;
+                            }
                         }
                     }
                 }

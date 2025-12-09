@@ -252,6 +252,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     const tasksForTile = taskStore.tasksByTile[tile.id]!;
     if (tasksForTile[type]) return taskStore.taskIndex[tasksForTile[type]] || null;
     const nowMs = Date.now();
+
     const inst: TaskInstance = {
         id: makeId(taskStore),
         type,
@@ -264,7 +265,8 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
         participants: {},
         active: true,
         requiredResources: requiredResources,
-        collectedResources: collectedResources
+        collectedResources: collectedResources,
+        context: undefined,
     } as TaskInstance;
 
     inst.participants[starter.id] = 0;
@@ -272,8 +274,8 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     taskStore.taskIndex[inst.id] = inst;
     taskStore.tasksByTile[tile.id]![type] = inst.id;
 
-    // Call task's onStart hook
-    def.onStart?.(tile, [starter]);
+    // Call task's onStart hook (task-specific setup)
+    def.onStart?.(tile, inst, [starter]);
 
     // Start task sound automatically
     startTaskSound(tile, type, [starter]);
@@ -645,6 +647,7 @@ function persistTasks() {
             active: t.active,
             requiredResources: t.requiredResources,
             collectedResources: t.collectedResources,
+            context: t.context,
         }));
         localStorage.setItem(TASKS_KEY, JSON.stringify({tasks: serializable, ts: Date.now()}));
     } catch {
@@ -675,6 +678,7 @@ export function restoreTasks() {
                 active: saved.active && !saved.completedMs,
                 requiredResources: saved.requiredResources,
                 collectedResources: saved.collectedResources,
+                context: saved.context,
             } as TaskInstance;
             taskStore.tasks.push(inst);
             taskStore.taskIndex[inst.id] = inst;
