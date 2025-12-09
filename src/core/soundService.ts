@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue';
+import { reactive } from 'vue';
 import { camera, hexDistance } from './camera';
 import { isPaused } from '../store/uiStore';
 import { taskStore } from '../store/taskStore';
@@ -420,6 +420,7 @@ class SoundService {
     }
 
     private async loadAudioData(soundPath: string): Promise<string> {
+        soundPath = 'src/assets/sounds/' + soundPath;
         // Check if already cached
         const cached = this.audioDataCache.get(soundPath);
         if (cached) {
@@ -586,11 +587,3 @@ class SoundService {
 
 export const soundService = new SoundService();
 
-// Watch for pause state changes
-watch(() => isPaused(), (paused) => {
-    if (paused) {
-        soundService.pauseSounds();
-    } else {
-        soundService.resumeAll();
-    }
-});

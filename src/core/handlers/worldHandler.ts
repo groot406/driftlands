@@ -9,7 +9,7 @@ class WorldHandler {
 
     private handleWorldSnapshot(message: WorldSnapshotMessage): void {
         // Load tiles into client world
-        loadWorld(message.tiles as any);
+        loadWorld(message.tiles);
     }
 }
 

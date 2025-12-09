@@ -13,7 +13,7 @@
           <div class="flex px-2 gap-x-2 pb-2">
             <div class="text-2xl leading-none rounded flex items-center justify-center">
               <div class="relative top-[-16px] left-[-16px] -m-1">
-                <Sprite :sprite="h.avatar" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
+                <Sprite :sprite="'src/assets/heroes/' + h.avatar + '.png'" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
               </div>
             </div>
             <div v-if="!isMobile" class="flex flex-col leading-tight w-1/2">

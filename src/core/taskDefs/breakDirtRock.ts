@@ -3,9 +3,6 @@ import type {TaskDefinition, TaskSoundConfig} from '../tasks';
 import type { Hero } from '../../store/heroStore';
 import { applyVariant } from '../variants';
 
-// Import sound files
-import miningSound from '../../assets/sounds/mining.mp3';
-
 const breakDirtRockTask: TaskDefinition = {
     key: 'breakDirtRock',
     label: 'Break rock',
@@ -26,7 +23,7 @@ const breakDirtRockTask: TaskDefinition = {
 
     getSoundOnStart(): TaskSoundConfig {
         return {
-            soundPath: miningSound,
+            soundPath: 'mining.mp3',
             baseVolume: 0.8,
             maxDistance: 12,
             loop: true

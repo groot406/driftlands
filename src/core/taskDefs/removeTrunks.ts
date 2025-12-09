@@ -1,14 +1,8 @@
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition, TaskSoundConfig} from '../tasks';
 import type {Hero} from '../../store/heroStore';
-import { worldVersion } from '../world';
 import { terrainPositions } from '../terrainRegistry';
 
-// Import sound files
-import choppingSound from '../../assets/sounds/chopping.wav';
-
-// Task: Restore chopped_forest back plain.
-// Heroes collectively spend time replanting; progress rate uses hero XP & ATK lightly.
 const removeTrunksTask: TaskDefinition = {
     key: 'removeTrunks',
     label: 'Remove Trunks',
@@ -42,12 +36,11 @@ const removeTrunksTask: TaskDefinition = {
 
             terrainPositions.forest.delete(tile.id);
             terrainPositions.plains.add(tile.id);
-            worldVersion.value++;
         }
     },
     getSoundOnStart(): TaskSoundConfig {
         return {
-            soundPath: choppingSound,
+            soundPath: 'chopping.wav',
             baseVolume: 0.8,
             maxDistance: 12,
             loop: true

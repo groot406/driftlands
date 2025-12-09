@@ -1,5 +1,5 @@
 import type {Tile} from './world';
-import {tileIndex, tiles, worldVersion} from './world';
+import {tileIndex, tiles} from './world';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {BIOME_DEFS} from './biomes';
 import {applyVariant} from './variants';
@@ -71,7 +71,6 @@ export function updateTileGrowth(nowMs: number = Date.now()) {
             } else {
                 toRemove.push(id);
             }
-            worldVersion.value++;
         }
     }
     for (const id of toRemove) agingTiles.delete(id);
@@ -82,7 +81,6 @@ export function updateTileGrowth(nowMs: number = Date.now()) {
 export function fastForwardGrowthOffline(lastMs: number, nowMs: number) {
     const elapsed = Math.max(0, nowMs - lastMs);
     if (elapsed <= 0) return;
-    let anyChanged = false;
     // Iterate over all tiles since agingTiles may be empty if app was closed before registration.
     for (const t of tiles) {
         if (!t.discovered || !t.terrain) continue;
@@ -107,7 +105,6 @@ export function fastForwardGrowthOffline(lastMs: number, nowMs: number) {
                 remainingMs -= stageRemaining;
                 const next = vDef.growth.next ?? null;
                 applyVariant(t, next, {setTimestamp: false}); // don't override timestamp yet
-                anyChanged = true;
                 currentVariant = next;
                 vDef = getVarDef(currentVariant);
                 // Reset progress for next stage starting exactly at the completion moment
@@ -129,10 +126,8 @@ export function fastForwardGrowthOffline(lastMs: number, nowMs: number) {
                 const progressedAt = lastMs + (elapsed);
                 t.variantSetMs = progressedAt - stageProgressMs; // ensure nowMs - variantSetMs equals cumulative progress
                 agingTiles.add(t.id);
-                anyChanged = true;
                 break;
             }
         }
     }
-    if (anyChanged) worldVersion.value++;
 }

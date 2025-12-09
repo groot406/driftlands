@@ -1,7 +1,6 @@
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import type {Hero} from '../../store/heroStore';
-import { worldVersion } from '../world';
 import { terrainPositions } from '../terrainRegistry';
 import { applyVariant } from '../variants';
 
@@ -37,7 +36,6 @@ const plantTreesTask: TaskDefinition = {
         if (tile.variant === 'chopped_forest') {
             applyVariant(tile, 'young_forest', { stagger: false, respectBiome: true });
             terrainPositions.forest.add(tile.id);
-            worldVersion.value++;
         }
     }
 };

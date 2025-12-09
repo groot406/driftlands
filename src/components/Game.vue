@@ -10,7 +10,6 @@
 </template>
 
 <script setup lang="ts">
-import { idleStore as store } from '../store/idleStore';
 import { moveCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
 import LoadingOverlay from './LoadingOverlay.vue';

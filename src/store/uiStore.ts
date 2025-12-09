@@ -2,8 +2,8 @@ import {reactive} from 'vue';
 import {startIdle} from './idleStore';
 import {ensureHeroSelected,  selectedHeroId } from './heroStore';
 import {camera, moveCamera} from '../core/camera';
+import {soundService} from '../core/soundService';
 import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
-
 export type Phase = 'title' | 'playing';
 
 interface UIState {
@@ -53,6 +53,8 @@ export function resumeGame() {
     startIdle();
     restoreUIState();
     ensureHeroSelected(true);
+
+    soundService.resumeAll();
 }
 
 export function pauseGame() {
@@ -61,6 +63,8 @@ export function pauseGame() {
     uiStore.menuOpen = true;
     openWindow(WINDOW_IDS.IN_GAME_MENU);
     persistUIState();
+
+    soundService.pauseSounds();
 }
 
 export function returnToTitle() {

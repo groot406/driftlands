@@ -104,6 +104,7 @@ function animationLoop() {
     } else if (selectedHeroId.value && hoveredTile.value) {
       pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
     }
+
     service.draw({
       hoveredTile: hoveredTile.value,
       hoveredHero: hoveredHero.value,
@@ -298,7 +299,8 @@ watch([taskMenuTile, hoveredTask], () => {
 
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
-  // Pre-capture size so menus position correctly immediately
+
+    // Pre-capture size so menus position correctly immediately
   updateContainerSize();
   await service.init(canvas.value, container.value);
   // Re-capture after init & next frame (handles potential layout shifts)
@@ -310,6 +312,7 @@ onMounted(async () => {
   window.addEventListener('keydown', keyDown);
   window.addEventListener('keyup', keyUp);
   const el = container.value;
+
   if (el) {
     el.addEventListener('pointerdown', pointerDown, {passive: false});
     el.addEventListener('pointermove', (ev) => {

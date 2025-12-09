@@ -21,9 +21,9 @@ import {getTextIndicators} from "./textIndicators.ts";
 // Tile assets (importing here to keep service encapsulated)
 // Remove individual static imports for each tile image
 // Dynamically import all png files in assets/tiles
-const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
 // Build runtime map from filename (without extension) to URL
 function buildTileSources(): Record<string, string> {
+    const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
     const sources: Record<string, string> = {};
     for (const path in tileImageModules) {
         const mod: any = tileImageModules[path];
@@ -1199,6 +1199,17 @@ export class HexMapService {
         }
     }
 
+    private adaptiveCameraRadius() {
+        if (!this._container) return;
+        const w = this._container.clientWidth;
+        const h = this._container.clientHeight;
+        const diag = Math.min(w, h);
+        const tilePixelSpan = this.HEX_SIZE * 2;
+        const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
+        const inner = Math.max(3, Math.round(targetRadius * 0.33));
+        updateCameraRadius(targetRadius, inner);
+    }
+
     private async ensureHeroAssets() {
         const unique = Array.from(new Set(heroes.map(h => h.avatar)));
         const promises = unique.map(src => new Promise<void>(resolve => {
@@ -1213,28 +1224,17 @@ export class HexMapService {
                 this.buildHeroMasks(img, src);
                 resolve();
             };
-            img.src = src;
+            img.src = 'src/assets/heroes/' + src + '.png';
         }));
         await Promise.all(promises);
         this._heroImagesLoaded = true;
-    }
-
-    private adaptiveCameraRadius() {
-        if (!this._container) return;
-        const w = this._container.clientWidth;
-        const h = this._container.clientHeight;
-        const diag = Math.min(w, h);
-        const tilePixelSpan = this.HEX_SIZE * 2;
-        const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
-        const inner = Math.max(3, Math.round(targetRadius * 0.33));
-        updateCameraRadius(targetRadius, inner);
     }
 
     // Recenter camera when world smaller than view radius so map stays centered on resize.
     private recenterIfWorldFits() {
         // Margin so we don't over-recenter for worlds just barely smaller than radius.
         const margin = 3;
-        if (camera.radius >= worldOuterRadius.value + margin) {
+        if (camera.radius >= worldOuterRadius + margin) {
             centerCamera();
         }
     }

@@ -1,4 +1,4 @@
-import {type Tile, worldVersion} from './world';
+import {type Tile } from './world';
 import {getEffectiveAgeMs, registerAgingTile} from './growth';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {updateTileVariantIndex} from './terrainRegistry';
@@ -16,7 +16,6 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
 
     if (!variantKey) {
         tile.variantSetMs = undefined;
-        worldVersion.value++;
         return;
     }
 
@@ -24,7 +23,6 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
     const variantDef = def?.variations?.find(v => v.key === variantKey);
     if (!variantDef?.growth) {
         tile.variantSetMs = undefined;
-        worldVersion.value++;
         return;
     }
     if (opts.setTimestamp !== false) {
@@ -49,5 +47,4 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
         }
     }
     registerAgingTile(tile);
-    worldVersion.value++;
 }

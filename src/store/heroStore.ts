@@ -1,9 +1,5 @@
 import {reactive, ref} from 'vue';
 import {moveCamera} from '../core/camera';
-import santa from '../assets/heroes/santa.png';
-import boy from '../assets/heroes/boy.png';
-import girl from '../assets/heroes/girl.png';
-import loophead from '../assets/heroes/loophead.png';
 import {getTilesInRadius, type ResourceType, type Tile} from '../core/world';
 import {ensureTileExists} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
@@ -11,7 +7,6 @@ import {handleHeroArrival} from '../core/tasks';
 import {HexMapService} from "../core/HexMapService.ts";
 import {playPositionalSound, removePositionalSound} from './soundStore';
 import {soundService} from '../core/soundService';
-import walkingSound from '../assets/sounds/walking.mp3';
 import {taskStore} from './taskStore';
 
 export interface HeroStats {
@@ -55,10 +50,10 @@ export interface Hero {
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa',avatar: santa,q: 0,r: 0,stats: {xp: 0, hp: 100, atk: 10, spd: 1},facing: 'down',},
-    {id: 'h2', name: 'Harm', avatar: boy, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
-    {id: 'h3', name: 'Jess', avatar: girl, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
-    {id: 'h4', name: 'Jacky', avatar: loophead, q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
+    {id: 'h1', name: 'Santa',avatar: 'santa',q: 0,r: 0,stats: {xp: 0, hp: 100, atk: 10, spd: 1},facing: 'down',},
+    {id: 'h2', name: 'Harm', avatar: 'boy', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
+    {id: 'h3', name: 'Jess', avatar: 'girl', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
+    {id: 'h4', name: 'Jacky', avatar: 'loophead', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
 ];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
@@ -488,7 +483,7 @@ function getWalkingSoundId(heroId: string): string {
 
 function startWalkingSound(hero: Hero) {
     const soundId = getWalkingSoundId(hero.id);
-    playPositionalSound(soundId, walkingSound, hero.q, hero.r, {
+    playPositionalSound(soundId, 'walking.mp3', hero.q, hero.r, {
         baseVolume: 1,
         maxDistance: 8,
         loop: true

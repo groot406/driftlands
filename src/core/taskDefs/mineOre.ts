@@ -2,9 +2,6 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import type { Hero } from '../../store/heroStore';
 
-// Import sound files
-import miningSound from '../../assets/sounds/mining.mp3';
-
 const mineOreTask: TaskDefinition = {
     key: 'mineOre',
     label: 'Mine Ore',
@@ -26,7 +23,7 @@ const mineOreTask: TaskDefinition = {
 
     getSoundOnStart() {
         return {
-            soundPath: miningSound,
+            soundPath: 'mining.mp3',
             baseVolume: 0.6,
             maxDistance: 12,
             loop: true

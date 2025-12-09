@@ -11,9 +11,6 @@ import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {addTextIndicator} from "../core/textIndicators.ts";
 import {playPositionalSound, removePositionalSound} from './soundStore';
 
-// Import sound files
-import successSound from '../assets/sounds/success.mp3';
-
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
 
@@ -468,7 +465,7 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
     }
     playPositionalSound(
         'stat-reward.' + tile.q + '.' + tile.r,
-        successSound,
+        'success.mp3',
         tile.q, tile.r,
         {baseVolume: 0.8, maxDistance: 20, loop: false}
     )

@@ -1,20 +1,28 @@
-import {type ResourceType, type Tile, worldVersion} from './world';
+import {type ResourceType, type Tile} from './world';
 import type {Hero, HeroStat} from '../store/heroStore';
 import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} from '../store/taskStore';
 import { HexMapService } from './HexMapService';
 import { depositResource, resourceInventory, resourceVersion } from '../store/resourceStore';
 
-// Import sound files
-import takeSound from '../assets/sounds/take.mp3';
-import dropSound from '../assets/sounds/drop.mp3';
-import splashSound from '../assets/sounds/splash.mp3';
-
 // Import task definitions to register them
-import.meta.glob('../core/taskDefs/*', { eager: true });
+import '../core/taskDefs/breakDirtRock';
+import '../core/taskDefs/buildDock';
+import '../core/taskDefs/buildMine';
+import '../core/taskDefs/chopWood';
+import '../core/taskDefs/clearRocks';
+import '../core/taskDefs/explore';
+import '../core/taskDefs/harvestGrain';
+import '../core/taskDefs/harvestWaterLilies';
+import '../core/taskDefs/irregateDirt';
+import '../core/taskDefs/mineOre';
+import '../core/taskDefs/plantTrees';
+import '../core/taskDefs/removeTrunks';
+import '../core/taskDefs/seedGrain';
+import '../core/taskDefs/tillLand';
 
 import {startHeroMovement} from '../store/heroStore';
 import {listTaskDefinitions} from "./taskRegistry.ts";
-// Task definition interfaces enable future extension.
+
 export interface TaskDefinition {
     key: TaskType;
     label: string;
@@ -108,7 +116,7 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
 
-        playPositionalSound('take-' + tile.q + '.' + tile.r, takeSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        playPositionalSound('take-' + tile.q + '.' + tile.r, 'take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -133,7 +141,7 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
         // Pick up water
         hero.carryingPayload = { type: 'water' as any, amount: 1 };
 
-        playPositionalSound('splash-' + tile.q + '.' + tile.r, splashSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        playPositionalSound('splash-' + tile.q + '.' + tile.r, 'splash.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -173,14 +181,14 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-            playPositionalSound('drop-' + tile.q + '.' + tile.r, dropSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
             hero.carryingPayload = undefined;
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
                 addResourcesToTask(task, hero.carryingPayload);
-                playPositionalSound('drop-' + tile.q + '.' + tile.r, dropSound, tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+                playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
                 hero.carryingPayload = undefined;
                 joinTask(task.id, hero);
                 return;
@@ -283,9 +291,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     for (const targetTile of candidates) {
         const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
         if (!path.length) continue;
-        worldVersion.value++;
         startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, pending.taskType);
-        worldVersion.value++;
         break;
     }
 }

@@ -1,8 +1,6 @@
-import {ref, markRaw} from 'vue';
+
 import {weightedTerrainChoice, resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
-import {idleStore as store} from "../store/idleStore.ts";
-import {createLoader, finishLoader, getLoader, updateLoader} from './loader';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
 import { registerExistingAgingTiles } from './growth';
@@ -35,27 +33,18 @@ export type TileSide = typeof SIDE_NAMES[number];
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
 export const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
 
-// Reactive world version bump for UI invalidation
-export const worldVersion = ref(0);
-
 // World data containers
-export const tiles: Tile[] = [];
+export let tiles: Tile[] = [];
 export let tileIndex: Record<string, Tile> = {};
 const radiusOffsetCache = new Map<number, Array<[number, number]>>();
-export const worldOuterRadius = ref(0);
+
+export let worldOuterRadius = 0;
+
 // Per-axis discovered radius caches
 const maxRadiusByQ = new Map<number, number>();
 const maxRadiusByR = new Map<number, number>();
-
-// Generation progress refs
-export const generationInProgress = ref(false);
-export const generationProgress = ref(0); // 0-1
-export const generationCompleted = ref(0);
-export const generationTotal = ref(0);
-
 // Internal world bounds tracking
 let minQ = 0, maxQ = 0, minR = 0, maxR = 0;
-
 export function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
@@ -74,7 +63,7 @@ function indexTile(t: Tile) {
     if (t.r < minR) minR = t.r;
     if (t.r > maxR) maxR = t.r;
     const dist = hexDistance(t.q, t.r);
-    if (dist > worldOuterRadius.value) worldOuterRadius.value = dist;
+    if (dist > worldOuterRadius) worldOuterRadius = dist;
     const qKey = t.q;
     const rKey = t.r;
     const prevQ = maxRadiusByQ.get(qKey) ?? 0;
@@ -108,7 +97,7 @@ function ensureTileNeighbors(tile: Tile): TileNeighborMap {
         obj[side] = ensureTileExists(tile.q + dq, tile.r + dr);
     }
     // Define as non-enumerable & mark raw to prevent Vue from deep proxying (avoids circular reactive graph & JSON stringify loops)
-    Object.defineProperty(tile, 'neighbors', { value: markRaw(obj as TileNeighborMap), configurable: true, writable: true });
+    Object.defineProperty(tile, 'neighbors', { value: obj as TileNeighborMap, configurable: true, writable: true });
     // Reverse linking (still non-enumerable for target tiles if not yet defined)
     for (const side of SIDE_NAMES) {
         const n = tile.neighbors![side]!;
@@ -151,7 +140,6 @@ export function discoverTile(tile: Tile) {
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
         terrainPositions.towncenter.add(tile.id);
-        worldVersion.value++;
         return;
     }
     const neighborTerrains = getNeighborTerrains(tile);
@@ -206,8 +194,6 @@ export function discoverTile(tile: Tile) {
             }
         }
     }
-
-    worldVersion.value++;
 }
 
 function getRadiusOffsets(radius: number): Array<[number, number]> {
@@ -236,8 +222,8 @@ export function getTilesInRadius(centerQ: number, centerR: number, radius: numbe
 export function getMaxRadiusFor(q: number, r: number, offset: number): number {
     const iq = Math.round(q);
     const ir = Math.round(r);
-    const radQs: number[] = [maxRadiusByQ.get(iq) ?? worldOuterRadius.value];
-    const radRs: number[] = [maxRadiusByR.get(ir) ?? worldOuterRadius.value];
+    const radQs: number[] = [maxRadiusByQ.get(iq) ?? worldOuterRadius];
+    const radRs: number[] = [maxRadiusByR.get(ir) ?? worldOuterRadius];
     const checkRange = offset;
     for (let d = -checkRange; d <= checkRange; d++) {
         const radQ = maxRadiusByQ.get(iq + d);
@@ -245,25 +231,10 @@ export function getMaxRadiusFor(q: number, r: number, offset: number): number {
         const radR = maxRadiusByR.get(ir + d);
         if (radR !== undefined) radRs.push(radR);
     }
-    return Math.min(worldOuterRadius.value, Math.max(...radQs), Math.max(...radRs));
+    return Math.min(worldOuterRadius, Math.max(...radQs), Math.max(...radRs));
 }
 
-// Async progressive generation
-export async function generateInitialWorld(discoverRadius: number = 4, frameTimeBudgetMs: number = 8) {
-    if (generationInProgress.value || generationProgress.value >= 1) return;
-    // Initialize loader (id stable across regenerations)
-    const loaderId = 'world-gen';
-    let loader = getLoader(loaderId);
-    if (!loader) {
-        createLoader(loaderId, {title: 'World Generation', status: 'Preparing world...', unitLabel: 'Tiles'});
-    } else {
-        updateLoader(loaderId, {status: 'Preparing world...', completed: 0, total: 0, active: true});
-    }
-
-    generationInProgress.value = true;
-    generationProgress.value = 0;
-    generationCompleted.value = 0;
-
+export async function generateInitialWorld(discoverRadius: number = 4) {
     discoverTile(ensureTileExists(0, 0));
     const placeholderRadius = discoverRadius + 1;
     const coords: Array<{ q: number; r: number; dist: number }> = [];
@@ -278,43 +249,21 @@ export async function generateInitialWorld(discoverRadius: number = 4, frameTime
             }
         }
     }
-    generationTotal.value = coords.length;
-    updateLoader(loaderId, {total: coords.length});
-    updateLoader(loaderId, {status: 'Generating world...'});
+
     let index = 0;
 
-    function step() {
-        const start = performance.now();
-        while (index < coords.length && (performance.now() - start) < frameTimeBudgetMs) {
-            const entry = coords[index]!;
-            index++;
-            const {q, r, dist} = entry;
-            const t = ensureTileExists(q, r);
-            if (dist <= discoverRadius) discoverTile(t);
-            generationCompleted.value = index;
-        }
-        generationProgress.value = generationTotal.value === 0 ? 1 : generationCompleted.value / generationTotal.value;
-        const status = generationProgress.value >= 1 ? 'Finalizing...' : `Generating tiles ${generationCompleted.value} / ${generationTotal.value}`;
-        updateLoader(loaderId, {completed: generationCompleted.value, status});
-        worldVersion.value++;
-        if (index < coords.length) {
-            requestAnimationFrame(step);
-        } else {
-            generationProgress.value = 1;
-            generationInProgress.value = false;
-            updateLoader(loaderId, {completed: generationTotal.value, status: 'Reducing terrain islands...'});
-            reduceTerrainIslands();
-            finishLoader(loaderId, 'World ready');
-            worldVersion.value++;
-        }
+    while (index < coords.length) {
+        const entry = coords[index]!;
+        index++;
+        const {q, r, dist} = entry;
+        const t = ensureTileExists(q, r);
+        if (dist <= discoverRadius) discoverTile(t);
     }
 
-    requestAnimationFrame(step);
+    reduceTerrainIslands();
 }
 
 function clearWorld() {
-    generationInProgress.value = false;
-    generationProgress.value = 0;
     tiles.length = 0;
     tileIndex = {};
 
@@ -331,7 +280,6 @@ function clearWorld() {
 export function startWorldGeneration(radius: number) {
     clearWorld();
     generateInitialWorld(radius);
-    store.tiles = tiles;
 }
 
 export function loadWorld(tileData: Tile[]) {
@@ -350,17 +298,15 @@ export function loadWorld(tileData: Tile[]) {
                 const side = SIDE_NAMES[i]!;
                 obj[side] = legacy[i];
             }
-            Object.defineProperty(t, 'neighbors', { value: markRaw(obj as TileNeighborMap), configurable: true, writable: true });
+            Object.defineProperty(t, 'neighbors', { value: obj as TileNeighborMap, configurable: true, writable: true });
         }
         ensureTileNeighbors(t);
     }
     // Re-register aging tiles after load
     registerExistingAgingTiles(tiles);
-    worldVersion.value++;
 }
 
 function reduceTerrainIslands() {
-    let changed = false;
     for (const t of tiles) {
         if (!t.discovered || !t.terrain) continue;
         const def = TERRAIN_DEFS[t.terrain];
@@ -388,9 +334,7 @@ function reduceTerrainIslands() {
             }
             if (bestTerrain && bestTerrain !== t.terrain) {
                 t.terrain = bestTerrain;
-                changed = true;
             }
         }
     }
-    if (changed) worldVersion.value++;
 }
