@@ -1,13 +1,13 @@
 import type { Socket } from 'socket.io';
-import type { ClientMessage, ServerMessage } from '../../src/shared/protocol';
+import type { BaseMessage } from '../../src/shared/protocol';
 
-export type ServerMessageHandler<T extends ClientMessage = ClientMessage> = (socket: Socket, message: T) => void;
+export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void;
 
 export class ServerMessageRouter {
   private handlers = new Map<string, ServerMessageHandler[]>();
 
   // Register a handler for a specific message type
-  on<T extends ClientMessage>(type: T['type'], handler: ServerMessageHandler<T>): void {
+  on<T extends BaseMessage>(type: T['type'], handler: ServerMessageHandler<T>): void {
     if (!this.handlers.has(type)) {
       this.handlers.set(type, []);
     }
@@ -15,7 +15,7 @@ export class ServerMessageRouter {
   }
 
   // Remove a handler for a specific message type
-  off<T extends ClientMessage>(type: T['type'], handler: ServerMessageHandler<T>): void {
+  off<T extends BaseMessage>(type: T['type'], handler: ServerMessageHandler<T>): void {
     const typeHandlers = this.handlers.get(type);
     if (typeHandlers) {
       const index = typeHandlers.indexOf(handler as ServerMessageHandler);
@@ -26,7 +26,7 @@ export class ServerMessageRouter {
   }
 
   // Route an incoming message to appropriate handlers
-  route(socket: Socket, message: ClientMessage): void {
+  route(socket: Socket, message: BaseMessage): void {
     const typeHandlers = this.handlers.get(message.type);
     if (typeHandlers) {
       typeHandlers.forEach(handler => {
@@ -53,12 +53,12 @@ export class ServerMessageRouter {
 }
 
 // Utility function to send a message to a specific socket
-export function sendToSocket(socket: Socket, message: ServerMessage): void {
+export function sendToSocket(socket: Socket, message: BaseMessage): void {
   socket.emit('message', message);
 }
 
 // Utility function to broadcast a message to all connected sockets
-export function broadcast(io: any, message: ServerMessage): void {
+export function broadcast(io: any, message: BaseMessage): void {
   io.emit('message', message);
 }
 

@@ -26,14 +26,22 @@ import { restoreActiveTaskSounds } from '../store/taskStore';
 import { startPeriodicHeroUpdates, stopPeriodicHeroUpdates } from '../store/heroStore';
 import { heroes, selectHero, getSelectedHero } from '../store/heroStore';
 import { isKeyboardBlocked } from '../core/windowManager';
+import {createLoader, updateLoader, finishLoader} from "../core/loader.ts";
 
 const playing = computed(() => isPlaying());
 
 onMounted(async () => {
+  const loader = createLoader('init', {
+    message: 'Loading tiles...',
+    progress: 0,
+  });
+
   // If we have saved tiles (continue) and world isn't loaded yet, load them.
   if (worldTiles.length === 0 && store.tiles.length) {
     loadWorld(store.tiles);
   }
+
+  updateLoader(loader, 0.1, 'Initializing sound system...');
 
   // Initialize sound system
   await soundService.initialize();
@@ -44,11 +52,14 @@ onMounted(async () => {
   // Restore sounds for any active tasks (important for game reload)
   await restoreActiveTaskSounds();
 
+  updateLoader(loader, 0.2, 'Initializing heroes...');
   // Start periodic hero activity updates (replaces expensive 60 FPS updates)
   startPeriodicHeroUpdates();
 
   // Register global hotkeys for hero selection
   window.addEventListener('keydown', onGlobalKeyDown);
+
+  finishLoader('init')
 });
 
 onUnmounted(() => {

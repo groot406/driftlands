@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import type { ClientMessage } from '../../src/shared/protocol';
+import type { BaseMessage } from '../../src/shared/protocol';
 import { serverMessageRouter } from './messageRouter';
 import { initializeServerHandlers } from './messageHandlers';
 import { messageLogger } from './messageLogger';
@@ -24,7 +24,7 @@ const { playerHandler } = initializeServerHandlers(io);
 
 io.on('connection', (socket) => {
   // Route all incoming messages through the message router
-  socket.on('message', (message: ClientMessage) => {
+  socket.on('message', (message: BaseMessage) => {
     console.log(`>>>> ${message.type}`);
     console.log(message);
     serverMessageRouter.route(socket, message);

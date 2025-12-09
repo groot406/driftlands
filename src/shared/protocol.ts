@@ -42,29 +42,3 @@ export interface ChatMessage extends BaseMessage {
   playerName: string;
   message: string;
 }
-
-// Union type for all possible messages
-export type ClientMessage =
-  | PlayerJoinMessage
-  | PlayerLeaveMessage
-  | PlayerActionMessage
-  | ChatMessage;
-
-export type ServerMessage =
-  | GameStateMessage
-  | PlayerJoinMessage
-  | PlayerLeaveMessage
-  | PlayerCountMessage
-  | ChatMessage;
-
-export type Message = ClientMessage | ServerMessage;
-
-// Message type constants
-export const MESSAGE_TYPES = {
-  PLAYER_JOIN: 'player:join',
-  PLAYER_LEAVE: 'player:leave',
-  PLAYER_COUNT: 'player:count',
-  GAME_STATE: 'game:state',
-  PLAYER_ACTION: 'player:action',
-  CHAT_MESSAGE: 'chat:message',
-} as const;

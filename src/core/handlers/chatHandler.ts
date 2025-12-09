@@ -32,11 +32,6 @@ class ChatMessageHandler {
       });
     }
   }
-
-  sendMessage(message: string): void {
-    // This will be implemented to send to server
-    console.log('Sending message:', message);
-  }
 }
 
 export const chatMessageHandler = new ChatMessageHandler();

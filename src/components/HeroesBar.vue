@@ -53,6 +53,8 @@ onMounted(() => {
   window.addEventListener('resize', mqListener);
 });
 
+
+
 onBeforeUnmount(() => { window.removeEventListener('resize', mqListener); });
 
 // Swipe gesture state (for future expandable hero sheet on mobile)
