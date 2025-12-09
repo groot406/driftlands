@@ -15,8 +15,6 @@ export class ServerPlayerHandler {
   }
 
   private handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): void {
-    console.log(`Player joining: ${message.playerName} (${message.playerId})`);
-
     // Store player info
     this.connectedPlayers.set(socket.id, {
       id: message.playerId,
@@ -60,8 +58,6 @@ export class ServerPlayerHandler {
   }
 
   private handlePlayerLeave(socket: Socket, message: PlayerLeaveMessage): void {
-    console.log(`Player leaving: ${message.playerId}`);
-
     // Remove player from our tracking
     this.connectedPlayers.delete(socket.id);
 
@@ -78,13 +74,9 @@ export class ServerPlayerHandler {
       count: this.connectedPlayers.size,
       timestamp: Date.now()
     });
-
-    console.log(`Total connected players: ${this.connectedPlayers.size}`);
   }
 
   private handlePlayerAction(socket: Socket, message: PlayerActionMessage): void {
-    console.log(`Player action: ${message.action} from ${message.playerId}`);
-
     // Process the player action here
     // This could involve updating game state, validating actions, etc.
 
@@ -99,8 +91,6 @@ export class ServerPlayerHandler {
   }
 
   private handleChatMessage(socket: Socket, message: ChatMessage): void {
-    console.log(`Chat message from ${message.playerName}: ${message.message}`);
-
     // Broadcast chat message to all connected players (including sender)
     this.io.emit('message', {
       type: 'chat:message',
@@ -115,8 +105,6 @@ export class ServerPlayerHandler {
   handleDisconnection(socket: Socket): void {
     const player = this.connectedPlayers.get(socket.id);
     if (player) {
-      console.log(`Player disconnected: ${player.name} (${player.id})`);
-
       // Remove from our tracking
       this.connectedPlayers.delete(socket.id);
 
@@ -133,8 +121,6 @@ export class ServerPlayerHandler {
         count: this.connectedPlayers.size,
         timestamp: Date.now()
       });
-
-      console.log(`Total connected players: ${this.connectedPlayers.size}`);
     }
   }
 
