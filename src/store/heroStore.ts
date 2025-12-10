@@ -1,13 +1,14 @@
 import {reactive, ref} from 'vue';
 import {moveCamera} from '../core/camera';
-import {getTilesInRadius, type ResourceType, type Tile} from '../core/world';
-import {ensureTileExists} from '../core/world';
+import {ensureTileExists, getTilesInRadius, type ResourceType, type Tile} from '../core/world';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {handleHeroArrival} from '../core/tasks';
 import {HexMapService} from "../core/HexMapService.ts";
 import {playPositionalSound, removePositionalSound} from './soundStore';
 import {soundService} from '../core/soundService';
-import {taskStore} from './taskStore';
+import {detachHeroFromCurrentTask, taskStore} from './taskStore';
+import {sendMessage} from "../core/socket.ts";
+import type {MoveRequestMessage} from '../shared/protocol';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -50,7 +51,7 @@ export interface Hero {
 
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 const seedHeroes: Hero[] = [
-    {id: 'h1', name: 'Santa',avatar: 'santa',q: 0,r: 0,stats: {xp: 0, hp: 100, atk: 10, spd: 1},facing: 'down',},
+    {id: 'h1', name: 'Santa', avatar: 'santa', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down',},
     {id: 'h2', name: 'Harm', avatar: 'boy', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
     {id: 'h3', name: 'Jess', avatar: 'girl', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
     {id: 'h4', name: 'Jacky', avatar: 'loophead', q: 0, r: 0, stats: {xp: 0, hp: 100, atk: 10, spd: 1}, facing: 'down'},
@@ -211,11 +212,21 @@ function restoreHeroes() {
 }
 
 function isTileWalkable(tile: Tile): boolean {
+
+    const variantDef = (tile.terrain && tile.variant)
+        ? TERRAIN_DEFS[tile.terrain]?.variations?.find(v => v.key === tile.variant)
+        : null;
+
+    if (variantDef && typeof variantDef.walkable === 'boolean') {
+        return variantDef.walkable;
+    }
+
     return !!(tile.terrain && TERRAIN_DEFS[tile.terrain]?.walkable);
 }
 
 // Advance heroes based on movement timing; called each frame before drawing.
 let lastMovementSoundUpdate = 0;
+
 export function updateHeroMovements(now: number) {
     const shouldUpdateSounds = now - lastMovementSoundUpdate > 50; // Throttle sound updates to 20 FPS
     if (shouldUpdateSounds) {
@@ -327,31 +338,76 @@ export function updateHeroMovements(now: number) {
     }
 }
 
-export function startHeroMovement(heroId: string, path: { q: number; r: number }[], target: {
-    q: number;
-    r: number
-}, taskType?: string) {
+export function startHeroMovement(
+    heroId: string,
+    path: { q: number; r: number }[],
+    target: { q: number; r: number },
+    taskType?: string
+) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
     if (!path.length) return; // nothing to do
 
-    if(hero.delayedMovementTimer) {
+    // If already moving to the same target, ignore repeated requests
+    if (hero.movement && hero.movement.target.q === target.q && hero.movement.target.r === target.r) {
+        return;
+    }
+
+
+    // If hero currently moving, defer override to the next step boundary to avoid snapping
+    if (hero.movement) {
+        const m = hero.movement;
+        const now = performance.now();
+        let delay = 0;
+        if (m.stepDurations && m.cumulative && m.stepDurations.length === m.path.length && m.cumulative.length === m.path.length) {
+            const elapsed = now - m.startMs;
+            // Determine current in-step progress
+            let completedSteps = 0;
+            for (let i = 0; i < m.cumulative.length; i++) {
+                if (elapsed >= m.cumulative[i]!) completedSteps = i + 1; else break;
+            }
+            const nextBoundary = m.cumulative[Math.min(completedSteps, m.cumulative.length - 1)] || 0;
+            delay = Math.max(0, nextBoundary - elapsed);
+        } else {
+            // Legacy uniform timing fallback
+            const elapsed = now - m.startMs;
+            const remainder = m.stepMs - (elapsed % m.stepMs);
+            delay = Math.max(0, remainder);
+        }
+        if (hero.delayedMovementTimer) {
+            clearTimeout(hero.delayedMovementTimer);
+            hero.delayedMovementTimer = undefined;
+        }
+        hero.delayedMovementTimer = setTimeout(() => {
+            // Ensure we still want to move and not already at target
+            const h = heroes.find(hh => hh.id === heroId);
+            if (!h) return;
+            if (h.q === target.q && h.r === target.r) return;
+            // Proceed to start movement from current tile at boundary
+            actuallyStartHeroMovement(h, path, target, taskType);
+            h.delayedMovementTimer = undefined;
+        }, delay);
+        return;
+    }
+
+    // If idle, start immediately
+    actuallyStartHeroMovement(hero, path, target, taskType);
+}
+
+function actuallyStartHeroMovement(
+    hero: Hero,
+    path: { q: number; r: number }[],
+    target: { q: number; r: number },
+    taskType?: string
+) {
+    detachHeroFromCurrentTask(hero);
+
+    void taskType; // suppress unused parameter warning
+    if (hero.delayedMovementTimer) {
         clearTimeout(hero.delayedMovementTimer);
         hero.delayedMovementTimer = undefined;
     }
 
-    if (hero.movement) {
-        const m = hero.movement;
-        if (m.target.q === target.q && m.target.r === target.r) {
-            return; // already en route
-        }
-        if (m.stepDurations && m.cumulative) {
-            const elapsed = performance.now() - m.startMs;
-            if (elapsed < m.stepDurations[0]! * 0.5) return; // early in first step
-        }
-        // Update activity when overriding movement
-        updateHeroActivity(hero);
-    }
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
     const service = new HexMapService();
@@ -363,9 +419,9 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         for (const neighborIdx in neighbors) {
             const neighbor = neighbors[neighborIdx];
             if (neighbor && neighbor.discovered && neighbor.terrain && TERRAIN_DEFS[neighbor.terrain]?.walkable) {
-                const path = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r);
-                if (path.length > 0) {
-                    allow = true
+                const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r);
+                if (p.length > 0) {
+                    allow = true;
                     break;
                 }
             }
@@ -393,7 +449,7 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         acc += d;
         cumulative.push(acc);
     }
-    const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+    const avg = durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length) : baseStepMs;
 
     hero.movement = {
         path: path.slice(),
@@ -406,10 +462,27 @@ export function startHeroMovement(heroId: string, path: { q: number; r: number }
         cumulative,
     };
 
-    // Update activity and manage walking sound
     updateHeroActivity(hero);
-
     persistHeroes();
+}
+
+export function requestHeroMovement(
+    heroId: string,
+    path: { q: number; r: number }[],
+    target: { q: number; r: number },
+    taskType?: string
+) {
+    const hero = heroes.find(h => h.id === heroId);
+    if (!hero) return;
+    const msg: MoveRequestMessage = {
+        type: 'hero:move_request',
+        heroId,
+        origin: {q: hero.q, r: hero.r},
+        target,
+        path: path.slice(),
+        task: taskType,
+    };
+    sendMessage(msg as any);
 }
 
 export function focusHero(hero: Hero) {
@@ -553,7 +626,7 @@ function updateHeroActivity(hero: Hero) {
     if (currentActivity === 'walk' && previousActivity !== 'walk') {
         // Started walking
         startWalkingSound(hero);
-        hero.lastSoundPosition = { q: hero.q, r: hero.r };
+        hero.lastSoundPosition = {q: hero.q, r: hero.r};
     } else if (currentActivity !== 'walk' && previousActivity === 'walk') {
         // Stopped walking
         stopWalkingSound(hero);
@@ -561,13 +634,14 @@ function updateHeroActivity(hero: Hero) {
     } else if (currentActivity === 'walk' && previousActivity === 'walk' && positionChanged) {
         // Continue walking and position changed - update sound position
         updateWalkingSoundPosition(hero);
-        hero.lastSoundPosition = { q: hero.q, r: hero.r };
+        hero.lastSoundPosition = {q: hero.q, r: hero.r};
     }
 }
 
 // Update all heroes' activities - should be called periodically to catch task state changes
 // Throttled to prevent excessive updates
 let lastActivityUpdateTime = 0;
+
 export function updateAllHeroActivities() {
     const now = performance.now();
     if (now - lastActivityUpdateTime < 100) return; // Throttle to 10 FPS maximum

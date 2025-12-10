@@ -22,6 +22,7 @@ import {
   selectedHeroId,
   selectHero,
   startHeroMovement,
+  requestHeroMovement,
   updateHeroFacing,
   updateHeroMovements
 } from '../store/heroStore';
@@ -190,9 +191,7 @@ function handleClick(e: PointerEvent) {
 
   let path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
   if (path.length) {
-    detachHeroFromCurrentTask(selHero);
-    startHeroMovement(selHero.id, path, {q: tile.q, r: tile.r}, !tile.discovered ? 'explore' : undefined);
-    pathCoords.value = path;
+    requestHeroMovement(selHero.id, path, tile, !tile.discovered ? 'explore' : undefined);
   }
   updatePath();
 }

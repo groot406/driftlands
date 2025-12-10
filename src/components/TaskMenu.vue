@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import {ref, computed, onUnmounted, watch} from 'vue';
 import type {Tile} from '../core/world';
-import {getSelectedHero, persistHeroes, startHeroMovement} from '../store/heroStore';
+import {getSelectedHero, persistHeroes, requestHeroMovement, startHeroMovement} from '../store/heroStore';
 import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 import type {TaskDefinition} from '../core/tasks';
@@ -71,7 +71,7 @@ function selectTask(def: TaskDefinition) {
     const path = service.findWalkablePath(hero.q, hero.r, props.tile.q, props.tile.r);
     if (path.length) {
       detachHeroFromCurrentTask(hero);
-      startHeroMovement(hero.id, path, {q: props.tile.q, r: props.tile.r}, def.key);
+      requestHeroMovement(hero.id, path, props.tile, def.key);
       emit('started', def.key, props.tile);
     }
   }

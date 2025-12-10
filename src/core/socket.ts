@@ -4,8 +4,9 @@ import { clientMessageRouter } from './messageRouter';
 import { initializeClientHandlers } from './messageHandlers';
 import { addPlayer, removePlayer } from '../store/playerStore';
 
-// "undefined" means the URL will be computed from the `window.location` object
-const URL = import.meta.env.PROD ? undefined : 'http://localhost:3000';
+// Determine URL only in browser; Node lacks import.meta.env
+const isBrowser = typeof window !== 'undefined';
+const URL = isBrowser && (import.meta as any)?.env?.PROD ? undefined : 'http://localhost:3000';
 
 export const socket = io(URL);
 

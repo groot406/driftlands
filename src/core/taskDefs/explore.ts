@@ -4,7 +4,12 @@ import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
 import {HexMapService} from '../HexMapService';
 
-const service = new HexMapService();
+// Lazily initialize HexMapService to avoid temporal dead zone in circular imports
+let _service: HexMapService | null = null;
+function getService(): HexMapService {
+    if (!_service) _service = new HexMapService();
+    return _service;
+}
 
 // Explore task definition separated for modularity.
 const exploreTask: TaskDefinition = {
@@ -74,7 +79,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
         }
 
         if (closestUndiscovered && !closestUndiscovered.discovered) {
-            const path = service.findWalkablePath(participant.q, participant.r, closestUndiscovered.q, closestUndiscovered.r);
+            const path = getService().findWalkablePath(participant.q, participant.r, closestUndiscovered.q, closestUndiscovered.r);
             if (path && path.length) {
                 startHeroMovement(participant.id, path, {
                     q: closestUndiscovered.q,
