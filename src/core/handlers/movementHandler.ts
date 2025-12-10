@@ -12,9 +12,17 @@ class ClientMovementHandler {
     const path = message.path.slice();
     const target = message.target;
     const task = message.task;
-    
-    // Start movement immediately for prediction
-    startHeroMovement(heroId, path, target, task);
+    const startDelayMs = message.startDelayMs || 0;
+    const stepDurations = message.stepDurations;
+    const cumulative = message.cumulative;
+
+    // Start movement using server-provided timings
+    startHeroMovement(heroId, path, target, task, {
+      startDelayMs,
+      stepDurations,
+      cumulative,
+      origin: message.origin,
+    } as any);
   }
 }
 

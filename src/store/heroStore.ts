@@ -342,7 +342,8 @@ export function startHeroMovement(
     heroId: string,
     path: { q: number; r: number }[],
     target: { q: number; r: number },
-    taskType?: string
+    taskType?: string,
+    options?: { startDelayMs?: number; stepDurations?: number[]; cumulative?: number[]; origin?: { q: number; r: number } }
 ) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
@@ -352,7 +353,6 @@ export function startHeroMovement(
     if (hero.movement && hero.movement.target.q === target.q && hero.movement.target.r === target.r) {
         return;
     }
-
 
     // If hero currently moving, defer override to the next step boundary to avoid snapping
     if (hero.movement) {
@@ -384,21 +384,22 @@ export function startHeroMovement(
             if (!h) return;
             if (h.q === target.q && h.r === target.r) return;
             // Proceed to start movement from current tile at boundary
-            actuallyStartHeroMovement(h, path, target, taskType);
+            actuallyStartHeroMovement(h, path, target, taskType, options);
             h.delayedMovementTimer = undefined;
         }, delay);
         return;
     }
 
     // If idle, start immediately
-    actuallyStartHeroMovement(hero, path, target, taskType);
+    actuallyStartHeroMovement(hero, path, target, taskType, options);
 }
 
 function actuallyStartHeroMovement(
     hero: Hero,
     path: { q: number; r: number }[],
     target: { q: number; r: number },
-    taskType?: string
+    taskType?: string,
+    options?: { startDelayMs?: number; stepDurations?: number[]; cumulative?: number[]; origin?: { q: number; r: number } }
 ) {
     detachHeroFromCurrentTask(hero);
 
@@ -428,39 +429,50 @@ function actuallyStartHeroMovement(
         }
         if (!allow) return;
     }
-    const baseStepMs = 750;
-    const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
-    const durations: number[] = [];
-    for (let i = 0; i < path.length; i++) {
-        const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
-        const toCoord = path[i]!;
-        const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
-        const toTile = ensureTileExists(toCoord.q, toCoord.r);
-        const fromDef = fromTile.terrain ? (TERRAIN_DEFS as any)[fromTile.terrain] : null;
-        const toDef = toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
-        const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
-        const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
-        const edgeCost = 0.5 * fromCost + 0.5 * toCost;
-        durations.push(Math.min(Math.max(120, baseStepMs * edgeCost * speedAdj), 5000));
+
+    // If server provided timings, use them; else compute locally
+    let stepDurations: number[] | undefined = options?.stepDurations && options.stepDurations.length === path.length ? options.stepDurations.slice() : undefined;
+    let cumulative: number[] | undefined = options?.cumulative && options.cumulative.length === path.length ? options.cumulative.slice() : undefined;
+    let avg = 750;
+    if (!stepDurations || !cumulative) {
+        const baseStepMs = 750;
+        const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
+        const durations: number[] = [];
+        for (let i = 0; i < path.length; i++) {
+            const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
+            const toCoord = path[i]!;
+            const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
+            const toTile = ensureTileExists(toCoord.q, toCoord.r);
+            const fromDef = fromTile.terrain ? (TERRAIN_DEFS as any)[fromTile.terrain] : null;
+            const toDef = toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
+            const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
+            const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
+            const edgeCost = 0.5 * fromCost + 0.5 * toCost;
+            durations.push(Math.min(Math.max(120, baseStepMs * edgeCost * speedAdj), 5000));
+        }
+        const cum: number[] = [];
+        let acc = 0;
+        for (const d of durations) { acc += d; cum.push(acc); }
+        stepDurations = durations;
+        cumulative = cum;
+        avg = durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length) : baseStepMs;
+    } else {
+        avg = stepDurations.length ? (stepDurations.reduce((a, b) => a + b, 0) / stepDurations.length) : 750;
     }
-    const cumulative: number[] = [];
-    let acc = 0;
-    for (const d of durations) {
-        acc += d;
-        cumulative.push(acc);
-    }
-    const avg = durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length) : baseStepMs;
+
+    const startDelayMs = options?.startDelayMs || 0;
+    const origin = options?.origin || { q: hero.q, r: hero.r };
 
     hero.movement = {
         path: path.slice(),
-        origin: {q: hero.q, r: hero.r},
+        origin,
         target,
         taskType,
-        startMs: performance.now(),
+        startMs: performance.now() + startDelayMs,
         stepMs: avg,
-        stepDurations: durations,
+        stepDurations,
         cumulative,
-    };
+    } as any;
 
     updateHeroActivity(hero);
     persistHeroes();
@@ -480,8 +492,8 @@ export function requestHeroMovement(
         origin: {q: hero.q, r: hero.r},
         target,
         path: path.slice(),
-        task: taskType,
-    };
+        task: taskType as any,
+    } as any;
     sendMessage(msg as any);
 }
 
