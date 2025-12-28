@@ -4,7 +4,7 @@ import {generateInitialWorld, Tile, tiles} from '../../src/core/world';
 // This can later be replaced with a richer generator and persistence layer.
 class WorldState {
   init(): Promise<void> {
-    return generateInitialWorld(2)
+    return generateInitialWorld(1)
   }
 
   getSnapshot(): { tiles: Tile[] } {

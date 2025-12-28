@@ -21,7 +21,6 @@ import {
   heroes,
   selectedHeroId,
   selectHero,
-  startHeroMovement,
   requestHeroMovement,
   updateHeroFacing,
   updateHeroMovements
@@ -39,8 +38,8 @@ import {
 import {isPaused} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
-import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
+import {PathService} from "../core/PathService.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -68,6 +67,7 @@ const hoveredTask = ref<TaskDefinition | null>(null);
 
 // Service instance
 const service = new HexMapService();
+const pathService = new PathService();
 
 function onWindowResize() {
   service.resize();
@@ -189,7 +189,7 @@ function handleClick(e: PointerEvent) {
     closeWindow(WINDOW_IDS.TASK_MENU);
   }
 
-  let path = service.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+  let path = pathService.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
   if (path.length) {
     requestHeroMovement(selHero.id, path, tile, !tile.discovered ? 'explore' : undefined);
   }

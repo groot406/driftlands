@@ -166,7 +166,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
         // Now return to task location
         if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
-            const service = new HexMapService();
+            const service = new PathService();
             const pathBack = service.findWalkablePath(hero.q, hero.r, hero.returnPos.q, hero.returnPos.r);
             if (pathBack && pathBack.length > 0) {
                 const taskType = pending?.taskType ?? undefined;
@@ -230,6 +230,7 @@ import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from './
 import { getTaskDefinition } from './taskRegistry';
 import {TERRAIN_DEFS} from "./terrainDefs.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
+import {PathService} from "./PathService.ts";
 
 function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskType: string }) {
     const source = tileIndex[pending.sourceTileId];

@@ -19,10 +19,6 @@ import { worldOuterRadius, type ResourceType } from './world';
 import {getTextIndicators} from "./textIndicators.ts";
 import {PathService, type PathCoord } from './PathService';
 
-// Tile assets (importing here to keep service encapsulated)
-// Remove individual static imports for each tile image
-// Dynamically import all png files in assets/tiles
-// Build runtime map from filename (without extension) to URL
 function buildTileSources(): Record<string, string> {
     const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
     const sources: Record<string, string> = {};
@@ -174,11 +170,6 @@ export class HexMapService {
 
     updatePath(selectedId: string | null, hoveredTile: Tile | null): PathCoord[] {
         return this.pathService.updatePath(selectedId, hoveredTile);
-    }
-
-    // expose pathfinding for external movement start
-    public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number): PathCoord[] {
-        return this.pathService.findWalkablePath(startQ, startR, goalQ, goalR);
     }
 
     pickTile(screenX: number, screenY: number): Tile | null {

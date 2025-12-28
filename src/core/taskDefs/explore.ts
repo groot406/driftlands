@@ -2,12 +2,12 @@ import {type Hero, persistHeroes, startHeroMovement} from '../../store/heroStore
 import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from '../tasks';
-import {HexMapService} from '../HexMapService';
+import {PathService} from "../PathService.ts";
 
 // Lazily initialize HexMapService to avoid temporal dead zone in circular imports
-let _service: HexMapService | null = null;
-function getService(): HexMapService {
-    if (!_service) _service = new HexMapService();
+let _service: PathService | null = null;
+function getService(): PathService {
+    if (!_service) _service = new PathService();
     return _service;
 }
 

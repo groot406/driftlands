@@ -26,9 +26,9 @@
 <script setup lang="ts">
 import {ref, computed, onUnmounted, watch} from 'vue';
 import type {Tile} from '../core/world';
-import {getSelectedHero, persistHeroes, requestHeroMovement, startHeroMovement} from '../store/heroStore';
+import {getSelectedHero, persistHeroes, requestHeroMovement} from '../store/heroStore';
 import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
-import {HexMapService} from '../core/HexMapService';
+import {PathService} from '../core/PathService';
 import type {TaskDefinition} from '../core/tasks';
 import {axialToPixel, camera} from '../core/camera';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
@@ -47,7 +47,7 @@ const emit = defineEmits<{
   (e: 'hover', task: null|TaskDefinition ): void;
 }>();
 
-const service = new HexMapService();
+const pathService = new PathService();
 
 function close() {
   emit('close');
@@ -68,7 +68,7 @@ function selectTask(def: TaskDefinition) {
       emit('started', def.key, props.tile);
     }
   } else {
-    const path = service.findWalkablePath(hero.q, hero.r, props.tile.q, props.tile.r);
+    const path = pathService.findWalkablePath(hero.q, hero.r, props.tile.q, props.tile.r);
     if (path.length) {
       detachHeroFromCurrentTask(hero);
       requestHeroMovement(hero.id, path, props.tile, def.key);

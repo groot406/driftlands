@@ -9,6 +9,7 @@ import {soundService} from '../core/soundService';
 import {detachHeroFromCurrentTask, taskStore} from './taskStore';
 import {sendMessage} from "../core/socket.ts";
 import type {MoveRequestMessage} from '../shared/protocol';
+import {PathService} from "../core/PathService.ts";
 
 export interface HeroStats {
     xp: number; // experience points
@@ -411,7 +412,7 @@ function actuallyStartHeroMovement(
 
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
-    const service = new HexMapService();
+    const service = new PathService();
     if (!originTile.discovered && !targetTile.discovered) {
         // Closest discovered & walkable tile to hero's current position
         let allow = false;

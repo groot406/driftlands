@@ -4,17 +4,17 @@ import {getTaskDefinition} from '../core/taskRegistry';
 import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
 import {type Hero, heroes, type HeroStats, startHeroMovement} from './heroStore';
 import {idleStore} from './idleStore';
-import {HexMapService} from '../core/HexMapService';
 import {terrainPositions} from "../core/terrainRegistry.ts";
 import {resourceInventory} from './resourceStore';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
 import {addTextIndicator} from "../core/textIndicators.ts";
 import {playPositionalSound, removePositionalSound} from './soundStore';
+import {PathService} from "../core/PathService.ts";
 
 // Persistence key for tasks (versioned)
 const TASKS_KEY = 'driftlands_tasks_v2';
 
-const service = new HexMapService();
+const service = new PathService();
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -713,7 +713,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         }
     }
 
-    const service = new HexMapService();
+    const service = new PathService();
     for (const hero of participants) {
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
         if (hero.carryingPayload) {
