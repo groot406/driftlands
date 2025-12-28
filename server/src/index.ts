@@ -18,7 +18,6 @@ const io = new Server(httpServer, {
 
 // Apply message logging middleware
 messageLogger.wrapServer(io);
-messageLogger.wrapSocketOnConnection(io);
 
 // Initialize message handlers
 const { playerHandler } = initializeServerHandlers(io);
@@ -45,4 +44,3 @@ io.on('connection', (socket) => {
 httpServer.listen(3000, () => {
   console.log('Server listening on *:3000');
 });
-

@@ -1,5 +1,5 @@
 import type { Socket, Server } from 'socket.io';
-import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerActionMessage, ChatMessage } from '../../../src/shared/protocol';
+import type { PlayerJoinMessage, PlayerLeaveMessage, ChatMessage } from '../../../src/shared/protocol';
 import { serverMessageRouter } from '../messageRouter';
 
 export class ServerPlayerHandler {
@@ -10,7 +10,6 @@ export class ServerPlayerHandler {
   init(): void {
     serverMessageRouter.on('player:join', this.handlePlayerJoin.bind(this));
     serverMessageRouter.on('player:leave', this.handlePlayerLeave.bind(this));
-    serverMessageRouter.on('player:action', this.handlePlayerAction.bind(this));
     serverMessageRouter.on('chat:message', this.handleChatMessage.bind(this));
   }
 
@@ -31,6 +30,7 @@ export class ServerPlayerHandler {
     });
 
     // Send existing players to the newly connected player (excluding themselves)
+    // @ts-ignore
     for (const [socketId, player] of this.connectedPlayers) {
       if (socketId !== socket.id) {
         socket.emit('message', {
@@ -74,20 +74,6 @@ export class ServerPlayerHandler {
     });
   }
 
-  private handlePlayerAction(socket: Socket, message: PlayerActionMessage): void {
-    // Process the player action here
-    // This could involve updating game state, validating actions, etc.
-
-    // Broadcast the action to other players (if needed)
-    socket.broadcast.emit('message', {
-      type: 'player:action',
-      playerId: message.playerId,
-      action: message.action,
-      data: message.data,
-      timestamp: Date.now()
-    });
-  }
-
   private handleChatMessage(socket: Socket, message: ChatMessage): void {
     // Broadcast chat message to all connected players (including sender)
     this.io.emit('message', {
@@ -121,17 +107,4 @@ export class ServerPlayerHandler {
       });
     }
   }
-
-  getConnectedPlayersCount(): number {
-    return this.connectedPlayers.size;
-  }
-
-  getAllPlayers(): Array<{ id: string, name: string }> {
-    return Array.from(this.connectedPlayers.values()).map(player => ({
-      id: player.id,
-      name: player.name
-    }));
-  }
-
-
 }

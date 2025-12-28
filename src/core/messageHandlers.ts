@@ -11,4 +11,5 @@ export function initializeClientHandlers(): void {
   chatMessageHandler.init();
   worldHandler.init();
   movementMessageHandler.init();
+  movementMessageHandler.init();
 }

@@ -22,10 +22,6 @@ class PlayerMessageHandler {
       message: `${message.playerName} joined the game`,
       duration: 3000
     });
-
-    window.dispatchEvent(new CustomEvent('player-join', {
-      detail: { playerId: message.playerId, playerName: message.playerName }
-    }));
   }
 
   private handlePlayerLeave(message: PlayerLeaveMessage): void {
@@ -40,10 +36,6 @@ class PlayerMessageHandler {
       message: `A player left the game`,
       duration: 3000
     });
-
-    window.dispatchEvent(new CustomEvent('player-leave', {
-      detail: { playerId: message.playerId }
-    }));
   }
 
   private handlePlayerCount(message: PlayerCountMessage): void {

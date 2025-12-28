@@ -235,6 +235,7 @@ export function getMaxRadiusFor(q: number, r: number, offset: number): number {
 }
 
 export async function generateInitialWorld(discoverRadius: number = 4) {
+    console.log('Generating world with discover radius', discoverRadius);
     discoverTile(ensureTileExists(0, 0));
     const placeholderRadius = discoverRadius + 1;
     const coords: Array<{ q: number; r: number; dist: number }> = [];

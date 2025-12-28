@@ -32,13 +32,6 @@ export interface PlayerCountMessage extends BaseMessage {
     count: number;
 }
 
-export interface PlayerActionMessage extends BaseMessage {
-    type: 'player:action';
-    playerId: string;
-    action: string;
-    data: any;
-}
-
 export interface ChatMessage extends BaseMessage {
     type: 'chat:message';
     playerId: string;
@@ -84,7 +77,6 @@ export interface PathUpdateMessage extends BaseMessage {
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
-    | PlayerActionMessage
     | ChatMessage
     | WorldRequestMessage
     | MoveRequestMessage;
