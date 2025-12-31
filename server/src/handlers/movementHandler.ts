@@ -8,7 +8,7 @@ import {type TaskType} from "../../../src/core/types/Task";
 import {handleHeroArrival} from "../../../src/shared/tasks/tasks";
 import type {Hero} from "../../../src/core/types/Hero.ts";
 import {PathService} from "../../../src/core/PathService.ts";
-import {detachHeroFromCurrentTask} from "../../../src/store/taskStore.ts";
+import {detachHeroFromCurrentTask, updateActiveTasks} from "../../../src/store/taskStore.ts";
 
 export class ServerMovementHandler {
 
@@ -77,6 +77,8 @@ export class ServerMovementHandler {
         // Compute timings; in future incorporate hero stats from authoritative state
         const {durations, cumulative} = this.computeDurations(path, origin, 1);
 
+        detachHeroFromCurrentTask(hero);
+
         const startDelayMs = 50; // small delay for clients to align without time sync
         hero.movement = {
             path: path.slice(),
@@ -87,7 +89,7 @@ export class ServerMovementHandler {
             stepDurations: durations,
             cumulative,
         }
-
+        hero.delayedMovementTimer = undefined;
         this.registerMovement(heroId, target, path, durations, startDelayMs, origin, Date.now(), message.task);
 
         // Broadcast to all clients
@@ -103,6 +105,8 @@ export class ServerMovementHandler {
             task: message.task,
         };
         broadcast(update);
+
+        updateActiveTasks(heroes);
     }
 
     public moveHero(hero: Hero, target: { q: number, r: number }, task ?: TaskType) {
@@ -118,7 +122,6 @@ export class ServerMovementHandler {
 
         detachHeroFromCurrentTask(hero);
         this.registerMovement(hero.id, targetPosition, path, durations, 50, origin, Date.now(), task);
-
         broadcast({
             type: 'hero:path_update',
             heroId: hero.id,
@@ -130,6 +133,8 @@ export class ServerMovementHandler {
             cumulative,
             task,
         } as PathUpdateMessage)
+
+        updateActiveTasks(heroes);
     }
 
     private isWalkable(q: number, r: number): boolean {
@@ -246,13 +251,14 @@ export class ServerMovementHandler {
                 hero.r = movement.target.r;
             }
 
-            if (elapsedMs >= movement.totalDuration && movement.task) {
+            if (elapsedMs >= movement.totalDuration) {
                 const tile = getTile(movement.target)
 
                 if(!tile) {
                     continue;
                 }
 
+                console.log('hero arrived', hero.movement);
                 handleHeroArrival(hero, tile);
                 hero.movement = undefined;
                 this.activeMovements.delete(heroId);

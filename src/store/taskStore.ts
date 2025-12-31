@@ -370,9 +370,6 @@ export function leaveTask(taskId: string, hero: Hero) { // fixed typing
 
     delete inst.participants[hero.id];
     if (hero.currentTaskId === taskId) hero.currentTaskId = undefined;
-    if (!Object.keys(inst.participants).length) {
-        doRemoveTask(inst);
-    }
 }
 
 export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance | undefined {

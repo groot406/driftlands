@@ -18,4 +18,5 @@ export function depositResource(type: ResourceType, amount: number = 1) {
 
     resourceInventory[type] = (resourceInventory[type] ?? 0) + amount;
     resourceVersion++;
+
 }

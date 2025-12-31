@@ -12,6 +12,8 @@ import type {Tile} from "../../core/types/Tile";
 import type {Hero} from "../../core/types/Hero";
 import type {TaskDefinition} from "../../core/types/Task";
 import {ServerMovementHandler} from "../../../server/src/handlers/movementHandler.ts";
+import {broadcast} from "../../../server/src/messages/messageRouter.ts";
+import type {ResourceDepositMessage} from "../protocol.ts";
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -95,8 +97,17 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
+            console.log('at towncenter, depositing', hero.carryingPayload);
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-            //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            const resourceDepositMessage: ResourceDepositMessage = {
+                type: 'resource:deposit',
+                heroId: hero.id,
+                resource: {
+                    type: hero.carryingPayload.type,
+                    amount: hero.carryingPayload.amount,
+                },
+            }
+            broadcast(resourceDepositMessage);
             hero.carryingPayload = undefined;
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
@@ -197,7 +208,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     });
 
     for (const targetTile of candidates) {
-        ServerMovementHandler.getInstance().moveHero(hero, targetTile);
+        ServerMovementHandler.getInstance().moveHero(hero, targetTile, pending.taskType);
         break;
     }
 }

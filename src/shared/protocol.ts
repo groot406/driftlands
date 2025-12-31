@@ -146,7 +146,6 @@ export type ClientMessage =
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
     | LeaveTaskRequestMessage
-    | ResourceDepositMessage;
 
 export type ServerMessage =
     | PlayerJoinMessage
@@ -160,4 +159,5 @@ export type ServerMessage =
     | TaskCreatedMessage
     | TaskProgressMessage
     | TaskRemovedMessage
-    | TaskCompletedMessage;
+    | TaskCompletedMessage
+    | ResourceDepositMessage;

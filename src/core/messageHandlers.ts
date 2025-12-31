@@ -3,6 +3,7 @@ import { chatMessageHandler } from './handlers/chatHandler';
 import { worldHandler } from './handlers/worldHandler';
 import { movementMessageHandler } from './handlers/movementHandler';
 import { taskMessageHandler } from './handlers/taskHandler';
+import { resourceMessageHandler } from './handlers/resourceMessageHandler';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
@@ -10,6 +11,6 @@ export function initializeClientHandlers(): void {
   chatMessageHandler.init();
   worldHandler.init();
   movementMessageHandler.init();
-  movementMessageHandler.init();
   taskMessageHandler.init();
+  resourceMessageHandler.init();
 }
