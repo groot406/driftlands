@@ -1,0 +1,13 @@
+import './definitions/buildDock';
+import './definitions/buildMine';
+import './definitions/chopWood';
+import './definitions/clearRocks';
+import './definitions/explore';
+import './definitions/harvestGrain';
+import './definitions/harvestWaterLilies';
+import './definitions/irregateDirt';
+import './definitions/mineOre';
+import './definitions/plantTrees';
+import './definitions/removeTrunks';
+import './definitions/seedGrain';
+import './definitions/tillLand';

@@ -1,7 +1,9 @@
-import {type Tile } from './world';
 import {getEffectiveAgeMs, registerAgingTile} from './growth';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {updateTileVariantIndex} from './terrainRegistry';
+import type {Tile} from "./types/Tile.ts";
+import {broadcast} from "../../server/src/messages/messageRouter.ts";
+import type {TileUpdatedMessage} from "../shared/protocol.ts";
 
 interface ApplyVariantOptions {
     stagger?: boolean; // apply random backward offset across effective age window
@@ -16,6 +18,7 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
 
     if (!variantKey) {
         tile.variantSetMs = undefined;
+        broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
         return;
     }
 
@@ -23,8 +26,10 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
     const variantDef = def?.variations?.find(v => v.key === variantKey);
     if (!variantDef?.growth) {
         tile.variantSetMs = undefined;
+        broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
         return;
     }
+
     if (opts.setTimestamp !== false) {
         // Compute effective age (only needed for stagger offset). Timestamp always set to now unless stagger indicates backdating.
         let effectiveAge = variantDef.growth.ageMs ?? 0;
@@ -47,4 +52,5 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
         }
     }
     registerAgingTile(tile);
+    broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
 }

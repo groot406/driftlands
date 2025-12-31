@@ -6,9 +6,9 @@
 
 <script setup lang="ts">
 import {ref, type Ref, watch} from 'vue';
-import {type ResourceType} from '../core/world';
 import ResourceBubble from './ResourceBubble.vue';
 import {resourceInventory, resourceVersion} from '../store/resourceStore';
+import type {ResourceType} from "../core/types/Resource.ts";
 
 interface ResMeta {
   key: ResourceType;

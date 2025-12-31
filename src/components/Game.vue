@@ -2,7 +2,7 @@
   <div class="h-screen flex bg-slate-900 text-slate-100 select-none">
     <TitleBackground :move="false" :blur="40" />
     <div class="flex-1 overflow-hidden w-full h-full">
-      <HexMap @tile-doubleclick="moveToTile" />
+      <HexMap @tile-doubleclick="moveToPosition" />
       <LoadingOverlay />
     </div>
   </div>
@@ -14,15 +14,12 @@ import { moveCamera } from '../core/camera';
 import HexMap from './HexMap.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 import GameGui from './GameGui.vue';
-import type { Tile } from '../core/world';
-import { isPlaying } from '../store/uiStore';
+import { isPlaying, getSelectedHero, selectHero } from '../store/uiStore';
 import { computed, onMounted, onUnmounted } from 'vue';
 import TitleBackground from "./TitleBackground.vue";
 import { soundService } from '../core/soundService';
 import { musicManager } from '../core/musicManager';
-import { restoreActiveTaskSounds } from '../store/taskStore';
-import { startPeriodicHeroUpdates, stopPeriodicHeroUpdates } from '../store/heroStore';
-import { heroes, selectHero, getSelectedHero } from '../store/heroStore';
+import { heroes } from '../store/heroStore';
 import { isKeyboardBlocked } from '../core/windowManager';
 import {createLoader, updateLoader, finishLoader} from "../core/loader.ts";
 
@@ -38,13 +35,7 @@ onMounted(async () => {
   // Initialize music manager
   musicManager.initialize();
 
-  // Restore sounds for any active tasks (important for game reload)
-  await restoreActiveTaskSounds();
-
   updateLoader('init', {title: 'Initializing heroes...'});
-
-  // Start periodic hero activity updates (replaces expensive 60 FPS updates)
-  startPeriodicHeroUpdates();
 
   // Register global hotkeys for hero selection
   window.addEventListener('keydown', onGlobalKeyDown);
@@ -53,9 +44,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  // Stop periodic hero updates
-  stopPeriodicHeroUpdates();
-
   // Cleanup sound system
   soundService.destroy();
   musicManager.destroy();
@@ -64,8 +52,8 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onGlobalKeyDown);
 });
 
-function moveToTile(tile: Tile) {
-  moveCamera(tile.q, tile.r);
+function moveToPosition(position: { q: number, r: number} ) {
+  moveCamera(position.q, position.r);
 }
 
 // Global hotkeys: 1-9 select hero, Tab/Shift+Tab cycle through heroes
@@ -93,18 +81,23 @@ function onGlobalKeyDown(e: KeyboardEvent) {
 
   // Tab cycles selection; Shift+Tab cycles backwards
   if (e.key === 'Tab') {
-    e.preventDefault(); // prevent focus change
+    e.preventDefault();
     if (!heroes.length) return;
     const current = getSelectedHero();
     const currentIdx = current ? heroes.findIndex(h => h.id === current.id) : -1;
-    let nextIdx = currentIdx;
+    let nextIdx;
     if (e.shiftKey) {
       nextIdx = currentIdx <= 0 ? heroes.length - 1 : currentIdx - 1;
     } else {
       nextIdx = currentIdx >= 0 ? (currentIdx + 1) % heroes.length : 0;
     }
-    selectHero(heroes[nextIdx], true);
-    return;
+
+    const nextHero = heroes[nextIdx];
+    if (!nextHero) {
+      return;
+    }
+
+    selectHero(nextHero, true);
   }
 }
 </script>

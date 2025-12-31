@@ -1,10 +1,10 @@
 import { registerTask } from '../taskRegistry';
-import type {TaskDefinition} from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import {applyVariant} from "../variants.ts";
-import type {TileSide} from "../world.ts";
-import { TERRAIN_DEFS } from "../terrainDefs.ts";
-import { getTaskByTile } from "../../store/taskStore.ts";
+import type {TaskDefinition } from "../../../core/types/Task.ts";
+import {applyVariant} from "../../../core/variants.ts";
+import { TERRAIN_DEFS } from "../../../core/terrainDefs.ts";
+import { getTaskByTile } from "../../../store/taskStore.ts";
+import type {Hero} from "../../../core/types/Hero.ts";
+import {SIDE_NAMES, type TileSide} from "../../../core/types/Tile.ts";
 
 const buildDockTask: TaskDefinition = {
     key: 'buildDock',
@@ -39,7 +39,7 @@ const buildDockTask: TaskDefinition = {
                 ? path[path.length - 2]
                 : movement.origin;
             if (prevCoord) {
-                for (const side of ['a','b','c','d','e','f'] as const) {
+                for (const side of SIDE_NAMES) {
                     const n = neighbors[side];
                     if (n && n.q === prevCoord.q && n.r === prevCoord.r) {
                         instance.context = instance.context || {};
@@ -64,8 +64,7 @@ const buildDockTask: TaskDefinition = {
             } else {
                 // Fallback: find first adjacent walkable tile to orient the dock toward it
                 if (tile.neighbors) {
-                    const sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
-                    for (const side of sides) {
+                    for (const side of SIDE_NAMES) {
                         const neighbor = tile.neighbors[side];
                         if (neighbor && neighbor.terrain && neighbor.discovered) {
                             const terrainDef = neighbor.terrain ? TERRAIN_DEFS[neighbor.terrain] : null;

@@ -1,7 +1,9 @@
 import type { Socket } from 'socket.io';
-import type { BaseMessage } from '../../src/shared/protocol';
+import { type BaseMessage} from "../../../src/shared/protocol";
 
 export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void;
+
+let io: any;
 
 export class ServerMessageRouter {
   private handlers = new Map<string, ServerMessageHandler[]>();
@@ -52,13 +54,17 @@ export class ServerMessageRouter {
   }
 }
 
+export function setIo(ioInput:any) {
+  io = ioInput;
+}
+
 // Utility function to send a message to a specific socket
 export function sendToSocket(socket: Socket, message: any): void {
   socket.emit('message', message);
 }
 
 // Utility function to broadcast a message to all connected sockets
-export function broadcast(io: any, message: any): void {
+export function broadcast(message: any): void {
   io.emit('message', message);
 }
 

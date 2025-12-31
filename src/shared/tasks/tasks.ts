@@ -1,96 +1,17 @@
-import {type ResourceType, type Tile} from './world';
-import type {Hero, HeroStat} from '../store/heroStore';
-import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} from '../store/taskStore';
-import { HexMapService } from './HexMapService';
-import { depositResource, resourceInventory, resourceVersion } from '../store/resourceStore';
+import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} from '../../store/taskStore';
+import { depositResource, resourceInventory } from '../../store/resourceStore';
+import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from '../../core/world';
+import { getTaskDefinition } from './taskRegistry';
+import {TERRAIN_DEFS} from "../../core/terrainDefs";
+import {PathService} from "../../core/PathService";
+import {listTaskDefinitions} from "./taskRegistry";
 
 // Import task definitions to register them
-import '../core/taskDefs/breakDirtRock';
-import '../core/taskDefs/buildDock';
-import '../core/taskDefs/buildMine';
-import '../core/taskDefs/chopWood';
-import '../core/taskDefs/clearRocks';
-import '../core/taskDefs/explore';
-import '../core/taskDefs/harvestGrain';
-import '../core/taskDefs/harvestWaterLilies';
-import '../core/taskDefs/irregateDirt';
-import '../core/taskDefs/mineOre';
-import '../core/taskDefs/plantTrees';
-import '../core/taskDefs/removeTrunks';
-import '../core/taskDefs/seedGrain';
-import '../core/taskDefs/tillLand';
-
-import {startHeroMovement} from '../store/heroStore';
-import {listTaskDefinitions} from "./taskRegistry.ts";
-
-export interface TaskDefinition {
-    key: TaskType;
-    label: string;
-
-    // Whether a hero can start this task on the given tile
-    canStart(tile: Tile, hero: Hero): boolean;
-
-    // Total XP required for completion (can depend on tile distance)
-    requiredXp(distance: number): number;
-
-    // XP contribution per tick for a given hero (can depend on hero & tile)
-    heroRate(hero: Hero, tile: Tile): number;
-
-    // Optional hook when task starts
-    onStart?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
-
-    // Optional hook each tick after progress applied
-    onProgress?(tile: Tile, instance: TaskInstance): void;
-
-    // Completion hook (e.g. discover tile, distribute rewards)
-    onComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
-
-    // Optional base reward XP for participants collectively (split proportionally)
-    totalRewardedStats?(distance: number): Record<HeroStat, number>;
-
-    // Optional base reward resources for participants collectively (split proportionally)
-    totalRewardedResources?(distance: number): ResourceAmount;
-
-    requiredResources?(distance: number): ResourceAmount[]
-
-    repeatTask?: boolean; // whether task can be repeated on same tile
-    chainAdjacentSameTerrain?: boolean|Function; // optional flag to auto-chain task to neighboring same-terrain tiles
-
-    // Sound configuration methods - return sound config or null if no sound
-    getSoundOnStart?(tile: Tile, participants: Hero[]): TaskSoundConfig | null;
-    getSoundOnComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): TaskSoundConfig | null;
-}
-export type ResourceAmount = { type: ResourceType; amount: number };
-export type TaskType = 'explore' | 'chopWood' | 'plantTrees' | string;
-
-// Sound configuration for tasks
-export interface TaskSoundConfig {
-    soundPath: string;
-    baseVolume: number;
-    maxDistance: number;
-    loop: boolean;
-}
-
-export interface TaskInstance {
-    id: string;
-    type: TaskType;
-    tileId: string;
-    progressXp: number;
-    requiredXp: number;
-    createdTick: number; // legacy tick when created
-    completedTick?: number; // legacy tick when completed
-    // Real-time fields for offline progression
-    createdMs: number; // Date.now() when task started
-    lastUpdateMs: number; // last Date.now() when progress applied
-    completedMs?: number; // Date.now() when completed
-    participants: Record<string, number>; // heroId -> contributedXp (time-scaled cumulative)
-    active: boolean;
-    // Resource tracking for tasks that require resources
-    requiredResources?: ResourceAmount[]; // Resources needed to start/continue task
-    collectedResources?: ResourceAmount[]; // resourceType -> amount collected so far
-    // Task-specific context to store metadata (e.g., approach side for docks)
-    context?: Record<string, any>;
-}
+import './taskDefinitions';
+import type {Tile} from "../../core/types/Tile";
+import type {Hero} from "../../core/types/Hero";
+import type {TaskDefinition} from "../../core/types/Task";
+import {ServerMovementHandler} from "../../../server/src/handlers/movementHandler.ts";
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -112,11 +33,11 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
     if (amountToTake > 0) {
         // Deduct from warehouse inventory
         resourceInventory[resourceType] = (resourceInventory[resourceType] ?? amountToTake) - amountToTake;
-        resourceVersion.value++;
+        //resourceVersion.value++;
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
 
-        playPositionalSound('take-' + tile.q + '.' + tile.r, 'take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        // playPositionalSound('take-' + tile.q + '.' + tile.r, 'take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -141,7 +62,7 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
         // Pick up water
         hero.carryingPayload = { type: 'water' as any, amount: 1 };
 
-        playPositionalSound('splash-' + tile.q + '.' + tile.r, 'splash.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        // playPositionalSound('splash-' + tile.q + '.' + tile.r, 'splash.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
 }
 
@@ -166,14 +87,8 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
         // Now return to task location
         if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
-            const service = new PathService();
-            const pathBack = service.findWalkablePath(hero.q, hero.r, hero.returnPos.q, hero.returnPos.r);
-            if (pathBack && pathBack.length > 0) {
-                const taskType = pending?.taskType ?? undefined;
-
-                startHeroMovement(hero.id, pathBack, hero.returnPos, taskType);
-                return;
-            }
+            ServerMovementHandler.getInstance().moveHero(hero, hero.returnPos)
+            return;
         }
     }
 
@@ -181,20 +96,19 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-            playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
             hero.carryingPayload = undefined;
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
                 addResourcesToTask(task, hero.carryingPayload);
-                playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+                //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
                 hero.carryingPayload = undefined;
                 joinTask(task.id, hero);
                 return;
             }
         }
-
     }
 
     if (!hero.movement?.taskType) {
@@ -213,7 +127,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         const existing = getTaskByTile(tile.id, selected);
         if (!existing) {
             startTask(tile, selected, hero);
-        } else if (existing.active && !existing.completedTick) {
+        } else if (existing.active) {
             joinTask(existing.id, hero);
         }
     }
@@ -225,12 +139,6 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         hero.pendingChain = undefined;
     }
 }
-
-import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from './world';
-import { getTaskDefinition } from './taskRegistry';
-import {TERRAIN_DEFS} from "./terrainDefs.ts";
-import {playPositionalSound} from "../store/soundStore.ts";
-import {PathService} from "./PathService.ts";
 
 function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskType: string }) {
     const source = tileIndex[pending.sourceTileId];
@@ -288,11 +196,8 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
         return Math.random() - 0.5;
     });
 
-    const service = new HexMapService();
     for (const targetTile of candidates) {
-        const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
-        if (!path.length) continue;
-        startHeroMovement(hero.id, path, { q: targetTile.q, r: targetTile.r }, pending.taskType);
+        ServerMovementHandler.getInstance().moveHero(hero, targetTile);
         break;
     }
 }
@@ -304,7 +209,7 @@ export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
         tasks.push({
             key: 'walk',
             label: 'Go here',
-            canStart: (_tile, _hero) => true,
+            canStart: (_tile: Tile, _hero: Hero) => true,
             requiredXp: (_distance: number) => 0,
             heroRate: (_hero: Hero, _tile: Tile) => 1,
         })

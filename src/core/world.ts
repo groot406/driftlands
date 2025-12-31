@@ -5,34 +5,11 @@ import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
 import { registerExistingAgingTiles } from './growth';
 import { terrainPositions } from './terrainRegistry';
-
-export type Terrain = TerrainKey;
-export type ResourceType = 'wood' | 'ore' | 'stone' | 'food' | 'crystal' | 'artifact' | 'water' | 'grain';
-
-export interface Tile {
-    id: string;
-    q: number;
-    r: number;
-    pixel?: { x: number; y: number };
-    biome: string | null;
-    terrain: Terrain | null;
-    discovered: boolean;
-    // Variant key if a terrain variation was selected (e.g. 'plains_coast_a'). Null if base terrain.
-    variant?: string | null;
-    // Timestamp when current variant was set (for growth progression)
-    variantSetMs?: number;
-    // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
-    neighbors?: TileNeighborMap;
-    // Optional per-edge fencing: when true for a side, movement cannot cross that edge.
-    fencedEdges?: Partial<Record<TileSide, boolean>>;
-}
+import {OPPOSITE_SIDE, SIDE_NAMES, type Terrain, type Tile, type TileNeighborMap} from "./types/Tile";
+import {broadcast} from "../../server/src/messages/messageRouter.ts";
+import type {TileUpdatedMessage} from "../shared/protocol.ts";
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
-export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
-export type TileSide = typeof SIDE_NAMES[number];
-export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
-export const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
-
 // World data containers
 export let tiles: Tile[] = [];
 export let tileIndex: Record<string, Tile> = {};
@@ -81,6 +58,20 @@ export function ensureTileExists(q: number, r: number): Tile {
         indexTile(t);
     }
     return t;
+}
+
+export function updateTile(tile: Tile) {
+    if (!tileIndex[tile.id]) {
+        ensureTileExists(tile.q, tile.r);
+        tiles.push(tile);
+        indexTile(tile);
+    } else {
+        tileIndex[tile.id] = tile;
+    }
+
+    if(tile.discovered) {
+        ensureTileNeighbors(tile);
+    }
 }
 
 // Axial coordinate neighbor deltas (pointy-top layout):
@@ -194,6 +185,10 @@ export function discoverTile(tile: Tile) {
             }
         }
     }
+
+    if(!generating) {
+        broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
+    }
 }
 
 function getRadiusOffsets(radius: number): Array<[number, number]> {
@@ -234,8 +229,10 @@ export function getMaxRadiusFor(q: number, r: number, offset: number): number {
     return Math.min(worldOuterRadius, Math.max(...radQs), Math.max(...radRs));
 }
 
+let generating = false;
+
 export async function generateInitialWorld(discoverRadius: number = 4) {
-    console.log('Generating world with discover radius', discoverRadius);
+    generating = true;
     discoverTile(ensureTileExists(0, 0));
     const placeholderRadius = discoverRadius + 1;
     const coords: Array<{ q: number; r: number; dist: number }> = [];
@@ -262,6 +259,8 @@ export async function generateInitialWorld(discoverRadius: number = 4) {
     }
 
     reduceTerrainIslands();
+
+    generating = false;
 }
 
 function clearWorld() {
@@ -281,6 +280,10 @@ function clearWorld() {
 export function startWorldGeneration(radius: number) {
     clearWorld();
     generateInitialWorld(radius);
+}
+
+export function getTile(position: { q: number, r: number}) {
+    return tileIndex[axialKey(position.q, position.r)];
 }
 
 export function loadWorld(tileData: Tile[]) {

@@ -1,9 +1,10 @@
-import {reactive} from 'vue';
-import {startIdle} from './idleStore';
-import {ensureHeroSelected,  selectedHeroId } from './heroStore';
+import {reactive, ref} from 'vue';
+import {heroes } from './heroStore';
 import {camera, moveCamera} from '../core/camera';
 import {soundService} from '../core/soundService';
 import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
+import {focusHero} from "../core/heroService.ts";
+import type {Hero} from "../core/types/Hero.ts";
 export type Phase = 'title' | 'playing';
 
 interface UIState {
@@ -12,6 +13,7 @@ interface UIState {
 }
 
 const STATE_KEY = 'driftlands-ui-state-v1';
+export const selectedHeroId = ref<string | null>(null);
 
 export const uiStore = reactive<UIState>({
     phase: 'title',
@@ -46,11 +48,33 @@ function restoreUIState() {
     }
 }
 
+function ensureHeroSelected(focus: boolean = true) {
+    const current = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) : null;
+    const hero = current || heroes[0] || null;
+    if (hero) {
+        selectedHeroId.value = hero.id;
+        if (focus) focusHero(hero);
+    }
+}
+
+export function selectHero(hero: Hero | null, focus: boolean = true) {
+    if (hero) {
+        selectedHeroId.value = hero.id;
+        if (focus) focusHero(hero);
+    } else {
+        selectedHeroId.value = null;
+    }
+}
+
+export function getSelectedHero(): Hero | null {
+    return selectedHeroId.value ? (heroes.find(h => h.id === selectedHeroId.value) || null) : null;
+}
+
+
 export function resumeGame() {
     uiStore.phase = 'playing';
     uiStore.menuOpen = false;
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
-    startIdle();
     restoreUIState();
     ensureHeroSelected(true);
 

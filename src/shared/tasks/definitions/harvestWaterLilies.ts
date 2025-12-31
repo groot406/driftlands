@@ -1,7 +1,7 @@
 import { registerTask } from '../taskRegistry';
-import type { TaskDefinition } from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import type { Tile } from '../world';
+import type {TaskDefinition} from "../../../core/types/Task";
+import type {Hero} from "../../../core/types/Hero";
+import type {Tile} from "../../../core/types/Tile";
 
 const harvestWaterLiliesTask: TaskDefinition = {
     key: 'harvestWaterLilies',

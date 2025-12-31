@@ -1,6 +1,6 @@
 import { clientMessageRouter } from '../messageRouter';
 import type { PathUpdateMessage } from '../../shared/protocol';
-import { startHeroMovement } from '../../store/heroStore';
+import { startHeroMovement } from '../heroService';
 
 class ClientMovementHandler {
   init(): void {

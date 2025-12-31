@@ -1,4 +1,4 @@
-import type {Tile} from './world';
+import type {Tile} from './types/Tile';
 import {tileIndex, tiles} from './world';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {BIOME_DEFS} from './biomes';

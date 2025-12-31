@@ -1,6 +1,6 @@
 import type { Socket, Server } from 'socket.io';
 import type { PlayerJoinMessage, PlayerLeaveMessage, ChatMessage } from '../../../src/shared/protocol';
-import { serverMessageRouter } from '../messageRouter';
+import { serverMessageRouter } from '../messages/messageRouter';
 
 export class ServerPlayerHandler {
   private connectedPlayers = new Map<string, { id: string, name: string, socket: Socket }>();

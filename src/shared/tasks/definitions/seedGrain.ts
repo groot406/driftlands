@@ -1,6 +1,7 @@
 import { registerTask } from '../taskRegistry';
-import type { ResourceAmount, TaskDefinition } from '../tasks';
-import type { Hero } from '../../store/heroStore';
+import type {TaskDefinition} from "../../../core/types/Task";
+import type {Hero} from "../../../core/types/Hero";
+import type {ResourceAmount} from "../../../core/types/Resource.ts";
 
 const seedGrainTask: TaskDefinition = {
     key: 'seedGrain',

@@ -1,18 +1,21 @@
-import {reactive} from 'vue';
-import type {ResourceAmount, TaskDefinition, TaskInstance, TaskType} from '../core/tasks';
-import {getTaskDefinition} from '../core/taskRegistry';
-import {ensureTileExists, hexDistance, type Tile, tileIndex} from '../core/world';
-import {type Hero, heroes, type HeroStats, startHeroMovement} from './heroStore';
-import {idleStore} from './idleStore';
-import {terrainPositions} from "../core/terrainRegistry.ts";
+import {getTaskDefinition} from '../shared/tasks/taskRegistry';
+import {ensureTileExists, hexDistance, tileIndex} from '../core/world';
+import {terrainPositions} from "../core/terrainRegistry";
 import {resourceInventory} from './resourceStore';
 import {TERRAIN_DEFS} from '../core/terrainDefs';
-import {addTextIndicator} from "../core/textIndicators.ts";
-import {playPositionalSound, removePositionalSound} from './soundStore';
-import {PathService} from "../core/PathService.ts";
-
-// Persistence key for tasks (versioned)
-const TASKS_KEY = 'driftlands_tasks_v2';
+import {PathService} from "../core/PathService";
+import {heroes} from "./heroStore";
+import type {Hero, HeroStats} from "../core/types/Hero";
+import type {Tile} from "../core/types/Tile";
+import type {TaskDefinition, TaskInstance, TaskType} from "../core/types/Task";
+import type {ResourceAmount} from "../core/types/Resource";
+import {broadcast} from "../../server/src/messages/messageRouter.ts";
+import type {
+    TaskCompletedMessage,
+    TaskCreatedMessage, TaskProgressMessage,
+    TaskRemovedMessage
+} from "../shared/protocol.ts";
+import {ServerMovementHandler} from "../../server/src/handlers/movementHandler";
 
 const service = new PathService();
 
@@ -24,22 +27,42 @@ interface TaskState {
 }
 
 function createState(): TaskState {
-    return reactive({
+    return {
         tasks: [],
         taskIndex: {},
         tasksByTile: {},
         nextId: 1,
-    });
+    };
 }
 
 export const taskStore = createState();
 
-function makeId(state: TaskState) {
-    return 'task_' + (state.nextId++);
+export function loadTasks(tasks: TaskInstance[]) {
+    taskStore.tasks = tasks;
+    taskStore.taskIndex = {};
+    taskStore.tasksByTile = {};
+    for (const task of tasks) {
+        taskStore.taskIndex[task.id] = task;
+        taskStore.tasksByTile[task.tileId] = taskStore.tasksByTile[task.tileId] || {};
+        taskStore.tasksByTile[task.tileId]![task.type] = task.id;
+    }
 }
 
-// Remove a task instance from all indices
-function removeTask(inst: TaskInstance) {
+export function addTask(task: TaskInstance) {
+    taskStore.tasks.push(task);
+    taskStore.taskIndex[task.id] = task;
+    taskStore.tasksByTile[task.tileId] = taskStore.tasksByTile[task.tileId] || {};
+    taskStore.tasksByTile[task.tileId]![task.type] = task.id;
+}
+
+export function doRemoveTask(inst: TaskInstance) {
+    // Remove task for participants
+    for (const heroId of Object.keys(inst.participants)) {
+        const hero = heroes.find(h => h.id === heroId);
+        if(!hero) continue;
+        hero.currentTaskId = undefined;
+    }
+
     const idx = taskStore.tasks.findIndex(t => t.id === inst.id);
     if (idx >= 0) taskStore.tasks.splice(idx, 1);
     delete taskStore.taskIndex[inst.id];
@@ -47,6 +70,15 @@ function removeTask(inst: TaskInstance) {
     if (tileTasks) {
         delete tileTasks[inst.type];
     }
+}
+
+function makeId(state: TaskState) {
+    return 'task_' + (state.nextId++);
+}
+
+// Remove a task instance from all indices
+export function removeTask(inst: TaskInstance) {
+    doRemoveTask(inst);
     // detach any heroes that still reference this task
     for (const hero of heroes) {
         if (hero.currentTaskId === inst.id) {
@@ -54,11 +86,11 @@ function removeTask(inst: TaskInstance) {
         }
     }
 
-    // Clean up any positional sounds for this task
-    const tile = tileIndex[inst.tileId];
-    if (tile) {
-        stopTaskSound(tile, inst.type);
-    }
+    broadcast({
+        type: 'task:removed',
+        taskId: inst.id,
+        tileId: inst.tileId,
+    } as TaskRemovedMessage);
 }
 
 export function detachHeroFromCurrentTask(hero: Hero) {
@@ -97,8 +129,6 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     } else {
         task.collectedResources.push({type: resourceType, amount: newAmount});
     }
-
-    persistTasks();
 }
 
 // Check if hero needs to fetch resources and initiate the fetch if needed
@@ -154,8 +184,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     amount: -resource.amount,
                 } as any;
 
-                // Start movement to fetch location (no taskType - just fetching)
-                startHeroMovement(hero.id, pathToFetch, fetchLocation);
+                ServerMovementHandler.getInstance().moveHero(hero, fetchLocation);
 
                 return true; // Resource fetch initiated
             }
@@ -187,12 +216,15 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     const neighbors = currentTile.neighbors;
                     let adjacentWater = false;
                     if (neighbors) {
-                        for (const side of ['a','b','c','d','e','f'] as const) {
-                            if (neighbors[side]?.terrain === 'water') { adjacentWater = true; break; }
+                        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
+                            if (neighbors[side]?.terrain === 'water') {
+                                adjacentWater = true;
+                                break;
+                            }
                         }
                     }
                     if (adjacentWater) {
-                        hero.carryingPayload = { type: 'water' as any, amount: 1 } as any;
+                        hero.carryingPayload = {type: 'water' as any, amount: 1} as any;
                     } else {
                         // Not actually adjacent to water; skip
                         continue;
@@ -204,7 +236,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     if (ctTerrain === 'towncenter' && available > 0) {
                         const amountToTake = Math.min(resource.amount, available, 10);
                         resourceInventory[resource.type as keyof typeof resourceInventory] = available - amountToTake;
-                        hero.carryingPayload = { type: resource.type as any, amount: amountToTake } as any;
+                        hero.carryingPayload = {type: resource.type as any, amount: amountToTake} as any;
                     } else {
                         // Can't pick up immediately
                         continue;
@@ -256,7 +288,6 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
         tileId: tile.id,
         progressXp: 0,
         requiredXp: def.requiredXp(distance),
-        createdTick: idleStore.tick,
         createdMs: nowMs,
         lastUpdateMs: nowMs,
         participants: {},
@@ -271,14 +302,20 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     taskStore.taskIndex[inst.id] = inst;
     taskStore.tasksByTile[tile.id]![type] = inst.id;
 
+    broadcast({
+        type: 'task:created',
+        taskId: inst.id,
+        taskType: inst.type,
+        tileId: tile.id,
+        requiredXp: inst.requiredXp,
+        participantIds: inst.participants ? Object.keys(inst.participants) : [],
+        requiredResources : inst.requiredResources
+    } as TaskCreatedMessage);
+
     // Call task's onStart hook (task-specific setup)
     def.onStart?.(tile, inst, [starter]);
 
-    // Start task sound automatically
-    startTaskSound(tile, type, [starter]);
-
     starter.currentTaskId = inst.id;
-    persistTasks();
 
     fetchResourcesIfNeeded(starter, inst);
 
@@ -287,14 +324,13 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 
 export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
-    if (!inst || inst.completedTick) return;
+    if (!inst || inst.completedMs) return;
 
     if (hero.currentTaskId !== inst.id) {
         detachHeroFromCurrentTask(hero);
     }
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
     hero.currentTaskId = inst.id;
-    persistTasks();
 
     fetchResourcesIfNeeded(hero, inst);
 }
@@ -335,9 +371,8 @@ export function leaveTask(taskId: string, hero: Hero) { // fixed typing
     delete inst.participants[hero.id];
     if (hero.currentTaskId === taskId) hero.currentTaskId = undefined;
     if (!Object.keys(inst.participants).length) {
-        removeTask(inst);
+        doRemoveTask(inst);
     }
-    persistTasks();
 }
 
 export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance | undefined {
@@ -355,17 +390,17 @@ export function getTaskById(taskId: string): TaskInstance | undefined {
 export function updateActiveTasks(heroes: Hero[]) {
     const nowMs = Date.now();
     for (const inst of taskStore.tasks.slice()) { // slice to avoid mutation issues
-        if (!inst.active || inst.completedTick) continue;
+        if (!inst.active || inst.completedMs) continue;
         const def = getTaskDefinition(inst.type);
         if (!def) continue;
         const tile: Tile | undefined = tileIndex[inst.tileId];
         if (!tile) continue;
-        const parts: Hero[] = [];
+        const participants: Hero[] = [];
         for (const heroId of Object.keys(inst.participants)) {
             const h = heroes.find(hh => hh.id === heroId);
-            if (h) parts.push(h);
+            if (h) participants.push(h);
         }
-        if (!parts.length) { // no participants -> remove task
+        if (!participants.length) { // no participants -> remove task
             removeTask(inst);
             continue;
         }
@@ -374,7 +409,7 @@ export function updateActiveTasks(heroes: Hero[]) {
         let elapsedSeconds = elapsedMs / 1000;
         // Accumulate contributions per hero scaled by elapsed seconds
         let totalContributionThisUpdate = 0;
-        for (const hero of parts) {
+        for (const hero of participants) {
             const ratePerSecond = def.heroRate(hero, tile); // treat as per-second rate now
             const contrib = ratePerSecond * elapsedSeconds;
             inst.participants[hero.id] = (inst.participants[hero.id] || 0) + contrib;
@@ -384,48 +419,44 @@ export function updateActiveTasks(heroes: Hero[]) {
         inst.lastUpdateMs = nowMs;
         def.onProgress?.(tile, inst);
         if (inst.progressXp >= inst.requiredXp) {
-            completeTask(inst, def, tile, parts);
+            completeTask(inst, def, tile, participants);
+        } else {
+            broadcast({
+                type: 'task:progress',
+                taskId: inst.id,
+                progressXp: inst.progressXp,
+                participants: inst.participants
+            } as TaskProgressMessage);
         }
     }
-    persistTasks();
 }
 
 function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, participants: Hero[]) {
     const nowMs = Date.now();
     inst.progressXp = inst.requiredXp;
-    inst.completedTick = idleStore.tick;
     inst.completedMs = nowMs;
     inst.active = false;
 
-    rewardStatsToParticipants(inst, participants);
-    rewardResourcesToParticipants(inst, participants);
-
-    // Stop ongoing task sound
-    stopTaskSound(tile, inst.type);
+    const rewardedStats = rewardStatsToParticipants(inst, participants);
+    const rewardedResources = rewardResourcesToParticipants(inst, participants);
 
     // Call task's onComplete hook
     def.onComplete?.(tile, inst, participants);
 
-    // Play completion sound if defined
-    if (def.getSoundOnComplete) {
-        const completionSoundConfig = def.getSoundOnComplete(tile, inst, participants);
-        if (completionSoundConfig) {
-            const completionSoundId = `${inst.type}-complete-${tile.q}-${tile.r}`;
-            playPositionalSound(
-                completionSoundId,
-                completionSoundConfig.soundPath,
-                tile.q,
-                tile.r,
-                {
-                    baseVolume: completionSoundConfig.baseVolume,
-                    maxDistance: completionSoundConfig.maxDistance,
-                    loop: completionSoundConfig.loop
-                }
-            ).catch(error => {
-                console.warn(`Failed to play completion sound for ${inst.type}:`, error);
-            });
-        }
+    const rewards = [];
+    for (const hero of participants) {
+        rewards.push({
+            heroId: hero.id,
+            stats: rewardedStats[hero.id] ?? undefined,
+            resources: rewardedResources[hero.id] ?? undefined,
+        });
     }
+
+    broadcast({
+        type: 'task:completed',
+        taskId: inst.id,
+        rewards: rewards,
+    } as TaskCompletedMessage);
 
     // Auto-chain to adjacent tiles in cluster after short delay, to allow for any movement to initiate first
     let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
@@ -436,17 +467,22 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     cleanupCompletedTasks();
 }
 
-function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[]) {
+function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[]): Record<string, any> {
+    const rewardedStats: Record<string, any> = {};
     const def = getTaskDefinition(instance.type);
-    if (!def) return;
-    if (!def.totalRewardedStats) return;
+
+    if (!def) return rewardedStats;
+
+    if (!def.totalRewardedStats) return rewardedStats;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
-    if (!tile) return;
+    if (!tile) return rewardedStats;
+
     const distance = hexDistance(tile.q, tile.r);
     const rewards = def.totalRewardedStats(distance);
     for (const hero of participants) {
+        rewardedStats[hero.id] = {}
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
         const statKeys: (keyof HeroStats)[] = ['xp', 'hp', 'atk', 'spd'];
@@ -456,53 +492,43 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
             hero.stats[stat] += rewardAmount;
 
             if (rewardAmount > 0) {
-                setTimeout(() => {
-                    addTextIndicator(hero, `+${rewardAmount}`, STAT_COLOR_MAP[stat], 1800);
-                }, Math.random() * 300);
-
+                rewardedStats[hero.id][stat] = rewardAmount;
             }
         }
     }
-    playPositionalSound(
-        'stat-reward.' + tile.q + '.' + tile.r,
-        'success.mp3',
-        tile.q, tile.r,
-        {baseVolume: 0.8, maxDistance: 20, loop: false}
-    )
+    return rewardedStats;
 }
 
-const STAT_COLOR_MAP: Record<keyof HeroStats, string> = {
-    xp: '#FFD700', // Gold for XP
-    hp: '#FF4500', // OrangeRed for HP
-    atk: '#1E90FF', // DodgerBlue for ATK
-    spd: '#32CD32', // LimeGreen for SPD
-}
+function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]): Record<string, any> {
+    const rewardedResources: Record<string, any> = {};
 
-function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]) {
     const def = getTaskDefinition(instance.type);
-    if (!def) return;
-    if (!def.totalRewardedResources) return;
+    if (!def) return rewardedResources;
+    if (!def.totalRewardedResources) return rewardedResources;
 
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
-    if (!tile) return;
+    if (!tile) return rewardedResources;
     const distance = hexDistance(tile.q, tile.r);
     const rewards = def.totalRewardedResources(distance);
     for (const hero of participants) {
+        rewardedResources[hero.id] = {};
+
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
 
         rewards.amount = Math.ceil(rewards.amount * share);
         hero.carryingPayload = rewards;
 
+        rewardedResources[hero.id] = rewards;
+
         const tc = findNearestTowncenter(hero.q, hero.r);
         if (tc) {
-            const path = service.findWalkablePath(hero.q, hero.r, tc.q, tc.r);
-            if (path && path.length) {
-                startHeroMovement(hero.id, path, tc);
-            }
+            ServerMovementHandler.getInstance().moveHero(hero, tc);
         }
     }
+
+    return rewardedResources;
 }
 
 function findNearestTowncenter(q: number, r: number) {
@@ -621,70 +647,9 @@ function findNearestWaterTile(q: number, r: number): { q: number; r: number; wat
 export function cleanupCompletedTasks() {
     for (let i = taskStore.tasks.length - 1; i >= 0; i--) {
         const t = taskStore.tasks[i]!;
-        if (t.completedTick !== undefined) {
+        if (t.completedMs !== undefined) {
             removeTask(t);
         }
-    }
-    persistTasks();
-}
-
-// Persistence helpers
-function persistTasks() {
-    try {
-        const serializable = taskStore.tasks.map(t => ({
-            id: t.id,
-            type: t.type,
-            tileId: t.tileId,
-            progressXp: t.progressXp,
-            requiredXp: t.requiredXp,
-            createdMs: t.createdMs,
-            lastUpdateMs: t.lastUpdateMs,
-            completedMs: t.completedMs,
-            participants: t.participants,
-            active: t.active,
-            requiredResources: t.requiredResources,
-            collectedResources: t.collectedResources,
-            context: t.context,
-        }));
-        localStorage.setItem(TASKS_KEY, JSON.stringify({tasks: serializable, ts: Date.now()}));
-    } catch {
-    }
-}
-
-export function restoreTasks() {
-    try {
-        const raw = localStorage.getItem(TASKS_KEY);
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        if (!data || !Array.isArray(data.tasks)) return;
-        for (const saved of data.tasks) {
-            // Skip if already exists
-            if (taskStore.taskIndex[saved.id]) continue;
-            const inst: TaskInstance = {
-                id: saved.id,
-                type: saved.type,
-                tileId: saved.tileId,
-                progressXp: saved.progressXp,
-                requiredXp: saved.requiredXp,
-                createdTick: 0,
-                createdMs: saved.createdMs || Date.now(),
-                lastUpdateMs: saved.lastUpdateMs || Date.now(),
-                completedTick: undefined,
-                completedMs: saved.completedMs,
-                participants: saved.participants || {},
-                active: saved.active && !saved.completedMs,
-                requiredResources: saved.requiredResources,
-                collectedResources: saved.collectedResources,
-                context: saved.context,
-            } as TaskInstance;
-            taskStore.tasks.push(inst);
-            taskStore.taskIndex[inst.id] = inst;
-            if (!taskStore.tasksByTile[inst.tileId]) taskStore.tasksByTile[inst.tileId] = {};
-            taskStore.tasksByTile[inst.tileId]![inst.type] = inst.id;
-        }
-        // Offline catch-up: apply one update based on elapsed since lastUpdateMs
-        offlineCatchUp();
-    } catch {
     }
 }
 
@@ -713,7 +678,6 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         }
     }
 
-    const service = new PathService();
     for (const hero of participants) {
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
         if (hero.carryingPayload) {
@@ -745,169 +709,8 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
         // Try each candidate until a path is found
         for (const targetTile of candidates) {
-            const path = service.findWalkablePath(hero.q, hero.r, targetTile.q, targetTile.r);
-            if (!path.length) continue;
-            startHeroMovement(hero.id, path, {q: targetTile.q, r: targetTile.r}, inst.type);
+            ServerMovementHandler.getInstance().moveHero(hero, targetTile)
             break; // only chain to one tile per hero
         }
-    }
-}
-
-// Restore sounds for active tasks after game reload - exported to be called after sound system init
-export async function restoreActiveTaskSounds() {
-    let restoredCount = 0;
-
-    try {
-        for (const inst of taskStore.tasks) {
-            if (!inst.active || inst.completedMs) continue;
-
-            const tile = tileIndex[inst.tileId];
-            if (!tile) {
-                console.warn(`restoreActiveTaskSounds: Could not find tile for task ${inst.id} (${inst.type})`);
-                continue;
-            }
-
-            // Check if this task type has sound support
-            const def = getTaskDefinition(inst.type);
-            if (!def?.getSoundOnStart) {
-                // Silently skip tasks without sound config (this is normal)
-                continue;
-            }
-
-            try {
-                await restoreTaskSound(inst.type, tile);
-                restoredCount++;
-            } catch (error) {
-                console.warn(`Failed to restore sound for task ${inst.id} (${inst.type}):`, error);
-            }
-        }
-
-        if (restoredCount > 0) {
-            console.log(`Restored sounds for ${restoredCount} active tasks`);
-        }
-    } catch (error) {
-        console.error('Error in restoreActiveTaskSounds:', error);
-    }
-}
-
-// Sound management functions for tasks
-function startTaskSound(tile: Tile, taskType: string, participants: Hero[]) {
-    const def = getTaskDefinition(taskType);
-    if (!def?.getSoundOnStart) return;
-
-    const soundConfig = def.getSoundOnStart(tile, participants);
-    if (!soundConfig) return;
-
-    const soundId = `${taskType}-${tile.q}-${tile.r}`;
-    playPositionalSound(
-        soundId,
-        soundConfig.soundPath,
-        tile.q,
-        tile.r,
-        {
-            baseVolume: soundConfig.baseVolume,
-            maxDistance: soundConfig.maxDistance,
-            loop: soundConfig.loop
-        }
-    ).catch(error => {
-        console.warn(`Failed to play start sound for ${taskType}:`, error);
-    });
-}
-
-function stopTaskSound(tile: Tile, taskType: string) {
-    const soundId = `${taskType}-${tile.q}-${tile.r}`;
-    removePositionalSound(soundId);
-}
-
-// Helper function to restore specific task sounds based on task type
-async function restoreTaskSound(taskType: string, tile: Tile) {
-    const def = getTaskDefinition(taskType);
-    if (!def?.getSoundOnStart) return; // No sound support for this task type
-
-    // Get sound config from task definition (pass empty participants array for restoration)
-    const soundConfig = def.getSoundOnStart(tile, []);
-    if (!soundConfig) return; // No sound configured
-
-    // Only restore looping sounds - non-looping sounds should not be restored on game reload
-    if (!soundConfig.loop) {
-        return;
-    }
-
-    const soundId = `${taskType}-${tile.q}-${tile.r}`;
-
-    try {
-        await playPositionalSound(
-            soundId,
-            soundConfig.soundPath,
-            tile.q,
-            tile.r,
-            {
-                baseVolume: soundConfig.baseVolume,
-                maxDistance: soundConfig.maxDistance,
-                loop: soundConfig.loop
-            }
-        );
-    } catch (error) {
-        console.warn(`Failed to restore sound for ${taskType} at ${tile.q},${tile.r}:`, error);
-        throw error; // Re-throw so parent can handle
-    }
-}
-
-function offlineCatchUp() {
-    const nowMs = Date.now();
-    for (const inst of taskStore.tasks.slice()) {
-        if (!inst.active || inst.completedMs) continue;
-        const elapsedMs = nowMs - inst.lastUpdateMs;
-        if (elapsedMs <= 50) continue; // ignore trivial gaps
-        const def = getTaskDefinition(inst.type);
-        const tile: Tile | undefined = tileIndex[inst.tileId];
-        if (!def || !tile) continue;
-        // Gather live hero objects for participants
-        const parts: Hero[] = [];
-        for (const heroId of Object.keys(inst.participants)) {
-            const h = heroes.find(hh => hh.id === heroId);
-            if (h) parts.push(h);
-        }
-        if (!parts.length) {
-            removeTask(inst);
-            continue;
-        }
-        const elapsedSeconds = elapsedMs / 1000;
-        let totalContribution = 0;
-        for (const hero of parts) {
-            const ratePerSecond = def.heroRate(hero, tile);
-            const contrib = ratePerSecond * elapsedSeconds;
-            inst.participants[hero.id] = (inst.participants[hero.id] || 0) + contrib;
-            totalContribution += contrib;
-        }
-        inst.progressXp += totalContribution;
-        inst.lastUpdateMs = nowMs;
-        if (inst.progressXp >= inst.requiredXp) {
-            completeTask(inst, def, tile, parts);
-        }
-    }
-    persistTasks();
-}
-
-// Attempt restore on module load (browser only)
-if (typeof window !== 'undefined') {
-    restoreTasks();
-}
-
-export function clearAllTasks() {
-    // Unassign heroes from tasks
-    try {
-        for (const hero of heroes) {
-            if (hero.currentTaskId) hero.currentTaskId = undefined;
-        }
-    } catch {
-    }
-    taskStore.tasks.length = 0;
-    for (const k of Object.keys(taskStore.taskIndex)) delete taskStore.taskIndex[k];
-    for (const k of Object.keys(taskStore.tasksByTile)) delete taskStore.tasksByTile[k];
-    taskStore.nextId = 1;
-    try {
-        localStorage.removeItem(TASKS_KEY);
-    } catch {
     }
 }

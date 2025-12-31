@@ -1,8 +1,8 @@
 import { registerTask } from '../taskRegistry';
-import type { TaskDefinition } from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import { applyVariant } from '../variants';
-import {type Tile } from "../world.ts";
+import type {TaskDefinition} from "../../../core/types/Task";
+import { applyVariant } from '../../../core/variants';
+import type {Tile} from "../../../core/types/Tile";
+import type {Hero} from "../../../core/types/Hero";
 
 const tillLandTask: TaskDefinition = {
     key: 'tillLand',

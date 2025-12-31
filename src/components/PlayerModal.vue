@@ -137,7 +137,7 @@ function formatTime(timestamp: number): string {
 
 function isOwnMessage(message: any): boolean {
   const currentPlayer = getCurrentPlayerInfo();
-  return currentPlayer && message.playerId === currentPlayer.id;
+  return !!currentPlayer && message.playerId === currentPlayer.id;
 }
 
 function sendChatMessage() {

@@ -1,8 +1,9 @@
 import { registerTask } from '../taskRegistry';
-import type {ResourceAmount, TaskDefinition} from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import { applyVariant } from '../variants';
-import {getNeighborTerrains} from "../world.ts";
+import type {TaskDefinition} from "../../../core/types/Task";
+import { applyVariant } from '../../../core/variants';
+import {getNeighborTerrains} from "../../../core/world";
+import type {Hero} from "../../../core/types/Hero";
+import type {ResourceAmount} from "../../../core/types/Resource.ts";
 
 const irregateDirtTask: TaskDefinition = {
     key: 'irregateDirtTask',

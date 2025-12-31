@@ -13,18 +13,9 @@
 
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
-import type {Tile} from '../core/world';
 import {ensureTileExists, tileIndex} from '../core/world';
-import type {Hero} from '../store/heroStore';
-import {
-  getSelectedHero,
-  heroes,
-  selectedHeroId,
-  selectHero,
-  requestHeroMovement,
-  updateHeroFacing,
-  updateHeroMovements
-} from '../store/heroStore';
+import {requestHeroMovement, updateHeroFacing, updateHeroMovements} from '../core/heroService';
+import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import {
   createPointerHandlers,
@@ -35,11 +26,14 @@ import {
   keyUp,
   stopCameraAnimation
 } from '../core/camera';
-import {isPaused} from '../store/uiStore';
+import {getSelectedHero, isPaused, selectedHeroId, selectHero,} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
-import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
-import {getAvailableTasks, type TaskDefinition} from "../core/tasks.ts";
-import {PathService} from "../core/PathService.ts";
+import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
+import {getAvailableTasks} from "../shared/tasks/tasks";
+import {PathService} from "../core/PathService";
+import type {Tile} from "../core/types/Tile.ts";
+import type {Hero} from "../core/types/Hero.ts";
+import type {TaskDefinition} from "../core/types/Task.ts";
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -89,11 +83,11 @@ const TARGET_FPS = 60; // Reduce from 60 FPS to 30 FPS to reduce graphics load
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
 function animationLoop() {
-  const now = performance.now();
+  const now = Date.now();
   const deltaTime = now - lastDrawTime;
 
   // Always update hero movements (this is important for smooth movement)
-  updateHeroMovements(now);
+  updateHeroMovements();
 
   // Limit drawing to 30 FPS to reduce graphics overhead
   if (deltaTime >= FRAME_INTERVAL) {
@@ -127,7 +121,7 @@ function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
 
   // If menu just opened, ignore further taps briefly to avoid flicker-close
-  const nowTs = performance.now();
+  const nowTs = Date.now();
   if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
     return;
   } else if (showTaskMenu.value) {
@@ -156,7 +150,7 @@ function handleClick(e: PointerEvent) {
 
   const selHero = getSelectedHero();
 
-  const now = performance.now();
+  const now = Date.now();
   const doubleClick = (now - lastClickTime) < 300;
   lastClickTime = doubleClick ? 0 : now;
   hoveredTile.value = tile;
@@ -177,7 +171,7 @@ function handleClick(e: PointerEvent) {
       taskMenuTile.value = tile;
       showTaskMenu.value = true;
       openWindow(WINDOW_IDS.TASK_MENU);
-      lastMenuOpenTime = performance.now(); // start cooldown
+      lastMenuOpenTime = Date.now(); // start cooldown
     }
 
     // Skip movement logic while menu open
@@ -299,7 +293,7 @@ watch([taskMenuTile, hoveredTask], () => {
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
 
-    // Pre-capture size so menus position correctly immediately
+  // Pre-capture size so menus position correctly immediately
   updateContainerSize();
   await service.init(canvas.value, container.value);
   // Re-capture after init & next frame (handles potential layout shifts)

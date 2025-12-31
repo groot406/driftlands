@@ -2,9 +2,9 @@ import { reactive } from 'vue';
 import { camera, hexDistance } from './camera';
 import { isPaused } from '../store/uiStore';
 import { taskStore } from '../store/taskStore';
-import { getTaskDefinition } from './taskRegistry';
+import { getTaskDefinition } from '../shared/tasks/taskRegistry';
 import { tileIndex } from './world';
-import type { TaskSoundConfig } from './tasks';
+import type {TaskSoundConfig} from "./types/Task.ts";
 
 export interface PositionalSound {
     id: string;
@@ -183,7 +183,7 @@ class SoundService {
         soundsToRemove.forEach(id => this.removePositionalSound(id));
     }
 
-    private checkForMissingTaskSounds() {
+    public checkForMissingTaskSounds() {
         // Get all active tasks
         for (const task of taskStore.tasks) {
             if (!task.active) continue;
@@ -202,8 +202,8 @@ class SoundService {
 
             // Get sound configuration
             const soundConfig = taskDef.getSoundOnStart(tile, []);
-            if (!soundConfig || !soundConfig.loop) continue; // Only auto-start looping sounds
 
+            if (!soundConfig || !soundConfig.loop) continue; // Only auto-start looping sounds
 
             // Check if sound is already playing for this task
             const soundId = `${task.type}-${tile.q}-${tile.r}`;

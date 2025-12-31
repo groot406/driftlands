@@ -1,7 +1,7 @@
 import { registerTask } from '../taskRegistry';
-import type {TaskDefinition, TaskSoundConfig} from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import { applyVariant } from '../variants';
+import { applyVariant } from '../../../core/variants';
+import type {Hero} from "../../../core/types/Hero.ts";
+import type {TaskDefinition, TaskSoundConfig} from "../../../core/types/Task.ts";
 
 const breakDirtRockTask: TaskDefinition = {
     key: 'breakDirtRock',

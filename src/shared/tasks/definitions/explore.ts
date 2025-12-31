@@ -1,15 +1,9 @@
-import {type Hero, persistHeroes, startHeroMovement} from '../../store/heroStore';
-import {discoverTile, hexDistance, type Tile, type TileSide} from '../world';
+import {discoverTile, hexDistance} from '../../../core/world';
 import {registerTask} from '../taskRegistry';
-import type {TaskDefinition} from '../tasks';
-import {PathService} from "../PathService.ts";
-
-// Lazily initialize HexMapService to avoid temporal dead zone in circular imports
-let _service: PathService | null = null;
-function getService(): PathService {
-    if (!_service) _service = new PathService();
-    return _service;
-}
+import type {TaskDefinition} from "../../../core/types/Task";
+import type {Hero} from "../../../core/types/Hero";
+import type {Tile, TileSide} from "../../../core/types/Tile";
+import {ServerMovementHandler} from "../../../../server/src/handlers/movementHandler.ts";
 
 // Explore task definition separated for modularity.
 const exploreTask: TaskDefinition = {
@@ -31,7 +25,7 @@ const exploreTask: TaskDefinition = {
     },
 
     onStart(_tile, _instance, _participants) {
-        if(_tile.discovered) {
+        if (_tile.discovered) {
             // Tile already discovered; abort explore task implicitly by not setting any special flags.
             let timer = setTimeout(() => continueExploration(_tile, _participants), 1500);
             for (const hero of _participants) {
@@ -48,44 +42,36 @@ const exploreTask: TaskDefinition = {
         for (const hero of participants) {
             hero.delayedMovementTimer = timer;
         }
-
-        persistHeroes();
     },
 };
 
 function continueExploration(tile: Tile, participants: Hero[]) {
     // find lowest distance neighboring tile that is not discovered and start moving there to chain
     for (const participant of participants) {
-        if(!participant.delayedMovementTimer) {
+        if (!participant.delayedMovementTimer) {
             return;
         }
         const nm = tile.neighbors;
-        let closestUndiscovered: Tile|null = null;
+        let closestUndiscovered: Tile | null = null;
 
         let sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
         // shuffle sides to add some randomness to exploration direction
         sides = sides.sort(() => Math.random() - 0.5);
         for (const side of sides) {
-            if(!nm) break;
+            if (!nm) break;
             const neighbor = nm[side];
 
             if (neighbor && !neighbor.discovered) {
                 if (!closestUndiscovered) {
                     closestUndiscovered = neighbor;
-                } else if(!neighbor.discovered && hexDistance(neighbor.q, neighbor.r) < hexDistance(closestUndiscovered.q, closestUndiscovered.r)) {
+                } else if (!neighbor.discovered && hexDistance(neighbor.q, neighbor.r) < hexDistance(closestUndiscovered.q, closestUndiscovered.r)) {
                     closestUndiscovered = neighbor;
                 }
             }
         }
 
         if (closestUndiscovered && !closestUndiscovered.discovered) {
-            const path = getService().findWalkablePath(participant.q, participant.r, closestUndiscovered.q, closestUndiscovered.r);
-            if (path && path.length) {
-                startHeroMovement(participant.id, path, {
-                    q: closestUndiscovered.q,
-                    r: closestUndiscovered.r
-                }, 'explore');
-            }
+            ServerMovementHandler.getInstance().moveHero(participant, closestUndiscovered, 'explore');
         }
     }
 }

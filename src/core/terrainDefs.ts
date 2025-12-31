@@ -107,9 +107,6 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         variations: [
             {key: 'plains2', weight: 5},
             {key: 'plains_rock', weight: 5},
-            // { key: 'road_ad', weight: 4 },
-            // { key: 'road_be', weight: 4 },
-            // { key: 'road_cf', weight: 4 },
         ]
     },
     water: {

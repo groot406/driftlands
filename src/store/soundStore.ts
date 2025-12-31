@@ -116,9 +116,6 @@ export async function playPositionalSound(
     await soundService.playPositionalSound(id, soundPath, q, r, options);
 }
 
-export function removePositionalSound(id: string) {
-    soundService.removePositionalSound(id);
-}
 
 // Get current sound state for UI
 export function getSoundState() {

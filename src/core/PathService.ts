@@ -1,8 +1,9 @@
-import type {Tile} from './world';
 import {axialKey, tileIndex} from './world';
-import {type Hero, heroes} from '../store/heroStore';
+import {heroes} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {taskStore} from '../store/taskStore';
+import type {Tile} from "./types/Tile.ts";
+import type {Hero} from "./types/Hero.ts";
 
 export interface PathCoord {
     q: number;

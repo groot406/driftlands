@@ -1,6 +1,6 @@
 import { registerTask } from '../taskRegistry';
-import type { TaskDefinition } from '../tasks';
-import type { Hero } from '../../store/heroStore';
+import type {TaskDefinition} from "../../../core/types/Task";
+import type {Hero} from "../../../core/types/Hero";
 
 const harvestGrainTask: TaskDefinition = {
     key: 'harvestGrain',

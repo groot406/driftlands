@@ -24,14 +24,15 @@
   </div>
 </template>
 <script setup lang="ts">
-import {ref, computed, onUnmounted, watch} from 'vue';
-import type {Tile} from '../core/world';
-import {getSelectedHero, persistHeroes, requestHeroMovement} from '../store/heroStore';
+import {computed, onUnmounted, ref, watch} from 'vue';
+import type {Tile} from '../core/types/Tile';
+import {requestHeroMovement} from '../core/heroService';
 import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
 import {PathService} from '../core/PathService';
-import type {TaskDefinition} from '../core/tasks';
 import {axialToPixel, camera} from '../core/camera';
-import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
+import {isWindowActive, WINDOW_IDS} from '../core/windowManager';
+import {getSelectedHero} from '../store/uiStore';
+import type {TaskDefinition} from "../core/types/Task.ts";
 
 interface Props {
   tile: Tile | null;
@@ -44,7 +45,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'started', type: string, tile: Tile): void;
-  (e: 'hover', task: null|TaskDefinition ): void;
+  (e: 'hover', task: null | TaskDefinition): void;
 }>();
 
 const pathService = new PathService();
@@ -75,7 +76,6 @@ function selectTask(def: TaskDefinition) {
       emit('started', def.key, props.tile);
     }
   }
-  persistHeroes()
   close();
 }
 
@@ -135,7 +135,7 @@ watch(() => props.visible, (isVisible) => {
     window.removeEventListener('keydown', handleKeydown);
     listenerActive = false;
   }
-}, { immediate: true });
+}, {immediate: true});
 
 // Cleanup on unmount
 onUnmounted(() => {

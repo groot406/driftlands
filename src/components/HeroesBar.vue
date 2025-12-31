@@ -33,9 +33,11 @@
 </template>
 
 <script setup lang="ts">
-import { type Hero, heroes, selectedHeroId, selectHero } from '../store/heroStore';
+import { heroes } from '../store/heroStore';
+import { selectedHeroId, selectHero } from '../store/uiStore';
 import Sprite from './Sprite.vue';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
+import type {Hero} from "../core/types/Hero.ts";
 
 function select(h: Hero) { selectHero(h, true); }
 

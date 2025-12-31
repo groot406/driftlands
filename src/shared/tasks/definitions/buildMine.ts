@@ -1,7 +1,8 @@
 import { registerTask } from '../taskRegistry';
-import type {ResourceAmount, TaskDefinition} from '../tasks';
-import type { Hero } from '../../store/heroStore';
-import {applyVariant} from "../variants.ts";
+import type {TaskDefinition} from "../../../core/types/Task.ts";
+import {applyVariant} from "../../../core/variants.ts";
+import type {Hero} from "../../../core/types/Hero.ts";
+import type {ResourceAmount} from "../../../core/types/Resource.ts";
 
 const buildMineTask: TaskDefinition = {
     key: 'buildMine',

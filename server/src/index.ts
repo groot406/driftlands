@@ -2,9 +2,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import type { BaseMessage } from '../../src/shared/protocol';
-import { serverMessageRouter } from './messageRouter';
-import { initializeServerHandlers } from './messageHandlers';
-import { messageLogger } from './messageLogger';
+import { serverMessageRouter, setIo } from './messages/messageRouter';
+import { initializeServerHandlers } from './messages/messageHandlers';
+import { messageLogger } from './messages/messageLogger';
 
 const app = express();
 // @ts-ignore
@@ -15,6 +15,7 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"]
   }
 });
+setIo(io);
 
 // Apply message logging middleware
 messageLogger.wrapServer(io);

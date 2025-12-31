@@ -20,14 +20,14 @@ export function addTextIndicator(position: {q: number, r: number}, text: string,
         position,
         text,
         color,
-        created: performance.now(),
+        created: Date.now(),
         duration,
     };
     _indicators.push(indicator);
 }
 
 export function getTextIndicators(): TextIndicator[] {
-    const now = performance.now();
+    const now = Date.now();
     // Remove expired indicators
     for (let i = _indicators.length - 1; i >= 0; i--) {
         const indicator = _indicators[i];

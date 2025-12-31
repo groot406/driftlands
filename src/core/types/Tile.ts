@@ -1,0 +1,25 @@
+import type {TerrainKey} from '../terrainDefs';
+export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
+export type Terrain = TerrainKey;
+
+export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
+export type TileSide = typeof SIDE_NAMES[number];
+export const OPPOSITE_SIDE: Record<TileSide, TileSide> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
+
+export interface Tile {
+    id: string;
+    q: number;
+    r: number;
+    pixel?: { x: number; y: number };
+    biome: string | null;
+    terrain: Terrain | null;
+    discovered: boolean;
+    // Variant key if a terrain variation was selected (e.g. 'plains_coast_a'). Null if base terrain.
+    variant?: string | null;
+    // Timestamp when current variant was set (for growth progression)
+    variantSetMs?: number;
+    // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
+    neighbors?: TileNeighborMap;
+    // Optional per-edge fencing: when true for a side, movement cannot cross that edge.
+    fencedEdges?: Partial<Record<TileSide, boolean>>;
+}

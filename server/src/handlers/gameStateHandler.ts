@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import { serverMessageRouter, sendToSocket } from '../messageRouter';
+import { serverMessageRouter, sendToSocket } from '../messages/messageRouter';
 import { worldState } from '../worldState';
 import type { Socket } from 'socket.io';
 import type { WorldRequestMessage, PlayerJoinMessage } from '../../../src/shared/protocol';
@@ -15,11 +15,10 @@ export class ServerGameStateHandler {
 
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     const snapshot = worldState.getSnapshot();
-    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, timestamp: Date.now() } as any));
+    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, heroes: snapshot.heroes, tasks: snapshot.tasks, timestamp: Date.now() } as any));
   }
 
   private handlePlayerJoinSendWorld(socket: Socket, _message: PlayerJoinMessage): void {
-    const snapshot = worldState.getSnapshot();
-    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, timestamp: Date.now() } as any));
+    this.handleWorldRequest(socket, { type: 'world:request' });
   }
 }

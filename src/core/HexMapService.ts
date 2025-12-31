@@ -1,4 +1,3 @@
-import type {Tile} from './world';
 import {axialKey, getTilesInRadius, tileIndex} from './world';
 import {
     animateCamera,
@@ -10,14 +9,18 @@ import {
     centerCamera,
     moveCamera
 } from './camera';
-import {type Hero, heroes, selectedHeroId} from '../store/heroStore';
+import {heroes} from '../store/heroStore';
 import {TERRAIN_DEFS} from './terrainDefs';
+import { selectedHeroId } from '../store/uiStore';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
-import type {TaskInstance} from './tasks';
-import { worldOuterRadius, type ResourceType } from './world';
+import { worldOuterRadius } from './world';
 import {getTextIndicators} from "./textIndicators.ts";
 import {PathService, type PathCoord } from './PathService';
+import type {Tile} from "./types/Tile.ts";
+import type {Hero} from "./types/Hero.ts";
+import type {ResourceType} from "./types/Resource.ts";
+import type {TaskInstance} from "./types/Task.ts";
 
 function buildTileSources(): Record<string, string> {
     const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
@@ -79,10 +82,10 @@ export class HexMapService {
     private _heroMasksByRow: Record<string, Record<number, Uint8Array[]>> = {};
     private _heroEdgePixelsByRow: Record<string, Record<number, { x: number; y: number }[][]>> = {};
 
-    private _heroAnimStart = performance.now();
+    private _heroAnimStart = Date.now();
     private _lastHeroFrame = 0;
 
-    private _tileAnimStart = performance.now();
+    private _tileAnimStart = Date.now();
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
     private _sortedHeroes: Hero[] = [];
@@ -441,7 +444,7 @@ export class HexMapService {
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
         const tiles = getTilesInRadius(cq, cr, camera.radius);
-        const now = performance.now();
+        const now = Date.now();
 
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
@@ -739,7 +742,7 @@ export class HexMapService {
         this._heroLayouts = new Map();
         for (const [k, list] of map) this._heroLayouts.set(k, this.computeTileHeroOffsets(list));
 
-        const now = performance.now();
+        const now = Date.now();
 
         // Build hero render records
         // Note: Hero activities are updated by the movement system, not here in the draw loop
@@ -1035,7 +1038,7 @@ export class HexMapService {
             if (dist > camera.radius + 1) continue;
 
             const {x, y} = axialToPixel(ind.position.q, ind.position.r);
-            const progress = Math.min(1, (performance.now() - ind.created) / ind.duration);
+            const progress = Math.min(1, (Date.now() - ind.created) / ind.duration);
             const floatY = y - this.HEX_SIZE - 10 - (progress * 28); // float up
             const alpha = 1 - progress;
 
@@ -1045,8 +1048,7 @@ export class HexMapService {
             ctx.fillStyle = ind.color || '#ffe066';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.shadowColor = '#222';
-            ctx.shadowBlur = 4;
+            ctx.shadowBlur = 0;
             ctx.fillText(ind.text, x + (ind.position?.currentOffset?.x ?? 0) - 16, floatY + (ind.position?.currentOffset?.y ?? 0));
             ctx.restore();
         }

@@ -1,4 +1,4 @@
-import type { TaskDefinition, TaskType } from './tasks';
+import type {TaskDefinition, TaskType} from "../../core/types/Task.ts";
 
 export function listTaskDefinitions(): TaskDefinition[] {
     return Object.values(registry);
