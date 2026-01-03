@@ -26,11 +26,10 @@ export class ServerMovementHandler {
     }
 
     init(): void {
-        setInterval(this.tick.bind(this), 100);
         serverMessageRouter.on('hero:move_request', this.handleMoveRequest.bind(this));
     }
 
-    private handleMoveRequest(socket: Socket, message: MoveRequestMessage): void {
+    private handleMoveRequest(_socket: Socket, message: MoveRequestMessage): void {
         const {heroId, origin, target, path: clientPath} = message;
 
         // Basic validation of origin/target
@@ -206,13 +205,16 @@ export class ServerMovementHandler {
             task
         });
 
-        const hero = getHero(heroId);
         const cumulative: number[] = [];
         for (let i = 0; i < durations.length; i++) {
-            cumulative[i] = (i === 0) ? durations[0] : cumulative[i - 1] + durations[i];
+            const prev = i === 0 ? 0 : (cumulative[i - 1] as number);
+            const cur = durations[i] as number;
+            cumulative[i] = prev + cur;
         }
 
-        hero.movement = {
+        const heroLocal = getHero(heroId);
+        if (!heroLocal) return;
+        heroLocal.movement = {
             path: path.slice(),
             origin,
             target,
@@ -223,7 +225,7 @@ export class ServerMovementHandler {
         }
     }
 
-    private tick(): void {
+    public tick(_ctx?: any): void {
         const now = Date.now()
 
         // @ts-ignore
@@ -245,8 +247,9 @@ export class ServerMovementHandler {
             }
 
             if (stepIndex < movement.path.length) {
-                hero.q = movement.path[stepIndex].q;
-                hero.r = movement.path[stepIndex].r;
+                const step = movement.path[stepIndex] as { q: number; r: number };
+                hero.q = step.q;
+                hero.r = step.r;
             } else {
                 hero.q = movement.target.q;
                 hero.r = movement.target.r;

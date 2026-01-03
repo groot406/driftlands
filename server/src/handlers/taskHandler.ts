@@ -10,11 +10,11 @@ export class ServerTaskHandler {
     }
 
     init(): void {
-        setInterval(this.tick.bind(this), 500);
+        // message handlers only;
         serverMessageRouter.on('task:request_start', this.handleStartRequest.bind(this));
     }
 
-    private handleStartRequest(socket: Socket, message: StartTaskRequestMessage): void {
+    private handleStartRequest(_socket: Socket, message: StartTaskRequestMessage): void {
         const { heroId, task, location } = message;
         const hero = getHero(heroId);
         if (!hero || !location) return;
@@ -35,8 +35,5 @@ export class ServerTaskHandler {
 
         // Kick task processing
         updateActiveTasks(heroes);
-    }
-    private tick(): void {
-        updateActiveTasks(heroes)
     }
 }

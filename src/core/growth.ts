@@ -38,6 +38,9 @@ export function getEffectiveAgeMs(tile: Tile, growth: { ageMs?: number; ageMsRan
 export function updateTileGrowth(nowMs: number = Date.now()) {
     if (agingTiles.size === 0) return;
 
+
+    console.log(`Updating growth for ${agingTiles.size} tiles at ${new Date(nowMs).toISOString()}`);
+
     const toRemove: string[] = [];
     for (const id of agingTiles) {
         const t = tileIndex[id];

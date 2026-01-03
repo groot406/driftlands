@@ -5,6 +5,12 @@ import type { BaseMessage } from '../../src/shared/protocol';
 import { serverMessageRouter, setIo } from './messages/messageRouter';
 import { initializeServerHandlers } from './messages/messageHandlers';
 import { messageLogger } from './messages/messageLogger';
+import { tickEngine } from './tick';
+import { ServerMovementHandler } from './handlers/movementHandler';
+import { ServerTaskHandler } from './handlers/taskHandler';
+import { growthSystem } from './systems/growthSystem';
+import {movementSystem} from "./systems/movementSystem";
+import {taskSystem} from "./systems/taskSystem";
 
 const app = express();
 // @ts-ignore
@@ -22,6 +28,22 @@ messageLogger.wrapServer(io);
 
 // Initialize message handlers
 const { playerHandler } = initializeServerHandlers(io);
+
+// Register systems and start tick engine
+const movement = ServerMovementHandler.getInstance();
+movement.init();
+
+const tasks = new ServerTaskHandler(io);
+tasks.init();
+
+tickEngine.setTPS(Number(process.env.SERVER_TPS ?? 10));
+tickEngine.setSeed(Number(process.env.SERVER_SEED ?? 123456789));
+
+tickEngine.register(taskSystem);
+tickEngine.register(movementSystem);
+tickEngine.register(growthSystem);
+
+tickEngine.start();
 
 io.on('connection', (socket) => {
   // Route all incoming messages through the message router
