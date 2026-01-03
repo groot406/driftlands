@@ -2,6 +2,7 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {Tile} from "../../../core/types/Tile";
+import {broadcast} from "../../../../server/src/messages/messageRouter.ts";
 
 const harvestWaterLiliesTask: TaskDefinition = {
     key: 'harvestWaterLilies',
@@ -31,6 +32,7 @@ const harvestWaterLiliesTask: TaskDefinition = {
         // After harvesting water lilies, the water tile returns to normal water
         if (tile.terrain === 'water' && tile.variant === 'water_lily') {
             tile.variant = null;
+            broadcast({ type: 'tile:updated', tile});
         }
     }
 };

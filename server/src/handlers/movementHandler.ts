@@ -237,10 +237,11 @@ export class ServerMovementHandler {
             // Update hero position along path based on elapsed time
             let accumulatedMs = 0;
             let stepIndex = 0;
-
-            while (stepIndex < movement.path.length && accumulatedMs + movement.stepDurations[stepIndex] < elapsedMs) {
-                accumulatedMs += movement.stepDurations[stepIndex];
+            let stepDuration = movement.stepDurations[stepIndex] as number;
+            while (stepIndex < movement.path.length && accumulatedMs + stepDuration < elapsedMs) {
+                accumulatedMs += stepDuration;
                 stepIndex++;
+                stepDuration = movement.stepDurations[stepIndex] as number
             }
 
             if (stepIndex < movement.path.length) {
@@ -258,10 +259,8 @@ export class ServerMovementHandler {
                     continue;
                 }
 
-                console.log('hero arrived', hero.movement);
-                handleHeroArrival(hero, tile);
-                hero.movement = undefined;
                 this.activeMovements.delete(heroId);
+                handleHeroArrival(hero, tile);
             }
         }
 

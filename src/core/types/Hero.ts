@@ -1,4 +1,4 @@
-import type {ResourceAmount, ResourceType} from "./Resource";
+import type {ResourceAmount} from "./Resource";
 
 export interface HeroStats {
     xp: number; // experience points

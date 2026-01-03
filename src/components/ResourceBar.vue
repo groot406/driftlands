@@ -24,7 +24,7 @@ interface Resource {
 }
 const resources:Ref<Resource[]> = ref([]);
 
-watch(resourceVersion, () => {
+watch(() => resourceVersion.value, () => {
   const meta: ResMeta[] = [
     {key: 'wood', label: 'Wood', icon: '\uD83C\uDF32'},
     {key: 'ore', label: 'Ore', icon: '\u26CF\uFE0F'},

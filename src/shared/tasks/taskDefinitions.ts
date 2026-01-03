@@ -1,3 +1,4 @@
+import './definitions/breakDirtRock';
 import './definitions/buildDock';
 import './definitions/buildMine';
 import './definitions/chopWood';

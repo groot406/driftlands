@@ -1,6 +1,7 @@
 import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
+import {broadcast} from "../../../../server/src/messages/messageRouter.ts";
 
 const harvestGrainTask: TaskDefinition = {
     key: 'harvestGrain',
@@ -29,6 +30,7 @@ const harvestGrainTask: TaskDefinition = {
         if (tile.terrain === 'grain') {
             tile.terrain = 'dirt';
             tile.variant = null;
+            broadcast({ type: 'tile:updated', tile});
         }
     }
 };

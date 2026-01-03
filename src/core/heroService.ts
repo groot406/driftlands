@@ -102,21 +102,16 @@ export function startHeroMovement(
         const m = hero.movement;
         const now = Date.now();
         let delay = 0;
-        if (m.stepDurations && m.cumulative && m.stepDurations.length === m.path.length && m.cumulative.length === m.path.length) {
-            const elapsed = now - m.startMs;
-            // Determine current in-step progress
-            let completedSteps = 0;
-            for (let i = 0; i < m.cumulative.length; i++) {
-                if (elapsed >= m.cumulative[i]!) completedSteps = i + 1; else break;
-            }
-            const nextBoundary = m.cumulative[Math.min(completedSteps, m.cumulative.length - 1)] || 0;
-            delay = Math.max(0, nextBoundary - elapsed);
-        } else {
-            // Legacy uniform timing fallback
-            const elapsed = now - m.startMs;
-            const remainder = m.stepMs - (elapsed % m.stepMs);
-            delay = Math.max(0, remainder);
+
+        const elapsed = now - m.startMs;
+        // Determine current in-step progress
+        let completedSteps = 0;
+        for (let i = 0; i < m.cumulative.length; i++) {
+            if (elapsed >= m.cumulative[i]!) completedSteps = i + 1; else break;
         }
+        const nextBoundary = m.cumulative[Math.min(completedSteps, m.cumulative.length - 1)] || 0;
+        delay = Math.max(0, nextBoundary - elapsed);
+
         if (hero.delayedMovementTimer) {
             clearTimeout(hero.delayedMovementTimer);
             hero.delayedMovementTimer = undefined;

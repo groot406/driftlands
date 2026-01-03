@@ -2,6 +2,7 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {ResourceAmount} from "../../../core/types/Resource.ts";
+import {broadcast} from "../../../../server/src/messages/messageRouter.ts";
 
 const seedGrainTask: TaskDefinition = {
     key: 'seedGrain',
@@ -37,6 +38,7 @@ const seedGrainTask: TaskDefinition = {
             tile.variant = null;
             // Set timestamp for potential future growth mechanics
             tile.variantSetMs = Date.now();
+            broadcast({ type: 'tile:updated', tile});
         }
     }
 };

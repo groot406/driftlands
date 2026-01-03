@@ -3,7 +3,6 @@ import { depositResource, resourceInventory } from '../../store/resourceStore';
 import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from '../../core/world';
 import { getTaskDefinition } from './taskRegistry';
 import {TERRAIN_DEFS} from "../../core/terrainDefs";
-import {PathService} from "../../core/PathService";
 import {listTaskDefinitions} from "./taskRegistry";
 
 // Import task definitions to register them
@@ -89,7 +88,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
         // Now return to task location
         if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
-            ServerMovementHandler.getInstance().moveHero(hero, hero.returnPos)
+            ServerMovementHandler.getInstance().moveHero(hero, hero.returnPos, hero.movement?.taskType)
             return;
         }
     }
@@ -126,7 +125,6 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         hero.movement = undefined; // clear movement on arrival
         // Trigger deferred chain now if pending and hero back at source tile
         if (pending) {
-            hero.movement = undefined;
             attemptDeferredChain(hero, pending);
             hero.pendingChain = undefined;
         }

@@ -706,7 +706,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
         // Try each candidate until a path is found
         for (const targetTile of candidates) {
-            ServerMovementHandler.getInstance().moveHero(hero, targetTile)
+            ServerMovementHandler.getInstance().moveHero(hero, targetTile, inst.type);
             break; // only chain to one tile per hero
         }
     }

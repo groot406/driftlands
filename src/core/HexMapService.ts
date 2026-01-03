@@ -1113,43 +1113,24 @@ export class HexMapService {
         const elapsed = now - m.startMs;
         if (elapsed < 0) return axialToPixel(hero.q, hero.r);
 
-        // If variable durations available use them
-        if (m.stepDurations && m.cumulative && m.stepDurations.length === m.path.length && m.cumulative.length === m.path.length) {
-            const total = m.cumulative[m.cumulative.length - 1]!;
-            if (elapsed >= total) return axialToPixel(hero.q, hero.r); // movement effectively done
-            // Find current step index (first cumulative > elapsed)
-            let stepIndex = 0;
-            while (stepIndex < m.cumulative.length && elapsed >= m.cumulative[stepIndex]!) stepIndex++;
-            if (stepIndex >= m.path.length) return axialToPixel(hero.q, hero.r);
-            const prevEnd = stepIndex === 0 ? 0 : m.cumulative[stepIndex - 1]!;
-            const stepElapsed = elapsed - prevEnd;
-            const stepDuration = m.stepDurations[stepIndex]! || m.stepMs;
-            const progress = Math.min(1, Math.max(0, stepElapsed / stepDuration));
-            const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
-            const to = m.path[stepIndex];
-            if (!from || !to) return axialToPixel(hero.q, hero.r);
-            const fromPx = axialToPixel(from.q, from.r);
-            const toPx = axialToPixel(to.q, to.r);
-
-            return {x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress};
-        }
-
-        // Fallback legacy uniform timing
-        const stepIndex = Math.floor(elapsed / m.stepMs);
-        if (stepIndex >= m.path.length) {
-            return axialToPixel(hero.q, hero.r);
-        }
-        const stepElapsed = elapsed - stepIndex * m.stepMs;
-        const progress = Math.min(1, Math.max(0, stepElapsed / m.stepMs));
+        const total = m.cumulative[m.cumulative.length - 1]!;
+        if (elapsed >= total) return axialToPixel(hero.q, hero.r); // movement effectively done
+        // Find current step index (first cumulative > elapsed)
+        let stepIndex = 0;
+        while (stepIndex < m.cumulative.length && elapsed >= m.cumulative[stepIndex]!) stepIndex++;
+        if (stepIndex >= m.path.length) return axialToPixel(hero.q, hero.r);
+        const prevEnd = stepIndex === 0 ? 0 : m.cumulative[stepIndex - 1]!;
+        const stepElapsed = elapsed - prevEnd;
+        const stepDuration = m.stepDurations[stepIndex] as number;
+        const progress = Math.min(1, Math.max(0, stepElapsed / stepDuration));
         const from = stepIndex === 0 ? m.origin : m.path[stepIndex - 1];
         const to = m.path[stepIndex];
         if (!from || !to) return axialToPixel(hero.q, hero.r);
         const fromPx = axialToPixel(from.q, from.r);
         const toPx = axialToPixel(to.q, to.r);
-        return {
-            x: fromPx.x + (toPx.x - fromPx.x) * progress,
-            y: fromPx.y + (toPx.y - fromPx.y) * progress,
-        };
+
+        return {x: fromPx.x + (toPx.x - fromPx.x) * progress, y: fromPx.y + (toPx.y - fromPx.y) * progress};
+
     }
 
     // Helper: draw rounded rectangle (all corners)
