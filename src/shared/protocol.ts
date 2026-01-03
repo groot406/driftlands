@@ -2,7 +2,7 @@
 import type {Tile} from "../core/types/Tile.ts";
 import type {Hero, HeroStats} from "../core/types/Hero.ts";
 import type {TaskInstance, TaskType} from "../core/types/Task.ts";
-import type {ResourceAmount} from "../core/types/Resource.ts";
+import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 
 export interface BaseMessage {
     type: string;
@@ -48,6 +48,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     tiles: Tile[];
     heroes: Hero[];
     tasks: TaskInstance[];
+    resources: Partial<Record<ResourceType, number>>;
 }
 
 export interface TileUpdatedMessage extends BaseMessage {
@@ -76,6 +77,13 @@ export interface PathUpdateMessage extends BaseMessage {
     stepDurations: number[]; // per-step durations
     cumulative: number[]; // cumulative end times
     task?: TaskType;
+}
+
+// Hero state updates
+export interface HeroPayloadUpdateMessage extends BaseMessage {
+    type: 'hero:payload_update';
+    heroId: string;
+    payload: ResourceAmount | null;
 }
 
 // Task lifecycle
@@ -160,4 +168,5 @@ export type ServerMessage =
     | TaskProgressMessage
     | TaskRemovedMessage
     | TaskCompletedMessage
-    | ResourceDepositMessage;
+    | ResourceDepositMessage
+    | HeroPayloadUpdateMessage;

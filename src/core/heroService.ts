@@ -4,7 +4,7 @@ import {ensureTileExists, getTilesInRadius} from './world.ts';
 import {TERRAIN_DEFS} from './terrainDefs.ts';
 import {handleHeroArrival} from '../shared/tasks/tasks';
 import {sendMessage} from "./socket.ts";
-import type {MoveRequestMessage} from '../shared/protocol';
+import type {MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
 import type {Tile} from "./types/Tile.ts";
 import type {Hero, HeroStats} from "./types/Hero.ts";
@@ -79,6 +79,16 @@ export function updateHeroMovements() {
             hero.r = currentCoord.r;
         }
     }
+}
+
+export function startTaskRequest(heroId: string, taskType: string, location: { q: number; r: number }) {
+    const msg: StartTaskRequestMessage = {
+        type: 'task:request_start',
+        heroId,
+        task: taskType as any,
+        location,
+    } as any;
+    sendMessage(msg as any);
 }
 
 export function startHeroMovement(
@@ -215,6 +225,13 @@ export function requestHeroMovement(
 ) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
+
+    // If there is no path (hero already at target), request immediate task start
+    if (!path || path.length === 0) {
+        if (taskType) startTaskRequest(heroId, taskType, target);
+        return;
+    }
+
     const msg: MoveRequestMessage = {
         type: 'hero:move_request',
         heroId,

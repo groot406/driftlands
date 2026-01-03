@@ -26,8 +26,8 @@
 <script setup lang="ts">
 import {computed, onUnmounted, ref, watch} from 'vue';
 import type {Tile} from '../core/types/Tile';
-import {requestHeroMovement} from '../core/heroService';
-import {detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask} from '../store/taskStore';
+import {requestHeroMovement, startTaskRequest} from '../core/heroService';
+import {detachHeroFromCurrentTask} from '../store/taskStore';
 import {PathService} from '../core/PathService';
 import {axialToPixel, camera} from '../core/camera';
 import {isWindowActive, WINDOW_IDS} from '../core/windowManager';
@@ -60,12 +60,10 @@ function selectTask(def: TaskDefinition) {
   if (!hero) return;
 
   if (hero.q === props.tile.q && hero.r === props.tile.r) {
-    const existing = getTaskByTile(props.tile.id, def.key);
-    if (!existing) {
-      const created = startTask(props.tile, def.key, hero);
-      if (created) emit('started', def.key, props.tile);
-    } else {
-      joinTask(existing.id, hero);
+    // Do not send a start request for synthetic 'walk' task
+    if (def.key !== 'walk') {
+      // Send start request to server (authoritative)
+      startTaskRequest(hero.id, def.key, { q: props.tile.q, r: props.tile.r });
       emit('started', def.key, props.tile);
     }
   } else {

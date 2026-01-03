@@ -15,7 +15,7 @@ export class ServerGameStateHandler {
 
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     const snapshot = worldState.getSnapshot();
-    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, heroes: snapshot.heroes, tasks: snapshot.tasks, timestamp: Date.now() } as any));
+    sendToSocket(socket, ({ type: 'world:snapshot', tiles: snapshot.tiles, heroes: snapshot.heroes, tasks: snapshot.tasks, resources: snapshot.resources, timestamp: Date.now() } as any));
   }
 
   private handlePlayerJoinSendWorld(socket: Socket, _message: PlayerJoinMessage): void {

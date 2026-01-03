@@ -16,6 +16,7 @@ import type {
     TaskRemovedMessage
 } from "../shared/protocol.ts";
 import {ServerMovementHandler} from "../../server/src/handlers/movementHandler";
+import type {HeroPayloadUpdateMessage} from "../shared/protocol.ts";
 
 const service = new PathService();
 
@@ -158,13 +159,14 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             // For water, find nearest walkable tile adjacent to water
             const waterLocation = findNearestWaterTile(hero.q, hero.r);
             if (waterLocation) {
-                fetchLocation = {q: waterLocation.q, r: waterLocation.r};
+                fetchLocation = { q: waterLocation.q, r: waterLocation.r };
             } else {
                 continue;
             }
         } else {
             // For other resources, find nearest warehouse with the resource
-            fetchLocation = findNearestWarehouseWithResource(hero.q, hero.r, resource.type);
+            const found = findNearestWarehouseWithResource(hero.q, hero.r, resource.type);
+            if (found) fetchLocation = { q: found.q, r: found.r };
         }
 
         if (fetchLocation) {
@@ -176,16 +178,22 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     sourceTileId: targetTile.id,
                     taskType: taskType // Store the actual task type to start later
                 };
-                hero.returnPos = {q: targetTile.q, r: targetTile.r};
+                hero.returnPos = { q: targetTile.q, r: targetTile.r };
 
-                // Mark hero as preparing to fetch this resource
+                // Mark hero as preparing to fetch this resource (negative amount indicates intent)
                 hero.carryingPayload = {
                     type: resource.type as any,
                     amount: -resource.amount,
                 } as any;
 
-                ServerMovementHandler.getInstance().moveHero(hero, fetchLocation);
+                // Notify clients so negative payload shows above head
+                broadcast({
+                    type: 'hero:payload_update',
+                    heroId: hero.id,
+                    payload: hero.carryingPayload,
+                } as HeroPayloadUpdateMessage);
 
+                ServerMovementHandler.getInstance().moveHero(hero, fetchLocation);
                 return true; // Resource fetch initiated
             }
 
@@ -202,11 +210,18 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     sourceTileId: targetTile.id,
                     taskType: taskType
                 };
-                hero.returnPos = {q: targetTile.q, r: targetTile.r};
+                hero.returnPos = { q: targetTile.q, r: targetTile.r };
                 hero.carryingPayload = {
                     type: resource.type as any,
                     amount: -resource.amount,
                 } as any;
+
+                // Sync negative payload immediately
+                broadcast({
+                    type: 'hero:payload_update',
+                    heroId: hero.id,
+                    payload: hero.carryingPayload,
+                } as HeroPayloadUpdateMessage);
 
                 // Immediate pickup logic
                 const currentTile = ensureTileExists(hero.q, hero.r);
@@ -224,7 +239,12 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                         }
                     }
                     if (adjacentWater) {
-                        hero.carryingPayload = {type: 'water' as any, amount: 1} as any;
+                        hero.carryingPayload = { type: 'water' as any, amount: 1 } as any;
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: hero.carryingPayload,
+                        } as HeroPayloadUpdateMessage);
                     } else {
                         // Not actually adjacent to water; skip
                         continue;
@@ -236,7 +256,12 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     if (ctTerrain === 'towncenter' && available > 0) {
                         const amountToTake = Math.min(resource.amount, available, 10);
                         resourceInventory[resource.type as keyof typeof resourceInventory] = available - amountToTake;
-                        hero.carryingPayload = {type: resource.type as any, amount: amountToTake} as any;
+                        hero.carryingPayload = { type: resource.type as any, amount: amountToTake } as any;
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: hero.carryingPayload,
+                        } as HeroPayloadUpdateMessage);
                     } else {
                         // Can't pick up immediately
                         continue;
@@ -245,8 +270,14 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
 
                 // Deposit directly into the task and activate it
                 if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
+                    console.log('added resource to task');
                     addResourcesToTask(inst, hero.carryingPayload);
                     hero.carryingPayload = undefined;
+                    broadcast({
+                        type: 'hero:payload_update',
+                        heroId: hero.id,
+                        payload: null,
+                    } as HeroPayloadUpdateMessage);
 
                     const stillNeeded = getRemainingResources(inst);
                     if (stillNeeded.length === 0) {

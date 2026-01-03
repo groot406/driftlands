@@ -3,6 +3,7 @@ import {clientMessageRouter} from '../messageRouter';
 import {loadWorld, updateTile} from '../world';
 import {loadHeroes} from "../../store/heroStore";
 import {loadTasks} from "../../store/taskStore";
+import {replaceInventory} from "../../store/resourceStore";
 class WorldHandler {
     init(): void {
         clientMessageRouter.on('world:snapshot', this.handleWorldSnapshot.bind(this));
@@ -14,6 +15,9 @@ class WorldHandler {
         loadWorld(message.tiles);
         loadHeroes(message.heroes);
         loadTasks(message.tasks);
+        if (message.resources) {
+            replaceInventory(message.resources);
+        }
     }
 
     private handleTileUpdated(message: TileUpdatedMessage): void {
@@ -22,4 +26,3 @@ class WorldHandler {
 }
 
 export const worldHandler = new WorldHandler();
-

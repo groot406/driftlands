@@ -4,6 +4,7 @@ import { worldHandler } from './handlers/worldHandler';
 import { movementMessageHandler } from './handlers/movementHandler';
 import { taskMessageHandler } from './handlers/taskHandler';
 import { resourceMessageHandler } from './handlers/resourceMessageHandler';
+import { heroMessageHandler } from './handlers/heroMessageHandler';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
@@ -13,4 +14,5 @@ export function initializeClientHandlers(): void {
   movementMessageHandler.init();
   taskMessageHandler.init();
   resourceMessageHandler.init();
+  heroMessageHandler.init();
 }

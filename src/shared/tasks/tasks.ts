@@ -13,6 +13,7 @@ import type {TaskDefinition} from "../../core/types/Task";
 import {ServerMovementHandler} from "../../../server/src/handlers/movementHandler.ts";
 import {broadcast} from "../../../server/src/messages/messageRouter.ts";
 import type {ResourceDepositMessage} from "../protocol.ts";
+import type {HeroPayloadUpdateMessage} from "../protocol.ts";
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -37,6 +38,11 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
         //resourceVersion.value++;
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
+        broadcast({
+            type: 'hero:payload_update',
+            heroId: hero.id,
+            payload: hero.carryingPayload,
+        } as HeroPayloadUpdateMessage);
 
         // playPositionalSound('take-' + tile.q + '.' + tile.r, 'take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
@@ -62,6 +68,11 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
     if (isAdjacentToWater) {
         // Pick up water
         hero.carryingPayload = { type: 'water' as any, amount: 1 };
+        broadcast({
+            type: 'hero:payload_update',
+            heroId: hero.id,
+            payload: hero.carryingPayload,
+        } as HeroPayloadUpdateMessage);
 
         // playPositionalSound('splash-' + tile.q + '.' + tile.r, 'splash.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
@@ -108,6 +119,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             }
             broadcast(resourceDepositMessage);
             hero.carryingPayload = undefined;
+            broadcast({
+                type: 'hero:payload_update',
+                heroId: hero.id,
+                payload: null,
+            } as HeroPayloadUpdateMessage);
         } else if(hero.currentTaskId) {
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
@@ -115,6 +131,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 addResourcesToTask(task, hero.carryingPayload);
                 //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
                 hero.carryingPayload = undefined;
+                broadcast({
+                    type: 'hero:payload_update',
+                    heroId: hero.id,
+                    payload: null,
+                } as HeroPayloadUpdateMessage);
                 joinTask(task.id, hero);
                 return;
             }
