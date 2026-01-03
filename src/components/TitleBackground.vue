@@ -10,13 +10,8 @@
 // Cleans up on unmount; hidden when title phase ends (via parent v-if).
 import { onMounted, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { HEX_SIZE, HEX_X_FACTOR, HEX_Y_FACTOR } from '../core/camera';
-// Removed pixelToAxial, hexDistance imports since per-tile fade is replaced by radial gradient overlay
-import { getTileType, getCachedTile } from '../core/procGen';
-// Asset imports for real tile imagery (masked to hex)
-import forest from '../assets/tiles/forest.png';
-import plains from '../assets/tiles/plains.png';
-import mountain from '../assets/tiles/mountains.png';
-import water from '../assets/tiles/water.png';
+import { getTileSelection, getTileSpriteKey, getCachedTile } from '../core/procGen';
+import type { TerrainKey } from '../core/terrainDefs';
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const wrapper = ref<HTMLDivElement | null>(null);
@@ -41,8 +36,6 @@ let scrollY = 0;
 let lastTime = performance.now();
 let rafId: number | null = null;
 
-// Removed radial fade parameters & computeRadii function
-
 function resizeCanvas() {
   const el = canvas.value; const wrap = wrapper.value;
   if (!el || !wrap) return;
@@ -60,19 +53,16 @@ function axialToPixel(q: number, r: number) {
   return { x, y };
 }
 
-// Image loading & masking state
-const rawImages: Record<string, HTMLImageElement> = {};
-const maskedImages: Record<string, HTMLCanvasElement> = {};
-const imgSources: Record<string, string> = { forest, plains, mountain, water };
+// Dynamic sprite image cache keyed by sprite names (terrain or variant asset keys)
+const spriteRaw: Record<string, HTMLImageElement> = {};
+const spriteMasked: Record<string, HTMLCanvasElement> = {};
 
 function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
-  const drawSize = (HEX_SIZE * 2) - 2; // similar sizing to game map tiles
+  const drawSize = (HEX_SIZE * 2) - 2;
   const c = document.createElement('canvas');
-  c.width = drawSize;
-  c.height = drawSize;
+  c.width = drawSize; c.height = drawSize;
   const g = c.getContext('2d')!;
-  const w = drawSize;
-  const h = drawSize;
+  const w = drawSize; const h = drawSize;
   g.imageSmoothingEnabled = false;
   g.save();
   g.beginPath();
@@ -86,7 +76,6 @@ function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
   g.clip();
   g.drawImage(img, 0, 0, w, h);
   g.restore();
-  // Soft overlay for cohesion under blur
   g.fillStyle = 'rgba(0,0,0,0.15)';
   g.beginPath();
   g.moveTo(0.5 * w, 0);
@@ -100,28 +89,22 @@ function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
   return c;
 }
 
-function buildMaskedImages() {
-  for (const [key, img] of Object.entries(rawImages)) {
-    if (!maskedImages[key] && img.width > 0) {
-      maskedImages[key] = createMaskedImage(img);
-    }
+function ensureSpriteLoaded(key: string) {
+  if (spriteMasked[key]) return;
+  const img = spriteRaw[key];
+  if (img && img.width > 0) {
+    spriteMasked[key] = createMaskedImage(img);
+    return;
   }
-}
-
-function loadImages(): Promise<void> {
-  const promises = Object.entries(imgSources).map(([key, src]) => new Promise<void>((resolve) => {
-    const img = new Image();
-    img.onload = () => { rawImages[key] = img; resolve(); };
-    img.src = src;
-  }));
-  return Promise.all(promises).then(() => {
-    buildMaskedImages();
-  });
+  // Try loading image dynamically from assets/tiles folder
+  const url = new URL(`../assets/tiles/${key}.png`, import.meta.url).href;
+  const image = new Image();
+  image.onload = () => { spriteRaw[key] = image; spriteMasked[key] = createMaskedImage(image); };
+  image.src = url;
 }
 
 function drawFrame(dt: number) {
   const ctx = ctxRef.value; const el = canvas.value; if (!ctx || !el) return;
-  // Advance scroll
   const mag = Math.sqrt(DIR_X*DIR_X + DIR_Y*DIR_Y);
   const vx = (DIR_X / mag) * SCROLL_SPEED;
   const vy = (DIR_Y / mag) * SCROLL_SPEED;
@@ -146,17 +129,17 @@ function drawFrame(dt: number) {
       const { x, y } = axialToPixel(q, r);
       const px = x + scrollX; const py = y + scrollY;
       if (px < -EXTRA_MARGIN || px > viewW + EXTRA_MARGIN || py < -EXTRA_MARGIN || py > viewH + EXTRA_MARGIN) continue;
-      const t = getTileType(q, r);
-      let imgCanvas: HTMLCanvasElement | undefined = maskedImages[t];
-      if (!imgCanvas) imgCanvas = getCachedTile(t, { HEX_SIZE });
+      const sel = getTileSelection(q, r);
+      const spriteKey = getTileSpriteKey(q, r);
+      ensureSpriteLoaded(spriteKey);
+      let imgCanvas = spriteMasked[spriteKey];
+      if (!imgCanvas) imgCanvas = getCachedTile(sel.terrain as TerrainKey, { HEX_SIZE });
       ctx.drawImage(imgCanvas, px - imgCanvas.width/2, py - imgCanvas.height/2);
     }
   }
-  // Radial gradient overlay (single pass) to fade out tiles toward edges
-  const cx = viewW / 2;
-  const cy = viewH / 2;
-  const innerR = Math.min(viewW, viewH) * 0.35; // full brightness center
-  const outerR = Math.max(viewW, viewH) * 0.5; // fade extent
+  const cx = viewW / 2; const cy = viewH / 2;
+  const innerR = Math.min(viewW, viewH) * 0.35;
+  const outerR = Math.max(viewW, viewH) * 0.5;
   const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
   grad.addColorStop(0, 'rgba(0,0,0,0.25)');
   grad.addColorStop(1, 'rgba(0,0,0,0.75)');
@@ -171,14 +154,12 @@ function loop() {
   const now = performance.now();
   const dt = (now - lastTime) / 1000;
   lastTime = now;
-  // Cap dt to avoid huge jumps after tab hide
   drawFrame(Math.min(dt, 0.033));
   rafId = requestAnimationFrame(loop);
 }
 
 function handleVisibility() {
   if (document.hidden) {
-    // Pause progression (keep lastTime so jump suppressed)
     lastTime = performance.now();
   }
 }
@@ -191,8 +172,7 @@ onMounted(() => {
   if (wrapper.value) {
     wrapper.value.style.filter = `blur(${BLUR_AMOUNT}px) saturate(110%) brightness(${1 - (BLUR_AMOUNT/100)})`;
   }
-  // Load images then start loop for full fidelity
-  loadImages().finally(() => loop());
+  loop();
 });
 
 onBeforeUnmount(() => {
@@ -207,8 +187,8 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  pointer-events: none; /* ensure non-interactive */
-  z-index: 0; /* behind title content */
+  pointer-events: none;
+  z-index: 0;
 }
 canvas { display: block; }
 </style>
