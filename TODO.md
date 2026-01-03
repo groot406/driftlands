@@ -14,8 +14,8 @@ Core steps
 - [ ] Move authoritative game state into `server/src/state/` (world, entities, tasks, sessions).
 
 3) Server Tick and Systems
-- [ ] Introduce a central tick loop (configurable TPS) and modular systems (movement, tasks, growth).
-- [ ] Ensure deterministic updates and seeded RNG.
+- [x] Introduce a central tick loop (configurable TPS) and modular systems (movement, tasks, growth).
+- [x] Ensure deterministic updates and seeded RNG.
 
 4) Messaging & Validation
 - [ ] Validate all incoming messages; enforce permissions and idempotency.

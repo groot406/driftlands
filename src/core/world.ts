@@ -258,8 +258,6 @@ export async function generateInitialWorld(discoverRadius: number = 4) {
         if (dist <= discoverRadius) discoverTile(t);
     }
 
-    reduceTerrainIslands();
-
     generating = false;
 }
 
@@ -308,37 +306,4 @@ export function loadWorld(tileData: Tile[]) {
     }
     // Re-register aging tiles after load
     registerExistingAgingTiles(tiles);
-}
-
-function reduceTerrainIslands() {
-    for (const t of tiles) {
-        if (!t.discovered || !t.terrain) continue;
-        const def = TERRAIN_DEFS[t.terrain];
-        if (def?.preserveIsolation) continue;
-        const nm = t.neighbors ?? ensureTileNeighbors(t);
-        let sameCount = 0;
-        let discoveredNeighborCount = 0;
-        const neighborTerrainCounts: Record<string, number> = {};
-        for (const side of ['a','b','c','d','e','f'] as const) {
-            const n = nm[side];
-            if (!n.discovered || !n.terrain) continue;
-            discoveredNeighborCount++;
-            if (n.terrain === t.terrain) sameCount++;
-            neighborTerrainCounts[n.terrain] = (neighborTerrainCounts[n.terrain] ?? 0) + 1;
-        }
-        if (discoveredNeighborCount === 0) continue;
-        // Island if no discovered neighbor shares terrain
-        if (sameCount === 0) {
-            // Pick majority terrain among neighbors (exclude towncenter)
-            let bestTerrain: TerrainKey | null = null;
-            let bestCount = -1;
-            for (const [terrain, count] of Object.entries(neighborTerrainCounts)) {
-                if (terrain === 'towncenter') continue;
-                if (count > bestCount) { bestCount = count; bestTerrain = terrain as TerrainKey; }
-            }
-            if (bestTerrain && bestTerrain !== t.terrain) {
-                t.terrain = bestTerrain;
-            }
-        }
-    }
 }
