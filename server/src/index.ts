@@ -26,8 +26,8 @@ const { playerHandler } = initializeServerHandlers(io);
 io.on('connection', (socket) => {
   // Route all incoming messages through the message router
   socket.on('message', (message: BaseMessage) => {
-    console.log(`>>>> ${message.type}`);
-    console.log(message);
+    //console.log(`>>>> ${message.type}`);
+    //console.log(message);
     serverMessageRouter.route(socket, message);
   });
 

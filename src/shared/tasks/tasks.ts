@@ -94,6 +94,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
     // Handle resource fetch: if hero is fetching a resource and arrived at source
     if (isFetching(hero)) {
+        console.log('arrived while fetching')
         const carrying = hero.carryingPayload;
         if (!carrying) return;
 
@@ -114,6 +115,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
     // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
+        console.log('arrived while carrying')
         if (tile.terrain === 'towncenter') {
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
             const resourceDepositMessage: ResourceDepositMessage = {
@@ -132,20 +134,75 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 payload: null,
             } as HeroPayloadUpdateMessage);
         } else if(hero.currentTaskId) {
+            console.log('arrived while carrying to task')
             // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
-                addResourcesToTask(task, hero.carryingPayload);
+                const consumed = addResourcesToTask(task, hero.carryingPayload);
+                if (consumed > 0) {
+                    hero.carryingPayload.amount -= consumed;
+                    if (hero.carryingPayload.amount <= 0) {
+                        hero.carryingPayload = undefined;
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: null,
+                        } as HeroPayloadUpdateMessage);
+                    } else {
+                        // Broadcast remaining payload
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: hero.carryingPayload,
+                        } as HeroPayloadUpdateMessage);
+                    }
+                }
                 //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
-                hero.carryingPayload = undefined;
-                broadcast({
-                    type: 'hero:payload_update',
-                    heroId: hero.id,
-                    payload: null,
-                } as HeroPayloadUpdateMessage);
                 joinTask(task.id, hero);
                 return;
             }
+        } else {
+            console.log('arrived while carrying but no task to deliver to');
+            // Lets check if there is a task on this tile that can accept resources
+            const tasksHere = Object.values(tileIndex).filter(t => t.id === tile.id).flatMap(t => {
+                const taskList = [];
+                for (const def of listTaskDefinitions()) {
+                    const taskInstance = getTaskByTile(t.id, def.key);
+                    if (taskInstance) {
+                        taskList.push(taskInstance);
+                    }
+                }
+                return taskList;
+            });
+
+            for (const task of tasksHere) {
+                const consumed = addResourcesToTask(task, hero.carryingPayload);
+                if (consumed > 0) {
+                    hero.carryingPayload!.amount -= consumed;
+                    if (hero.carryingPayload!.amount <= 0) {
+                        hero.carryingPayload = undefined;
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: null,
+                        } as HeroPayloadUpdateMessage);
+                        // Join the task to trigger activation or fetching of other needed resources
+                        joinTask(task.id, hero);
+                        return;
+                    } else {
+                        // Broadcast remaining payload
+                        broadcast({
+                            type: 'hero:payload_update',
+                            heroId: hero.id,
+                            payload: hero.carryingPayload,
+                        } as HeroPayloadUpdateMessage);
+                        // Join task and let server decide next steps (continue fetching other resources or start)
+                        joinTask(task.id, hero);
+                        return;
+                    }
+                }
+            }
+
         }
     }
 

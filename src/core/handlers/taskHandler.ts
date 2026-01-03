@@ -68,6 +68,14 @@ class ClientTaskHandler {
             task.participants = message.participants;
             task.lastUpdateMs = Date.now();
 
+            // Apply resource collection updates and activation flag when present
+            if (message.collectedResources) {
+                task.collectedResources = message.collectedResources;
+            }
+            if (typeof message.active === 'boolean') {
+                task.active = message.active;
+            }
+
             for (const heroId in message.participants) {
                 const hero = getHero(heroId);
                 if (hero) {

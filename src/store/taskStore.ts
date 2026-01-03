@@ -114,22 +114,64 @@ function getRemainingResources(task: TaskInstance): ResourceAmount[] {
     return remaining;
 }
 
-export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount) {
+export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount): number {
     if (!task.collectedResources) {
         task.collectedResources = [];
     }
 
-    const resourceType = carrying.type;
-
-    const currentAmount = task.collectedResources.find((collected) => collected.type === resourceType)?.amount || 0;
-    const newAmount = currentAmount + carrying.amount;
-    // Update or add the collected resource amount
-    const existingResource = task.collectedResources.find((collected) => collected.type === resourceType);
-    if (existingResource) {
-        existingResource.amount = newAmount;
-    } else {
-        task.collectedResources.push({type: resourceType, amount: newAmount});
+    // If task has no requirements, ignore deposits
+    if (!task.requiredResources || task.requiredResources.length === 0) {
+        return 0;
     }
+
+    const resourceType = carrying.type;
+    const required = task.requiredResources.find(r => r.type === resourceType);
+    if (!required) {
+        return 0; // this resource not required
+    }
+
+    // Determine how much is still needed for this resource
+    const currentAmount = task.collectedResources.find(collected => collected.type === resourceType)?.amount || 0;
+    const stillNeeded = Math.max(0, required.amount - currentAmount);
+    if (stillNeeded <= 0) {
+        return 0; // already fulfilled this resource
+    }
+
+    const amountToAdd = Math.min(stillNeeded, Math.max(0, carrying.amount));
+    if (amountToAdd <= 0) {
+        return 0;
+    }
+
+    // Update or add the collected resource amount
+    const existingResource = task.collectedResources.find(collected => collected.type === resourceType);
+    if (existingResource) {
+        existingResource.amount = currentAmount + amountToAdd;
+    } else {
+        task.collectedResources.push({ type: resourceType, amount: amountToAdd });
+    }
+
+    // After deposit, check if all requirements are met and (re)activate task
+    const remaining = getRemainingResources(task);
+    if (remaining.length === 0) {
+        task.createdMs = Date.now();
+        task.lastUpdateMs = Date.now();
+        task.active = true;
+    } else {
+        // Keep task inactive until all resources gathered
+        task.active = false;
+    }
+
+    // Broadcast progress so clients update collectedResources and activation state
+    broadcast({
+        type: 'task:progress',
+        taskId: task.id,
+        progressXp: task.progressXp,
+        participants: task.participants,
+        collectedResources: task.collectedResources,
+        active: task.active,
+    } as TaskProgressMessage);
+
+    return amountToAdd;
 }
 
 // Check if hero needs to fetch resources and initiate the fetch if needed

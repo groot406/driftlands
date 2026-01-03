@@ -133,6 +133,9 @@ export interface TaskProgressMessage {
     taskId: string;
     progressXp: number;
     participants: Record<string, number>;
+    // Optional fields to reflect resource collection state and activation toggles
+    collectedResources?: ResourceAmount[];
+    active?: boolean;
 }
 
 export interface TaskCompletedMessage {
