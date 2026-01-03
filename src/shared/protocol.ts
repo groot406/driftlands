@@ -112,6 +112,12 @@ export interface ResourceDepositMessage {
     resource: ResourceAmount;
 }
 
+export interface ResourceWithdrawMessage {
+    type: 'resource:withdraw';
+    heroId: string;
+    resource: ResourceAmount;
+}
+
 export interface TaskCreatedMessage {
     type: 'task:created';
     taskId: string;
@@ -169,4 +175,5 @@ export type ServerMessage =
     | TaskRemovedMessage
     | TaskCompletedMessage
     | ResourceDepositMessage
+    | ResourceWithdrawMessage
     | HeroPayloadUpdateMessage;

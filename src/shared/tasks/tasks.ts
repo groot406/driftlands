@@ -14,6 +14,7 @@ import {ServerMovementHandler} from "../../../server/src/handlers/movementHandle
 import {broadcast} from "../../../server/src/messages/messageRouter.ts";
 import type {ResourceDepositMessage} from "../protocol.ts";
 import type {HeroPayloadUpdateMessage} from "../protocol.ts";
+import type {ResourceWithdrawMessage} from "../protocol.ts";
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -35,7 +36,14 @@ function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
     if (amountToTake > 0) {
         // Deduct from warehouse inventory
         resourceInventory[resourceType] = (resourceInventory[resourceType] ?? amountToTake) - amountToTake;
-        //resourceVersion.value++;
+
+        // Notify clients about warehouse withdrawal to sync UI
+        const withdrawMsg: ResourceWithdrawMessage = {
+            type: 'resource:withdraw',
+            heroId: hero.id,
+            resource: { type: resourceType as any, amount: amountToTake },
+        } as any;
+        broadcast(withdrawMsg);
 
         hero.carryingPayload = { type: resourceType, amount: amountToTake };
         broadcast({
@@ -107,7 +115,6 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         if (tile.terrain === 'towncenter') {
-            console.log('at towncenter, depositing', hero.carryingPayload);
             depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
             const resourceDepositMessage: ResourceDepositMessage = {
                 type: 'resource:deposit',

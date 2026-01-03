@@ -21,6 +21,13 @@ export function depositResource(type: ResourceType, amount: number = 1) {
     resourceVersion.value++;
 }
 
+export function withdrawResource(type: ResourceType, amount: number = 1) {
+    if (amount <= 0) return;
+    const current = resourceInventory[type] ?? 0;
+    resourceInventory[type] = Math.max(0, current - amount);
+    resourceVersion.value++;
+}
+
 export function setResourceAmount(type: ResourceType, amount: number) {
     resourceInventory[type] = Math.max(0, amount);
     resourceVersion.value++;
