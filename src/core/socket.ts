@@ -6,7 +6,11 @@ import { addPlayer, removePlayer } from '../store/playerStore';
 
 // Determine URL only in browser; Node lacks import.meta.env
 const isBrowser = typeof window !== 'undefined';
-const URL = isBrowser && (import.meta as any)?.env?.PROD ? undefined : 'http://localhost:3000';
+const env = (isBrowser ? (import.meta as any)?.env : {}) || {};
+// Prefer explicit VITE_SERVER_URL when provided. In dev, fallback to localhost:3000. In prod, default to same-origin when not set.
+const URL = isBrowser
+  ? env.VITE_SERVER_URL || (env.PROD ? undefined : 'http://localhost:3000')
+  : undefined;
 
 export const socket = io(URL);
 

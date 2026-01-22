@@ -17,7 +17,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
     methods: ["GET", "POST"]
   }
 });
@@ -64,6 +64,7 @@ io.on('connection', (socket) => {
   });
 });
 
-httpServer.listen(3000, () => {
-  console.log('Server listening on *:3000');
+const PORT = Number(process.env.PORT ?? 3000);
+httpServer.listen(PORT, () => {
+  console.log(`Server listening on *:${PORT}`);
 });
