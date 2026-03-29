@@ -1,12 +1,13 @@
 import type {Server, Socket} from 'socket.io';
 import {serverMessageRouter} from '../messages/messageRouter';
 import type {StartTaskRequestMessage } from '../../../src/shared/protocol';
-import {updateActiveTasks, startTask, joinTask, getTaskByTile} from "../../../src/store/taskStore";
-import {heroes, getHero} from "../../../src/store/heroStore";
-import {getTile} from "../../../src/core/world";
+import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../src/shared/game/state/taskStore';
+import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
+import { getTile } from '../../../src/shared/game/world';
+import { coopState } from '../state/coopState';
 
 export class ServerTaskHandler {
-    constructor(private io: Server) {
+    constructor(_io: Server) {
     }
 
     init(): void {
@@ -18,6 +19,7 @@ export class ServerTaskHandler {
         const { heroId, task, location } = message;
         const hero = getHero(heroId);
         if (!hero || !location) return;
+        if (!coopState.canControlHero(_socket.id, heroId)) return;
 
         // Only allow if hero is already at the requested tile
         if (hero.q !== location.q || hero.r !== location.r) return;

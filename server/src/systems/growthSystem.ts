@@ -1,5 +1,5 @@
 import type { TickContext } from '../tick';
-import { updateTileGrowth } from '../../../src/core/growth';
+import { updateTileGrowth } from '../../../src/shared/game/growth';
 
 export const growthSystem = {
   name: 'growth',

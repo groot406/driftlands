@@ -2,26 +2,77 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import type { BaseMessage } from '../../src/shared/protocol';
-import { serverMessageRouter, setIo } from './messages/messageRouter';
+import { configureGameRuntime } from '../../src/shared/game/runtime';
+import { configureGameplayEventRuntime } from '../../src/shared/gameplay/events';
+import { broadcast, serverMessageRouter, setIo } from './messages/messageRouter';
 import { initializeServerHandlers } from './messages/messageHandlers';
 import { messageLogger } from './messages/messageLogger';
 import { tickEngine } from './tick';
 import { ServerMovementHandler } from './handlers/movementHandler';
-import { ServerTaskHandler } from './handlers/taskHandler';
 import { growthSystem } from './systems/growthSystem';
 import {movementSystem} from "./systems/movementSystem";
 import {taskSystem} from "./systems/taskSystem";
+import { runSystem } from './systems/runSystem';
+import { runState } from './state/runState';
+import { frontierFindState } from './state/frontierFindState';
+
+const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const defaultLanOriginPatterns = [
+  /^https?:\/\/localhost(?::\d+)?$/i,
+  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i,
+  /^https?:\/\/10(?:\.\d{1,3}){3}(?::\d+)?$/i,
+  /^https?:\/\/192\.168(?:\.\d{1,3}){2}(?::\d+)?$/i,
+  /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}(?::\d+)?$/i,
+  /^https?:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?::\d+)?$/i,
+];
+
+function isAllowedFrontendOrigin(origin?: string): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  if (configuredFrontendOrigins.includes('*')) {
+    return true;
+  }
+
+  if (configuredFrontendOrigins.length > 0) {
+    return configuredFrontendOrigins.includes(origin);
+  }
+
+  return defaultLanOriginPatterns.some((pattern) => pattern.test(origin));
+}
 
 const app = express();
 // @ts-ignore
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
+    origin(origin, callback) {
+      if (isAllowedFrontendOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin ?? 'unknown'} is not allowed by FRONTEND_ORIGIN`));
+    },
     methods: ["GET", "POST"]
   }
 });
 setIo(io);
+configureGameRuntime({
+  broadcast,
+  moveHero: (hero, target, task) => {
+    ServerMovementHandler.getInstance().moveHero(hero, target, task);
+  }
+});
+configureGameplayEventRuntime((event) => {
+  frontierFindState.recordEvent(event);
+  runState.recordEvent(event);
+});
 
 // Apply message logging middleware
 messageLogger.wrapServer(io);
@@ -30,18 +81,13 @@ messageLogger.wrapServer(io);
 const { playerHandler } = initializeServerHandlers(io);
 
 // Register systems and start tick engine
-const movement = ServerMovementHandler.getInstance();
-movement.init();
-
-const tasks = new ServerTaskHandler(io);
-tasks.init();
-
 tickEngine.setTPS(Number(process.env.SERVER_TPS ?? 10));
 tickEngine.setSeed(Number(process.env.SERVER_SEED ?? 123456789));
 
-tickEngine.register(taskSystem);
 tickEngine.register(movementSystem);
+tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
+tickEngine.register(runSystem);
 
 tickEngine.start();
 
@@ -65,6 +111,8 @@ io.on('connection', (socket) => {
 });
 
 const PORT = Number(process.env.PORT ?? 3000);
-httpServer.listen(PORT, () => {
-  console.log(`Server listening on *:${PORT}`);
+const HOST = process.env.HOST ?? '0.0.0.0';
+
+httpServer.listen(PORT, HOST, () => {
+  console.log(`Server listening on ${HOST}:${PORT}`);
 });

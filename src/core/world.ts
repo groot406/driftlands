@@ -3,11 +3,13 @@ import {weightedTerrainChoice, resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
-import { registerExistingAgingTiles } from './growth';
+import { registerExistingAgingTiles, resetTileGrowthTracking } from './growth';
 import { terrainPositions } from './terrainRegistry';
 import {OPPOSITE_SIDE, SIDE_NAMES, type Terrain, type Tile, type TileNeighborMap} from "./types/Tile";
-import {broadcast} from "../../server/src/messages/messageRouter.ts";
 import type {TileUpdatedMessage} from "../shared/protocol.ts";
+import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
+import { axialDistanceFromOrigin } from '../shared/game/hex';
+import { emitGameplayEvent } from '../shared/gameplay/events';
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
 // World data containers
@@ -27,10 +29,7 @@ export function axialKey(q: number, r: number) {
 }
 
 export function hexDistance(q: number, r: number): number {
-    const dq = Math.abs(q);
-    const dr = Math.abs(r);
-    const ds = Math.abs(-q - r);
-    return Math.max(dq, dr, ds);
+    return axialDistanceFromOrigin(q, r);
 }
 
 function indexTile(t: Tile) {
@@ -131,6 +130,13 @@ export function discoverTile(tile: Tile) {
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
         terrainPositions.towncenter.add(tile.id);
+        emitGameplayEvent({
+            type: 'tile:discovered',
+            tileId: tile.id,
+            q: tile.q,
+            r: tile.r,
+            terrain: tile.terrain,
+        });
         return;
     }
     const neighborTerrains = getNeighborTerrains(tile);
@@ -143,6 +149,13 @@ export function discoverTile(tile: Tile) {
     if (!tileIndex[tile.id]) indexTile(tile);
     ensureTileNeighbors(tile);
     if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);
+    emitGameplayEvent({
+        type: 'tile:discovered',
+        tileId: tile.id,
+        q: tile.q,
+        r: tile.r,
+        terrain: tile.terrain,
+    });
 
     // --- Variation selection ---
     tile.variant = null;
@@ -264,6 +277,7 @@ export async function generateInitialWorld(discoverRadius: number = 4) {
 function clearWorld() {
     tiles.length = 0;
     tileIndex = {};
+    resetTileGrowthTracking();
 
     minQ = 0;
     maxQ = 0;

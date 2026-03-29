@@ -1,23 +1,34 @@
 <template>
-  <div ref="container" class="w-full h-full relative map-container">
+  <div ref="container" class="w-full h-full relative map-container" :class="{ 'map-container-lite': !useCanvasDropShadow }">
     <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
                 :visible="showTaskMenu"
                 @close="showTaskMenu=false; taskMenuTile=null; closeWindow(WINDOW_IDS.TASK_MENU)"
-                @hover="(task) => hoveredTask = task"
+                @hover="handleTaskHover"
       />
     </transition>
+    <div
+      v-for="ping in renderedPings"
+      :key="ping.id"
+      class="coop-ping"
+      :style="ping.style"
+    >
+      <div class="coop-ping-ring"></div>
+      <div class="coop-ping-label">{{ ping.playerName }} · {{ ping.label }}</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex} from '../core/world';
 import {requestHeroMovement, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import {
+  axialToPixel,
+  camera,
   createPointerHandlers,
   dragged,
   dragging,
@@ -29,11 +40,17 @@ import {
 import {getSelectedHero, isPaused, selectedHeroId, selectHero,} from '../store/uiStore';
 import {HexMapService} from '../core/HexMapService';
 import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
+import {requestHeroClaim, sendCoopPing} from '../core/coopService';
+import {currentPlayerId} from '../core/socket';
 import {getAvailableTasks} from "../shared/tasks/tasks";
 import {PathService} from "../core/PathService";
 import type {Tile} from "../core/types/Tile.ts";
 import type {Hero} from "../core/types/Hero.ts";
 import type {TaskDefinition} from "../core/types/Task.ts";
+import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/gameFeel';
+import {addNotification} from '../store/notificationStore';
+import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
+import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOtherPlayer} from '../store/playerStore';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -50,6 +67,8 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
 const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
+const pathPreviewHeroId = ref<string | null>(null);
+const pathPreviewTargetKey = ref<string | null>(null);
 
 const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
@@ -62,6 +81,23 @@ const hoveredTask = ref<TaskDefinition | null>(null);
 // Service instance
 const service = new HexMapService();
 const pathService = new PathService();
+const useCanvasDropShadow = shouldUseCanvasDropShadow();
+const renderedPings = computed(() => {
+  const cameraPx = axialToPixel(camera.q, camera.r);
+  const { width, height } = containerSize.value;
+
+  return getActiveCoopPings.value.map((ping) => {
+    const tilePx = axialToPixel(ping.q, ping.r);
+
+    return {
+      ...ping,
+      style: {
+        left: `${tilePx.x - cameraPx.x + (width / 2)}px`,
+        top: `${tilePx.y - cameraPx.y + (height / 2)}px`,
+      },
+    };
+  });
+});
 
 function onWindowResize() {
   service.resize();
@@ -77,27 +113,63 @@ let rafId: number | null = null;
 let lastClickTime = 0;
 let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mobile short taps
 
-// Frame rate limiting for graphics performance
+// Cap canvas rendering to the target FPS while movement simulation stays on real time.
 let lastDrawTime = 0;
-const TARGET_FPS = 60; // Reduce from 60 FPS to 30 FPS to reduce graphics load
+const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
+function clearPathPreview() {
+  pathCoords.value = [];
+  pathPreviewHeroId.value = null;
+  pathPreviewTargetKey.value = null;
+}
+
+function handlePointerMoveEvent(ev: Event) {
+  const pointerEvent = ev as PointerEvent;
+  pointerMove(pointerEvent);
+  updateHover(pointerEvent);
+}
+
+function handlePointerUpEvent(ev: Event) {
+  const pointerEvent = ev as PointerEvent;
+  pointerUp();
+  handleClick(pointerEvent);
+  if (!showTaskMenu.value) updateHover(pointerEvent);
+}
+
+function handlePointerCancelEvent() {
+  pointerCancel();
+}
+
+function handlePointerLeaveEvent() {
+  pointerUp();
+}
+
 function animationLoop() {
-  const now = Date.now();
-  const deltaTime = now - lastDrawTime;
+  const movementNowMs = Date.now();
+  const effectNowMs = sampleGameFeelTime(movementNowMs);
+  const deltaTime = movementNowMs - lastDrawTime;
+  const hitStopActive = isHitStopActive(movementNowMs);
 
-  // Always update hero movements (this is important for smooth movement)
-  updateHeroMovements();
+  // Movement must stay on wall-clock time; hit-stop only affects visual effects.
+  updateHeroMovements(movementNowMs);
 
-  // Limit drawing to 30 FPS to reduce graphics overhead
+  // Cap rendering separately from movement updates.
   if (deltaTime >= FRAME_INTERVAL) {
-    lastDrawTime = now;
+    lastDrawTime = movementNowMs;
 
-    if (isKeyboardNavigating()) {
+    if (!hitStopActive && isKeyboardNavigating()) {
       if (hoveredTile.value) hoveredTile.value = null;
-      if (pathCoords.value.length) pathCoords.value = [];
-    } else if (selectedHeroId.value && hoveredTile.value) {
-      pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+      if (pathCoords.value.length) clearPathPreview();
+    } else if (!hitStopActive && selectedHeroId.value && hoveredTile.value) {
+      const selectedHero = getSelectedHero();
+      if (selectedHero && canControlHero(selectedHero.id, currentPlayerId.value)) {
+        pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+        pathPreviewHeroId.value = selectedHero.id;
+        pathPreviewTargetKey.value = `${hoveredTile.value.q},${hoveredTile.value.r}`;
+      } else {
+        clearPathPreview();
+      }
     }
 
     service.draw({
@@ -107,6 +179,10 @@ function animationLoop() {
       taskMenuTile: taskMenuTile.value,
       clusterBoundaryTiles: clusterBoundaryTiles.value,
       clusterTileIds: clusterTiles.value,
+    }, {
+      effectNowMs,
+      movementNowMs,
+      perfNowMs: performance.now(),
     });
   }
 
@@ -114,7 +190,15 @@ function animationLoop() {
 }
 
 function updatePath() {
+  const hero = getSelectedHero();
+  if (!hero || !canControlHero(hero.id, currentPlayerId.value)) {
+    clearPathPreview();
+    return;
+  }
+
   pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
+  pathPreviewHeroId.value = hero.id;
+  pathPreviewTargetKey.value = hoveredTile.value ? `${hoveredTile.value.q},${hoveredTile.value.r}` : null;
 }
 
 function handleClick(e: PointerEvent) {
@@ -137,6 +221,9 @@ function handleClick(e: PointerEvent) {
 
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
+    if (!isHeroClaimedByOtherPlayer(hero.id, currentPlayerId.value)) {
+      requestHeroClaim(hero.id);
+    }
     selectHero(hero, false);
     hoveredHero.value = hero;
     emit('hero-click', hero);
@@ -145,9 +232,6 @@ function handleClick(e: PointerEvent) {
 
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
-
-  console.log('Clicked tile', tile);
-
   const selHero = getSelectedHero();
 
   const now = Date.now();
@@ -158,6 +242,31 @@ function handleClick(e: PointerEvent) {
 
   if (!selHero) {
     selectHero(null, false);
+    return;
+  }
+
+  if (!canControlHero(selHero.id, currentPlayerId.value)) {
+    addNotification({
+      type: 'coop_state',
+      title: `${selHero.name} is occupied`,
+      message: `${getHeroOwnerName(selHero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    clearPathPreview();
+    return;
+  }
+
+  if (!tile.discovered) {
+    const path = service.updatePath(selHero.id, tile).slice();
+    pathCoords.value = path;
+    pathPreviewHeroId.value = selHero.id;
+    pathPreviewTargetKey.value = `${tile.q},${tile.r}`;
+
+    if (path.length) {
+      requestHeroMovement(selHero.id, path, tile, 'explore');
+    }
+
+    updatePath();
     return;
   }
 
@@ -183,25 +292,52 @@ function handleClick(e: PointerEvent) {
     closeWindow(WINDOW_IDS.TASK_MENU);
   }
 
-  let path = pathService.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+  const previewKey = `${tile.q},${tile.r}`;
+  const canReusePreviewPath =
+    pathPreviewHeroId.value === selHero.id &&
+    pathPreviewTargetKey.value === previewKey &&
+    pathCoords.value.length > 0 &&
+    pathCoords.value[pathCoords.value.length - 1]?.q === tile.q &&
+    pathCoords.value[pathCoords.value.length - 1]?.r === tile.r;
+
+  const path = canReusePreviewPath
+    ? pathCoords.value.slice()
+    : pathService.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+
   if (path.length) {
     requestHeroMovement(selHero.id, path, tile, !tile.discovered ? 'explore' : undefined);
   }
   updatePath();
 }
 
+function handleContextMenu(e: MouseEvent) {
+  e.preventDefault();
+  if (isPaused()) return;
+
+  const tile = service.pickTile(e.clientX, e.clientY);
+  if (!tile) return;
+
+  const selectedHero = getSelectedHero();
+  const heroId = selectedHero && canControlHero(selectedHero.id, currentPlayerId.value)
+    ? selectedHero.id
+    : undefined;
+  const kind = e.shiftKey ? 'scout' : e.altKey ? 'gather' : 'assist';
+
+  sendCoopPing(kind, { q: tile.q, r: tile.r }, heroId);
+}
+
 function updateHover(e: PointerEvent) {
   if (isPaused() || dragging || showTaskMenu.value) {
     hoveredTile.value = null;
     hoveredHero.value = null;
-    pathCoords.value = [];
+    clearPathPreview();
     return;
   }
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
     hoveredHero.value = hero;
     hoveredTile.value = null;
-    pathCoords.value = [];
+    clearPathPreview();
     return;
   }
   hoveredHero.value = null;
@@ -290,6 +426,10 @@ watch([taskMenuTile, hoveredTask], () => {
   computeTerrainCluster(taskMenuTile.value);
 });
 
+function handleTaskHover(task: TaskDefinition | null) {
+  hoveredTask.value = task;
+}
+
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
 
@@ -308,23 +448,13 @@ onMounted(async () => {
 
   if (el) {
     el.addEventListener('pointerdown', pointerDown, {passive: false});
-    el.addEventListener('pointermove', (ev) => {
-      pointerMove(ev);
-      updateHover(ev as PointerEvent);
-    }, {passive: false});
-    el.addEventListener('pointerup', (ev) => {
-      pointerUp();
-      handleClick(ev as PointerEvent);
-      // Skip hover update right after opening menu to avoid interfering state changes
-      if (!showTaskMenu.value) updateHover(ev as PointerEvent);
-    }, {passive: false});
-    el.addEventListener('pointercancel', () => {
-      pointerCancel();
-    }, {passive: false});
-    el.addEventListener('pointerleave', () => {
-      pointerUp();
-    }, {passive: false});
+    el.addEventListener('pointermove', handlePointerMoveEvent, {passive: false});
+    el.addEventListener('pointerup', handlePointerUpEvent, {passive: false});
+    el.addEventListener('pointercancel', handlePointerCancelEvent, {passive: false});
+    el.addEventListener('pointerleave', handlePointerLeaveEvent, {passive: false});
+    el.addEventListener('contextmenu', handleContextMenu, {passive: false});
   }
+  if (rafId) cancelAnimationFrame(rafId);
   animationLoop();
 });
 
@@ -337,11 +467,13 @@ onBeforeUnmount(() => {
   const el = container.value;
   if (el) {
     el.removeEventListener('pointerdown', pointerDown as any);
-    el.removeEventListener('pointermove', pointerMove as any);
-    el.removeEventListener('pointerup', pointerUp as any);
-    el.removeEventListener('pointercancel', pointerCancel as any);
-    el.removeEventListener('pointerleave', pointerUp as any);
+    el.removeEventListener('pointermove', handlePointerMoveEvent as any);
+    el.removeEventListener('pointerup', handlePointerUpEvent as any);
+    el.removeEventListener('pointercancel', handlePointerCancelEvent as any);
+    el.removeEventListener('pointerleave', handlePointerLeaveEvent as any);
+    el.removeEventListener('contextmenu', handleContextMenu as any);
   }
+  resetGameFeelState();
   service.destroy();
   stopCameraAnimation();
 });
@@ -358,5 +490,56 @@ onBeforeUnmount(() => {
 
 .map-container canvas {
   filter: drop-shadow(0px 2px 5px rgba(0, 0, 0, 0.8)) drop-shadow(15px 35px 25px rgba(0, 0, 0, 0.4));
+}
+
+.map-container-lite canvas {
+  filter: none;
+}
+
+.coop-ping {
+  position: absolute;
+  transform: translate(-50%, -130%);
+  pointer-events: none;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.coop-ping-ring {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(103, 232, 249, 0.95);
+  background: rgba(12, 74, 110, 0.45);
+  box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.55);
+  animation: coop-ping-pulse 1.1s ease-out infinite;
+}
+
+.coop-ping-label {
+  white-space: nowrap;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(103, 232, 249, 0.28);
+  color: rgb(207, 250, 254);
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+}
+
+@keyframes coop-ping-pulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.55);
+  }
+  70% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 16px rgba(103, 232, 249, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(103, 232, 249, 0);
+  }
 }
 </style>

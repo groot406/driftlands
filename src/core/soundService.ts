@@ -40,6 +40,8 @@ export const soundState: SoundState = reactive({
 });
 
 class SoundService {
+    private readonly positionalDistanceMultiplier = 1.55;
+    private readonly positionalRolloffExponent = 0.72;
     private audioContext: AudioContext | null = null;
     private musicAudio: HTMLAudioElement | null = null;
     private crossfadeAudio: HTMLAudioElement | null = null;
@@ -123,12 +125,12 @@ class SoundService {
             if (!sound.isPlaying) return;
 
             const distance = hexDistance(camera, { q: sound.q, r: sound.r });
-            const maxDist = Math.min(sound.maxDistance, soundState.maxAudioDistance);
+            const maxDist = this.getEffectiveMaxDistance(sound.maxDistance);
 
             // Calculate volume based on distance
             let volume = 0;
             if (distance <= maxDist) {
-                volume = sound.baseVolume * (1 - (distance / maxDist));
+                volume = sound.baseVolume * this.getDistanceAttenuation(distance, maxDist);
                 volume *= soundState.effectsVolume * soundState.masterVolume;
             }
 
@@ -143,15 +145,16 @@ class SoundService {
 
             // Apply volume and panning - only update if values have changed significantly
             const newVolume = Math.max(0, Math.min(1, volume));
-            if (Math.abs(sound.audioElement.volume - newVolume) > 0.01) {
-                sound.audioElement.volume = newVolume;
-            }
-
             const gainNode = this.gainNodes.get(sound.id);
             const pannerNode = this.pannerNodes.get(sound.id);
+            const mediaElementVolume = gainNode ? 1 : newVolume;
 
-            if (gainNode && Math.abs(gainNode.gain.value - volume) > 0.01) {
-                gainNode.gain.value = volume;
+            if (Math.abs(sound.audioElement.volume - mediaElementVolume) > 0.01) {
+                sound.audioElement.volume = mediaElementVolume;
+            }
+
+            if (gainNode && Math.abs(gainNode.gain.value - newVolume) > 0.01) {
+                gainNode.gain.value = newVolume;
             }
 
             if (pannerNode && Math.abs(pannerNode.pan.value - pan) > 0.01) {
@@ -192,10 +195,6 @@ class SoundService {
             const tile = tileIndex[task.tileId];
             if (!tile) continue;
 
-            // Check if task is within audio range
-            const distance = hexDistance(camera, { q: tile.q, r: tile.r });
-            if (distance > soundState.maxAudioDistance) continue;
-
             // Get task definition to check if it has sound
             const taskDef = getTaskDefinition(task.type);
             if (!taskDef?.getSoundOnStart) continue;
@@ -204,6 +203,10 @@ class SoundService {
             const soundConfig = taskDef.getSoundOnStart(tile, []);
 
             if (!soundConfig || !soundConfig.loop) continue; // Only auto-start looping sounds
+
+            // Check if task is within the effective audio range
+            const distance = hexDistance(camera, { q: tile.q, r: tile.r });
+            if (distance > this.getEffectiveMaxDistance(soundConfig.maxDistance)) continue;
 
             // Check if sound is already playing for this task
             const soundId = `${task.type}-${tile.q}-${tile.r}`;
@@ -235,6 +238,15 @@ class SoundService {
         ).catch(error => {
             console.warn(`Failed to auto-start task sound for ${taskType}:`, error);
         });
+    }
+
+    private getEffectiveMaxDistance(maxDistance: number) {
+        return Math.max(1, Math.min(maxDistance, soundState.maxAudioDistance) * this.positionalDistanceMultiplier);
+    }
+
+    private getDistanceAttenuation(distance: number, maxDistance: number) {
+        const normalizedDistance = Math.max(0, Math.min(1, distance / maxDistance));
+        return Math.pow(1 - normalizedDistance, this.positionalRolloffExponent);
     }
 
     async setMusic(musicPath: string | null, crossfade: boolean = true) {
@@ -586,4 +598,3 @@ class SoundService {
 }
 
 export const soundService = new SoundService();
-

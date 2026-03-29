@@ -1,6 +1,6 @@
 <template>
   <div class="noscrollbar flex flex-row items-center flex-wrap w-max justify-center rounded-lg gap-2 max-w-[100vw] overflow-x-auto pointer-events-auto">
-    <ResourceBubble v-for="r in resources" :key="r.key" :icon="r.icon" :label="r.label" :value="r.value"/>
+    <ResourceBubble v-for="r in resources" :key="r.key" :resource-key="r.key" :icon="r.icon" :label="r.label" :value="r.value"/>
   </div>
 </template>
 

@@ -2,7 +2,7 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {ResourceAmount} from "../../../core/types/Resource.ts";
-import {broadcast} from "../../../../server/src/messages/messageRouter.ts";
+import { broadcastGameMessage as broadcast } from '../../game/runtime';
 
 const seedGrainTask: TaskDefinition = {
     key: 'seedGrain',
@@ -36,6 +36,7 @@ const seedGrainTask: TaskDefinition = {
         if (tile.terrain === 'dirt' && (tile.variant === 'dirt_tilled_hydrated' || tile.variant === 'dirt_tilled')) {
             tile.terrain = 'grain';
             tile.variant = null;
+            tile.variantAgeMs = undefined;
             // Set timestamp for potential future growth mechanics
             tile.variantSetMs = Date.now();
             broadcast({ type: 'tile:updated', tile});

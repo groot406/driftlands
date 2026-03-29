@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: game terrain tile
+Primary request: create a new decorative water tile variant with wind-pushed foam streaks and slightly rougher water movement
+Scene/backdrop: isolated water hex tile
+Subject: blue water with a few thin foam lines and directional wave texture
+Style/medium: painterly pixel art game tile
+Composition/framing: top-down three-quarter hex tile, same read as the existing water family
+Lighting/mood: breezy daylight, lightly animated feel
+Color palette: teal blue, cool blue depth, restrained off-white foam
+Materials/textures: ripple bands, foam streaks, subtle surface chop
+Constraints: keep it readable as water first; no rocks; no reeds; no dock pieces; no watermark
+Avoid: storm surf, large splashes, photoreal sea foam, blur

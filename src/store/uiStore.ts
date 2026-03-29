@@ -5,6 +5,7 @@ import {soundService} from '../core/soundService';
 import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
 import {focusHero} from "../core/heroService.ts";
 import type {Hero} from "../core/types/Hero.ts";
+import { resetNotifications } from './notificationStore';
 export type Phase = 'title' | 'playing';
 
 interface UIState {
@@ -95,6 +96,9 @@ export function returnToTitle() {
     uiStore.phase = 'title';
     uiStore.menuOpen = false;
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
+    closeWindow(WINDOW_IDS.MISSION_CENTER);
+    closeWindow(WINDOW_IDS.NOTIFICATION_CENTER);
+    resetNotifications();
 }
 
 export function isTitle() {

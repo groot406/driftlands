@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+Asset type: game terrain tile
+Primary request: repaint the town center tile so the settlement foundation reads cleaner and more intentional from a distance, with clearer pathing and warmer focal contrast
+Input images: Image 1: edit target (/Users/andredegroot/development/driftlands/src/assets/tiles/towncenter.png)
+Scene/backdrop: isolated settlement hex tile
+Subject: compact central foundation with small roof shapes, packed earth, and a readable settlement core
+Style/medium: painterly pixel art game tile
+Composition/framing: same framing and tile footprint as the source image
+Lighting/mood: warm welcoming daylight
+Color palette: warm ochre ground, muted terracotta roofs, weathered wood, small green accents
+Materials/textures: packed soil, timber, cloth awnings, stone edging
+Constraints: change only the tile artwork; keep the same scale and hero placement compatibility; no flags; no text; no watermark
+Avoid: tiny unreadable clutter, isometric building stacks, realistic perspective buildings, square border

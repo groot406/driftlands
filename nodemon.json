@@ -1,7 +1,6 @@
 {
-  "watch": ["server/src"],
+  "watch": ["server/src", "src/shared", "src/store", "src/core"],
   "ext": "ts,js",
   "ignore": ["server/src/**/*.spec.ts"],
   "exec": "npx tsx ./server/src/index.ts"
 }
-

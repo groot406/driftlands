@@ -1,24 +1,32 @@
 import {getTaskDefinition} from '../shared/tasks/taskRegistry';
-import {ensureTileExists, hexDistance, tileIndex} from '../core/world';
-import {terrainPositions} from "../core/terrainRegistry";
-import {resourceInventory} from './resourceStore';
-import {TERRAIN_DEFS} from '../core/terrainDefs';
+import {ensureTileExists, tileIndex} from '../core/world';
+import {getDistanceToNearestTowncenter} from '../shared/game/worldQueries';
+import {getStorageResourceAmount, withdrawResourceFromStorage} from './resourceStore';
 import {PathService} from "../core/PathService";
 import {heroes} from "./heroStore";
 import type {Hero, HeroStats} from "../core/types/Hero";
 import type {Tile} from "../core/types/Tile";
 import type {TaskDefinition, TaskInstance, TaskType} from "../core/types/Task";
-import type {ResourceAmount} from "../core/types/Resource";
-import {broadcast} from "../../server/src/messages/messageRouter.ts";
+import type {ResourceAmount, ResourceType} from "../core/types/Resource";
 import type {
     TaskCompletedMessage,
-    TaskCreatedMessage, TaskProgressMessage,
-    TaskRemovedMessage
+    TaskCreatedMessage,
+    TaskRemovedMessage,
+    ResourceWithdrawMessage,
 } from "../shared/protocol.ts";
-import {ServerMovementHandler} from "../../server/src/handlers/movementHandler";
-import type {HeroPayloadUpdateMessage} from "../shared/protocol.ts";
+import { broadcastGameMessage as broadcast, moveHeroWithRuntime } from '../shared/game/runtime';
+import { activateTaskInstance, broadcastTaskProgress, deactivateTaskInstance } from '../shared/game/taskProgress';
+import { clearHeroPayload, setHeroFetchIntent, setHeroPayload } from '../shared/game/heroPayload';
+import { collectTerrainCluster } from '../shared/game/terrainCluster';
+import { emitGameplayEvent } from '../shared/gameplay/events';
+import { axialDistanceCoords } from '../shared/game/hex';
+import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../shared/buildings/storage';
+import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
+import { isHeroWorkingTask } from '../shared/game/heroTaskState';
+import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
 
 const service = new PathService();
+const TASK_CHAIN_DELAY_MS = 180;
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -153,23 +161,12 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     // After deposit, check if all requirements are met and (re)activate task
     const remaining = getRemainingResources(task);
     if (remaining.length === 0) {
-        task.createdMs = Date.now();
-        task.lastUpdateMs = Date.now();
-        task.active = true;
+        activateTaskInstance(task);
     } else {
-        // Keep task inactive until all resources gathered
-        task.active = false;
+        deactivateTaskInstance(task);
     }
 
-    // Broadcast progress so clients update collectedResources and activation state
-    broadcast({
-        type: 'task:progress',
-        taskId: task.id,
-        progressXp: task.progressXp,
-        participants: task.participants,
-        collectedResources: task.collectedResources,
-        active: task.active,
-    } as TaskProgressMessage);
+    broadcastTaskProgress(task);
 
     return amountToAdd;
 }
@@ -207,7 +204,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             }
         } else {
             // For other resources, find nearest warehouse with the resource
-            const found = findNearestWarehouseWithResource(hero.q, hero.r, resource.type);
+            const found = findNearestWarehouseWithResource(hero.q, hero.r, resource.type, resource.amount);
             if (found) fetchLocation = { q: found.q, r: found.r };
         }
 
@@ -216,26 +213,9 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r);
             if (pathToFetch && pathToFetch.length > 0) {
                 // Store task info so hero can return after fetching
-                hero.pendingChain = {
-                    sourceTileId: targetTile.id,
-                    taskType: taskType // Store the actual task type to start later
-                };
-                hero.returnPos = { q: targetTile.q, r: targetTile.r };
+                setHeroFetchIntent(hero, targetTile.id, taskType, { q: targetTile.q, r: targetTile.r }, resource);
 
-                // Mark hero as preparing to fetch this resource (negative amount indicates intent)
-                hero.carryingPayload = {
-                    type: resource.type as any,
-                    amount: -resource.amount,
-                } as any;
-
-                // Notify clients so negative payload shows above head
-                broadcast({
-                    type: 'hero:payload_update',
-                    heroId: hero.id,
-                    payload: hero.carryingPayload,
-                } as HeroPayloadUpdateMessage);
-
-                ServerMovementHandler.getInstance().moveHero(hero, fetchLocation);
+                moveHeroWithRuntime(hero, fetchLocation);
                 return true; // Resource fetch initiated
             }
 
@@ -248,62 +228,38 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                 }
 
                 // Prepare carrying intent
-                hero.pendingChain = {
-                    sourceTileId: targetTile.id,
-                    taskType: taskType
-                };
-                hero.returnPos = { q: targetTile.q, r: targetTile.r };
-                hero.carryingPayload = {
-                    type: resource.type as any,
-                    amount: -resource.amount,
-                } as any;
-
-                // Sync negative payload immediately
-                broadcast({
-                    type: 'hero:payload_update',
-                    heroId: hero.id,
-                    payload: hero.carryingPayload,
-                } as HeroPayloadUpdateMessage);
+                setHeroFetchIntent(hero, targetTile.id, taskType, { q: targetTile.q, r: targetTile.r }, resource);
 
                 // Immediate pickup logic
                 const currentTile = ensureTileExists(hero.q, hero.r);
 
                 if (resource.type === 'water') {
                     // Check adjacency to water and pick up instantly
-                    const neighbors = currentTile.neighbors;
-                    let adjacentWater = false;
-                    if (neighbors) {
-                        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-                            if (neighbors[side]?.terrain === 'water') {
-                                adjacentWater = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (adjacentWater) {
-                        hero.carryingPayload = { type: 'water' as any, amount: 1 } as any;
-                        broadcast({
-                            type: 'hero:payload_update',
-                            heroId: hero.id,
-                            payload: hero.carryingPayload,
-                        } as HeroPayloadUpdateMessage);
+                    if (canDrawWaterFromTile(currentTile)) {
+                        setHeroPayload(hero, { type: 'water', amount: 1 });
                     } else {
                         // Not actually adjacent to water; skip
                         continue;
                     }
                 } else {
-                    // Warehouse immediate pickup when standing on towncenter with stock
-                    const ctTerrain = currentTile.terrain;
-                    const available = resourceInventory[resource.type as keyof typeof resourceInventory] || 0;
-                    if (ctTerrain === 'towncenter' && available > 0) {
-                        const amountToTake = Math.min(resource.amount, available, 10);
-                        resourceInventory[resource.type as keyof typeof resourceInventory] = available - amountToTake;
-                        hero.carryingPayload = { type: resource.type as any, amount: amountToTake } as any;
+                    // Warehouse immediate pickup when standing on a valid warehouse access tile with stock
+                    const available = getStorageResourceAmount(currentTile.id, resource.type);
+                    if (canUseWarehouseAtTile(currentTile) && available > 0) {
+                        const amountToTake = withdrawResourceFromStorage(currentTile.id, resource.type, Math.min(resource.amount, 10));
+                        if (amountToTake <= 0) {
+                            continue;
+                        }
+
                         broadcast({
-                            type: 'hero:payload_update',
+                            type: 'resource:withdraw',
                             heroId: hero.id,
-                            payload: hero.carryingPayload,
-                        } as HeroPayloadUpdateMessage);
+                            storageTileId: currentTile.id,
+                            resource: {
+                                type: resource.type,
+                                amount: amountToTake,
+                            },
+                        } as ResourceWithdrawMessage);
+                        setHeroPayload(hero, { type: resource.type, amount: amountToTake });
                     } else {
                         // Can't pick up immediately
                         continue;
@@ -312,20 +268,12 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
 
                 // Deposit directly into the task and activate it
                 if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
-                    console.log('added resource to task');
                     addResourcesToTask(inst, hero.carryingPayload);
-                    hero.carryingPayload = undefined;
-                    broadcast({
-                        type: 'hero:payload_update',
-                        heroId: hero.id,
-                        payload: null,
-                    } as HeroPayloadUpdateMessage);
+                    clearHeroPayload(hero);
 
                     const stillNeeded = getRemainingResources(inst);
                     if (stillNeeded.length === 0) {
-                        inst.createdMs = Date.now();
-                        inst.lastUpdateMs = Date.now();
-                        inst.active = true;
+                        activateTaskInstance(inst);
                     }
 
                     return false; // No movement initiated; task can proceed
@@ -341,9 +289,10 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
+    if (!isStoryTaskUnlocked(type)) return null;
     if (!def.canStart(tile, starter)) return null;
 
-    const distance = hexDistance(tile.q, tile.r);
+    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(distance);
     const collectedResources: ResourceAmount[] = [];
 
@@ -389,6 +338,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     def.onStart?.(tile, inst, [starter]);
 
     starter.currentTaskId = inst.id;
+    starter.pendingTask = undefined;
 
     fetchResourcesIfNeeded(starter, inst);
 
@@ -404,6 +354,7 @@ export function joinTask(taskId: string, hero: Hero) {
     }
     if (!inst.participants[hero.id]) inst.participants[hero.id] = 0;
     hero.currentTaskId = inst.id;
+    hero.pendingTask = undefined;
 
     fetchResourcesIfNeeded(hero, inst);
 }
@@ -414,25 +365,23 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
     const tile = tileIndex[inst.tileId];
     if (!def || !tile) return;
 
-    const distance = hexDistance(tile.q, tile.r);
+    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(distance);
 
     // add carrying to collected resources if applicable (only positive amounts)
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         addResourcesToTask(inst, hero.carryingPayload);
-        hero.carryingPayload = undefined;
+        clearHeroPayload(hero);
     }
 
     // See if there are some resources still to be gathered, and send the hero to fetch the first needed resource
     if (requiredResources && requiredResources.length > 0) {
         const stillNeeded = getRemainingResources(inst);
         if (stillNeeded.length > 0) {
-            inst.active = false;
+            deactivateTaskInstance(inst);
             checkAndInitiateResourceFetch(tile, stillNeeded, hero, type, inst);
         } else {
-            inst.createdMs = Date.now();
-            inst.lastUpdateMs = Date.now();
-            inst.active = true;
+            activateTaskInstance(inst);
         }
     }
 }
@@ -456,6 +405,56 @@ export function getTaskById(taskId: string): TaskInstance | undefined {
     return taskStore.taskIndex[taskId];
 }
 
+export function resumeWaitingTasksForResource(resourceType: ResourceType, storageTileId?: string) {
+    const storageTile = storageTileId ? tileIndex[storageTileId] : undefined;
+
+    for (const inst of taskStore.tasks) {
+        if (inst.completedMs) continue;
+        if (!inst.requiredResources?.some((resource) => resource.type === resourceType)) continue;
+
+        const remaining = getRemainingResources(inst);
+        if (!remaining.some((resource) => resource.type === resourceType)) continue;
+
+        const def = getTaskDefinition(inst.type);
+        const taskTile = tileIndex[inst.tileId];
+        if (!def || !taskTile) continue;
+
+        const idleParticipants = Object.keys(inst.participants)
+            .map((heroId) => heroes.find((candidate) => candidate.id === heroId))
+            .filter((hero): hero is Hero => {
+                if (!hero) return false;
+                if (hero.currentTaskId !== inst.id) return false;
+                if (hero.movement || hero.carryingPayload || hero.pendingTask) return false;
+                return true;
+            });
+
+        if (!idleParticipants.length) continue;
+
+        idleParticipants.sort((a, b) => {
+            const aPrimary = storageTile
+                ? axialDistanceCoords(a.q, a.r, storageTile.q, storageTile.r)
+                : axialDistanceCoords(a.q, a.r, taskTile.q, taskTile.r);
+            const bPrimary = storageTile
+                ? axialDistanceCoords(b.q, b.r, storageTile.q, storageTile.r)
+                : axialDistanceCoords(b.q, b.r, taskTile.q, taskTile.r);
+            if (aPrimary !== bPrimary) return aPrimary - bPrimary;
+
+            const aTaskDistance = axialDistanceCoords(a.q, a.r, taskTile.q, taskTile.r);
+            const bTaskDistance = axialDistanceCoords(b.q, b.r, taskTile.q, taskTile.r);
+            if (aTaskDistance !== bTaskDistance) return aTaskDistance - bTaskDistance;
+
+            return a.id.localeCompare(b.id);
+        });
+
+        for (const hero of idleParticipants) {
+            fetchResourcesIfNeeded(hero, inst);
+            if (hero.movement || hero.carryingPayload || hero.pendingTask) {
+                break;
+            }
+        }
+    }
+}
+
 // Time-based update; call frequently (e.g. each frame) with current hero roster
 export function updateActiveTasks(heroes: Hero[]) {
     const nowMs = Date.now();
@@ -468,7 +467,7 @@ export function updateActiveTasks(heroes: Hero[]) {
         const participants: Hero[] = [];
         for (const heroId of Object.keys(inst.participants)) {
             const h = heroes.find(hh => hh.id === heroId);
-            if (h) participants.push(h);
+            if (h && isHeroWorkingTask(h, inst)) participants.push(h);
         }
         if (!participants.length) { // no participants -> remove task
             removeTask(inst);
@@ -491,12 +490,7 @@ export function updateActiveTasks(heroes: Hero[]) {
         if (inst.progressXp >= inst.requiredXp) {
             completeTask(inst, def, tile, participants);
         } else {
-            broadcast({
-                type: 'task:progress',
-                taskId: inst.id,
-                progressXp: inst.progressXp,
-                participants: inst.participants
-            } as TaskProgressMessage);
+            broadcastTaskProgress(inst);
         }
     }
 }
@@ -512,6 +506,12 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
 
     // Call task's onComplete hook
     def.onComplete?.(tile, inst, participants);
+    emitGameplayEvent({
+        type: 'task:completed',
+        taskType: inst.type,
+        tileId: inst.tileId,
+        participantIds: participants.map((hero) => hero.id),
+    });
 
     const rewards = [];
     for (const hero of participants) {
@@ -528,8 +528,10 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
         rewards: rewards,
     } as TaskCompletedMessage);
 
-    // Auto-chain to adjacent tiles in cluster after short delay, to allow for any movement to initiate first
-    let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), 1500);
+    dispatchRewardResourceDeliveries(participants);
+
+    // Keep a tiny completion beat for feedback without reading as a freeze.
+    let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), TASK_CHAIN_DELAY_MS);
     for (const hero of participants) {
         hero.delayedMovementTimer = timer;
     }
@@ -549,7 +551,7 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedStats;
 
-    const distance = hexDistance(tile.q, tile.r);
+    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const rewards = def.totalRewardedStats(distance);
     for (const hero of participants) {
         rewardedStats[hero.id] = {}
@@ -579,138 +581,45 @@ function rewardResourcesToParticipants(instance: TaskInstance, participants: Her
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedResources;
-    const distance = hexDistance(tile.q, tile.r);
-    const rewards = def.totalRewardedResources(distance);
+    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     for (const hero of participants) {
         rewardedResources[hero.id] = {};
 
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
 
-        rewards.amount = Math.ceil(rewards.amount * share);
-        hero.carryingPayload = rewards;
+        const totalRewards = def.totalRewardedResources(distance);
+        const reward = {
+            type: totalRewards.type,
+            amount: Math.ceil(totalRewards.amount * share),
+        };
+        hero.carryingPayload = reward;
 
-        rewardedResources[hero.id] = rewards;
-
-        const tc = findNearestTowncenter(hero.q, hero.r);
-        if (tc) {
-            ServerMovementHandler.getInstance().moveHero(hero, tc);
-        }
+        rewardedResources[hero.id] = reward;
     }
 
     return rewardedResources;
 }
 
-function findNearestTowncenter(q: number, r: number) {
-    let best;
-    let bestDist;
+function dispatchRewardResourceDeliveries(participants: Hero[]) {
+    for (const hero of participants) {
+        if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) continue;
 
-    // First distance to origin (0,0) as fallback
-    const dq = Math.abs(0 - q);
-    const dr = Math.abs(0 - r);
-    const ds = Math.abs(0 - (-q - r));
-    bestDist = Math.max(dq, dr, ds);
-    best = {q: 0, r: 0};
+        const warehouse = findNearestWarehouse(hero.q, hero.r);
+        if (!warehouse) continue;
 
-    for (const id of terrainPositions.towncenter) {
-        const t = tileIndex[id];
-        if (!t) continue;
-        const dq = Math.abs(t.q - q);
-        const dr = Math.abs(t.r - r);
-        const ds = Math.abs((-t.q - t.r) - (-q - r));
-        const dist = Math.max(dq, dr, ds);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = {q: t.q, r: t.r};
-        }
+        moveHeroWithRuntime(hero, warehouse);
     }
-
-    return best;
 }
 
-// Find nearest warehouse (towncenter) that has the required resource in stock
-// Returns warehouse location even if it has less than requested amount (partial fetching)
-function findNearestWarehouseWithResource(q: number, r: number, resourceType: string): {
-    q: number;
-    r: number;
-    availableAmount: number
-} | null {
-    // Check if warehouse has any of this resource
-    const available = resourceInventory[resourceType as keyof typeof resourceInventory] || 0;
-    if (available <= 0) {
-        return null;
-    }
-
-    let best = null;
-    let bestDist = Infinity;
-
-    // Check origin (0,0)
-    const originTile = tileIndex[ensureTileExists(0, 0).id];
-    if (originTile && originTile.terrain === 'towncenter') {
-        const dq = Math.abs(0 - q);
-        const dr = Math.abs(0 - r);
-        const ds = Math.abs(0 - (-q - r));
-        bestDist = Math.max(dq, dr, ds);
-        best = {q: 0, r: 0, availableAmount: available};
-    }
-
-    // Check all towncenters (they all share same inventory for now)
-    for (const id of terrainPositions.towncenter) {
-        const t = tileIndex[id];
-        if (!t) continue;
-        const dq = Math.abs(t.q - q);
-        const dr = Math.abs(t.r - r);
-        const ds = Math.abs((-t.q - t.r) - (-q - r));
-        const dist = Math.max(dq, dr, ds);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = {q: t.q, r: t.r, availableAmount: available};
-        }
-    }
-
-    return best;
+function findNearestWarehouse(q: number, r: number) {
+    const warehouse = findNearestWarehouseWithCapacity(q, r, 1);
+    return warehouse ? { q: warehouse.q, r: warehouse.r } : null;
 }
 
-// Find nearest walkable tile adjacent to water
-function findNearestWaterTile(q: number, r: number): { q: number; r: number; waterTileId: string } | null {
-    let best = null;
-    let bestDist = Infinity;
-    let bestWaterTileId = '';
-
-    // Check all water tiles
-    for (const id of terrainPositions.water || []) {
-        const waterTile = tileIndex[id];
-        if (!waterTile || !waterTile.discovered) continue;
-
-        // Check neighbors of water tile for walkable tiles
-        const neighbors = waterTile.neighbors ?? ensureTileExists(waterTile.q, waterTile.r).neighbors;
-        if (!neighbors) continue;
-
-        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-            const neighborTile = neighbors[side];
-            if (!neighborTile || !neighborTile.discovered) continue;
-
-            // Check if neighbor is walkable
-            const terrain = neighborTile.terrain;
-            if (!terrain) continue;
-            const terrainDef = (TERRAIN_DEFS as any)[terrain];
-            if (!terrainDef?.walkable) continue;
-
-            // Calculate distance from hero to this walkable neighbor
-            const dq = Math.abs(neighborTile.q - q);
-            const dr = Math.abs(neighborTile.r - r);
-            const ds = Math.abs((-neighborTile.q - neighborTile.r) - (-q - r));
-            const dist = Math.max(dq, dr, ds);
-
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = {q: neighborTile.q, r: neighborTile.r};
-                bestWaterTileId = waterTile.id;
-            }
-        }
-    }
-
-    return best ? {...best, waterTileId: bestWaterTileId} : null;
+function findNearestWaterTile(q: number, r: number): { q: number; r: number } | null {
+    const tile = findNearestWaterAccessTile(q, r);
+    return tile ? { q: tile.q, r: tile.r } : null;
 }
 
 
@@ -727,32 +636,12 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
     const def = getTaskDefinition(inst.type);
     if (!def?.chainAdjacentSameTerrain) return;
     if (!tile.discovered || !tile.terrain) return;
-    const terrain = tile.terrain;
-
-    // Build full cluster via BFS (discovered tiles sharing terrain)
-    const visited = new Set<string>();
-    const cluster: Tile[] = [];
-    const queue: Tile[] = [tile];
-    const MAX_CLUSTER = 999; // safety cap
-    while (queue.length && visited.size < MAX_CLUSTER) {
-        const cur = queue.shift()!;
-        if (visited.has(cur.id)) continue;
-        if (!cur.discovered || cur.terrain !== terrain) continue;
-        visited.add(cur.id);
-        cluster.push(cur);
-        const nm = cur.neighbors ?? ensureTileExists(cur.q, cur.r).neighbors!;
-        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-            const nt = nm[side];
-            if (!nt) continue;
-            if (!visited.has(nt.id) && nt.discovered && nt.terrain === terrain) queue.push(nt);
-        }
-    }
+    const cluster = collectTerrainCluster(tile);
 
     for (const hero of participants) {
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
         if (hero.carryingPayload) {
-            // Preserve existing pendingChain if already set for same source to avoid overwrite.
-            if (!hero.pendingChain) hero.pendingChain = {sourceTileId: tile.id, taskType: inst.type};
+            hero.pendingChain = {sourceTileId: tile.id, taskType: inst.type};
             continue;
         }
         // Skip heroes still moving.
@@ -768,10 +657,10 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         }
         if (!candidates.length) continue;
 
-        // Sort by distance from world center (tie-break by q then r for determinism)
+        // Sort by tile level relative to the nearest town center (tie-break by q then r for determinism)
         candidates.sort((a, b) => {
-            const da = hexDistance(a.q, a.r);
-            const db = hexDistance(b.q, b.r);
+            const da = getDistanceToNearestTowncenter(a.q, a.r);
+            const db = getDistanceToNearestTowncenter(b.q, b.r);
             if (da !== db) return da - db;
             if (a.q !== b.q) return a.q - b.q;
             return a.r - b.r;
@@ -779,8 +668,16 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
         // Try each candidate until a path is found
         for (const targetTile of candidates) {
-            ServerMovementHandler.getInstance().moveHero(hero, targetTile, inst.type);
+            moveHeroWithRuntime(hero, targetTile, inst.type);
             break; // only chain to one tile per hero
         }
     }
+}
+
+export function getTasksAtTile(tileId: string): TaskInstance[] {
+    const tileTasks = taskStore.tasksByTile[tileId];
+    if (!tileTasks) return [];
+    return Object.values(tileTasks)
+        .map(id => taskStore.taskIndex[id])
+        .filter((task): task is TaskInstance => !!task);
 }

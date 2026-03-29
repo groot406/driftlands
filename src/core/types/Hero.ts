@@ -17,6 +17,13 @@ export interface HeroMovementState {
     stepDurations: number[]; // per-step durations (same length as path)
     cumulative: number[]; // cumulative end times relative to startMs for each step
     taskType?: string; // optional task type to start upon arrival
+    requestId?: string;
+    authoritative?: boolean;
+}
+
+export interface HeroPendingTaskIntent {
+    tileId: string;
+    taskType: string;
 }
 
 export interface Hero {
@@ -29,6 +36,7 @@ export interface Hero {
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
+    pendingTask?: HeroPendingTaskIntent; // task to start or rejoin when arriving at its tile
     carryingPayload?: ResourceAmount; // new payload model for carried resources
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows

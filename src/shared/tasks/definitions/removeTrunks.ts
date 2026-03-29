@@ -2,7 +2,7 @@ import {registerTask} from '../taskRegistry';
 import type {TaskDefinition, TaskSoundConfig} from "../../../core/types/Task";
 import { terrainPositions } from '../../../core/terrainRegistry';
 import type {Hero} from "../../../core/types/Hero";
-import {broadcast} from "../../../../server/src/messages/messageRouter.ts";
+import { broadcastGameMessage as broadcast } from '../../game/runtime';
 
 const removeTrunksTask: TaskDefinition = {
     key: 'removeTrunks',
@@ -34,6 +34,7 @@ const removeTrunksTask: TaskDefinition = {
             tile.terrain = 'plains';
             tile.variant = undefined;
             tile.variantSetMs = undefined;
+            tile.variantAgeMs = undefined;
 
             terrainPositions.forest.delete(tile.id);
             terrainPositions.plains.add(tile.id);

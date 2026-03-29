@@ -1,6 +1,6 @@
 import type { TickContext } from '../tick';
-import {updateActiveTasks} from "../../../src/store/taskStore";
-import {heroes} from "../../../src/store/heroStore";
+import { updateActiveTasks } from '../../../src/shared/game/state/taskStore';
+import { heroes } from '../../../src/shared/game/state/heroStore';
 
 export const taskSystem = {
   name: 'tasks',

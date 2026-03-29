@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: game terrain tile
+Primary request: create a new decorative forest tile variant with a damp forest floor and scattered mushrooms
+Scene/backdrop: isolated forest-floor hex tile
+Subject: deep green ground cover, dark soil pockets, a few small mushrooms tucked into moss and roots
+Style/medium: painterly pixel art game tile
+Composition/framing: top-down three-quarter hex tile with open center readability
+Lighting/mood: cool shaded woodland light
+Color palette: moss green, earthy brown, muted cream and rust mushroom caps
+Materials/textures: moss pads, damp soil, leaf litter, soft roots
+Constraints: keep the variant low-profile so it does not need an overlay; no large trunks; no fantasy glow; no watermark
+Avoid: oversized mushrooms, fairy-tale props, photoreal fungus texture, noisy clutter

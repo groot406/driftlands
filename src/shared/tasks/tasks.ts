@@ -1,8 +1,15 @@
-import {startTask, joinTask, getTaskByTile, addResourcesToTask, getTaskById} from '../../store/taskStore';
-import { depositResource, resourceInventory } from '../../store/resourceStore';
-import { tileIndex, ensureTileExists, hexDistance as worldHexDistance } from '../../core/world';
+import {
+    startTask,
+    joinTask,
+    getTaskByTile,
+    addResourcesToTask,
+    getTaskById,
+    getTasksAtTile,
+    resumeWaitingTasksForResource,
+} from '../../store/taskStore';
+import { depositResourceToStorage, withdrawResourceFromStorage } from '../../store/resourceStore';
+import { tileIndex } from '../../core/world';
 import { getTaskDefinition } from './taskRegistry';
-import {TERRAIN_DEFS} from "../../core/terrainDefs";
 import {listTaskDefinitions} from "./taskRegistry";
 
 // Import task definitions to register them
@@ -10,11 +17,18 @@ import './taskDefinitions';
 import type {Tile} from "../../core/types/Tile";
 import type {Hero} from "../../core/types/Hero";
 import type {TaskDefinition} from "../../core/types/Task";
-import {ServerMovementHandler} from "../../../server/src/handlers/movementHandler.ts";
-import {broadcast} from "../../../server/src/messages/messageRouter.ts";
 import type {ResourceDepositMessage} from "../protocol.ts";
-import type {HeroPayloadUpdateMessage} from "../protocol.ts";
 import type {ResourceWithdrawMessage} from "../protocol.ts";
+import { broadcastGameMessage as broadcast, moveHeroWithRuntime } from '../game/runtime';
+import { clearHeroPayload, setHeroPayload } from '../game/heroPayload';
+import { collectTerrainCluster } from '../game/terrainCluster';
+import { isTileWalkable } from '../game/navigation';
+import { emitGameplayEvent } from '../gameplay/events';
+import { canDrawWaterFromTile } from '../buildings/water';
+import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../buildings/storage';
+import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
+import { getDistanceToNearestTowncenter } from '../game/worldQueries';
+import { isStoryTaskUnlocked } from '../story/progressionState.ts';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -24,63 +38,41 @@ function isFetching(hero: Hero): boolean {
 
 function tryToFetchFromWarehouse(hero: Hero, tile: Tile) {
     const carrying = hero.carryingPayload;
-    if (tile.terrain !== 'towncenter' || !carrying || carrying?.amount > 0) {
-        return
+    if (!canUseWarehouseAtTile(tile) || !carrying || carrying?.amount > 0) {
+        return 0;
     }
 
-    // Pick up resource from warehouse - take what's available (up to needed amount)
     const resourceType = carrying.type;
-    const available = resourceInventory[resourceType] || 0;
-    const amountToTake = Math.min(Math.abs(carrying.amount), available, MAX_CARRY_AMOUNT);
+    const amountToTake = withdrawResourceFromStorage(
+        tile.id,
+        resourceType,
+        Math.min(Math.abs(carrying.amount), MAX_CARRY_AMOUNT),
+    );
 
     if (amountToTake > 0) {
-        // Deduct from warehouse inventory
-        resourceInventory[resourceType] = (resourceInventory[resourceType] ?? amountToTake) - amountToTake;
-
-        // Notify clients about warehouse withdrawal to sync UI
         const withdrawMsg: ResourceWithdrawMessage = {
             type: 'resource:withdraw',
             heroId: hero.id,
+            storageTileId: tile.id,
             resource: { type: resourceType as any, amount: amountToTake },
         } as any;
         broadcast(withdrawMsg);
 
-        hero.carryingPayload = { type: resourceType, amount: amountToTake };
-        broadcast({
-            type: 'hero:payload_update',
-            heroId: hero.id,
-            payload: hero.carryingPayload,
-        } as HeroPayloadUpdateMessage);
+        setHeroPayload(hero, { type: resourceType, amount: amountToTake });
 
         // playPositionalSound('take-' + tile.q + '.' + tile.r, 'take.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
+
+    return amountToTake;
 }
 
 function tryToFetchWater(hero: Hero, tile: Tile) {
     const carrying = hero.carryingPayload;
     if(!carrying || carrying.amount > 0 || carrying.type !== 'water') return;
 
-    // Check if hero is adjacent to the water tile
-    const neighbors = tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
-    let isAdjacentToWater = false;
-
-    if (neighbors) {
-        for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-            if (neighbors[side]?.terrain === 'water') {
-                isAdjacentToWater = true;
-                break;
-            }
-        }
-    }
-
-    if (isAdjacentToWater) {
+    if (canDrawWaterFromTile(tile)) {
         // Pick up water
-        hero.carryingPayload = { type: 'water' as any, amount: 1 };
-        broadcast({
-            type: 'hero:payload_update',
-            heroId: hero.id,
-            payload: hero.carryingPayload,
-        } as HeroPayloadUpdateMessage);
+        setHeroPayload(hero, { type: 'water', amount: 1 });
 
         // playPositionalSound('splash-' + tile.q + '.' + tile.r, 'splash.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
     }
@@ -91,10 +83,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
 
     const pending = hero.pendingChain; // capture before potential clearing
+    const arrivalTask = hero.pendingTask;
+    const isAtPendingTaskTile = !!arrivalTask && arrivalTask.tileId === tile.id;
 
     // Handle resource fetch: if hero is fetching a resource and arrived at source
     if (isFetching(hero)) {
-        console.log('arrived while fetching')
         const carrying = hero.carryingPayload;
         if (!carrying) return;
 
@@ -103,58 +96,87 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         if(resourceType === 'water') {
             tryToFetchWater(hero, tile)
         } else {
-            tryToFetchFromWarehouse(hero, tile)
+            const fetchedAmount = tryToFetchFromWarehouse(hero, tile);
+            if (fetchedAmount <= 0) {
+                const fallbackWarehouse = findNearestWarehouseWithResource(tile.q, tile.r, resourceType, Math.abs(carrying.amount), [tile.id]);
+                if (fallbackWarehouse) {
+                    moveHeroWithRuntime(hero, fallbackWarehouse);
+                    return;
+                }
+            }
         }
 
         // Now return to task location
         if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
-            ServerMovementHandler.getInstance().moveHero(hero, hero.returnPos, hero.movement?.taskType)
+            moveHeroWithRuntime(hero, hero.returnPos, arrivalTask?.taskType)
             return;
         }
     }
 
-    // Resource deposit: if hero carrying a payload and tile is towncenter, deposit and send hero back
+    // Resource deposit: if hero carrying a payload and tile is a warehouse node, deposit and send hero back
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
-        console.log('arrived while carrying')
-        if (tile.terrain === 'towncenter') {
-            depositResource(hero.carryingPayload.type as any, hero.carryingPayload.amount);
-            const resourceDepositMessage: ResourceDepositMessage = {
-                type: 'resource:deposit',
-                heroId: hero.id,
-                resource: {
-                    type: hero.carryingPayload.type,
-                    amount: hero.carryingPayload.amount,
-                },
+        if (canUseWarehouseAtTile(tile)) {
+            const carriedType = hero.carryingPayload.type;
+            const carriedAmount = hero.carryingPayload.amount;
+            const depositedAmount = depositResourceToStorage(tile.id, carriedType as any, carriedAmount);
+
+            if (depositedAmount > 0) {
+                const resourceDepositMessage: ResourceDepositMessage = {
+                    type: 'resource:deposit',
+                    heroId: hero.id,
+                    storageTileId: tile.id,
+                    resource: {
+                        type: carriedType,
+                        amount: depositedAmount,
+                    },
+                }
+                broadcast(resourceDepositMessage);
+                emitGameplayEvent({
+                    type: 'resource:delivered',
+                    heroId: hero.id,
+                    resourceType: carriedType,
+                    amount: depositedAmount,
+                });
             }
-            broadcast(resourceDepositMessage);
-            hero.carryingPayload = undefined;
-            broadcast({
-                type: 'hero:payload_update',
-                heroId: hero.id,
-                payload: null,
-            } as HeroPayloadUpdateMessage);
+
+            const remainingAmount = carriedAmount - depositedAmount;
+            if (remainingAmount <= 0) {
+                clearHeroPayload(hero);
+                hero.movement = undefined;
+                if (!arrivalTask && pending) {
+                    attemptDeferredChain(hero, pending);
+                    hero.pendingChain = undefined;
+                }
+                if (depositedAmount > 0) {
+                    resumeWaitingTasksForResource(carriedType, tile.id);
+                }
+                return;
+            }
+
+            setHeroPayload(hero, {
+                type: carriedType,
+                amount: remainingAmount,
+            });
+
+            const nextWarehouse = findNearestWarehouseWithCapacity(tile.q, tile.r, remainingAmount, [tile.id]);
+            if (nextWarehouse) {
+                moveHeroWithRuntime(hero, nextWarehouse);
+            }
+            if (depositedAmount > 0) {
+                resumeWaitingTasksForResource(carriedType, tile.id);
+            }
+            return;
         } else if(hero.currentTaskId) {
-            console.log('arrived while carrying to task')
-            // If not at towncenter but carrying resource for a task, try to deposit to that task if possible
+            // If not at a warehouse node but carrying resource for a task, try to deposit to that task if possible
             const task = getTaskById(hero.currentTaskId);
             if (task) {
                 const consumed = addResourcesToTask(task, hero.carryingPayload);
                 if (consumed > 0) {
                     hero.carryingPayload.amount -= consumed;
                     if (hero.carryingPayload.amount <= 0) {
-                        hero.carryingPayload = undefined;
-                        broadcast({
-                            type: 'hero:payload_update',
-                            heroId: hero.id,
-                            payload: null,
-                        } as HeroPayloadUpdateMessage);
+                        clearHeroPayload(hero);
                     } else {
-                        // Broadcast remaining payload
-                        broadcast({
-                            type: 'hero:payload_update',
-                            heroId: hero.id,
-                            payload: hero.carryingPayload,
-                        } as HeroPayloadUpdateMessage);
+                        setHeroPayload(hero, hero.carryingPayload);
                     }
                 }
                 //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
@@ -162,40 +184,20 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 return;
             }
         } else {
-            console.log('arrived while carrying but no task to deliver to');
             // Lets check if there is a task on this tile that can accept resources
-            const tasksHere = Object.values(tileIndex).filter(t => t.id === tile.id).flatMap(t => {
-                const taskList = [];
-                for (const def of listTaskDefinitions()) {
-                    const taskInstance = getTaskByTile(t.id, def.key);
-                    if (taskInstance) {
-                        taskList.push(taskInstance);
-                    }
-                }
-                return taskList;
-            });
+            const tasksHere = getTasksAtTile(tile.id);
 
             for (const task of tasksHere) {
                 const consumed = addResourcesToTask(task, hero.carryingPayload);
                 if (consumed > 0) {
                     hero.carryingPayload!.amount -= consumed;
                     if (hero.carryingPayload!.amount <= 0) {
-                        hero.carryingPayload = undefined;
-                        broadcast({
-                            type: 'hero:payload_update',
-                            heroId: hero.id,
-                            payload: null,
-                        } as HeroPayloadUpdateMessage);
+                        clearHeroPayload(hero);
                         // Join the task to trigger activation or fetching of other needed resources
                         joinTask(task.id, hero);
                         return;
                     } else {
-                        // Broadcast remaining payload
-                        broadcast({
-                            type: 'hero:payload_update',
-                            heroId: hero.id,
-                            payload: hero.carryingPayload,
-                        } as HeroPayloadUpdateMessage);
+                        setHeroPayload(hero, hero.carryingPayload);
                         // Join task and let server decide next steps (continue fetching other resources or start)
                         joinTask(task.id, hero);
                         return;
@@ -206,31 +208,25 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         }
     }
 
-    if (!hero.movement?.taskType) {
+    if (!isAtPendingTaskTile) {
         hero.movement = undefined; // clear movement on arrival
-        // Trigger deferred chain now if pending and hero back at source tile
-        if (pending) {
+        // Trigger deferred chain for non-task arrivals such as reward delivery.
+        if (!arrivalTask && pending) {
             attemptDeferredChain(hero, pending);
             hero.pendingChain = undefined;
         }
         return;
     }
 
-    const selected = hero.movement?.taskType;
+    const selected = arrivalTask?.taskType;
+    hero.pendingTask = undefined;
     if (selected) {
         const existing = getTaskByTile(tile.id, selected);
         if (!existing) {
             startTask(tile, selected, hero);
-        } else if (existing.active) {
+        } else {
             joinTask(existing.id, hero);
         }
-    }
-
-    // After starting/joining, if pendingChain present AND hero at source, trigger it too
-    if (pending && hero.q === tileIndex[pending.sourceTileId]?.q && hero.r === tileIndex[pending.sourceTileId]?.r) {
-        hero.movement = undefined; // clear movement on arrival
-        attemptDeferredChain(hero, pending);
-        hero.pendingChain = undefined;
     }
 }
 
@@ -252,25 +248,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     // Do not start if hero still busy or carrying
     if (hero.carryingPayload || hero.movement) return;
 
-    const terrain = source.terrain;
-    // BFS full cluster of same terrain
-    const visited = new Set<string>();
-    const cluster: Tile[] = [];
-    const queue: Tile[] = [source];
-    const MAX_CLUSTER = 800; // safety cap
-    while (queue.length && visited.size < MAX_CLUSTER) {
-        const cur = queue.shift()!;
-        if (visited.has(cur.id)) continue;
-        if (!cur.discovered || cur.terrain !== terrain) continue;
-        visited.add(cur.id);
-        cluster.push(cur);
-        const nm = cur.neighbors ?? ensureTileExists(cur.q, cur.r).neighbors!;
-        for (const side of ['a','b','c','d','e','f'] as const) {
-            const nt = nm[side];
-            if (!nt) continue;
-            if (!visited.has(nt.id) && nt.discovered && nt.terrain === terrain) queue.push(nt);
-        }
-    }
+    const cluster = collectTerrainCluster(source, 800);
 
     // Build candidate tiles, requiring canStart and no existing task instance of this type
     const candidates: Tile[] = [];
@@ -282,24 +260,22 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     if (!candidates.length) return;
 
     candidates.sort((a,b) => {
-        const da = worldHexDistance(a.q, a.r);
-        const db = worldHexDistance(b.q, b.r);
+        const da = getDistanceToNearestTowncenter(a.q, a.r);
+        const db = getDistanceToNearestTowncenter(b.q, b.r);
         if (da !== db) return da - db;
-
-        // final tiebreaker: random
-        return Math.random() - 0.5;
+        if (a.q !== b.q) return a.q - b.q;
+        return a.r - b.r;
     });
 
     for (const targetTile of candidates) {
-        ServerMovementHandler.getInstance().moveHero(hero, targetTile, pending.taskType);
+        moveHeroWithRuntime(hero, targetTile, pending.taskType);
         break;
     }
 }
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
-    let tasks = listTaskDefinitions().filter(def => def.canStart(tile, hero));
-    const terrainDef = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
-    if(tasks.length > 0 && terrainDef?.walkable) {
+    let tasks = listTaskDefinitions().filter(def => isStoryTaskUnlocked(def.key) && def.canStart(tile, hero));
+    if(tasks.length > 0 && isTileWalkable(tile)) {
         tasks.push({
             key: 'walk',
             label: 'Go here',
@@ -308,6 +284,23 @@ export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
             heroRate: (_hero: Hero, _tile: Tile) => 1,
         })
     }
+
+    tasks = tasks.sort((a, b) => {
+        if (a.key === 'walk') return 1;
+        if (b.key === 'walk') return -1;
+
+        const aBuilding = getBuildingDefinitionByTaskKey(a.key);
+        const bBuilding = getBuildingDefinitionByTaskKey(b.key);
+
+        if (aBuilding && bBuilding) {
+            return aBuilding.sortOrder - bBuilding.sortOrder || a.label.localeCompare(b.label);
+        }
+
+        if (aBuilding) return -1;
+        if (bBuilding) return 1;
+
+        return a.label.localeCompare(b.label);
+    });
 
     return tasks;
 }

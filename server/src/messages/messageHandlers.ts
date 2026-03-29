@@ -3,6 +3,7 @@ import { ServerPlayerHandler } from '../handlers/playerHandler';
 import { ServerGameStateHandler } from '../handlers/gameStateHandler';
 import { ServerMovementHandler } from '../handlers/movementHandler';
 import { ServerTaskHandler } from '../handlers/taskHandler';
+import { ServerCoopHandler } from '../handlers/coopHandler';
 
 // Initialize all server handlers
 export function initializeServerHandlers(io: Server) {
@@ -18,5 +19,8 @@ export function initializeServerHandlers(io: Server) {
   const taskHandler = new ServerTaskHandler(io);
   taskHandler.init();
 
-  return { playerHandler, gameStateHandler, movementHandler, taskHandler };
+  const coopHandler = new ServerCoopHandler(io);
+  coopHandler.init();
+
+  return { playerHandler, gameStateHandler, movementHandler, taskHandler, coopHandler };
 }

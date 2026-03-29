@@ -4,6 +4,11 @@
       <div class="flex-1 flex flex-col gap-4">
         <ResourceBar/>
       </div>
+      <div class="pointer-events-auto gap-3 flex flex-col justify-end justify-items-end">
+        <button class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</button>
+        <MissionCenterButton />
+        <NotificationCenterButton />
+      </div>
       <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
         <WorldControls/>
       </div>
@@ -14,12 +19,19 @@
   <OnlinePlayersIndicator />
   <PlayerModal />
   <NotificationOverlay />
+  <NotificationCenter />
   <InGameMenu />
+  <MissionCenter />
+  <RunOutcomeOverlay />
 </template>
 
 <script setup lang="ts">
 import {onMounted, ref} from 'vue';
 import ResourceBar from './ResourceBar.vue';
+import MissionCenterButton from './MissionCenterButton.vue';
+import NotificationCenterButton from './NotificationCenterButton.vue';
+import MissionCenter from './MissionCenter.vue';
+import NotificationCenter from './NotificationCenter.vue';
 import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';
 import InGameMenu from './InGameMenu.vue';
@@ -27,6 +39,8 @@ import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
 import PlayerModal from './PlayerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
+import RunOutcomeOverlay from './RunOutcomeOverlay.vue';
+import { pauseGame } from '../store/uiStore';
 
 const showHelpers = ref(false);
 
@@ -46,5 +60,14 @@ onMounted(() =>
 }
 .noscrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
+}
+
+.menu-shortcut-btn {
+  @apply self-end rounded-2xl border border-slate-700/80 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-slate-100 shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40;
+  background-color: rgb(2 6 23 / 0.78);
+}
+
+.menu-shortcut-btn:hover {
+  background-color: rgb(15 23 42 / 0.9);
 }
 </style>

@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+Asset type: game terrain tile
+Primary request: repaint the existing mountain base tile with clearer rocky planes, better midtone separation, and stronger elevation read from top-down
+Input images: Image 1: edit target (/Users/andredegroot/development/driftlands/src/assets/tiles/mountains.png)
+Scene/backdrop: isolated rocky mountain hex tile
+Subject: layered rock faces, broken stone shelves, a small walkable top surface implied near the center
+Style/medium: painterly pixel art game tile
+Composition/framing: same framing and footprint as the source image
+Lighting/mood: high daylight, rugged but readable
+Color palette: slate blue-gray rock with a few warm dust notes
+Materials/textures: chipped stone, hard edges, clustered cracks, chunky highlights
+Constraints: change only the mountain artwork; keep the footprint and height read compatible with the existing overlay; no snow; no mine entrance; no watermark
+Avoid: photoreal cliffs, noisy texture soup, soft edges, exaggerated fantasy crystals

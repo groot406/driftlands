@@ -1,9 +1,9 @@
-import {getEffectiveAgeMs, registerAgingTile} from './growth';
+import {registerAgingTile, resolveTileGrowthDurationMs} from './growth';
 import {TERRAIN_DEFS} from './terrainDefs';
 import {updateTileVariantIndex} from './terrainRegistry';
 import type {Tile} from "./types/Tile.ts";
-import {broadcast} from "../../server/src/messages/messageRouter.ts";
 import type {TileUpdatedMessage} from "../shared/protocol.ts";
+import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 
 interface ApplyVariantOptions {
     stagger?: boolean; // apply random backward offset across effective age window
@@ -18,6 +18,7 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
 
     if (!variantKey) {
         tile.variantSetMs = undefined;
+        tile.variantAgeMs = undefined;
         broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
         return;
     }
@@ -26,24 +27,17 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
     const variantDef = def?.variations?.find(v => v.key === variantKey);
     if (!variantDef?.growth) {
         tile.variantSetMs = undefined;
+        tile.variantAgeMs = undefined;
         broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
         return;
     }
 
     if (opts.setTimestamp !== false) {
-        // Compute effective age (only needed for stagger offset). Timestamp always set to now unless stagger indicates backdating.
-        let effectiveAge = variantDef.growth.ageMs ?? 0;
-        if (variantDef.growth.ageMsRange) {
-            const [minAge, maxAge] = variantDef.growth.ageMsRange;
-            if(minAge === undefined || maxAge === undefined) {
-                throw new Error(`Invalid ageMsRange for variant ${variantKey} on terrain ${tile.terrain}`);
-            }
-            effectiveAge = Math.floor(Math.random() * (maxAge - minAge + 1)) + minAge;
-        }
-
-        if (opts.respectBiome) {
-            effectiveAge = getEffectiveAgeMs(tile, variantDef.growth);
-        }
+        // Resolve a single duration for this stage so ranged growth stays consistent across ticks.
+        tile.variantAgeMs = undefined;
+        const effectiveAge = resolveTileGrowthDurationMs(tile, variantDef.growth, {
+            respectBiome: opts.respectBiome,
+        });
         if (opts.stagger) {
             const offset = Math.floor(Math.random() * effectiveAge);
             tile.variantSetMs = Date.now() - offset;

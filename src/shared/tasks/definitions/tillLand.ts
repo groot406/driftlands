@@ -3,6 +3,7 @@ import type {TaskDefinition} from "../../../core/types/Task";
 import { applyVariant } from '../../../core/variants';
 import type {Tile} from "../../../core/types/Tile";
 import type {Hero} from "../../../core/types/Hero";
+import { hasAdjacentWaterSource } from '../../buildings/water';
 
 const tillLandTask: TaskDefinition = {
     key: 'tillLand',
@@ -10,7 +11,7 @@ const tillLandTask: TaskDefinition = {
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'dirt',
 
     canStart(tile, hero) {
-        return !hero.carryingPayload && ((tile.terrain === 'dirt' && !tile.variant) || tile.terrain === 'plains');
+        return !hero.carryingPayload && ((tile.terrain === 'dirt' && !tile.variant) || (tile.terrain === 'plains' && !tile.variant));
     },
 
     requiredXp(_distance: number) {
@@ -29,17 +30,7 @@ const tillLandTask: TaskDefinition = {
         }
 
         if (tile.terrain === 'dirt') {
-
-            let hasWaterNearby = false;
-            // See if tile has a water neighbour
-            if (tile.neighbors) {
-                for (const side of ['a','b','c','d','e','f'] as const) {
-                    const nt = tile.neighbors[side];
-                    if(nt && nt.terrain === 'water') {
-                        hasWaterNearby = true;
-                    }
-                }
-            }
+            const hasWaterNearby = hasAdjacentWaterSource(tile);
 
             if(hasWaterNearby) {
                 applyVariant(tile, 'dirt_tilled_hydrated', {stagger: false, respectBiome: true});

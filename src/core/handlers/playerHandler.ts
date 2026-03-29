@@ -4,7 +4,14 @@ import { addPlayer, removePlayer, updateOnlinePlayersCount } from '../../store/p
 import { addNotification } from '../../store/notificationStore';
 
 class PlayerMessageHandler {
+  private initialized = false;
+
   init(): void {
+    if (this.initialized) {
+      return;
+    }
+
+    this.initialized = true;
     clientMessageRouter.on('player:join', this.handlePlayerJoin.bind(this));
     clientMessageRouter.on('player:leave', this.handlePlayerLeave.bind(this));
     clientMessageRouter.on('player:count', this.handlePlayerCount.bind(this));

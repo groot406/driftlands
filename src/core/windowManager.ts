@@ -103,6 +103,8 @@ export const WINDOW_IDS = {
   PLAYER_MODAL: 'player-modal',
   IN_GAME_MENU: 'in-game-menu',
   SETTINGS_MODAL: 'settings-modal',
+  MISSION_CENTER: 'mission-center',
+  NOTIFICATION_CENTER: 'notification-center',
   TASK_MENU: 'task-menu',
 } as const;
 
@@ -122,6 +124,18 @@ registerWindow({
 registerWindow({
   id: WINDOW_IDS.SETTINGS_MODAL,
   priority: 150,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.MISSION_CENTER,
+  priority: 175,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.NOTIFICATION_CENTER,
+  priority: 180,
   blocksKeyboard: true,
 });
 

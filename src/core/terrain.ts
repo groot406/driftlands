@@ -1,7 +1,9 @@
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
-import {applyBiomeModifiers, detectBiome} from './biomes';
+import {applyBiomeModifiers, countTerrainOccurrences, detectBiome} from './biomes';
 import {terrainPositions} from './terrainRegistry';
+import {applyRegionalTerrainBias} from './worldVariation';
+import { isStoryTerrainUnlocked } from '../shared/story/progressionState.ts';
 
 export {TERRAIN_DEFS};
 
@@ -27,6 +29,91 @@ function buildBaseWeights(): Record<TerrainKey, number> {
     return weights;
 }
 
+const TERRAIN_CLUSTER_STRENGTH: Partial<Record<TerrainKey, number>> = {
+    plains: 1.1,
+    forest: 1.2,
+    water: 1.45,
+    mountain: 1.35,
+    dirt: 1.05,
+    snow: 1.2,
+    dessert: 1.18,
+    grain: 1.12,
+    vulcano: 0.4,
+};
+
+function applyContinuityBias(
+    weights: Record<TerrainKey, number>,
+    neighborTerrains: TerrainKey[],
+    biomeTerrains: TerrainKey[],
+) {
+    const immediateCounts = countTerrainOccurrences(neighborTerrains);
+    const localCounts = countTerrainOccurrences(biomeTerrains);
+    let dominantTerrain: TerrainKey | null = null;
+    let dominantCount = 0;
+
+    for (const terrain of Object.keys(localCounts) as TerrainKey[]) {
+        const count = localCounts[terrain] ?? 0;
+        if (count > dominantCount) {
+            dominantTerrain = terrain;
+            dominantCount = count;
+        }
+    }
+
+    for (const terrain of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
+        if (terrain === 'towncenter') continue;
+        const immediate = immediateCounts[terrain] ?? 0;
+        const local = localCounts[terrain] ?? 0;
+        if (immediate === 0 && local === 0) continue;
+
+        const outerRing = Math.max(0, local - immediate);
+        const strength = TERRAIN_CLUSTER_STRENGTH[terrain] ?? 1;
+        const continuity =
+            ((immediate * 6)
+            + (Math.max(0, immediate - 1) * 7)
+            + (outerRing * 2.5)
+            + (Math.max(0, local - 4) * 2.5))
+            * strength;
+
+        weights[terrain] = Math.max(0, (weights[terrain] ?? 0) + continuity);
+    }
+
+    if (dominantTerrain && dominantCount >= 6 && (immediateCounts[dominantTerrain] ?? 0) >= 3) {
+        for (const terrain of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
+            if (terrain === 'towncenter' || terrain === dominantTerrain) continue;
+            const local = localCounts[terrain] ?? 0;
+            if (local === 0) {
+                weights[terrain] *= 0.72;
+            } else if (local === 1) {
+                weights[terrain] *= 0.86;
+            }
+        }
+    }
+
+    const snowyBadlands = (localCounts.snow ?? 0) >= 3 && (localCounts.dessert ?? 0) >= 2;
+    if (snowyBadlands) {
+        weights.plains += 6;
+        weights.dirt += 8;
+        weights.mountain += 6;
+        weights.snow *= 0.85;
+        weights.dessert *= 0.85;
+    }
+
+    const aridShore = (localCounts.water ?? 0) >= 4 && (localCounts.dessert ?? 0) >= 2;
+    if (aridShore) {
+        weights.plains += 6;
+        weights.dirt += 5;
+        weights.forest += 2;
+        weights.water *= 0.92;
+        weights.dessert *= 0.86;
+    }
+
+    const woodedCoast = (localCounts.water ?? 0) >= 4 && (localCounts.forest ?? 0) >= 4;
+    if (woodedCoast) {
+        weights.plains += 4;
+        weights.dirt += 2;
+    }
+}
+
 function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: TerrainKey[]) {
     const key = makeCacheKey(neighborTerrains, biomeTerrains);
     const cached = terrainWeightCache.get(key);
@@ -40,10 +127,12 @@ function getWeightsForContext(neighborTerrains: TerrainKey[], biomeTerrains: Ter
         for (const tKey of Object.keys(TERRAIN_DEFS) as TerrainKey[]) {
             const def = TERRAIN_DEFS[tKey];
             if (!def) continue;
-            const delta = def.  adjacency?.[nt];
+            const delta = def.adjacency?.[nt];
             if (delta !== undefined) weights[tKey] += delta;
         }
     });
+
+    applyContinuityBias(weights, neighborTerrains, biomeTerrains);
 
     // Detect biome from neighbors and apply biome modifiers
     const biome = detectBiome(biomeTerrains);
@@ -82,10 +171,15 @@ export function weightedTerrainChoice(neighborTerrains: TerrainKey[], biomeTerra
     const candidate: Record<TerrainKey, number> = { ...weights };
 
     if (q !== undefined && r !== undefined) {
+        applyRegionalTerrainBias(candidate, q, r);
         const distFromCenter = hexDistanceFromOrigin(q, r);
         for (const key of Object.keys(candidate) as TerrainKey[]) {
             const def = TERRAIN_DEFS[key];
             if (!def) continue;
+            if (!isStoryTerrainUnlocked(key)) {
+                candidate[key] = 0;
+                continue;
+            }
             if (def.minDistanceFromCenter !== undefined && distFromCenter < def.minDistanceFromCenter) {
                 candidate[key] = 0;
                 continue;

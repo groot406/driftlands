@@ -3,6 +3,9 @@ import type {Tile} from "../core/types/Tile.ts";
 import type {Hero, HeroStats} from "../core/types/Hero.ts";
 import type {TaskInstance, TaskType} from "../core/types/Task.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
+import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/types.ts";
+import type {RunSnapshot} from "./goals/types.ts";
+import type {StorageSnapshot} from "./game/storage.ts";
 
 export interface BaseMessage {
     type: string;
@@ -35,6 +38,39 @@ export interface ChatMessage extends BaseMessage {
     message: string;
 }
 
+export interface CoopSnapshotMessage extends BaseMessage {
+    type: 'coop:snapshot';
+    state: CoopStateSnapshot;
+}
+
+export interface CoopSetReadyMessage extends BaseMessage {
+    type: 'coop:set_ready';
+    ready: boolean;
+}
+
+export interface CoopHeroClaimMessage extends BaseMessage {
+    type: 'coop:hero_claim';
+    heroId: string;
+}
+
+export interface CoopHeroReleaseMessage extends BaseMessage {
+    type: 'coop:hero_release';
+    heroId: string;
+}
+
+export interface CoopPingRequestMessage extends BaseMessage {
+    type: 'coop:request_ping';
+    kind: CoopPingKind;
+    q: number;
+    r: number;
+    heroId?: string;
+}
+
+export interface CoopPingMessage extends BaseMessage {
+    type: 'coop:ping';
+    ping: CoopPingSnapshot;
+}
+
 export interface WorldWelcomeMessage extends BaseMessage {
     type: 'world:welcome';
 }
@@ -49,6 +85,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     heroes: Hero[];
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
+    storages: StorageSnapshot[];
 }
 
 export interface TileUpdatedMessage extends BaseMessage {
@@ -73,6 +110,7 @@ export interface PathUpdateMessage extends BaseMessage {
     origin: { q: number; r: number };
     path: { q: number; r: number }[]; // excluding origin, including destination
     target: { q: number; r: number };
+    startAt: number; // absolute timestamp for when movement began (or will begin)
     startDelayMs: number; // client should start movement after this delay from receipt or now
     stepDurations: number[]; // per-step durations
     cumulative: number[]; // cumulative end times
@@ -109,13 +147,31 @@ export interface LeaveTaskRequestMessage {
 export interface ResourceDepositMessage {
     type: 'resource:deposit';
     heroId: string;
+    storageTileId: string;
     resource: ResourceAmount;
 }
 
 export interface ResourceWithdrawMessage {
     type: 'resource:withdraw';
     heroId: string;
+    storageTileId: string;
     resource: ResourceAmount;
+}
+
+export interface FrontierFindMessage extends BaseMessage {
+    type: 'frontier:find';
+    q: number;
+    r: number;
+    terrain: string | null;
+    label: string;
+    title: string;
+    description: string;
+    resourceRewards: ResourceAmount[];
+    storageDeposits?: Array<{
+        storageTileId: string;
+        resource: ResourceAmount;
+    }>;
+    bonusScore?: number;
 }
 
 export interface TaskCreatedMessage {
@@ -154,10 +210,24 @@ export interface TaskRemovedMessage {
     tileId: string;
 }
 
+export interface RunSnapshotMessage extends BaseMessage {
+    type: 'run:snapshot';
+    run: RunSnapshot;
+}
+
+export interface RunUpdateMessage extends BaseMessage {
+    type: 'run:update';
+    run: RunSnapshot;
+}
+
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
     | ChatMessage
+    | CoopSetReadyMessage
+    | CoopHeroClaimMessage
+    | CoopHeroReleaseMessage
+    | CoopPingRequestMessage
     | WorldRequestMessage
     | MoveRequestMessage
     | StartTaskRequestMessage
@@ -169,6 +239,8 @@ export type ServerMessage =
     | PlayerLeaveMessage
     | PlayerCountMessage
     | ChatMessage
+    | CoopSnapshotMessage
+    | CoopPingMessage
     | WorldSnapshotMessage
     | WorldWelcomeMessage
     | TileUpdatedMessage
@@ -179,4 +251,7 @@ export type ServerMessage =
     | TaskCompletedMessage
     | ResourceDepositMessage
     | ResourceWithdrawMessage
-    | HeroPayloadUpdateMessage;
+    | FrontierFindMessage
+    | HeroPayloadUpdateMessage
+    | RunSnapshotMessage
+    | RunUpdateMessage;

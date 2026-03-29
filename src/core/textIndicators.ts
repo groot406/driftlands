@@ -6,6 +6,11 @@ export interface TextIndicator {
         r: number;
         currentOffset ?: {x: number, y: number };
     };
+    heroId?: string;
+    worldAnchor?: {
+        x: number;
+        y: number;
+    };
     text: string;
     color: string;
     created: number;
@@ -15,9 +20,19 @@ export interface TextIndicator {
 // Reactive registry of loaders
 const _indicators = reactive<TextIndicator[]>([]);
 
-export function addTextIndicator(position: {q: number, r: number}, text: string, color: string, duration: number): void {
+export function addTextIndicator(
+    position: {q: number, r: number, currentOffset?: {x: number, y: number }, id?: string},
+    text: string,
+    color: string,
+    duration: number
+): void {
     const indicator: TextIndicator = {
-        position,
+        position: {
+            q: position.q,
+            r: position.r,
+            currentOffset: position.currentOffset ? { ...position.currentOffset } : undefined,
+        },
+        heroId: position.id,
         text,
         color,
         created: Date.now(),

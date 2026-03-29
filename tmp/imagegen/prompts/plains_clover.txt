@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: game terrain tile
+Primary request: create a new decorative plains tile variant with low clover patches and lush spring grass
+Scene/backdrop: isolated grassy hex tile, no horizon
+Subject: healthy green grass with small clover clusters and a few lighter meadow breaks
+Style/medium: painterly pixel art game tile
+Composition/framing: top-down three-quarter hex tile, clean center readability
+Lighting/mood: fresh daytime light, bright but grounded
+Color palette: spring green, muted yellow-green, small pale clover highlights
+Materials/textures: soft grass clumps, low ground cover, readable pixel clusters
+Constraints: match Driftlands terrain style; keep edges blend-friendly; no flowers taller than the grass; no watermark
+Avoid: realistic botany detail, glossy lawn look, square background

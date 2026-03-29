@@ -1,29 +1,28 @@
 import {heroes} from "../store/heroStore.ts";
 import {moveCamera} from './camera.ts';
 import {ensureTileExists, getTilesInRadius} from './world.ts';
-import {TERRAIN_DEFS} from './terrainDefs.ts';
 import {handleHeroArrival} from '../shared/tasks/tasks';
 import {sendMessage} from "./socket.ts";
 import type {MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
-import type {Tile} from "./types/Tile.ts";
-import type {Hero, HeroStats} from "./types/Hero.ts";
+import type {Hero, HeroPendingTaskIntent, HeroStats} from "./types/Hero.ts";
 import {addTextIndicator} from "./textIndicators.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
+import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 
-function isTileWalkable(tile: Tile): boolean {
-    const variantDef = (tile.terrain && tile.variant)
-        ? TERRAIN_DEFS[tile.terrain]?.variations?.find(v => v.key === tile.variant)
-        : null;
+type AxialCoord = { q: number; r: number };
 
-    if (variantDef && typeof variantDef.walkable === 'boolean') {
-        return variantDef.walkable;
-    }
+type StartHeroMovementOptions = {
+    startAt?: number;
+    startDelayMs?: number;
+    stepDurations?: number[];
+    cumulative?: number[];
+    origin?: AxialCoord;
+    requestId?: string;
+    authoritative?: boolean;
+};
 
-    return !!(tile.terrain && TERRAIN_DEFS[tile.terrain]?.walkable);
-}
-
-export function updateHeroMovements() {
+export function updateHeroMovements(nowMs: number = Date.now()) {
 
     for (const hero of heroes) {
         if (!hero.movement) continue;
@@ -31,7 +30,7 @@ export function updateHeroMovements() {
         const m = hero.movement;
         const cumulative = m.cumulative;
 
-        const elapsed = Date.now() - m.startMs;
+        const elapsed = nowMs - m.startMs;
         // Determine number of COMPLETED steps (elapsed >= cumulative[i])
         let completedSteps = 0;
         for (let i = 0; i < cumulative.length; i++) {
@@ -96,14 +95,33 @@ export function startHeroMovement(
     path: { q: number; r: number }[],
     target: { q: number; r: number },
     taskType?: string,
-    options?: { startDelayMs?: number; stepDurations?: number[]; cumulative?: number[]; origin?: { q: number; r: number } }
+    options?: StartHeroMovementOptions
 ) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
-    if (!path.length) return; // nothing to do
 
-    // If already moving to the same target, ignore repeated requests
-    if (hero.movement && hero.movement.target.q === target.q && hero.movement.target.r === target.r) {
+    const origin = options?.origin || { q: hero.q, r: hero.r };
+    const normalizedPath = sanitizeMovementPath(path, origin);
+    if (!normalizedPath.length) return; // nothing to do
+
+    if (
+        !hero.movement
+        && options?.authoritative
+        && hero.q === target.q
+        && hero.r === target.r
+        && hasMovementAlreadyElapsed(normalizedPath, origin, options)
+    ) {
+        return;
+    }
+
+    if (hero.movement && isSameMovementPlan(hero.movement, normalizedPath, target, origin, options?.requestId)) {
+        reconcileMovement(hero, normalizedPath, target, taskType, origin, options);
+        return;
+    }
+
+    // Server-authoritative corrections should replace stale local movement immediately.
+    if (hero.movement && options?.authoritative) {
+        actuallyStartHeroMovement(hero, normalizedPath, target, taskType, options);
         return;
     }
 
@@ -132,14 +150,14 @@ export function startHeroMovement(
             if (!h) return;
             if (h.q === target.q && h.r === target.r) return;
             // Proceed to start movement from current tile at boundary
-            actuallyStartHeroMovement(h, path, target, taskType, options);
+            actuallyStartHeroMovement(h, normalizedPath, target, taskType, options);
             h.delayedMovementTimer = undefined;
         }, delay);
         return;
     }
 
     // If idle, start immediately
-    actuallyStartHeroMovement(hero, path, target, taskType, options);
+    actuallyStartHeroMovement(hero, normalizedPath, target, taskType, options);
 }
 
 function actuallyStartHeroMovement(
@@ -147,7 +165,7 @@ function actuallyStartHeroMovement(
     path: { q: number; r: number }[],
     target: { q: number; r: number },
     taskType?: string,
-    options?: { startDelayMs?: number; stepDurations?: number[]; cumulative?: number[]; origin?: { q: number; r: number } }
+    options?: StartHeroMovementOptions
 ) {
     void taskType; // suppress unused parameter warning
     if (hero.delayedMovementTimer) {
@@ -165,7 +183,7 @@ function actuallyStartHeroMovement(
         const neighbors = getTilesInRadius(originTile.q, originTile.r, 1);
         for (const neighborIdx in neighbors) {
             const neighbor = neighbors[neighborIdx];
-            if (neighbor && neighbor.discovered && neighbor.terrain && TERRAIN_DEFS[neighbor.terrain]?.walkable) {
+            if (neighbor && neighbor.discovered && isTileWalkable(neighbor)) {
                 const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r);
                 if (p.length > 0) {
                     allow = true;
@@ -176,45 +194,36 @@ function actuallyStartHeroMovement(
         if (!allow) return;
     }
 
+    const origin = options?.origin || { q: hero.q, r: hero.r };
+
     // If server provided timings, use them; else compute locally
     let stepDurations: number[] | undefined = options?.stepDurations && options.stepDurations.length === path.length ? options.stepDurations.slice() : undefined;
     let cumulative: number[] | undefined = options?.cumulative && options.cumulative.length === path.length ? options.cumulative.slice() : undefined;
 
     if (!stepDurations || !cumulative) {
-        const baseStepMs = 750;
-        const speedAdj = Math.max(0.5, 1 - hero.stats.spd * 0.04);
-        const durations: number[] = [];
-        for (let i = 0; i < path.length; i++) {
-            const fromCoord = (i === 0) ? {q: hero.q, r: hero.r} : path[i - 1]!;
-            const toCoord = path[i]!;
-            const fromTile = ensureTileExists(fromCoord.q, fromCoord.r);
-            const toTile = ensureTileExists(toCoord.q, toCoord.r);
-            const fromDef = fromTile.terrain ? (TERRAIN_DEFS as any)[fromTile.terrain] : null;
-            const toDef = toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
-            const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
-            const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
-            const edgeCost = 0.5 * fromCost + 0.5 * toCost;
-            durations.push(Math.min(Math.max(120, baseStepMs * edgeCost * speedAdj), 5000));
-        }
-        const cum: number[] = [];
-        let acc = 0;
-        for (const d of durations) { acc += d; cum.push(acc); }
-        stepDurations = durations;
-        cumulative = cum;
+        const timings = computePathTimings(path, origin, 1);
+        stepDurations = timings.durations;
+        cumulative = timings.cumulative;
     }
 
     const startDelayMs = options?.startDelayMs || 0;
-    const origin = options?.origin || { q: hero.q, r: hero.r };
+    const startMs = typeof options?.startAt === 'number'
+        ? options.startAt
+        : Date.now() + startDelayMs;
+
+    syncPendingTask(hero, target, taskType, options);
 
     hero.movement = {
         path: path.slice(),
         origin,
         target,
         taskType,
-        startMs: Date.now() + startDelayMs,
+        startMs,
         stepDurations,
         cumulative,
-    } as any;
+        requestId: options?.requestId,
+        authoritative: options?.authoritative ?? false,
+    };
 }
 
 export function requestHeroMovement(
@@ -226,21 +235,28 @@ export function requestHeroMovement(
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
 
+    const origin = { q: hero.q, r: hero.r };
+    const normalizedPath = sanitizeMovementPath(path, origin);
+
     // If there is no path (hero already at target), request immediate task start
-    if (!path || path.length === 0) {
+    if (!normalizedPath.length) {
         if (taskType) startTaskRequest(heroId, taskType, target);
         return;
     }
 
+    const startAt = Date.now();
+    const requestId = createMovementRequestId(heroId);
+
     const msg: MoveRequestMessage = {
         type: 'hero:move_request',
+        id: requestId,
         heroId,
-        origin: {q: hero.q, r: hero.r},
+        origin,
         target,
-        startAt: Date.now(),
-        path: path.slice(),
+        startAt,
+        path: normalizedPath.slice(),
         task: taskType as any,
-    } as any;
+    };
     sendMessage(msg as any);
 }
 
@@ -273,4 +289,118 @@ const STAT_COLOR_MAP: Record<keyof HeroStats, string> = {
     hp: '#FF4500', // OrangeRed for HP
     atk: '#1E90FF', // DodgerBlue for ATK
     spd: '#32CD32', // LimeGreen for SPD
+}
+
+function createMovementRequestId(heroId: string) {
+    return `${heroId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isSameMovementPlan(
+    movement: NonNullable<Hero['movement']>,
+    path: AxialCoord[],
+    target: AxialCoord,
+    origin: AxialCoord,
+    requestId?: string
+) {
+    if (requestId && movement.requestId === requestId) return true;
+    return sameCoord(movement.origin, origin)
+        && sameCoord(movement.target, target)
+        && samePath(movement.path, path);
+}
+
+function reconcileMovement(
+    hero: Hero,
+    path: AxialCoord[],
+    target: AxialCoord,
+    taskType: string | undefined,
+    origin: AxialCoord,
+    options?: StartHeroMovementOptions
+) {
+    const movement = hero.movement;
+    if (!movement) return;
+
+    movement.path = path.slice();
+    movement.origin = origin;
+    movement.target = target;
+    movement.taskType = taskType;
+    syncPendingTask(hero, target, taskType, options);
+
+    if (options?.stepDurations && options.stepDurations.length === path.length) {
+        movement.stepDurations = options.stepDurations.slice();
+    }
+
+    if (options?.cumulative && options.cumulative.length === path.length) {
+        movement.cumulative = options.cumulative.slice();
+    }
+
+    if (typeof options?.startAt === 'number') {
+        movement.startMs = options.startAt;
+    } else if (typeof options?.startDelayMs === 'number') {
+        movement.startMs = Date.now() + options.startDelayMs;
+    }
+
+    if (options?.requestId) {
+        movement.requestId = options.requestId;
+    }
+
+    if (typeof options?.authoritative === 'boolean') {
+        movement.authoritative = options.authoritative;
+    }
+}
+
+function sameCoord(a: AxialCoord, b: AxialCoord) {
+    return a.q === b.q && a.r === b.r;
+}
+
+function samePath(a: AxialCoord[], b: AxialCoord[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (!sameCoord(a[i]!, b[i]!)) return false;
+    }
+    return true;
+}
+
+function hasMovementAlreadyElapsed(path: AxialCoord[], origin: AxialCoord, options?: StartHeroMovementOptions) {
+    const totalDuration = options?.cumulative?.[options.cumulative.length - 1]
+        ?? options?.stepDurations?.reduce((sum, duration) => sum + duration, 0)
+        ?? computePathTimings(path, origin, 1).totalDuration;
+    const startMs = typeof options?.startAt === 'number'
+        ? options.startAt
+        : Date.now() + (options?.startDelayMs || 0);
+    return Date.now() >= startMs + totalDuration;
+}
+
+function syncPendingTask(
+    hero: Hero,
+    target: AxialCoord,
+    taskType: string | undefined,
+    options?: StartHeroMovementOptions,
+) {
+    if (taskType) {
+        hero.pendingTask = {
+            tileId: ensureTileExists(target.q, target.r).id,
+            taskType,
+        } as HeroPendingTaskIntent;
+        return;
+    }
+
+    if (!options?.authoritative) {
+        hero.pendingTask = undefined;
+    }
+}
+
+function sanitizeMovementPath(path: AxialCoord[], origin: AxialCoord) {
+    const normalized: AxialCoord[] = [];
+    let previous = origin;
+
+    for (const step of path) {
+        if (step.q === previous.q && step.r === previous.r) {
+            continue;
+        }
+
+        normalized.push(step);
+        previous = step;
+    }
+
+    return normalized;
 }

@@ -4,12 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\"",
+    "start": "npm run dev",
+    "dev": "concurrently \"npm:client\" \"npm:server\"",
+    "client": "vite",
+    "server": "nodemon",
     "dev:client": "vite",
     "dev:server": "nodemon",
     "build": "vite build",
     "preview": "vite preview",
-    "start:server": "tsx server/src/index.ts"
+    "start:server": "tsx server/src/index.ts",
+    "typecheck:server": "tsc --noEmit --project tsconfig.server.json"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",

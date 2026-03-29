@@ -25,6 +25,22 @@
               v-else-if="notification.type === 'chat'"
               class="w-2 h-2 bg-blue-400 rounded-full"
             ></div>
+            <div
+              v-else-if="notification.type === 'goal_completed'"
+              class="w-2 h-2 bg-emerald-400 rounded-full"
+            ></div>
+            <div
+              v-else-if="notification.type === 'run_state'"
+              class="w-2 h-2 bg-amber-300 rounded-full"
+            ></div>
+            <div
+              v-else-if="notification.type === 'coop_ping'"
+              class="w-2 h-2 bg-cyan-300 rounded-full"
+            ></div>
+            <div
+              v-else-if="notification.type === 'coop_state'"
+              class="w-2 h-2 bg-violet-300 rounded-full"
+            ></div>
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-white">{{ notification.title }}</p>
@@ -57,6 +73,14 @@ function getNotificationStyles(type: string) {
       return 'border-red-500/30';
     case 'chat':
       return 'border-blue-500/30';
+    case 'goal_completed':
+      return 'border-emerald-500/30';
+    case 'run_state':
+      return 'border-amber-400/30';
+    case 'coop_ping':
+      return 'border-cyan-400/30';
+    case 'coop_state':
+      return 'border-violet-400/30';
     default:
       return 'border-gray-500/30';
   }

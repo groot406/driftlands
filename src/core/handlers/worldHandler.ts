@@ -3,9 +3,16 @@ import {clientMessageRouter} from '../messageRouter';
 import {loadWorld, updateTile} from '../world';
 import {loadHeroes} from "../../store/heroStore";
 import {loadTasks} from "../../store/taskStore";
-import {replaceInventory} from "../../store/resourceStore";
+import {replaceInventory, replaceStorageInventories} from "../../store/resourceStore";
 class WorldHandler {
+    private initialized = false;
+
     init(): void {
+        if (this.initialized) {
+            return;
+        }
+
+        this.initialized = true;
         clientMessageRouter.on('world:snapshot', this.handleWorldSnapshot.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
     }
@@ -15,7 +22,9 @@ class WorldHandler {
         loadWorld(message.tiles);
         loadHeroes(message.heroes);
         loadTasks(message.tasks);
-        if (message.resources) {
+        if (message.storages) {
+            replaceStorageInventories(message.storages);
+        } else if (message.resources) {
             replaceInventory(message.resources);
         }
     }

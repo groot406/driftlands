@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+Asset type: game terrain tile
+Primary request: repaint the existing snow tile so it has more form, cleaner wind-swept drifts, and stronger cold shadow definition while staying readable at 64x64
+Input images: Image 1: edit target (/Users/andredegroot/development/driftlands/src/assets/tiles/snow.png)
+Scene/backdrop: isolated snowy hex tile, no horizon
+Subject: compacted snow with a few wind-shaped ridges and shallow drift pockets
+Style/medium: painterly pixel art game tile
+Composition/framing: same top-down three-quarter hex tile framing as the source image
+Lighting/mood: crisp winter daylight with cool shadows
+Color palette: off-white snow, pale cyan shadows, tiny cool gray accents
+Materials/textures: powdery snow, packed drift edges, clean pixel clumps
+Constraints: change only the snow artwork; keep silhouette and perspective unchanged; no trees; no rocks; no watermark
+Avoid: muddy gray snow, photographic snow crystals, excessive blue cast, smooth airbrushed shading

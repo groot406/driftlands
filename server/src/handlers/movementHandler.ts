@@ -1,19 +1,24 @@
 import type {Socket} from 'socket.io';
 import {broadcast, serverMessageRouter} from '../messages/messageRouter';
 import type {MoveRequestMessage, PathUpdateMessage} from '../../../src/shared/protocol';
-import {getTile, tiles} from '../../../src/core/world';
-import {TERRAIN_DEFS} from '../../../src/core/terrainDefs';
-import {getHero, heroes} from "../../../src/store/heroStore";
-import {type TaskType} from "../../../src/core/types/Task";
 import {handleHeroArrival} from "../../../src/shared/tasks/tasks";
-import type {Hero} from "../../../src/core/types/Hero.ts";
-import {PathService} from "../../../src/core/PathService.ts";
-import {detachHeroFromCurrentTask, updateActiveTasks} from "../../../src/store/taskStore.ts";
+import { getTile } from '../../../src/shared/game/world';
+import { getHero, heroes } from "../../../src/shared/game/state/heroStore";
+import { detachHeroFromCurrentTask, getTaskByTile, updateActiveTasks } from "../../../src/shared/game/state/taskStore";
+import { PathService } from "../../../src/shared/game/PathService";
+import type {TaskType} from "../../../src/shared/game/types/Task";
+import type {Hero} from "../../../src/shared/game/types/Hero";
+import { computePathTimings, isWalkablePosition } from '../../../src/shared/game/navigation';
+import { isAxialNeighbor } from '../../../src/shared/game/hex';
+import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
+import { coopState } from '../state/coopState';
 
 export class ServerMovementHandler {
+    private initialized = false;
 
     activeMovements: Map<string, {
         heroId: string;
+        origin: { q: number; r: number };
         startedAt: number;
         target: { q: number; r: number };
         path: { q: number; r: number }[];
@@ -26,14 +31,34 @@ export class ServerMovementHandler {
     }
 
     init(): void {
+        if (this.initialized) {
+            return;
+        }
+
+        this.initialized = true;
         serverMessageRouter.on('hero:move_request', this.handleMoveRequest.bind(this));
     }
 
-    private handleMoveRequest(_socket: Socket, message: MoveRequestMessage): void {
-        const {heroId, origin, target, path: clientPath} = message;
+    private canUseNonWalkableTaskTarget(hero: Hero, target: { q: number; r: number }, task?: TaskType): boolean {
+        if (!task) return false;
+
+        const tile = getTile(target);
+        if (!tile) return false;
+
+        const existing = getTaskByTile(tile.id, task);
+        if (existing && !existing.completedMs) {
+            return true;
+        }
+
+        const def = getTaskDefinition(task);
+        return !!def?.canStart(tile, hero);
+    }
+
+    private handleMoveRequest(socket: Socket, message: MoveRequestMessage): void {
+        const {heroId, origin: requestedOrigin, target, path: clientPath} = message;
 
         // Basic validation of origin/target
-        if (!origin || !target) return;
+        if (!requestedOrigin || !target) return;
 
         // Validate current hero position matches origin
         const hero = getHero(heroId);
@@ -42,62 +67,72 @@ export class ServerMovementHandler {
             return;
         }
 
-        if (Math.abs(hero.q - origin.q) > 1 || Math.abs(hero.r - origin.r) > 1) return;
+        if (!coopState.canControlHero(socket.id, heroId)) {
+            return;
+        }
 
-        const targetTile = tiles.find(t => t.q === target.q && t.r === target.r);
+        if (Math.abs(hero.q - requestedOrigin.q) > 1 || Math.abs(hero.r - requestedOrigin.r) > 1) return;
+
+        // Always build the authoritative movement plan from the server's actual hero position.
+        const origin = { q: hero.q, r: hero.r };
+
+        const targetTile = getTile(target);
         if (!targetTile) {
             return;
         }
 
-        if (!this.isWalkable(target.q, target.r) && targetTile.discovered) return;
+        const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task);
+        if (!isWalkablePosition(target.q, target.r) && targetTile.discovered && !canUseTaskTarget) return;
 
         let path: { q: number; r: number }[] = [];
         if (clientPath && Array.isArray(clientPath) && clientPath.length) {
+            const sanitizedClientPath = sanitizePath(clientPath, origin);
             let valid = true;
             let prev = origin;
-            for (const step of clientPath) {
-                const dq = step.q - prev.q;
-                const dr = step.r - prev.r;
-                const isNeighbor = Math.abs(dq) <= 1 && Math.abs(dr) <= 1 && Math.abs(dq + dr) <= 1; // axial adjacency rough check
+            for (const step of sanitizedClientPath) {
+                const isNeighbor = isAxialNeighbor(prev, step);
                 const isTarget = (step.q === target.q && step.r === target.r);
-                if (!isNeighbor || (!isTarget && !this.isWalkable(step.q, step.r))) {
+                if (!isNeighbor || (!isTarget && !isWalkablePosition(step.q, step.r))) {
                     valid = false;
                     break;
                 }
                 prev = step;
             }
             if (valid && prev.q === target.q && prev.r === target.r) {
-                path = clientPath.slice();
+                path = sanitizedClientPath.slice();
             }
+        }
+
+        if (!path.length) {
+            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r);
         }
 
         if (!path.length) return; // no path
 
+        const now = Date.now();
+        const startAt = clampMovementStart(message.startAt, now);
+
         // Compute timings; in future incorporate hero stats from authoritative state
-        const {durations, cumulative} = this.computeDurations(path, origin, 1);
+        const {durations, cumulative} = computePathTimings(path, origin, 1);
 
+        hero.pendingTask = message.task
+            ? { tileId: targetTile.id, taskType: message.task }
+            : undefined;
         detachHeroFromCurrentTask(hero);
-
-        const startDelayMs = 50; // small delay for clients to align without time sync
-        hero.movement = {
-            path: path.slice(),
-            origin,
-            target,
-            taskType: message.task,
-            startMs: message.startAt,
-            stepDurations: durations,
-            cumulative,
-        }
         hero.delayedMovementTimer = undefined;
-        this.registerMovement(heroId, target, path, durations, startDelayMs, origin, Date.now(), message.task);
+        this.registerMovement(heroId, target, path, durations, origin, startAt, message.task, message.id, message.task ? targetTile.id : undefined);
+
+        const startDelayMs = Math.max(0, startAt - now);
 
         // Broadcast to all clients
         const update: PathUpdateMessage = {
             type: 'hero:path_update',
+            id: message.id,
             heroId,
             origin,
             path,
             target,
+            startAt,
             startDelayMs,
             stepDurations: durations,
             cumulative,
@@ -109,71 +144,44 @@ export class ServerMovementHandler {
     }
 
     public moveHero(hero: Hero, target: { q: number, r: number }, task ?: TaskType) {
+        const targetTile = getTile(target);
+        if (!targetTile) {
+            return;
+        }
+
         const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r);
 
         if (!path || !path.length) {
             return;
         }
 
-        const {durations, cumulative} = this.computeDurations(path, hero, 1);
+        const {durations, cumulative} = computePathTimings(path, hero, 1);
         const origin = {q: hero.q, r: hero.r};
         const targetPosition = {q: target.q, r: target.r};
+        const startAt = Date.now();
 
+        if (task) {
+            hero.pendingTask = {
+                tileId: targetTile.id,
+                taskType: task,
+            };
+        }
         detachHeroFromCurrentTask(hero);
-        this.registerMovement(hero.id, targetPosition, path, durations, 50, origin, Date.now(), task);
+        this.registerMovement(hero.id, targetPosition, path, durations, origin, startAt, task, undefined, task ? targetTile.id : undefined);
         broadcast({
             type: 'hero:path_update',
             heroId: hero.id,
             origin,
             path,
             target: targetPosition,
-            startDelayMs: 50,
+            startAt,
+            startDelayMs: 0,
             stepDurations: durations,
             cumulative,
             task,
         } as PathUpdateMessage)
 
         updateActiveTasks(heroes);
-    }
-
-    private isWalkable(q: number, r: number): boolean {
-        const t = tiles.find(t => t.q === q && t.r === r);
-        if (!t || !t.terrain) return false;
-        const def = (TERRAIN_DEFS)[t.terrain];
-        const variantDef = t?.variant ? def.variations?.find((v: any) => v.key === t?.variant) : null;
-        if (variantDef && typeof variantDef.walkable === 'boolean') {
-            return !!variantDef.walkable;
-        }
-        return !!(def && def.walkable);
-    }
-
-    computeDurations(path: { q: number; r: number }[], origin: { q: number; r: number }, speedAdj = 1): {
-        durations: number[];
-        cumulative: number[];
-        avg: number
-    } {
-        const baseStepMs = 750;
-        const durations: number[] = [];
-        for (let i = 0; i < path.length; i++) {
-            const fromCoord = (i === 0) ? origin : path[i - 1]!;
-            const toCoord = path[i]!;
-            const fromTile = tiles.find(t => t.q === fromCoord.q && t.r === fromCoord.r);
-            const toTile = tiles.find(t => t.q === toCoord.q && t.r === toCoord.r);
-            const fromDef = fromTile && fromTile.terrain ? (TERRAIN_DEFS as any)[fromTile.terrain] : null;
-            const toDef = toTile && toTile.terrain ? (TERRAIN_DEFS as any)[toTile.terrain] : null;
-            const fromCost = fromDef && typeof fromDef.moveCost === 'number' ? fromDef.moveCost : 1;
-            const toCost = toDef && typeof toDef.moveCost === 'number' ? toDef.moveCost : 1;
-            const edgeCost = 0.5 * fromCost + 0.5 * toCost;
-            durations.push(Math.min(Math.max(120, baseStepMs * edgeCost * speedAdj), 5000));
-        }
-        const cumulative: number[] = [];
-        let acc = 0;
-        for (const d of durations) {
-            acc += d;
-            cumulative.push(acc);
-        }
-        const avg = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : baseStepMs;
-        return {durations, cumulative, avg};
     }
 
     _service: PathService | null = null;
@@ -188,15 +196,17 @@ export class ServerMovementHandler {
         target: { q: number; r: number },
         path: { q: number; r: number }[],
         durations: number[],
-        startDelayMs: number,
         origin: { q: number, r: number },
         startAt: number,
         task?: TaskType,
+        requestId?: string,
+        pendingTaskTileId?: string,
     ): void {
         const totalDuration = durations.reduce((a, b) => a + b, 0);
 
         this.activeMovements.set(heroId, {
             heroId,
+            origin,
             startedAt: startAt,
             target,
             path,
@@ -214,19 +224,26 @@ export class ServerMovementHandler {
 
         const heroLocal = getHero(heroId);
         if (!heroLocal) return;
+        if (task && pendingTaskTileId) {
+            heroLocal.pendingTask = {
+                tileId: pendingTaskTileId,
+                taskType: task,
+            };
+        }
         heroLocal.movement = {
             path: path.slice(),
             origin,
             target,
             taskType: task,
-            startMs: startAt + startDelayMs,
+            startMs: startAt,
             stepDurations: durations,
             cumulative: cumulative,
+            requestId,
+            authoritative: true,
         }
     }
 
-    public tick(_ctx?: any): void {
-        const now = Date.now()
+    public tick(now: number = Date.now()): void {
 
         // @ts-ignore
         for (const [heroId, movement] of this.activeMovements) {
@@ -236,20 +253,30 @@ export class ServerMovementHandler {
             }
 
             const elapsedMs = now - movement.startedAt;
-            // Update hero position along path based on elapsed time
-            let accumulatedMs = 0;
-            let stepIndex = 0;
-            let stepDuration = movement.stepDurations[stepIndex] as number;
-            while (stepIndex < movement.path.length && accumulatedMs + stepDuration < elapsedMs) {
-                accumulatedMs += stepDuration;
-                stepIndex++;
-                stepDuration = movement.stepDurations[stepIndex] as number
+            if (elapsedMs < 0) {
+                hero.q = movement.origin.q;
+                hero.r = movement.origin.r;
+                continue;
             }
 
-            if (stepIndex < movement.path.length) {
-                const step = movement.path[stepIndex] as { q: number; r: number };
-                hero.q = step.q;
-                hero.r = step.r;
+            // Update hero position along path based on elapsed time
+            let accumulatedMs = 0;
+            let completedSteps = 0;
+            while (completedSteps < movement.path.length) {
+                const stepDuration = movement.stepDurations[completedSteps];
+                if (typeof stepDuration !== 'number') break;
+                const stepEnd = accumulatedMs + stepDuration;
+                if (elapsedMs < stepEnd) break;
+                accumulatedMs = stepEnd;
+                completedSteps++;
+            }
+
+            if (completedSteps < movement.path.length) {
+                const currentCoord = completedSteps === 0
+                    ? movement.origin
+                    : movement.path[completedSteps - 1]!;
+                hero.q = currentCoord.q;
+                hero.r = currentCoord.r;
             } else {
                 hero.q = movement.target.q;
                 hero.r = movement.target.r;
@@ -286,4 +313,28 @@ export class ServerMovementHandler {
         }
         return ServerMovementHandler._instance;
     }
+}
+
+function clampMovementStart(startAt: number | undefined, now: number) {
+    if (typeof startAt !== 'number' || Number.isNaN(startAt)) {
+        return now;
+    }
+
+    return Math.max(now - 2000, Math.min(startAt, now + 250));
+}
+
+function sanitizePath(path: Array<{ q: number; r: number }>, origin: { q: number; r: number }) {
+    const normalized: Array<{ q: number; r: number }> = [];
+    let previous = origin;
+
+    for (const step of path) {
+        if (step.q === previous.q && step.r === previous.r) {
+            continue;
+        }
+
+        normalized.push(step);
+        previous = step;
+    }
+
+    return normalized;
 }

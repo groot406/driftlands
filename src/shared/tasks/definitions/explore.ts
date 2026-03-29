@@ -1,9 +1,39 @@
-import {discoverTile, hexDistance} from '../../../core/world';
+import {discoverTile} from '../../../core/world';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {Tile, TileSide} from "../../../core/types/Tile";
-import {ServerMovementHandler} from "../../../../server/src/handlers/movementHandler.ts";
+import { moveHeroWithRuntime } from '../../game/runtime';
+import { getDistanceToNearestTowncenter } from '../../game/worldQueries';
+
+const EXPLORE_CHAIN_DELAY_MS = 120;
+const EXPLORE_BASE_REQUIRED_XP = 450;
+const EXPLORE_REQUIRED_XP_PER_DISTANCE = 850;
+const EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED = 25;
+const EXPLORE_MAX_REQUIRED_XP = 999999;
+const EXPLORE_SCOUTING_RATE = 24;
+
+export function getExploreRequiredXp(distance: number) {
+    const clampedDistance = Math.max(0, distance);
+    return Math.min(
+        EXPLORE_MAX_REQUIRED_XP,
+        EXPLORE_BASE_REQUIRED_XP
+        + (clampedDistance * EXPLORE_REQUIRED_XP_PER_DISTANCE)
+        + (clampedDistance * clampedDistance * EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED),
+    );
+}
+
+export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
+    const experience = Math.max(1, hero.stats.xp);
+    const speed = Math.max(1, hero.stats.spd);
+
+    // Exploration should benefit from experience, but not snowball linearly off the same stat it rewards.
+    return Math.round(EXPLORE_SCOUTING_RATE * (Math.sqrt(experience) + (2 * speed)));
+}
+
+export function getExploreRewardedXp(distance: number) {
+    return Math.max(1, distance / 4);
+}
 
 // Explore task definition separated for modularity.
 const exploreTask: TaskDefinition = {
@@ -11,13 +41,13 @@ const exploreTask: TaskDefinition = {
     label: 'Explore',
     chainAdjacentSameTerrain: false,
     requiredXp(distance: number) {
-        return (Math.pow(distance * 4, 3));
+        return getExploreRequiredXp(distance);
     },
     heroRate(hero: Hero, _tile) {
-        return 10 * Math.max(1, hero.stats.xp);
+        return getExploreHeroRate(hero);
     },
     totalRewardedStats(distance: number) {
-        return {xp: distance, hp: 0, atk: 0, spd: 0};
+        return {xp: getExploreRewardedXp(distance), hp: 0, atk: 0, spd: 0};
     },
 
     canStart(tile: Tile, hero: Hero): boolean {
@@ -27,7 +57,7 @@ const exploreTask: TaskDefinition = {
     onStart(_tile, _instance, _participants) {
         if (_tile.discovered) {
             // Tile already discovered; abort explore task implicitly by not setting any special flags.
-            let timer = setTimeout(() => continueExploration(_tile, _participants), 1500);
+            let timer = setTimeout(() => continueExploration(_tile, _participants), EXPLORE_CHAIN_DELAY_MS);
             for (const hero of _participants) {
                 hero.delayedMovementTimer = timer;
             }
@@ -38,7 +68,7 @@ const exploreTask: TaskDefinition = {
     onComplete(tile, _instance, participants) {
         discoverTile(tile);
 
-        let timer = setTimeout(() => continueExploration(tile, participants), 1500);
+        let timer = setTimeout(() => continueExploration(tile, participants), EXPLORE_CHAIN_DELAY_MS);
         for (const hero of participants) {
             hero.delayedMovementTimer = timer;
         }
@@ -49,8 +79,9 @@ function continueExploration(tile: Tile, participants: Hero[]) {
     // find lowest distance neighboring tile that is not discovered and start moving there to chain
     for (const participant of participants) {
         if (!participant.delayedMovementTimer) {
-            return;
+            continue;
         }
+        participant.delayedMovementTimer = undefined;
         const nm = tile.neighbors;
         let closestUndiscovered: Tile | null = null;
 
@@ -64,14 +95,17 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             if (neighbor && !neighbor.discovered) {
                 if (!closestUndiscovered) {
                     closestUndiscovered = neighbor;
-                } else if (!neighbor.discovered && hexDistance(neighbor.q, neighbor.r) < hexDistance(closestUndiscovered.q, closestUndiscovered.r)) {
+                } else if (
+                    !neighbor.discovered &&
+                    getDistanceToNearestTowncenter(neighbor.q, neighbor.r) < getDistanceToNearestTowncenter(closestUndiscovered.q, closestUndiscovered.r)
+                ) {
                     closestUndiscovered = neighbor;
                 }
             }
         }
 
         if (closestUndiscovered && !closestUndiscovered.discovered) {
-            ServerMovementHandler.getInstance().moveHero(participant, closestUndiscovered, 'explore');
+            moveHeroWithRuntime(participant, closestUndiscovered, 'explore');
         }
     }
 }

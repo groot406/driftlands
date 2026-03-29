@@ -4,21 +4,15 @@
 
 import { TERRAIN_DEFS, type TerrainKey, type TerrainVariationDef, type TerrainSide } from './terrainDefs';
 import { applyBiomeModifiers, detectBiome } from './biomes';
+import { getDecorativeSelectionForTerrain } from './tileVisuals';
+import { applyRegionalTerrainBias, noise01 } from './worldVariation';
 
 // Precompute terrain keys once to avoid repeated Object.keys casts
 const TERRAIN_KEYS = Object.keys(TERRAIN_DEFS) as TerrainKey[];
+const DEFAULT_TERRAIN: TerrainKey = 'plains';
 
-// 32-bit integer hash based on coordinates (q,r)
-export function hash32(q: number, r: number): number {
-  let x = (q * 374761393) ^ (r * 668265263);
-  x = (x ^ (x >>> 13)) * 1274126177;
-  x = (x ^ (x >>> 16));
-  return x >>> 0; // ensure unsigned
-}
-
-// Normalized float 0..1
-function n01(q: number, r: number, salt = 10): number {
-  return hash32(q + salt * 17, r - salt * 31) / 0xffffffff;
+function getFallbackTerrainKey(): TerrainKey {
+  return TERRAIN_KEYS[0] ?? DEFAULT_TERRAIN;
 }
 
 // Axial hex neighbor deltas (pointy-top orientation consistent with game)
@@ -49,10 +43,10 @@ export function getTileType(q: number, r: number): TerrainKey {
       neighborTerrains.push(existing);
     } else {
       // Use a cheap pre-roll based purely on noise for neighbors not yet computed to break symmetry
-      const roll = n01(nq, nr, 1);
+      const roll = noise01(nq, nr, 1);
       const len = TERRAIN_KEYS.length;
       const idx = len > 0 ? Math.min(Math.floor(roll * len), len - 1) : -1;
-      const candidate: TerrainKey = (len > 0 && idx >= 0) ? (TERRAIN_KEYS[idx] ?? TERRAIN_KEYS[0]) : ('plains' as TerrainKey);
+      const candidate: TerrainKey = (len > 0 && idx >= 0) ? (TERRAIN_KEYS[idx] ?? getFallbackTerrainKey()) : DEFAULT_TERRAIN;
       neighborTerrains.push(candidate);
     }
   }
@@ -65,7 +59,7 @@ export function getTileType(q: number, r: number): TerrainKey {
     const minDist = def.minDistanceFromCenter ?? 0;
     const base = dist < minDist ? 0 : def.baseWeight;
     // Add a tiny deterministic jitter to avoid ties
-    const jitter = (n01(q, r, t.length) - 0.5) * 0.8;
+    const jitter = (noise01(q, r, t.length) - 0.5) * 0.8;
     weights[t] = Math.max(0, base + jitter);
   });
 
@@ -81,14 +75,14 @@ export function getTileType(q: number, r: number): TerrainKey {
   const biome = detectBiome(neighborTerrains) ?? 'plains';
 
   const finalWeights = applyBiomeModifiers(biome, weights);
+  applyRegionalTerrainBias(finalWeights, q, r);
 
   // Weighted pick using deterministic roll
   let total = 0;
   for (const t of TERRAIN_KEYS) total += finalWeights[t] || 0;
   if (total <= 0) {
     // Fallback: choose the highest base weight terrain
-    let best: TerrainKey = 'plains' as TerrainKey;
-    if (TERRAIN_KEYS.length > 0) best = TERRAIN_KEYS[0];
+    let best: TerrainKey = getFallbackTerrainKey();
     for (const t of TERRAIN_KEYS) {
       if (TERRAIN_DEFS[t].baseWeight > TERRAIN_DEFS[best].baseWeight) best = t;
     }
@@ -96,7 +90,7 @@ export function getTileType(q: number, r: number): TerrainKey {
     return best;
   }
 
-  const roll = n01(q, r, 42) * total;
+  const roll = noise01(q, r, 42) * total;
   let acc = 0;
   for (const t of TERRAIN_KEYS) {
     acc += finalWeights[t] || 0;
@@ -106,8 +100,7 @@ export function getTileType(q: number, r: number): TerrainKey {
     }
   }
   // Numerical edge fallback
-  let first: TerrainKey = 'plains' as TerrainKey;
-  if (TERRAIN_KEYS.length > 0) first = TERRAIN_KEYS[0];
+  let first: TerrainKey = getFallbackTerrainKey();
   typeCache.set(k, first);
   return first;
 }
@@ -132,7 +125,9 @@ export function getCachedTile(t: TerrainKey, geom: HexGeom): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const w = size;
   const h = size;
-  g.fillStyle = terrainColor(t);
+
+  // Clip to hex
+  g.save();
   g.beginPath();
   g.moveTo(0.5 * w, 0);
   g.lineTo(w, 0.25 * h);
@@ -141,18 +136,90 @@ export function getCachedTile(t: TerrainKey, geom: HexGeom): HTMLCanvasElement {
   g.lineTo(0, 0.75 * h);
   g.lineTo(0, 0.25 * h);
   g.closePath();
-  g.fill();
-  // Subtle inner highlight
-  g.fillStyle = 'rgba(255,255,255,0.06)';
-  g.beginPath();
-  g.moveTo(0.5 * w, 2);
-  g.lineTo(w-2, 0.25 * h + 1);
-  g.lineTo(w-2, 0.55 * h);
-  g.lineTo(0.5 * w, h-2);
-  g.lineTo(2, 0.55 * h);
-  g.lineTo(2, 0.25 * h + 1);
-  g.closePath();
-  g.fill();
+  g.clip();
+
+  // Base fill
+  g.fillStyle = terrainColor(t);
+  g.fillRect(0, 0, w, h);
+
+  // Subtle texture variation: lighter/darker splotches
+  const splotchCount = 4;
+  for (let i = 0; i < splotchCount; i++) {
+    const sx = noise01(i * 7, t.length, 501) * w;
+    const sy = noise01(t.length, i * 11, 502) * h;
+    const sr = w * (0.12 + noise01(i, t.length, 503) * 0.18);
+    const lighter = i % 2 === 0;
+    const sGrad = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    if (lighter) {
+      sGrad.addColorStop(0, 'rgba(255,255,255,0.08)');
+      sGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    } else {
+      sGrad.addColorStop(0, 'rgba(0,0,0,0.06)');
+      sGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    }
+    g.fillStyle = sGrad;
+    g.beginPath();
+    g.arc(sx, sy, sr, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // Terrain-specific micro-details
+  const detailCount = 3 + Math.floor(noise01(t.length, 0, 510) * 3);
+  for (let i = 0; i < detailCount; i++) {
+    const dx = noise01(i * 3, t.length * 2, 520) * w * 0.7 + w * 0.15;
+    const dy = noise01(t.length * 2, i * 5, 521) * h * 0.7 + h * 0.15;
+
+    if (t === 'plains' || t === 'grain') {
+      // Grass blade
+      g.strokeStyle = 'rgba(255,255,255,0.1)';
+      g.lineWidth = 0.8;
+      g.beginPath();
+      g.moveTo(dx, dy);
+      g.lineTo(dx + (noise01(i, 0, 530) - 0.5) * 4, dy - 3 - noise01(0, i, 531) * 3);
+      g.stroke();
+    } else if (t === 'dirt' || t === 'mountain') {
+      // Pebble dot
+      g.fillStyle = 'rgba(255,255,255,0.08)';
+      g.beginPath();
+      g.arc(dx, dy, 0.8 + noise01(i, 0, 540), 0, Math.PI * 2);
+      g.fill();
+    } else if (t === 'dessert') {
+      // Sand grain
+      g.fillStyle = 'rgba(0,0,0,0.06)';
+      g.beginPath();
+      g.arc(dx, dy, 0.5 + noise01(i, 0, 550) * 0.8, 0, Math.PI * 2);
+      g.fill();
+    } else if (t === 'water') {
+      // Ripple arc
+      g.strokeStyle = 'rgba(255,255,255,0.06)';
+      g.lineWidth = 0.6;
+      g.beginPath();
+      g.arc(dx, dy, 2 + noise01(i, 0, 560) * 3, 0, Math.PI * 0.6);
+      g.stroke();
+    } else if (t === 'snow') {
+      // Ice sparkle
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      const sparkleSize = 0.6 + noise01(i, 0, 570) * 0.6;
+      g.fillRect(dx - sparkleSize / 2, dy - sparkleSize / 2, sparkleSize, sparkleSize);
+    } else if (t === 'forest') {
+      // Tree dot cluster
+      g.fillStyle = 'rgba(0,0,0,0.08)';
+      g.beginPath();
+      g.arc(dx, dy, 1.2 + noise01(i, 0, 580) * 1.2, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  // Inner glow matching terrain hue
+  const innerGlow = g.createRadialGradient(w * 0.45, h * 0.38, 0, w * 0.5, h * 0.5, w * 0.48);
+  innerGlow.addColorStop(0, 'rgba(255,255,255,0.07)');
+  innerGlow.addColorStop(0.6, 'rgba(255,255,255,0.02)');
+  innerGlow.addColorStop(1, 'rgba(0,0,0,0.05)');
+  g.fillStyle = innerGlow;
+  g.fillRect(0, 0, w, h);
+
+  g.restore();
+
   tileCache.set(t, c);
   return c;
 }
@@ -167,54 +234,16 @@ function getNeighborBySide(q: number, r: number, side: TerrainSide): TerrainKey 
   return getTileType(nq, nr) ?? null;
 }
 
-// Select a valid variant for a terrain given neighbors; returns the variant def or null.
-export function selectVariant(q: number, r: number, terrain: TerrainKey): TerrainVariationDef | null {
-  const def = TERRAIN_DEFS[terrain];
-  const variants = def.variations ?? [];
-  if (!variants.length) return null;
-
-  // 75% chance to have no variant
-    const rollNoVariant = n01(q, r, 99);
-    if (rollNoVariant < 0.85) return null;
-
-  // Filter by constraints
-  const eligible: TerrainVariationDef[] = variants.filter(v => {
-    const constraints = v.constraints ?? [];
-    for (const c of constraints) {
-      const neighbor = getNeighborBySide(q, r, c.side);
-      if (!neighbor) {
-        if (c.allowUndiscovered) continue; else return false;
-      }
-      if (!c.anyOf.includes(neighbor)) return false;
-    }
-    return true;
-  });
-  const pool = eligible.length ? eligible : variants; // if none matched, fall back to any
-
-  // Weighted pick using variationBaseWeight * variant.weight
-  const baseW = def.variationBaseWeight ?? 1;
-  let total = 0;
-  for (const v of pool) total += (v.weight ?? 1) * baseW;
-  const roll = n01(q, r, 77) * total;
-  let acc = 0;
-  for (const v of pool) {
-    acc += (v.weight ?? 1) * baseW;
-    if (roll <= acc) return v;
-  }
-  return pool[0] ?? null;
-}
-
 export interface TileSelection { terrain: TerrainKey; variant: TerrainVariationDef | null }
 
 export function getTileSelection(q: number, r: number): TileSelection {
   const terrain = getTileType(q, r);
-  const variant = selectVariant(q, r, terrain);
-  return { terrain, variant };
+  const selection = getDecorativeSelectionForTerrain(q, r, terrain, side => getNeighborBySide(q, r, side));
+  return { terrain, variant: selection.variant };
 }
 
 // Derive sprite key for image loading: prefer variant assetKey/key, else terrain assetKey or terrain key
 export function getTileSpriteKey(q: number, r: number): string {
-  const { terrain, variant } = getTileSelection(q, r);
-  if (variant) return (variant.assetKey ?? variant.key);
-  return (TERRAIN_DEFS[terrain].assetKey ?? terrain);
+  const terrain = getTileType(q, r);
+  return getDecorativeSelectionForTerrain(q, r, terrain, side => getNeighborBySide(q, r, side)).assetKey;
 }

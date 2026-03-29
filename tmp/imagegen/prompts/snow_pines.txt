@@ -1,0 +1,12 @@
+Use case: stylized-concept
+Asset type: game terrain tile
+Primary request: create a new decorative snow tile variant with a few tiny snow-buried pine saplings
+Scene/backdrop: isolated snowy hex tile
+Subject: cold snowfield with sparse miniature dark green saplings peeking through drifts
+Style/medium: painterly pixel art game tile
+Composition/framing: top-down three-quarter hex tile with a clear center and no tall silhouette
+Lighting/mood: quiet winter daylight
+Color palette: white snow, pale blue shadow, dark pine green, muted gray-brown stems
+Materials/textures: packed snow, thin needles, frosted tips
+Constraints: keep all vegetation short enough to stay within the base tile; no overlay needed; no rocks; no watermark
+Avoid: full trees, Christmas-card styling, blue fog, photoreal needles

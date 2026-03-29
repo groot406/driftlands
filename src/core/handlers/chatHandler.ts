@@ -7,7 +7,14 @@ import { isWindowActive, WINDOW_IDS } from '../windowManager';
 
 // Client-side chat handler
 class ChatMessageHandler {
+  private initialized = false;
+
   init(): void {
+    if (this.initialized) {
+      return;
+    }
+
+    this.initialized = true;
     clientMessageRouter.on('chat:message', this.handleChatMessage.bind(this));
   }
 
@@ -35,4 +42,3 @@ class ChatMessageHandler {
 }
 
 export const chatMessageHandler = new ChatMessageHandler();
-

@@ -8,7 +8,7 @@ export const movementSystem = {
   init: () => {
     movement.init();
   },
-  tick: (_ctx: TickContext) => {
-    movement.tick();
+  tick: (ctx: TickContext) => {
+    movement.tick(ctx.now);
   }
 };

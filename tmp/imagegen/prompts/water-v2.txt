@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+Asset type: game terrain tile
+Primary request: repaint the existing water tile so it reads as calmer shallow blue water with more depth variation and a stronger pixel-art ripple pattern
+Input images: Image 1: edit target (/Users/andredegroot/development/driftlands/src/assets/tiles/water.png)
+Scene/backdrop: isolated hex water tile, no horizon
+Subject: bright turquoise shallows blending into cooler blue depth, subtle ripple bands, a few small highlight streaks
+Style/medium: painterly pixel art game tile
+Composition/framing: same top-down three-quarter hex tile framing as the source image
+Lighting/mood: bright daylight, clean readable shimmer, not glossy
+Color palette: turquoise, teal, cool blue, restrained white highlights
+Materials/textures: small wavelets, soft depth transitions, crisp pixel clusters
+Constraints: change only the water artwork; keep the tile silhouette, perspective, and footprint unchanged; no foam piles; no props; no watermark
+Avoid: photorealism, smooth gradients, blurry AI texture, square background

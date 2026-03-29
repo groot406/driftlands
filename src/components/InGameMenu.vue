@@ -4,13 +4,15 @@
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
         class="relative bg-slate-800/90 border border-slate-700 rounded-lg p-6 flex flex-col gap-4 transition-all duration-300"
-        :class="showSettings ? 'min-w-[600px] max-w-[700px] h-[80vh] overflow-y-auto' : 'min-w-[280px]'"
+        :class="showSettings ? 'w-[min(92vw,560px)] max-h-[80vh] overflow-y-auto' : 'w-[min(92vw,320px)]'"
       >
         <!-- Main Menu -->
         <div v-if="!showSettings" class="animate-in slide-in-from-left-2 duration-500">
           <h2 class="pixel-font text-xl mb-4">Menu</h2>
           <div class="flex flex-col gap-2 pixel-font text-xs">
             <button class="menu-btn" @click="resumeGame">Back to Game</button>
+            <button class="menu-btn" @click="openMissionCenterFromMenu">Mission Centre</button>
+            <button class="menu-btn" @click="openNotificationCenterFromMenu">Notification Log</button>
             <button class="menu-btn" @click="showSettings = true">Settings</button>
             <button class="menu-btn" @click="returnToTitle">Return to Title</button>
           </div>
@@ -30,9 +32,20 @@
 import { uiStore, resumeGame, returnToTitle } from '../store/uiStore';
 import { computed, ref, watch } from 'vue';
 import Settings from './Settings.vue';
+import { openWindow, WINDOW_IDS } from '../core/windowManager';
 
 const visible = computed(() => uiStore.menuOpen);
 const showSettings = ref(false);
+
+function openMissionCenterFromMenu() {
+  resumeGame();
+  openWindow(WINDOW_IDS.MISSION_CENTER);
+}
+
+function openNotificationCenterFromMenu() {
+  resumeGame();
+  openWindow(WINDOW_IDS.NOTIFICATION_CENTER);
+}
 
 // Reset to main menu when menu is closed
 watch(visible, (isVisible) => {

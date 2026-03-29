@@ -14,10 +14,12 @@ export interface Tile {
     biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
-    // Variant key if a terrain variation was selected (e.g. 'plains_coast_a'). Null if base terrain.
+    // Functional terrain state such as crops, docks, rocks, or mines. Purely decorative art is resolved separately.
     variant?: string | null;
     // Timestamp when current variant was set (for growth progression)
     variantSetMs?: number;
+    // Effective duration for the current growth stage, chosen once when the variant is applied.
+    variantAgeMs?: number;
     // Cached direct neighbor tiles mapped by side (a-f clockwise). Populated lazily.
     neighbors?: TileNeighborMap;
     // Optional per-edge fencing: when true for a side, movement cannot cross that edge.

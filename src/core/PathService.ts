@@ -1,16 +1,21 @@
 import {axialKey, tileIndex} from './world';
 import {heroes} from '../store/heroStore';
-import {TERRAIN_DEFS} from './terrainDefs';
 import {taskStore} from '../store/taskStore';
 import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
+import { axialDistanceCoords } from '../shared/game/hex';
+import { getTileMoveCost, isEdgeBlocked, isTileWalkable } from '../shared/game/navigation';
+import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 
 export interface PathCoord {
     q: number;
     r: number;
 }
 
-const maxNodes = 5000;
+const BASE_NODE_BUDGET = 7000;
+const MAX_NODE_BUDGET = 45000;
+const MIN_DETOUR_MARGIN = 12;
+const MAX_DETOUR_MARGIN = 42;
 
 export class PathService {
     // Pathfinding statics
@@ -27,14 +32,9 @@ export class PathService {
         if (!hero) return [];
         if (!this.isHeroIdle(hero)) return [];
 
-        // Distance guard: skip if far beyond reachable distance for preview
-        const maxDist = this.estimateMaxReachableDistance(maxNodes);
-        const dist = this.axialDistance(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
-        if (dist > maxDist) return [];
-
         // Build cache key from hero id/coords and hovered coords
-        const key = `${selectedId}:${hero.q},${hero.r}->${hoveredTile.q},${hoveredTile.r}`;
-        if (this._lastPathKey === key && this._lastPath.length) {
+        const key = `${selectedId}:${hero.q},${hero.r}->${hoveredTile.q},${hoveredTile.r}:${hoveredTile.discovered ? hoveredTile.terrain ?? 'discovered' : 'undiscovered'}:${hoveredTile.variant ?? ''}`;
+        if (this._lastPathKey === key) {
             return this._lastPath;
         }
 
@@ -47,10 +47,9 @@ export class PathService {
 
     // expose pathfinding for external movement start
     public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number): PathCoord[] {
-        // Early exit: if target is clearly beyond reachable distance under node cap
-        const maxDist = this.estimateMaxReachableDistance(maxNodes);
-        const dist = this.axialDistance(startQ, startR, goalQ, goalR);
-        if (dist > maxDist) return [];
+        const directDistance = this.axialDistance(startQ, startR, goalQ, goalR);
+        if (directDistance === 0) return [];
+        const searchProfile = this.buildSearchProfile(directDistance);
 
         interface PathNode {
             q: number;
@@ -61,11 +60,7 @@ export class PathService {
         }
 
         const costFor = (q: number, r: number): number => {
-            const t = tileIndex[axialKey(q, r)];
-            if (!t || !t.terrain) return 1;
-            const def = (TERRAIN_DEFS as any)[t.terrain];
-            const mc = def && typeof def.moveCost === 'number' ? def.moveCost : 1;
-            return Math.max(0.1, mc); // enforce sane lower bound
+            return getTileMoveCost(tileIndex[axialKey(q, r)] ?? null);
         };
 
         const heuristic = (q: number, r: number): number => {
@@ -80,7 +75,7 @@ export class PathService {
         open.push(startNode);
         openMap.set(axialKey(startQ, startR), startNode);
         let iterations = 0;
-        while (open.length && iterations < maxNodes) {
+        while (open.length && iterations < searchProfile.maxNodes) {
             iterations++;
             let bestIndex = 0;
             let best = open[0]!;
@@ -111,27 +106,11 @@ export class PathService {
                 const nr = current.r + dr;
                 const key = axialKey(nq, nr);
                 if (closed.has(key)) continue;
+                if (!this.isWithinSearchWindow(nq, nr, startQ, startR, goalQ, goalR, searchProfile.maxRange)) continue;
 
                 const currTile = tileIndex[axialKey(current.q, current.r)];
                 const nextTile = tileIndex[key];
-
-                const curTileTerrainDef = currTile && currTile.terrain ? (TERRAIN_DEFS as any)[currTile.terrain] : null;
-                const nextTileTerrainDef = nextTile && nextTile.terrain ? (TERRAIN_DEFS as any)[nextTile.terrain] : null;
-
-                const curTileVariant = curTileTerrainDef && currTile?.variant ? curTileTerrainDef.variations?.find((v: any) => v.key === currTile?.variant) : null;
-                const nextTileVariant = nextTileTerrainDef && nextTile?.variant ? nextTileTerrainDef.variations?.find((v: any) => v.key === nextTile?.variant) : null;
-
-                const curFenceEdges = curTileVariant && curTileVariant.fencedEdges ? curTileVariant.fencedEdges : (curTileTerrainDef && curTileTerrainDef.fencedEdges ? curTileTerrainDef.fencedEdges : {});
-                const nextFenceEdges = nextTileVariant && nextTileVariant.fencedEdges ? nextTileVariant.fencedEdges : (nextTileTerrainDef && nextTileTerrainDef.fencedEdges ? nextTileTerrainDef.fencedEdges : {});
-
-                const opp: Record<'a'|'b'|'c'|'d'|'e'|'f', 'a'|'b'|'c'|'d'|'e'|'f'> = { a: 'd', b: 'e', c: 'f', d: 'a', e: 'b', f: 'c' };
-
-                const isFenced = !!(
-                    (currTile && curFenceEdges && curFenceEdges[side]) ||
-                    (nextTile && nextFenceEdges && nextFenceEdges[opp[side]])
-                );
-
-                if (isFenced) continue;
+                if (isEdgeBlocked(currTile, nextTile, side)) continue;
                 if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
                 const stepCost = costFor(nq, nr);
                 const tentativeG = current.g + stepCost;
@@ -157,38 +136,50 @@ export class PathService {
     }
 
     public axialDistance(aQ: number, aR: number, bQ: number, bR: number) {
-        const dq = Math.abs(aQ - bQ);
-        const dr = Math.abs(aR - bR);
-        const ds = Math.abs((-aQ - aR) - (-bQ - bR));
-        return Math.max(dq, dr, ds);
+        return axialDistanceCoords(aQ, aR, bQ, bR);
     }
 
     private isWalkable(q: number, r: number) {
-        const t = tileIndex[axialKey(q, r)];
-        if (!t) return false;
-        if (!t.terrain) return false;
-        const def = (TERRAIN_DEFS as any)[t.terrain];
-        // Variant-level walkable override
-        if (t.variant && def?.variations) {
-            const vDef = def.variations.find((v: any) => v.key === t.variant);
-            if (vDef && typeof vDef.walkable === 'boolean') return vDef.walkable;
-        }
-        return !!(def && def.walkable);
+        return isTileWalkable(tileIndex[axialKey(q, r)] ?? null);
     }
 
     private isHeroIdle(hero: Hero): boolean {
         if (hero.movement) return false;
         if (hero.currentTaskId) {
             const inst = taskStore.taskIndex[hero.currentTaskId];
-            if (inst && inst.active && !inst.completedMs) return false;
+            if (isHeroWorkingTask(hero, inst)) return false;
         }
         return true;
     }
 
-    // Estimate maximum axial distance reachable given node cap for hex grid (~3d(d+1) nodes up to ring d)
-    private estimateMaxReachableDistance(maxNodes: number): number {
-        // Solve 3d(d+1) <= maxNodes -> d ≈ (sqrt(12*maxNodes + 3) - 3) / 6
-        const approx = (Math.sqrt(12 * Math.max(0, maxNodes) + 3) - 3) / 6;
-        return Math.max(0, Math.floor(approx));
+    private buildSearchProfile(directDistance: number) {
+        const detourMargin = Math.max(
+            MIN_DETOUR_MARGIN,
+            Math.min(MAX_DETOUR_MARGIN, Math.ceil(directDistance * 0.45))
+        );
+        const maxRange = directDistance + detourMargin;
+        const corridorArea = 1 + (3 * maxRange * (maxRange + 1));
+        const maxNodes = Math.max(
+            BASE_NODE_BUDGET,
+            Math.min(MAX_NODE_BUDGET, Math.round(corridorArea * 0.55))
+        );
+
+        return {
+            maxRange,
+            maxNodes,
+        };
+    }
+
+    private isWithinSearchWindow(
+        q: number,
+        r: number,
+        startQ: number,
+        startR: number,
+        goalQ: number,
+        goalR: number,
+        maxRange: number,
+    ) {
+        return this.axialDistance(startQ, startR, q, r) <= maxRange
+            && this.axialDistance(goalQ, goalR, q, r) <= maxRange;
     }
 }

@@ -1,202 +1,185 @@
 <template>
-  <div
-    v-if="isModalOpen"
-    class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-    @click.self="closeModal"
-  >
-    <div class="bg-gray-800/50 backdrop-blur border-2 border-gray-600/10 shadow-lg rounded-lg p-6 w-96 w-[1400px] h-[80vh] flex flex-col">
-      <!-- Header -->
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-white flex items-center gap-2">
-          <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-          Online Players ({{ playerCount }})
-        </h2>
-        <button
-          @click="closeModal"
-          class="text-gray-400 hover:text-white transition-colors"
-        >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+  <div v-if="isOpen" class="player-modal-backdrop" @click="close">
+    <div class="player-modal-panel" @click.stop>
+      <div class="player-modal-header">
+        <div>
+          <p class="player-modal-eyebrow">Party</p>
+          <h2 class="player-modal-title">Connected Players</h2>
+        </div>
+        <button class="player-modal-close" @click="close" title="Close">
+          ✕
         </button>
       </div>
 
-      <!-- Players List -->
-      <div class="flex flex-row gap-4">
-      <div class="mb-4 w-[250px]">
-        <h3 class="text-sm font-semibold text-gray-300 mb-2">Other Players</h3>
-        <div class="space-y-1 overflow-y-auto h-[50vh]">
-          <div
-            v-for="player in otherPlayers"
-            :key="player.id"
-            class="flex items-center gap-2 px-2 py-1 rounded bg-gray-800"
-          >
-            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-            <span class="text-sm text-gray-200">{{ player.name }}</span>
+      <div class="player-list">
+        <div v-for="player in players" :key="player.id" class="player-row">
+          <div class="player-main">
+            <span class="player-name">{{ player.name }}</span>
+            <span class="player-status" :class="{ 'player-status-ready': player.ready }">
+              {{ player.ready ? 'Ready' : 'Preparing' }}
+            </span>
           </div>
-          <div v-if="otherPlayers.length === 0" class="text-sm text-gray-500 italic px-2">
-            No other players online
-          </div>
-        </div>
-      </div>
-
-      <!-- Chat Section -->
-      <div class="flex-1 flex flex-col h-[72vh]">
-        <h3 class="text-sm font-semibold text-gray-300 mb-2">Chat</h3>
-
-        <!-- Chat Messages -->
-        <div
-          ref="chatContainer"
-          class="flex-1 bg-gray-800/70 rounded-lg p-3 overflow-y-auto h-[50vh] mb-3"
-        >
-          <div v-if="chatMessages.length === 0" class="text-sm text-gray-500 italic">
-            No messages yet. Start a conversation!
-          </div>
-          <div
-            v-for="message in chatMessages"
-            :key="message.id"
-            class="mb-2 last:mb-0"
-            :class="isOwnMessage(message) ? 'flex flex-col items-end' : 'flex flex-col items-start'"
-          >
-            <div class="flex flex-row items-center gap-2" :class="isOwnMessage(message) ? 'flex-row-reverse' : ''">
-              <div class="text-xs text-gray-400 shrink-0">
-                {{ formatTime(message.timestamp) }}
-              </div>
-              <div class="text-sm font-medium" :class="isOwnMessage(message) ? 'text-green-300' : 'text-blue-300'">
-                {{ isOwnMessage(message) ? 'You' : message.playerName }}
-              </div>
-            </div>
-            <div
-              class="text-sm text-gray-200 break-words p-2 mt-1 mb-3 rounded-full max-w-[80%] min-w-[20%] px-4"
-              :class="isOwnMessage(message) ?
-                'bg-blue-600/10 border-blue-400 ml-auto' :
-                'bg-slate-500/20 mr-auto'"
-            >
-              {{ message.message }}
-            </div>
+          <div class="player-meta">
+            <span>{{ player.claimedHeroIds.length }} heroes claimed</span>
           </div>
         </div>
 
-        <!-- Chat Input -->
-        <div class="flex gap-2">
-          <input
-            ref="chatInput"
-            v-model="newMessage"
-            @keydown.enter="sendChatMessage"
-            placeholder="Type a message..."
-            class="flex-1 bg-gray-800 shadow-md rounded px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            maxlength="200"
-          />
-          <button
-            @click="sendChatMessage"
-            :disabled="!newMessage.trim()"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
-          >
-            Send
-          </button>
+        <div v-if="players.length === 0" class="player-empty">
+          Waiting for the first traveler to join.
         </div>
-      </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue';
-import { getChatMessages, getIsPlayerModalOpen, setPlayerModalOpen } from '../store/chatStore';
-import { getConnectedPlayers, getOnlinePlayersCount } from '../store/playerStore';
-import { sendMessage, getCurrentPlayerInfo } from '../core/socket';
-import { openWindow, closeWindow, WINDOW_IDS, isWindowActive } from '../core/windowManager';
+import { computed, onUnmounted, watch } from 'vue';
+import { getConnectedPlayers } from '../store/playerStore';
+import { getIsPlayerModalOpen, setPlayerModalOpen } from '../store/chatStore';
+import { closeWindow, isWindowActive, WINDOW_IDS } from '../core/windowManager';
 
-const newMessage = ref('');
-const chatContainer = ref<HTMLDivElement>();
-const chatInput = ref<HTMLInputElement>();
+const isOpen = computed(() => getIsPlayerModalOpen.value);
+const players = computed(() => getConnectedPlayers.value);
 
-const isModalOpen = getIsPlayerModalOpen;
-const chatMessages = getChatMessages;
-const connectedPlayers = getConnectedPlayers;
-const playerCount = getOnlinePlayersCount;
-
-// Filter out current player from the list to show only "other players"
-const otherPlayers = computed(() => {
-  const currentPlayer = getCurrentPlayerInfo();
-  if (!currentPlayer) return connectedPlayers.value;
-
-  return connectedPlayers.value.filter(player => player.id !== currentPlayer.id);
-});
-
-function closeModal() {
+function close() {
   setPlayerModalOpen(false);
   closeWindow(WINDOW_IDS.PLAYER_MODAL);
 }
 
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function isOwnMessage(message: any): boolean {
-  const currentPlayer = getCurrentPlayerInfo();
-  return !!currentPlayer && message.playerId === currentPlayer.id;
-}
-
-function sendChatMessage() {
-  const message = newMessage.value.trim();
-  if (!message) return;
-
-  const playerInfo = getCurrentPlayerInfo();
-  if (!playerInfo) {
-    console.warn('Cannot send message - no player info available');
-    return;
-  }
-
-  sendMessage({
-    type: 'chat:message',
-    playerId: playerInfo.id,
-    playerName: playerInfo.name,
-    message: message,
-    timestamp: Date.now()
-  });
-
-  newMessage.value = '';
-}
-
-// Auto-scroll to bottom when new messages arrive
-watch(chatMessages, () => {
-  nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    }
-  });
-}, { deep: true });
-
-// Auto-focus chat input when modal opens and register with window manager
-watch(isModalOpen, (newValue) => {
-  if (newValue) {
-    openWindow(WINDOW_IDS.PLAYER_MODAL);
-    nextTick(() => {
-      chatInput.value?.focus();
-    });
-  } else {
-    closeWindow(WINDOW_IDS.PLAYER_MODAL);
-  }
-});
-
-// Handle Escape key to close modal
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isWindowActive(WINDOW_IDS.PLAYER_MODAL)) {
-    e.preventDefault();
-    e.stopPropagation();
-    closeModal();
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isWindowActive(WINDOW_IDS.PLAYER_MODAL)) {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
   }
 }
 
-// Add/remove escape key listener
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown);
-});
+let listenerActive = false;
+
+watch(isOpen, (nextOpen) => {
+  if (nextOpen && !listenerActive) {
+    window.addEventListener('keydown', handleKeydown);
+    listenerActive = true;
+  } else if (!nextOpen && listenerActive) {
+    window.removeEventListener('keydown', handleKeydown);
+    listenerActive = false;
+  }
+}, { immediate: true });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
+  if (listenerActive) {
+    window.removeEventListener('keydown', handleKeydown);
+  }
 });
 </script>
+
+<style scoped>
+.player-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(8px);
+}
+
+.player-modal-panel {
+  width: min(480px, 100%);
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.84)),
+    radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 58%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+  color: #f8fafc;
+}
+
+.player-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 14px 20px;
+}
+
+.player-modal-eyebrow {
+  margin: 0 0 4px 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.72);
+}
+
+.player-modal-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.player-modal-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.78);
+  color: inherit;
+  cursor: pointer;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 20px 20px 20px;
+}
+
+.player-row {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.player-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.player-name {
+  font-weight: 600;
+}
+
+.player-status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.44);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.player-status-ready {
+  background: rgba(34, 197, 94, 0.18);
+  color: rgba(187, 247, 208, 0.96);
+}
+
+.player-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.76);
+}
+
+.player-empty {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.42);
+  color: rgba(203, 213, 225, 0.76);
+  text-align: center;
+}
+</style>

@@ -2,6 +2,8 @@ import {reactive} from 'vue';
 import {getMaxRadiusFor} from './world';
 import {isPaused} from '../store/uiStore';
 import {isKeyboardBlocked} from './windowManager';
+import { axialDistance } from '../shared/game/hex';
+import {isHitStopActive} from './gameFeel';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
@@ -29,6 +31,10 @@ export interface CameraState {
     velQ: number;
     velR: number;
     speed: number;
+    screenVelocityX: number;
+    screenVelocityY: number;
+    shakeOffsetX: number;
+    shakeOffsetY: number;
 }
 
 export const camera: CameraState = reactive({
@@ -41,7 +47,36 @@ export const camera: CameraState = reactive({
     velQ: 0,
     velR: 0,
     speed: 0,
+    screenVelocityX: 0,
+    screenVelocityY: 0,
+    shakeOffsetX: 0,
+    shakeOffsetY: 0,
 });
+
+interface ActiveCameraShake {
+    startMs: number;
+    durationMs: number;
+    intensity: number;
+    frequency: number;
+    seed: number;
+    origin?: { q: number; r: number };
+    falloffRadius: number;
+    biasX: number;
+    biasY: number;
+}
+
+export interface CameraShakeOptions {
+    q?: number;
+    r?: number;
+    intensity?: number;
+    durationMs?: number;
+    frequency?: number;
+    falloffRadius?: number;
+    directional?: boolean;
+    pushScale?: number;
+}
+
+const activeCameraShakes: ActiveCameraShake[] = [];
 
 export function axialToPixel(q: number, r: number) {
     const x = HEX_X_FACTOR * (q + r / 2);
@@ -66,10 +101,87 @@ export function pixelToAxial(x: number, y: number) {
 
 // Hex distance between two axial coordinates
 export function hexDistance(a: { q: number; r: number }, b: { q: number; r: number }): number {
-    const dq = Math.abs(a.q - b.q);
-    const dr = Math.abs(a.r - b.r);
-    const ds = Math.abs((-a.q - a.r) - (-b.q - b.r));
-    return Math.max(dq, dr, ds);
+    return axialDistance(a, b);
+}
+
+export function triggerCameraShake(options: CameraShakeOptions = {}) {
+    const intensity = Math.max(0, options.intensity ?? 5);
+    const durationMs = Math.max(80, options.durationMs ?? 180);
+    if (intensity <= 0 || durationMs <= 0) return;
+
+    let biasX = 0;
+    let biasY = 0;
+    if (options.directional !== false && options.q !== undefined && options.r !== undefined) {
+        const eventPixel = axialToPixel(options.q, options.r);
+        const cameraPixel = axialToPixel(camera.q, camera.r);
+        const deltaX = cameraPixel.x - eventPixel.x;
+        const deltaY = cameraPixel.y - eventPixel.y;
+        const magnitude = Math.hypot(deltaX, deltaY);
+        if (magnitude > 0.001) {
+            const pushScale = options.pushScale ?? 0.45;
+            biasX = (deltaX / magnitude) * pushScale;
+            biasY = (deltaY / magnitude) * pushScale;
+        }
+    }
+
+    if (activeCameraShakes.length >= 12) {
+        activeCameraShakes.shift();
+    }
+
+    activeCameraShakes.push({
+        startMs: performance.now(),
+        durationMs,
+        intensity,
+        frequency: Math.max(4, options.frequency ?? 15),
+        seed: Math.random() * Math.PI * 2,
+        origin: options.q !== undefined && options.r !== undefined ? { q: options.q, r: options.r } : undefined,
+        falloffRadius: Math.max(1, options.falloffRadius ?? Math.max(6, camera.innerRadius + 2)),
+        biasX,
+        biasY,
+    });
+}
+
+function updateCameraShake(now: number, dt: number) {
+    if (!activeCameraShakes.length) {
+        const decay = Math.exp(-18 * dt);
+        camera.shakeOffsetX *= decay;
+        camera.shakeOffsetY *= decay;
+        if (Math.abs(camera.shakeOffsetX) < 0.01) camera.shakeOffsetX = 0;
+        if (Math.abs(camera.shakeOffsetY) < 0.01) camera.shakeOffsetY = 0;
+        return;
+    }
+
+    let totalX = 0;
+    let totalY = 0;
+
+    for (let i = activeCameraShakes.length - 1; i >= 0; i--) {
+        const shake = activeCameraShakes[i]!;
+        const age = now - shake.startMs;
+        if (age >= shake.durationMs) {
+            activeCameraShakes.splice(i, 1);
+            continue;
+        }
+
+        const progress = age / shake.durationMs;
+        const envelope = (1 - progress) * (1 - progress);
+        let attenuation = 1;
+
+        if (shake.origin) {
+            const distance = hexDistance(camera, shake.origin);
+            attenuation = Math.max(0, 1 - (distance / shake.falloffRadius));
+            attenuation *= attenuation;
+        }
+
+        if (attenuation <= 0.001) continue;
+
+        const wobble = (age / 1000) * shake.frequency * Math.PI * 2;
+        const amplitude = shake.intensity * envelope * attenuation;
+        totalX += ((Math.sin(wobble + shake.seed) * 0.7) + (Math.sin((wobble * 1.73) + (shake.seed * 0.61)) * 0.3) + (shake.biasX * 0.85)) * amplitude;
+        totalY += ((Math.cos((wobble * 1.11) + (shake.seed * 1.2)) * 0.62) + (Math.sin((wobble * 1.91) + (shake.seed * 0.27)) * 0.38) + (shake.biasY * 0.85)) * amplitude;
+    }
+
+    camera.shakeOffsetX = totalX;
+    camera.shakeOffsetY = totalY;
 }
 
 // Internal drag & throw tracking
@@ -242,6 +354,21 @@ export async function animateCamera() {
         camera.velQ = camera.velQ * 0.9; // gentle decay
         camera.velR = camera.velR * 0.9;
         camera.speed = camera.speed * 0.9;
+        camera.screenVelocityX = camera.screenVelocityX * 0.88;
+        camera.screenVelocityY = camera.screenVelocityY * 0.88;
+        updateCameraShake(now, dt);
+        rafId = requestAnimationFrame(animateCamera);
+        return;
+    }
+    if (isHitStopActive()) {
+        camera.velQ = camera.velQ * 0.9;
+        camera.velR = camera.velR * 0.9;
+        camera.speed = camera.speed * 0.78;
+        camera.screenVelocityX = camera.screenVelocityX * 0.72;
+        camera.screenVelocityY = camera.screenVelocityY * 0.72;
+        updateCameraShake(now, dt);
+        lastQ = camera.q;
+        lastR = camera.r;
         rafId = requestAnimationFrame(animateCamera);
         return;
     }
@@ -299,9 +426,16 @@ export async function animateCamera() {
     const moveDQ = camera.q - lastQ;
     const moveDR = camera.r - lastR;
     const instSpeed = dt > 0 ? Math.sqrt(moveDQ * moveDQ + moveDR * moveDR) / dt : 0;
+    const prevPixel = axialToPixel(lastQ, lastR);
+    const currentPixel = axialToPixel(camera.q, camera.r);
+    const instScreenVelocityX = dt > 0 ? -(currentPixel.x - prevPixel.x) / dt : 0;
+    const instScreenVelocityY = dt > 0 ? -(currentPixel.y - prevPixel.y) / dt : 0;
 
     // Exponential smoothing for nicer blur transitions
     camera.speed = camera.speed * 0.85 + instSpeed * 0.15;
+    camera.screenVelocityX = camera.screenVelocityX * 0.8 + instScreenVelocityX * 0.2;
+    camera.screenVelocityY = camera.screenVelocityY * 0.8 + instScreenVelocityY * 0.2;
+    updateCameraShake(now, dt);
     lastQ = camera.q;
     lastR = camera.r;
 
@@ -320,6 +454,18 @@ export function centerCamera() {
 export function moveCamera(q: number, r: number) {
     camera.targetQ = q;
     camera.targetR = r;
+    clampCameraTargets();
+}
+
+export function nudgeCameraTowards(q: number, r: number, strength: number = 0.12, maxDistance: number = 1.4) {
+    const deltaQ = q - camera.targetQ;
+    const deltaR = r - camera.targetR;
+    const distance = Math.hypot(deltaQ, deltaR);
+    if (distance <= 0.001) return;
+
+    const push = Math.min(maxDistance, Math.max(0.08, distance * strength));
+    camera.targetQ += (deltaQ / distance) * push;
+    camera.targetR += (deltaR / distance) * push;
     clampCameraTargets();
 }
 

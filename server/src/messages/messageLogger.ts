@@ -13,7 +13,7 @@ export class MessageLogger {
     return MessageLogger.instance;
   }
 
-  private logOutgoingMessage(target: string, event: string, data: any): void {
+  private logOutgoingMessage(_target: string, _event: string, data: any): void {
     if (!this.isLoggingEnabled) return;
 
     console.log(`<<<< ${data?.type}:`);
