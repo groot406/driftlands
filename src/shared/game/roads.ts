@@ -17,5 +17,7 @@ export function isRoadTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | unde
 }
 
 export function isRoadConnectionTarget(tile: Pick<Tile, 'terrain' | 'variant'> | null | undefined) {
-  return tile?.terrain === 'towncenter' || isRoadTile(tile);
+  return tile?.terrain === 'towncenter' ||
+      isRoadTile(tile) ||
+      (tile?.terrain === 'water' && tile?.variant?.startsWith('water_dock_'));
 }

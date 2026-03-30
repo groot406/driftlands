@@ -222,7 +222,6 @@ export class HexMapService {
     private _images: Record<string, HTMLImageElement> = {};
     private _maskedImages: Record<string, HTMLCanvasElement> = {};
     private _imagesLoaded = false;
-    private _tilePolishOverlay: HTMLCanvasElement | null = null;
     private _heroImages: Record<string, HTMLImageElement> = {};
     private _pendingHeroImageLoads = new Map<string, Promise<void>>();
     private _heroImagesLoaded = false;
