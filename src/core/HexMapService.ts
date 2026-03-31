@@ -1223,6 +1223,7 @@ export class HexMapService {
         boundary: Array<{q: number; r: number}>,
         reachSet: Set<string>,
         alpha: number,
+        hovered: boolean = false,
     ) {
         const DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
 
@@ -1305,24 +1306,37 @@ export class HexMapService {
             if (loop.length >= 3) loops.push(loop);
         }
 
-        // 3. Draw each loop as a smooth bezier curve (single path = single draw call)
+        // 3. Draw each loop with drop shadow, diffuse glow, and core stroke.
         ctx.save();
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         for (const loop of loops) {
-            // Diffuse glow pass
-            ctx.globalAlpha = alpha;
-            ctx.shadowColor = 'rgba(140,120,40,0.5)';
-            ctx.shadowBlur = 18;
-            ctx.strokeStyle = 'rgba(140,120,40,0.3)';
-            ctx.lineWidth = 6;
+            // Dark drop shadow for contrast against tiles
+            ctx.globalAlpha = alpha * 0.7;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.strokeStyle = 'rgba(0,0,0,0.01)';
+            ctx.lineWidth = hovered ? 8 : 6;
             this.strokeSmoothLoop(ctx, loop);
-            // Reset shadow for core pass
+
+            // Diffuse glow pass
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.globalAlpha = alpha;
+            ctx.shadowColor = hovered ? 'rgba(220,200,60,0.7)' : 'rgba(180,160,50,0.6)';
+            ctx.shadowBlur = hovered ? 24 : 18;
+            ctx.strokeStyle = hovered ? 'rgba(220,200,60,0.5)' : 'rgba(180,160,50,0.4)';
+            ctx.lineWidth = hovered ? 7 : 5;
+            this.strokeSmoothLoop(ctx, loop);
+
+            // Core line — bright and crisp
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
-            ctx.globalAlpha = alpha * 0.6;
-            ctx.strokeStyle = 'rgba(180,160,60,0.35)';
-            ctx.lineWidth = 2;
+            ctx.globalAlpha = alpha * 0.85;
+            ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.6)' : 'rgba(210,190,70,0.5)';
+            ctx.lineWidth = hovered ? 2.5 : 1.5;
             this.strokeSmoothLoop(ctx, loop);
         }
         ctx.restore();
@@ -1498,33 +1512,6 @@ export class HexMapService {
             }
         }
 
-        // Reach outline — always visible (dimmed) for global reach; highlighted on TC hover.
-        // Draws smooth bezier curves through hex boundary corners (single path per loop).
-        if (!forMotionBlur) {
-            // Animate hovered reach alpha (smooth ease-in / ease-out)
-            const hasHovered = !!(opts.hoveredReachBoundary && opts.hoveredReachBoundary.length);
-            if (hasHovered) {
-                this._lastHoveredReachBoundary = opts.hoveredReachBoundary!;
-                this._lastHoveredReachTileIds = new Set(opts.hoveredReachTileIds);
-            }
-            const targetAlpha = hasHovered ? 0.7 : 0;
-            // Slower lerp when fading in (ease-in), faster when fading out
-            const lerpSpeed = hasHovered ? 0.06 : 0.1;
-            this._hoveredReachAlpha += (targetAlpha - this._hoveredReachAlpha) * lerpSpeed;
-            if (Math.abs(this._hoveredReachAlpha - targetAlpha) < 0.005) this._hoveredReachAlpha = targetAlpha;
-
-            // Global reach (all TCs combined) — always visible, dimmed
-            if (opts.globalReachBoundary && opts.globalReachBoundary.length) {
-                const reachSet = opts.globalReachTileIds || new Set<string>();
-                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.25);
-            }
-
-            // Hovered TC reach — brighter overlay on top, smoothly faded
-            if (this._hoveredReachAlpha > 0.005 && this._lastHoveredReachBoundary.length) {
-                this.drawReachOutline(ctx, this._lastHoveredReachBoundary, this._lastHoveredReachTileIds, this._hoveredReachAlpha);
-            }
-        }
-
         // Hover highlight
         if (!forMotionBlur && opts.taskMenuTile) {
             const ht = opts.taskMenuTile;
@@ -1540,6 +1527,32 @@ export class HexMapService {
 
         if (!forMotionBlur) {
             this.updateAndDrawParticles(ctx, effectNowMs, visibleTiles, applyCameraFade);
+        }
+
+        // Reach outline — rendered on top of tiles, particles, and highlights.
+        // Draws smooth bezier curves through hex boundary corners.
+        if (!forMotionBlur) {
+            // Animate hovered reach alpha (smooth ease-in / ease-out)
+            const hasHovered = !!(opts.hoveredReachBoundary && opts.hoveredReachBoundary.length);
+            if (hasHovered) {
+                this._lastHoveredReachBoundary = opts.hoveredReachBoundary!;
+                this._lastHoveredReachTileIds = new Set(opts.hoveredReachTileIds);
+            }
+            const targetAlpha = hasHovered ? 0.9 : 0;
+            const lerpSpeed = hasHovered ? 0.06 : 0.1;
+            this._hoveredReachAlpha += (targetAlpha - this._hoveredReachAlpha) * lerpSpeed;
+            if (Math.abs(this._hoveredReachAlpha - targetAlpha) < 0.005) this._hoveredReachAlpha = targetAlpha;
+
+            // Global reach (all TCs combined) — always visible
+            if (opts.globalReachBoundary && opts.globalReachBoundary.length) {
+                const reachSet = opts.globalReachTileIds || new Set<string>();
+                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false);
+            }
+
+            // Hovered TC reach — brighter overlay on top, smoothly faded
+            if (this._hoveredReachAlpha > 0.005 && this._lastHoveredReachBoundary.length) {
+                this.drawReachOutline(ctx, this._lastHoveredReachBoundary, this._lastHoveredReachTileIds, this._hoveredReachAlpha, true);
+            }
         }
 
         // Heroes & overlays combined layering
