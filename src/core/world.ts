@@ -4,7 +4,7 @@ import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
 import { registerExistingAgingTiles, resetTileGrowthTracking } from './growth';
-import { terrainPositions } from './terrainRegistry';
+import { indexTileInRegistry, resetTerrainRegistry, terrainPositions, updateTileVariantIndex } from './terrainRegistry';
 import {OPPOSITE_SIDE, SIDE_NAMES, type Terrain, type Tile, type TileNeighborMap} from "./types/Tile";
 import type {TileUpdatedMessage} from "../shared/protocol.ts";
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
@@ -60,16 +60,23 @@ export function ensureTileExists(q: number, r: number): Tile {
 }
 
 export function updateTile(tile: Tile) {
-    if (!tileIndex[tile.id]) {
-        ensureTileExists(tile.q, tile.r);
-        tiles.push(tile);
-        indexTile(tile);
-    } else {
-        tileIndex[tile.id] = tile;
-    }
+    const target = tileIndex[tile.id] ?? ensureTileExists(tile.q, tile.r);
+    const prevTerrain = target.terrain;
+    const prevVariant = target.variant;
 
-    if(tile.discovered) {
-        ensureTileNeighbors(tile);
+    Object.assign(target, tile);
+    tileIndex[target.id] = target;
+
+    if (prevTerrain && prevTerrain !== target.terrain) {
+        terrainPositions[prevTerrain].delete(target.id);
+    }
+    if (target.terrain) {
+        terrainPositions[target.terrain].add(target.id);
+    }
+    updateTileVariantIndex(target.id, prevVariant, target.variant);
+
+    if(target.discovered) {
+        ensureTileNeighbors(target);
     }
 }
 
@@ -286,7 +293,7 @@ function clearWorld() {
     maxRadiusByQ.clear();
     maxRadiusByR.clear();
     resetTerrainWeightCache(); // ensure terrain weight contexts are recomputed for new world
-    for (const key of Object.keys(terrainPositions) as TerrainKey[]) terrainPositions[key].clear();
+    resetTerrainRegistry();
 }
 
 export function startWorldGeneration(radius: number) {
@@ -303,9 +310,9 @@ export function loadWorld(tileData: Tile[]) {
     for (const t of tileData ?? []) {
         tiles.push(t);
         indexTile(t);
+        indexTileInRegistry(t);
     }
     for (const t of tiles) {
-        if (t.terrain) terrainPositions[t.terrain].add(t.id);
         if (!t.discovered) continue;
         const legacy = (t as any).neighbors;
         if (Array.isArray(legacy)) {

@@ -1,5 +1,5 @@
 import type {Tile} from "../core/types/Tile.ts";
-import type {ResourceType} from "../core/types/Resource.ts";
+import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
 import { tileIndex } from '../core/world.ts';
@@ -215,6 +215,60 @@ export function withdrawResourceFromStorage(tileId: string, type: ResourceType, 
     recomputeAggregateInventory();
     resourceVersion.value++;
     return amountToTake;
+}
+
+/**
+ * Swap resources at a storage tile: deposit one resource type and withdraw another.
+ * The swap is capacity-neutral (withdraw first, then deposit into freed space).
+ * Since a hero can only carry one resource type, only a full swap (covering the
+ * entire deposit amount) is performed. Returns the result, or null if no
+ * resource type could fully cover the deposit amount.
+ */
+export function swapResourceAtStorage(
+    tileId: string,
+    depositType: ResourceType,
+    depositAmount: number,
+    withdrawType?: ResourceType,
+): { deposited: number; withdrawn: ResourceAmount | null } {
+    if (depositAmount <= 0) return { deposited: 0, withdrawn: null };
+
+    const snapshot = ensureStorageSnapshotForTileInternal(tileIndex[tileId]);
+    if (!snapshot) return { deposited: 0, withdrawn: null };
+
+    // Determine which resource type to withdraw
+    let targetType: ResourceType | null = withdrawType ?? null;
+    if (!targetType) {
+        // Find the resource type with the smallest stock that still fully covers
+        // the deposit amount (tightest fit), so we don't drain the most plentiful
+        // resource unnecessarily.
+        let bestAmount = Infinity;
+
+        for (const rt of RESOURCE_TYPES) {
+            if (rt === depositType) continue;
+            const available = snapshot.resources[rt] ?? 0;
+            if (available >= depositAmount && available < bestAmount) {
+                bestAmount = available;
+                targetType = rt;
+            }
+        }
+    }
+
+    if (!targetType) return { deposited: 0, withdrawn: null };
+
+    const availableToWithdraw = snapshot.resources[targetType] ?? 0;
+    if (availableToWithdraw < depositAmount) return { deposited: 0, withdrawn: null };
+
+    // Withdraw first (frees capacity), then deposit (uses freed capacity)
+    snapshot.resources[targetType] = Math.max(0, availableToWithdraw - depositAmount);
+    snapshot.resources[depositType] = (snapshot.resources[depositType] ?? 0) + depositAmount;
+
+    recomputeAggregateInventory();
+    resourceVersion.value++;
+
+    return {
+        deposited: depositAmount,
+        withdrawn: { type: targetType, amount: depositAmount },
+    };
 }
 
 // Legacy aggregate helpers kept as a fallback for systems that do not specify a storage tile.

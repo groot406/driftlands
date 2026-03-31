@@ -10,8 +10,8 @@ const tillLandTask: TaskDefinition = {
     label: 'Prepare Land',
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'dirt',
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && ((tile.terrain === 'dirt' && !tile.variant) || (tile.terrain === 'plains' && !tile.variant));
+    canStart(tile, _hero) {
+        return (tile.terrain === 'dirt' && !tile.variant) || (tile.terrain === 'plains' && !tile.variant);
     },
 
     requiredXp(_distance: number) {

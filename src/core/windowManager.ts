@@ -106,6 +106,7 @@ export const WINDOW_IDS = {
   MISSION_CENTER: 'mission-center',
   NOTIFICATION_CENTER: 'notification-center',
   TASK_MENU: 'task-menu',
+  TOWN_CENTER_PANEL: 'town-center-panel',
 } as const;
 
 // Register common windows with default configurations
@@ -143,4 +144,10 @@ registerWindow({
   id: WINDOW_IDS.TASK_MENU,
   priority: 50,
   blocksKeyboard: true, // Task menu should block keyboard to prevent conflicts
+});
+
+registerWindow({
+  id: WINDOW_IDS.TOWN_CENTER_PANEL,
+  priority: 60,
+  blocksKeyboard: true,
 });

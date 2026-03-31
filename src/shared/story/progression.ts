@@ -11,7 +11,8 @@ export type StoryBuildingKey =
   | 'dock'
   | 'lumberCamp'
   | 'granary'
-  | 'mine';
+  | 'mine'
+  | 'house';
 
 type StoryTaskKey = TaskType;
 type StoryTerrainKey = TerrainKey;
@@ -100,6 +101,11 @@ const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
     label: 'Mine',
     description: 'Establishes a lasting ore extraction point in the ridges.',
     taskKey: 'buildMine',
+  },
+  house: {
+    label: 'House',
+    description: 'Shelters settlers and raises the colony population cap.',
+    taskKey: 'buildHouse',
   },
 };
 
@@ -221,7 +227,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
   {
     missionNumber: 1,
     heroes: ['h1', 'h2'],
-    buildings: ['dock'],
+    buildings: ['dock', 'house'],
     tasks: [
       'explore',
       'chopWood',
@@ -232,29 +238,29 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
       'removeTrunks',
       'buildRoad',
       'prepareRoadbed',
+      'tillLand',
+      'seedGrain',
+      'harvestGrain',
     ],
-    terrains: ['plains', 'forest', 'dirt', 'water'],
+    terrains: ['plains', 'forest', 'dirt', 'water', 'grain'],
   },
   {
     missionNumber: 2,
     heroes: ['h3'],
-    buildings: ['well', 'granary'],
+    buildings: ['well', 'granary', 'watchtower', 'mine'],
     tasks: [
-      'tillLand',
       'irregateDirtTask',
-      'seedGrain',
-      'harvestGrain',
       'collectRations',
       'fishAtDock',
+      'mineOre',
     ],
-    terrains: ['grain'],
+    terrains: ['mountain'],
   },
   {
     missionNumber: 3,
     heroes: ['h4'],
-    buildings: ['watchtower', 'supplyDepot', 'lumberCamp', 'mine'],
-    tasks: ['gatherTimber', 'mineOre'],
-    terrains: ['mountain'],
+    buildings: ['supplyDepot', 'lumberCamp'],
+    tasks: ['gatherTimber'],
   },
   {
     missionNumber: 4,

@@ -13,6 +13,8 @@ import { growthSystem } from './systems/growthSystem';
 import {movementSystem} from "./systems/movementSystem";
 import {taskSystem} from "./systems/taskSystem";
 import { runSystem } from './systems/runSystem';
+import { populationSystem } from './systems/populationSystem';
+import { coopSystem } from './systems/coopSystem';
 import { runState } from './state/runState';
 import { frontierFindState } from './state/frontierFindState';
 
@@ -87,6 +89,8 @@ tickEngine.setSeed(Number(process.env.SERVER_SEED ?? 123456789));
 tickEngine.register(movementSystem);
 tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
+tickEngine.register(populationSystem);
+tickEngine.register(coopSystem);
 tickEngine.register(runSystem);
 
 tickEngine.start();

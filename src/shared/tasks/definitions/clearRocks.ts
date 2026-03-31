@@ -8,8 +8,8 @@ const clearDirtRocksTask: TaskDefinition = {
     label: 'Clear rocks',
     chainAdjacentSameTerrain: true,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'dirt' && (tile.variant === 'dirt_rocks');
+    canStart(tile, _hero) {
+        return tile.terrain === 'dirt' && (tile.variant === 'dirt_rocks');
     },
 
     requiredXp(_distance: number) {
@@ -20,6 +20,10 @@ const clearDirtRocksTask: TaskDefinition = {
     heroRate(hero: Hero) {
         // Use attack stat for chopping efficiency; add small base
         return 10 * hero.stats.atk * 2;
+    },
+
+    totalRewardedResources(distance: number) {
+        return { type: 'stone', amount: 2 * distance };
     },
 
     onComplete(tile, _instance) {

@@ -71,6 +71,8 @@ export class ServerMovementHandler {
             return;
         }
 
+        coopState.touchHeroActivity(heroId);
+
         if (Math.abs(hero.q - requestedOrigin.q) > 1 || Math.abs(hero.r - requestedOrigin.r) > 1) return;
 
         // Always build the authoritative movement plan from the server's actual hero position.

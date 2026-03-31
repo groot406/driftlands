@@ -19,10 +19,9 @@ const prepareRoadbedTask: TaskDefinition = {
   label: 'Prepare Roadbed',
   chainAdjacentSameTerrain: false,
 
-  canStart(tile, hero) {
+  canStart(tile, _hero) {
     return (
-      !hero.carryingPayload
-      && tile.terrain === 'dirt'
+      tile.terrain === 'dirt'
       && !BLOCKED_DIRT_VARIANTS.has(tile.variant ?? '')
     );
   },

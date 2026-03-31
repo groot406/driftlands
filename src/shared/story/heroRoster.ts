@@ -16,14 +16,14 @@ const HERO_TEMPLATES: readonly StoryHeroTemplate[] = [
     name: 'Santa',
     role: 'Quartermaster',
     avatar: 'santa',
-    stats: { xp: 10, hp: 100, atk: 10, spd: 1 },
+    stats: { xp: 200, hp: 100, atk: 10, spd: 1 },
   },
   {
     id: 'h2',
     name: 'Harm',
     role: 'Trailbreaker',
     avatar: 'boy',
-    stats: { xp: 10, hp: 100, atk: 10, spd: 1 },
+    stats: { xp: 200, hp: 100, atk: 10, spd: 1 },
   },
   {
     id: 'h3',

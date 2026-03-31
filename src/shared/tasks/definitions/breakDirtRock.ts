@@ -7,8 +7,8 @@ const breakDirtRockTask: TaskDefinition = {
     key: 'breakDirtRock',
     label: 'Break rock',
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'dirt' && (tile.variant === 'dirt_big_rock');
+    canStart(tile, _hero) {
+        return tile.terrain === 'dirt' && (tile.variant === 'dirt_big_rock');
     },
 
     requiredXp(_distance: number) {

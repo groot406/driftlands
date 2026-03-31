@@ -7,9 +7,8 @@ const fishAtDockTask: TaskDefinition = {
     label: 'Fish at Dock',
     chainAdjacentSameTerrain: false,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload &&
-            tile.terrain === 'water' &&
+    canStart(tile, _hero) {
+        return tile.terrain === 'water' &&
             typeof tile.variant === 'string' &&
             tile.variant.startsWith('water_dock_');
     },

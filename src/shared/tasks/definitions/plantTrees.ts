@@ -10,8 +10,8 @@ const plantTreesTask: TaskDefinition = {
     key: 'plantTrees',
     label: 'Plant Trees',
     chainAdjacentSameTerrain: true,
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'forest' && tile.variant === 'chopped_forest';
+    canStart(tile, _hero) {
+        return tile.terrain === 'forest' && tile.variant === 'chopped_forest';
     },
 
     requiredXp(_distance: number) {

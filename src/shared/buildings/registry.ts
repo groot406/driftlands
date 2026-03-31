@@ -2,6 +2,7 @@ import { applyVariant } from '../../core/variants';
 import { discoverTile, ensureTileExists } from '../../core/world';
 import { terrainPositions } from '../../core/terrainRegistry';
 import { isTileWalkable } from '../game/navigation';
+import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
 import type { Hero } from '../../core/types/Hero';
 import type { ResourceAmount } from '../../core/types/Resource';
 import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
@@ -23,6 +24,7 @@ export interface BuildingDefinition {
     overlayOffset?: { x: number; y: number };
     providesWaterSource?: boolean;
     providesWarehouse?: boolean;
+    requiredPopulation?: number; // minimum population to build
     canPlace(tile: Tile, hero: Hero): boolean;
     requiredXp(distance: number): number;
     heroRate(hero: Hero, tile: Tile): number;
@@ -45,16 +47,21 @@ function hasAdjacentNaturalWater(tile: Tile): boolean {
 }
 
 function resolveDockVariant(tile: Tile, preferredSide?: TileSide) {
-    if (preferredSide) {
-        return `water_dock_${preferredSide}`;
-    }
-
     const neighbors = tile.neighbors;
     if (!neighbors) return 'water_dock_a';
 
+    // Use approach side only if the neighbor on that side is walkable
+    if (preferredSide) {
+        const preferredNeighbor = neighbors[preferredSide];
+        if (preferredNeighbor && isTileWalkable(preferredNeighbor)) {
+            return `water_dock_${preferredSide}`;
+        }
+    }
+
+    // Fallback: find any walkable neighbor side
     for (const side of SIDE_NAMES) {
         const neighbor = neighbors[side];
-        if (neighbor && neighbor.discovered && isTileWalkable(neighbor)) {
+        if (neighbor && isTileWalkable(neighbor)) {
             return `water_dock_${side}`;
         }
     }
@@ -99,9 +106,8 @@ const buildings: BuildingDefinition[] = [
         renderDecoration: 'well',
         overlayAssetKey: 'building_well_overlay',
         providesWaterSource: true,
-        canPlace(tile, hero) {
+        canPlace(tile, _hero) {
             return (
-                !hero.carryingPayload &&
                 (tile.terrain === 'plains' || tile.terrain === 'dirt') &&
                 !tile.variant &&
                 !hasAdjacentNaturalWater(tile)
@@ -135,12 +141,12 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildWatchtower',
         buildTaskLabel: 'Build Watchtower',
         sortOrder: 15,
+        requiredPopulation: 3,
         variantKeys: ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'],
         renderDecoration: 'watchtower',
         overlayAssetKey: 'building_watchtower_overlay',
-        canPlace(tile, hero) {
+        canPlace(tile, _hero) {
             return (
-                !hero.carryingPayload &&
                 (tile.terrain === 'plains' || tile.terrain === 'dirt' || tile.terrain === 'mountain') &&
                 !tile.variant
             );
@@ -164,6 +170,7 @@ const buildings: BuildingDefinition[] = [
             }
 
             revealTilesAround(tile, 2);
+            onPopulationBuildingCompleted();
         },
     },
     {
@@ -174,10 +181,10 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildTownCenter',
         buildTaskLabel: 'Found Town Center',
         sortOrder: 18,
+        requiredPopulation: 7,
         variantKeys: [],
-        canPlace(tile, hero) {
+        canPlace(tile, _hero) {
             return (
-                !hero.carryingPayload &&
                 (tile.terrain === 'plains' || tile.terrain === 'dirt') &&
                 !tile.variant
             );
@@ -197,6 +204,7 @@ const buildings: BuildingDefinition[] = [
         },
         onComplete(tile) {
             promoteTileToTowncenter(tile);
+            onPopulationBuildingCompleted();
         },
     },
     {
@@ -207,12 +215,13 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildSupplyDepot',
         buildTaskLabel: 'Build Supply Depot',
         sortOrder: 20,
+        requiredPopulation: 3,
         variantKeys: ['plains_depot', 'dirt_depot'],
         renderDecoration: 'depot',
         overlayAssetKey: 'building_depot_overlay',
         providesWarehouse: true,
-        canPlace(tile, hero) {
-            return !hero.carryingPayload && (tile.terrain === 'plains' || tile.terrain === 'dirt') && !tile.variant;
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && !tile.variant;
         },
         requiredXp(distance: number) {
             return Math.max(3400, 2800 * distance);
@@ -250,8 +259,8 @@ const buildings: BuildingDefinition[] = [
             'water_dock_e',
             'water_dock_f',
         ],
-        canPlace(tile, hero) {
-            return !hero.carryingPayload && tile.terrain === 'water' && !tile.variant;
+        canPlace(tile, _hero) {
+            return tile.terrain === 'water' && !tile.variant;
         },
         requiredXp(distance: number) {
             return Math.max(3000, 3000 * distance);
@@ -301,11 +310,12 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildLumberCamp',
         buildTaskLabel: 'Build Lumber Camp',
         sortOrder: 30,
+        requiredPopulation: 3,
         variantKeys: ['forest_lumber_camp'],
         renderDecoration: 'lumberCamp',
         overlayAssetKey: 'building_lumber_camp_overlay',
-        canPlace(tile, hero) {
-            return !hero.carryingPayload && tile.terrain === 'forest' && !tile.variant;
+        canPlace(tile, _hero) {
+            return tile.terrain === 'forest' && !tile.variant;
         },
         requiredXp(distance: number) {
             return Math.max(3200, 2600 * distance);
@@ -330,11 +340,12 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildGranary',
         buildTaskLabel: 'Build Granary',
         sortOrder: 35,
+        requiredPopulation: 3,
         variantKeys: ['grain_granary'],
         renderDecoration: 'granary',
         overlayAssetKey: 'building_granary_overlay',
-        canPlace(tile, hero) {
-            return !hero.carryingPayload && tile.terrain === 'grain' && !tile.variant;
+        canPlace(tile, _hero) {
+            return tile.terrain === 'grain' && !tile.variant;
         },
         requiredXp(distance: number) {
             return Math.max(3200, 2500 * distance);
@@ -352,6 +363,40 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'house',
+        label: 'House',
+        summary: 'Shelters settlers and raises the colony population cap by 2.',
+        categoryLabel: 'Settlement',
+        buildTaskKey: 'buildHouse',
+        buildTaskLabel: 'Build House',
+        sortOrder: 37,
+        variantKeys: ['plains_house', 'dirt_house'],
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && !tile.variant;
+        },
+        requiredXp(distance: number) {
+            return Math.max(2000, 1600 * distance);
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(distance: number) {
+            return [
+                { type: 'wood', amount: Math.max(4, 3 * distance) },
+                { type: 'stone', amount: Math.max(2, 2 * distance) },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_house', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_house', { stagger: false, respectBiome: false });
+            }
+
+            onPopulationBuildingCompleted();
+        },
+    },
+    {
         key: 'mine',
         label: 'Mine',
         summary: 'Turns a mountain into a permanent ore extraction site.',
@@ -359,9 +404,10 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildMine',
         buildTaskLabel: 'Build Mine',
         sortOrder: 40,
+        requiredPopulation: 5,
         variantKeys: ['mountains_with_mine'],
-        canPlace(tile, hero) {
-            return !hero.carryingPayload && tile.terrain === 'mountain' && !tile.variant;
+        canPlace(tile, _hero) {
+            return tile.terrain === 'mountain' && !tile.variant;
         },
         requiredXp(distance: number) {
             return 5000 * distance;

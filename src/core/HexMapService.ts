@@ -29,6 +29,7 @@ import {
     graphicsStore,
     isBloomEffectEnabled,
     isMotionBlurEffectEnabled,
+    shouldUseCanvasDropShadow,
     shouldUseEdgeVignette,
     shouldUseParticleGlowPass,
 } from '../store/graphicsStore';
@@ -87,6 +88,11 @@ interface DrawOptions {
     pathCoords: PathCoord[];
     clusterBoundaryTiles?: Tile[]; // boundary tiles of same-terrain cluster for menu highlighting
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
+    globalReachBoundary?: Array<{q: number; r: number}>; // always-visible reach outline (all TCs, dimmed)
+    globalReachTileIds?: Set<string>;
+    hoveredReachBoundary?: Array<{q: number; r: number}>; // hover-highlighted reach outline (specific TC)
+    hoveredReachTileIds?: Set<string>;
+    hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
 }
 
 interface OverlayRecord {
@@ -252,6 +258,9 @@ export class HexMapService {
         lastPerfNowMs: 0,
     };
     private _backdropPaletteCache: BackdropPaletteCache | null = null;
+    private _hoveredReachAlpha = 0; // animated 0→0.7 for smooth TC hover transition
+    private _lastHoveredReachBoundary: Array<{q: number; r: number}> = [];
+    private _lastHoveredReachTileIds: Set<string> = new Set();
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
     private _sortedHeroes: Hero[] = [];
@@ -360,7 +369,32 @@ export class HexMapService {
         ctx.globalAlpha = 1;
         ctx.filter = 'none';
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sceneCanvas, 0, 0);
+
+        // On Safari the CSS drop-shadow filter is disabled for performance.
+        // Replicate it via canvas shadow properties on the drawImage call instead.
+        if (!shouldUseCanvasDropShadow()) {
+            // Close shadow for edge definition
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.drawImage(sceneCanvas, 0, 0);
+
+            // Far shadow for depth
+            ctx.shadowOffsetX = 15;
+            ctx.shadowOffsetY = 35;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.drawImage(sceneCanvas, 0, 0);
+
+            // Reset shadow state
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+        } else {
+            ctx.drawImage(sceneCanvas, 0, 0);
+        }
 
         const motionBlur = this.getMotionBlurState();
         if (motionBlur) {
@@ -610,7 +644,9 @@ export class HexMapService {
         if (opts.hoveredTile) {
             const {x, y} = axialToPixel(opts.hoveredTile.q, opts.hoveredTile.r);
             const opacity = this.computeFade(hexDistance(camera, opts.hoveredTile), camera.innerRadius, camera.radius);
-            this.drawGlow(ctx, x, y, this.HEX_SIZE, [255, 226, 122], opacity * 0.2);
+            const inReach = opts.hoveredTileInReach !== false;
+            const glowColor: [number, number, number] = inReach ? [255, 226, 122] : [100, 60, 60];
+            this.drawGlow(ctx, x, y, this.HEX_SIZE, glowColor, opacity * 0.2);
         }
 
         if (opts.taskMenuTile) {
@@ -623,8 +659,8 @@ export class HexMapService {
         if (selectedHero) {
             const opacity = this.computeFade(hexDistance(camera, selectedHero), camera.innerRadius, camera.radius);
             const interp = this.getHeroInterpolatedPixelPosition(selectedHero, nowMs);
-            this.drawGlow(ctx, interp.x + 12, interp.y - 22, this.HEX_SIZE * 0.72, [255, 214, 122], opacity * 0.14);
-            this.drawGlow(ctx, interp.x + 8, interp.y - 18, this.HEX_SIZE * 0.54, [126, 255, 214], opacity * 0.1);
+            this.drawGlow(ctx, interp.x + 12, interp.y - 22, this.HEX_SIZE * 0.95, [255, 214, 122], opacity * 0.32);
+            this.drawGlow(ctx, interp.x + 8, interp.y - 18, this.HEX_SIZE * 0.72, [126, 255, 214], opacity * 0.22);
         }
     }
 
@@ -1182,6 +1218,137 @@ export class HexMapService {
         ctx.globalAlpha = 1;
     }
 
+    private drawReachOutline(
+        ctx: CanvasRenderingContext2D,
+        boundary: Array<{q: number; r: number}>,
+        reachSet: Set<string>,
+        alpha: number,
+    ) {
+        const DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
+
+        // Canonical vertex position: centroid of the 3 hex centers sharing the vertex.
+        // This ensures adjacent tiles compute identical pixel coords for shared vertices,
+        // which is critical for chaining boundary segments into continuous loops.
+        const vertexCache = new Map<string, {x: number; y: number}>();
+        const getVertex = (q: number, r: number, vi: number): {x: number; y: number} => {
+            // Vertex vi is shared by (q,r), neighbor_vi, and neighbor_{(vi+1)%6}
+            const [dq1, dr1] = DELTAS[vi]!;
+            const [dq2, dr2] = DELTAS[(vi + 1) % 6]!;
+            const hexes: Array<[number, number]> = [
+                [q, r], [q + dq1, r + dr1], [q + dq2, r + dr2],
+            ];
+            hexes.sort((a, b) => a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]);
+            const key = `${hexes[0]![0]},${hexes[0]![1]};${hexes[1]![0]},${hexes[1]![1]};${hexes[2]![0]},${hexes[2]![1]}`;
+            let pos = vertexCache.get(key);
+            if (pos) return pos;
+            const c0 = axialToPixel(q, r);
+            const c1 = axialToPixel(q + dq1, r + dr1);
+            const c2 = axialToPixel(q + dq2, r + dr2);
+            pos = { x: (c0.x + c1.x + c2.x) / 3, y: (c0.y + c1.y + c2.y) / 3 };
+            vertexCache.set(key, pos);
+            return pos;
+        };
+
+        // 1. Collect all outer edge segments as pairs of canonical vertex positions
+        const segments: Array<[number, number, number, number]> = []; // x1,y1,x2,y2
+        for (const bt of boundary) {
+            for (let i = 0; i < DELTAS.length; i++) {
+                const [dq, dr] = DELTAS[i]!;
+                if (reachSet.has(`${bt.q + dq},${bt.r + dr}`)) continue;
+                // Edge i goes from vertex (i+5)%6 to vertex i
+                const p1 = getVertex(bt.q, bt.r, (i + 5) % 6);
+                const p2 = getVertex(bt.q, bt.r, i);
+                segments.push([p1.x, p1.y, p2.x, p2.y]);
+            }
+        }
+        if (!segments.length) return;
+
+        // 2. Chain segments into closed loops via point adjacency
+        const ptKey = (x: number, y: number) => `${Math.round(x * 4)},${Math.round(y * 4)}`;
+        const adj = new Map<string, Array<{x: number; y: number; si: number}>>();
+        for (let si = 0; si < segments.length; si++) {
+            const [x1, y1, x2, y2] = segments[si]!;
+            const k1 = ptKey(x1, y1);
+            const k2 = ptKey(x2, y2);
+            if (!adj.has(k1)) adj.set(k1, []);
+            if (!adj.has(k2)) adj.set(k2, []);
+            adj.get(k1)!.push({x: x2, y: y2, si});
+            adj.get(k2)!.push({x: x1, y: y1, si});
+        }
+
+        const used = new Set<number>();
+        const loops: Array<Array<{x: number; y: number}>> = [];
+        for (let si = 0; si < segments.length; si++) {
+            if (used.has(si)) continue;
+            used.add(si);
+            const [x1, y1, x2, y2] = segments[si]!;
+            const loop: Array<{x: number; y: number}> = [{x: x1, y: y1}, {x: x2, y: y2}];
+            let cur = {x: x2, y: y2};
+            for (let safety = 0; safety < segments.length; safety++) {
+                const neighbors = adj.get(ptKey(cur.x, cur.y));
+                if (!neighbors) break;
+                let found = false;
+                for (const n of neighbors) {
+                    if (used.has(n.si)) continue;
+                    used.add(n.si);
+                    cur = {x: n.x, y: n.y};
+                    loop.push(cur);
+                    found = true;
+                    break;
+                }
+                if (!found) break;
+            }
+            // Remove duplicate closing point
+            if (loop.length > 2 && ptKey(loop[0]!.x, loop[0]!.y) === ptKey(loop[loop.length - 1]!.x, loop[loop.length - 1]!.y)) {
+                loop.pop();
+            }
+            if (loop.length >= 3) loops.push(loop);
+        }
+
+        // 3. Draw each loop as a smooth bezier curve (single path = single draw call)
+        ctx.save();
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        for (const loop of loops) {
+            // Diffuse glow pass
+            ctx.globalAlpha = alpha;
+            ctx.shadowColor = 'rgba(140,120,40,0.5)';
+            ctx.shadowBlur = 18;
+            ctx.strokeStyle = 'rgba(140,120,40,0.3)';
+            ctx.lineWidth = 6;
+            this.strokeSmoothLoop(ctx, loop);
+            // Reset shadow for core pass
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.globalAlpha = alpha * 0.6;
+            ctx.strokeStyle = 'rgba(180,160,60,0.35)';
+            ctx.lineWidth = 2;
+            this.strokeSmoothLoop(ctx, loop);
+        }
+        ctx.restore();
+    }
+
+    /** Draw a closed smooth curve through the given points using quadratic beziers. */
+    private strokeSmoothLoop(ctx: CanvasRenderingContext2D, pts: Array<{x: number; y: number}>) {
+        const n = pts.length;
+        if (n < 3) return;
+        ctx.beginPath();
+        // Start at midpoint between last and first point
+        const mx = (pts[n - 1]!.x + pts[0]!.x) / 2;
+        const my = (pts[n - 1]!.y + pts[0]!.y) / 2;
+        ctx.moveTo(mx, my);
+        // Each original point becomes a quadratic control point;
+        // anchors are midpoints between consecutive original points.
+        for (let i = 0; i < n; i++) {
+            const next = (i + 1) % n;
+            const nmx = (pts[i]!.x + pts[next]!.x) / 2;
+            const nmy = (pts[i]!.y + pts[next]!.y) / 2;
+            ctx.quadraticCurveTo(pts[i]!.x, pts[i]!.y, nmx, nmy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
+
     private drawTilesAndActors(ctx: CanvasRenderingContext2D, opts: DrawOptions, applyCameraFade: boolean = true, forMotionBlur: boolean = false, cameraFx: CameraCompositeState = this._currentCameraFx, effectNowMs: number = Date.now(), movementNowMs: number = effectNowMs, precomputedVisibleTiles: Tile[] | null = null) {
         if (!this._canvas) return;
 
@@ -1197,7 +1364,7 @@ export class HexMapService {
         this.applyWorldTransform(ctx, translateX, translateY, cameraFx);
 
         const overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number; z: number }> = [];
-        this.drawTiles(ctx, overlayRecords, visibleTiles, effectNowMs, applyCameraFade);
+        this.drawTiles(ctx, overlayRecords, visibleTiles, effectNowMs, applyCameraFade, opts.globalReachTileIds);
         if (!forMotionBlur) {
             this.drawGameplayWorldImpacts(ctx, effectNowMs, applyCameraFade);
         }
@@ -1276,7 +1443,10 @@ export class HexMapService {
                     const f = this.computeFade(dist, camera.innerRadius, camera.radius);
                     return f * f;
                 })();
-                this.drawHexHighlight(ctx, ht.q, ht.r, 'rgba(255, 227, 122, 0)', '#d0b23d', opacity);
+                const inReach = opts.hoveredTileInReach !== false;
+                const stroke = inReach ? '#d0b23d' : '#6a4a4a';
+                const fill = inReach ? 'rgba(255, 227, 122, 0)' : 'rgba(100, 60, 60, 0)';
+                this.drawHexHighlight(ctx, ht.q, ht.r, fill, stroke, opacity);
             }
         }
 
@@ -1328,6 +1498,33 @@ export class HexMapService {
             }
         }
 
+        // Reach outline — always visible (dimmed) for global reach; highlighted on TC hover.
+        // Draws smooth bezier curves through hex boundary corners (single path per loop).
+        if (!forMotionBlur) {
+            // Animate hovered reach alpha (smooth ease-in / ease-out)
+            const hasHovered = !!(opts.hoveredReachBoundary && opts.hoveredReachBoundary.length);
+            if (hasHovered) {
+                this._lastHoveredReachBoundary = opts.hoveredReachBoundary!;
+                this._lastHoveredReachTileIds = new Set(opts.hoveredReachTileIds);
+            }
+            const targetAlpha = hasHovered ? 0.7 : 0;
+            // Slower lerp when fading in (ease-in), faster when fading out
+            const lerpSpeed = hasHovered ? 0.06 : 0.1;
+            this._hoveredReachAlpha += (targetAlpha - this._hoveredReachAlpha) * lerpSpeed;
+            if (Math.abs(this._hoveredReachAlpha - targetAlpha) < 0.005) this._hoveredReachAlpha = targetAlpha;
+
+            // Global reach (all TCs combined) — always visible, dimmed
+            if (opts.globalReachBoundary && opts.globalReachBoundary.length) {
+                const reachSet = opts.globalReachTileIds || new Set<string>();
+                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.25);
+            }
+
+            // Hovered TC reach — brighter overlay on top, smoothly faded
+            if (this._hoveredReachAlpha > 0.005 && this._lastHoveredReachBoundary.length) {
+                this.drawReachOutline(ctx, this._lastHoveredReachBoundary, this._lastHoveredReachTileIds, this._hoveredReachAlpha);
+            }
+        }
+
         // Hover highlight
         if (!forMotionBlur && opts.taskMenuTile) {
             const ht = opts.taskMenuTile;
@@ -1366,6 +1563,7 @@ export class HexMapService {
         tiles: Tile[],
         now: number,
         applyCameraFade: boolean = true,
+        reachTileIds?: Set<string>,
     ) {
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
@@ -1374,7 +1572,8 @@ export class HexMapService {
             if (t.discovered) {
                 this.drawTile(t, now, ctx, opacity);
             } else {
-                this.drawUndiscoveredTile(ctx, opacity, t);
+                const inReach = !reachTileIds || reachTileIds.has(`${t.q},${t.r}`);
+                this.drawUndiscoveredTile(ctx, opacity, t, inReach);
             }
 
             const {x, y} = axialToPixel(t.q, t.r);
@@ -3211,11 +3410,12 @@ export class HexMapService {
         return c;
     }
 
-    private drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, t: Tile) {
+    private drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, t: Tile, inReach: boolean = true) {
         const {x, y} = axialToPixel(t.q, t.r);
         const fogCanvas = this.ensureFogTileCanvas();
+        const reachDim = inReach ? 1 : 0.35;
 
-        ctx.globalAlpha = opacity * 0.85;
+        ctx.globalAlpha = opacity * 0.85 * reachDim;
         ctx.drawImage(fogCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
 
         // Per-tile variation: subtle shimmer using deterministic offset
@@ -3234,6 +3434,7 @@ export class HexMapService {
         shimGrad.addColorStop(0, 'rgba(160, 180, 220, 0.09)');
         shimGrad.addColorStop(1, 'rgba(120, 140, 180, 0)');
         ctx.fillStyle = shimGrad;
+        ctx.globalAlpha = reachDim;
         ctx.fill();
         ctx.restore();
 
@@ -3245,7 +3446,7 @@ export class HexMapService {
         ctx.textBaseline = 'middle';
         ctx.shadowColor = 'rgba(80, 130, 200, 0.5)';
         ctx.shadowBlur = 4;
-        ctx.globalAlpha = 0.42 * opacity;
+        ctx.globalAlpha = 0.42 * opacity * reachDim;
         ctx.fillStyle = 'rgba(180, 200, 240, 0.9)';
         ctx.fillText(String(centerDist), x, y);
         ctx.restore();
@@ -3450,9 +3651,9 @@ export class HexMapService {
         const pulse = 0.5 + (0.5 * Math.sin(now / 280));
         const spin = now / 760;
         const centerX = interp.x + pos.x - 15;
-        const centerY = interp.y + pos.y + (this.heroFrameSize * this.heroShadowYOffset) + 1;
-        const outerWidth = selected ? 19.2 + (pulse * 1.8) : 17.8 + (pulse * 1.2);
-        const outerHeight = selected ? 7.4 + (pulse * 0.65) : 6.9 + (pulse * 0.45);
+        const centerY = interp.y + pos.y + (this.heroFrameSize * this.heroShadowYOffset) - 3;
+        const outerWidth = selected ? 21.5 + (pulse * 2.6) : 17.8 + (pulse * 1.2);
+        const outerHeight = selected ? 8.4 + (pulse * 0.9) : 6.9 + (pulse * 0.45);
         const baseAlpha = opacity * (selected ? 1 : 0.76);
 
         ctx.save();
@@ -3460,20 +3661,23 @@ export class HexMapService {
 
         const aura = ctx.createRadialGradient(centerX, centerY + 0.8, 0, centerX, centerY + 0.8, outerWidth * 1.28);
         if (selected) {
-            aura.addColorStop(0, this.toRgba([255, 221, 144], baseAlpha * 0.3));
-            aura.addColorStop(0.46, this.toRgba([120, 255, 214], baseAlpha * 0.14));
+            aura.addColorStop(0, this.toRgba([255, 221, 144], baseAlpha * 0.52));
+            aura.addColorStop(0.46, this.toRgba([120, 255, 214], baseAlpha * 0.28));
             aura.addColorStop(1, this.toRgba([120, 255, 214], 0));
         } else {
             aura.addColorStop(0, this.toRgba([180, 235, 255], baseAlpha * 0.14));
             aura.addColorStop(1, this.toRgba([180, 235, 255], 0));
         }
         ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY + 0.8, outerWidth * 1.28, outerHeight * 1.28, 0, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.lineWidth = selected ? 1.9 : 1.55;
+        ctx.lineWidth = selected ? 2.6 : 1.55;
         ctx.strokeStyle = selected
-            ? this.toRgba([244, 197, 102], baseAlpha * 0.42)
+            ? this.toRgba([244, 197, 102], baseAlpha * 0.72)
             : this.toRgba([164, 228, 255], baseAlpha * 0.48);
         ctx.beginPath();
         ctx.ellipse(centerX, centerY + 1.15, outerWidth, outerHeight, 0, 0, Math.PI * 2);
@@ -3483,14 +3687,14 @@ export class HexMapService {
             const sparkAngles = [spin * 1.25, (spin * 1.25) + ((Math.PI * 2) / 3), (spin * 1.25) + ((Math.PI * 4) / 3)];
             for (let i = 0; i < sparkAngles.length; i++) {
                 const angle = sparkAngles[i]!;
-                const px = centerX + (Math.cos(angle) * (outerWidth + 1.8));
-                const py = centerY + 1.2 + (Math.sin(angle) * (outerHeight + 0.8));
-                const radius = i === 0 ? 1.45 + (pulse * 0.22) : 1.1 + ((1 - pulse) * 0.18);
+                const px = centerX + (Math.cos(angle) * (outerWidth + 2.2));
+                const py = centerY + 1.2 + (Math.sin(angle) * (outerHeight + 1.0));
+                const radius = i === 0 ? 1.8 + (pulse * 0.3) : 1.35 + ((1 - pulse) * 0.24);
                 const color: GlowColor = i === 0 ? [255, 241, 196] : i === 1 ? [166, 255, 228] : [255, 219, 137];
 
-                ctx.fillStyle = this.toRgba(color, baseAlpha * 0.92);
-                ctx.shadowColor = this.toRgba(color, baseAlpha * 0.76);
-                ctx.shadowBlur = 6;
+                ctx.fillStyle = this.toRgba(color, baseAlpha * 0.95);
+                ctx.shadowColor = this.toRgba(color, baseAlpha * 0.85);
+                ctx.shadowBlur = 10;
                 ctx.beginPath();
                 ctx.arc(px, py, radius, 0, Math.PI * 2);
                 ctx.fill();

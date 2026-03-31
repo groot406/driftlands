@@ -1,10 +1,10 @@
 <template>
   <div class="absolute top-0 left-0 w-full h-full z-20 pointer-events-none select-none p-2 flex flex-col gap-4">
-    <div class="flex flex-col md:flex-row gap-40 items-start">
-      <div class="flex-1 flex flex-col gap-4">
+    <div class="flex flex-row justify-between gap-2 md:gap-40 items-start">
+      <div class="min-w-0 flex-1 flex flex-col gap-4">
         <ResourceBar/>
       </div>
-      <div class="pointer-events-auto gap-3 flex flex-col justify-end justify-items-end">
+      <div class="pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <button class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</button>
         <MissionCenterButton />
         <NotificationCenterButton />

@@ -1,19 +1,19 @@
 <template>
   <button
-    class="pointer-events-auto relative flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-4 py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
+    class="pointer-events-auto relative flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-3 py-2 md:px-4 md:py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
     @click="openNotificationCenter"
   >
-    <div class="pixel-font flex h-10 w-10 items-center justify-center rounded-xl bg-sky-300/15 text-[10px] uppercase tracking-[0.16em] text-sky-100">
+    <div class="pixel-font flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-300/15 text-[10px] uppercase tracking-[0.16em] text-sky-100">
       Log
     </div>
-    <div class="min-w-0">
+    <div class="min-w-0 hidden md:block">
       <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-sky-200/80">Field Reports</p>
       <p class="mt-1 text-sm font-semibold text-white">{{ statusLabel }}</p>
       <p class="mt-1 text-[11px] text-slate-300">{{ helperLabel }}</p>
     </div>
     <span
       v-if="unreadCount > 0"
-      class="pixel-font absolute right-3 top-3 rounded-full border border-amber-300/30 bg-amber-300/15 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-100"
+      class="pixel-font absolute -right-1 -top-1 md:right-3 md:top-3 rounded-full border border-amber-300/30 bg-amber-300/15 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-100"
     >
       {{ badgeLabel }}
     </span>

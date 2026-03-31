@@ -9,8 +9,8 @@ const harvestWaterLiliesTask: TaskDefinition = {
     label: 'Harvest Water Lilies',
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'water' && tile.variant === 'water_lily',
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'water' && tile.variant === 'water_lily';
+    canStart(tile, _hero) {
+        return tile.terrain === 'water' && tile.variant === 'water_lily';
     },
 
     requiredXp(distance: number) {

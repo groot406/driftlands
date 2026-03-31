@@ -7,8 +7,8 @@ const gatherTimberTask: TaskDefinition = {
     label: 'Gather Timber',
     chainAdjacentSameTerrain: false,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'forest' && tile.variant === 'forest_lumber_camp';
+    canStart(tile, _hero) {
+        return tile.terrain === 'forest' && tile.variant === 'forest_lumber_camp';
     },
 
     requiredXp(distance: number) {

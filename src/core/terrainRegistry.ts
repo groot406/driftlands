@@ -21,6 +21,16 @@ export function getVariantSet(key: string): Set<string> {
   return s;
 }
 
+export function resetTerrainRegistry() {
+  for (const positions of Object.values(terrainPositions)) positions.clear();
+  for (const positions of Object.values(variantPositions)) positions.clear();
+}
+
+export function indexTileInRegistry(tile: { id: string; terrain: TerrainKey | null; variant?: string | null }) {
+  if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);
+  if (tile.variant) getVariantSet(tile.variant).add(tile.id);
+}
+
 export function updateTileVariantIndex(tileId: string, prev: string | null | undefined, next: string | null | undefined) {
   if (prev && variantPositions[prev]) variantPositions[prev].delete(tileId);
   if (next) {

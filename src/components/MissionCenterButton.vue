@@ -1,13 +1,13 @@
 <template>
   <button
     v-if="run"
-    class="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-4 py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
+    class="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-3 py-2 md:px-4 md:py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
     @click="openMissionCenter"
   >
-    <div class="pixel-font flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300/15 text-[10px] uppercase tracking-[0.16em] text-amber-200">
+    <div class="pixel-font flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-300/15 text-[10px] uppercase tracking-[0.16em] text-amber-200">
       Msn
     </div>
-    <div class="min-w-0">
+    <div class="min-w-0 hidden md:block">
       <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-amber-300/85">Mission Centre</p>
       <p class="mt-1 truncate text-sm font-semibold text-white">Mission {{ run.missionNumber }}</p>
       <p class="mt-1 text-[11px] text-slate-300">{{ statusSummary }}</p>

@@ -9,9 +9,8 @@ const seedGrainTask: TaskDefinition = {
     label: 'Plant Seeds',
     chainAdjacentSameTerrain: true,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload &&
-               tile.terrain === 'dirt' &&
+    canStart(tile, _hero) {
+        return tile.terrain === 'dirt' &&
                (tile.variant === 'dirt_tilled_hydrated' || tile.variant === 'dirt_tilled');
     },
 
@@ -21,7 +20,6 @@ const seedGrainTask: TaskDefinition = {
 
     requiredResources(): ResourceAmount[] {
         return [
-            { type: 'grain', amount: 1 },
             { type: 'water', amount: 1 }
         ];
     },

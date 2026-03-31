@@ -9,8 +9,8 @@ const buildRoadTask: TaskDefinition = {
     label: 'Build Road',
     chainAdjacentSameTerrain: false,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'plains' && !tile.variant;
+    canStart(tile, _hero) {
+        return tile.terrain === 'plains' && !tile.variant;
     },
 
     requiredXp(distance: number) {

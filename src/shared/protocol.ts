@@ -6,6 +6,7 @@ import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/types.ts";
 import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
+import type {PopulationSnapshot} from "../store/populationStore.ts";
 
 export interface BaseMessage {
     type: string;
@@ -86,6 +87,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
     storages: StorageSnapshot[];
+    population: PopulationSnapshot;
 }
 
 export interface TileUpdatedMessage extends BaseMessage {
@@ -220,6 +222,14 @@ export interface RunUpdateMessage extends BaseMessage {
     run: RunSnapshot;
 }
 
+export interface PopulationUpdateMessage extends BaseMessage {
+    type: 'population:update';
+    current: number;
+    max: number;
+    beds: number;
+    hungerMs: number;
+}
+
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
@@ -254,4 +264,5 @@ export type ServerMessage =
     | FrontierFindMessage
     | HeroPayloadUpdateMessage
     | RunSnapshotMessage
-    | RunUpdateMessage;
+    | RunUpdateMessage
+    | PopulationUpdateMessage;

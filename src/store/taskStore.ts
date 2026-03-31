@@ -20,7 +20,7 @@ import { clearHeroPayload, setHeroFetchIntent, setHeroPayload } from '../shared/
 import { collectTerrainCluster } from '../shared/game/terrainCluster';
 import { emitGameplayEvent } from '../shared/gameplay/events';
 import { axialDistanceCoords } from '../shared/game/hex';
-import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../shared/buildings/storage';
+import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../shared/buildings/storage';
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
@@ -285,12 +285,41 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
     return false; // No fetch needed or no path found
 }
 
+/**
+ * Determines whether a hero carrying resources is allowed to start a given task.
+ * Rules:
+ *  1. Not carrying (or fetch-intent) → always allowed.
+ *  2. Task requires resources and the carried type matches → allowed (payload
+ *     will be consumed as the first delivery).
+ *  3. Task requires resources but the carried type does NOT match → blocked
+ *     (fetching the required resource would overwrite the payload).
+ *  4. Task produces resource rewards (totalRewardedResources) → blocked
+ *     (completion would overwrite the payload).
+ *  5. Otherwise (no requirements, no resource rewards) → allowed (hero can
+ *     do useful work while still holding resources).
+ */
+export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, tile: Tile): boolean {
+    if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) return true;
+
+    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
+    const required = def.requiredResources?.(distance);
+
+    if (required && required.length > 0) {
+        return required.some(r => r.type === hero.carryingPayload!.type);
+    }
+
+    if (def.totalRewardedResources) return false;
+
+    return true;
+}
+
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
     if (!isStoryTaskUnlocked(type)) return null;
     if (!def.canStart(tile, starter)) return null;
+    if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
     const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(distance);
@@ -370,8 +399,13 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
 
     // add carrying to collected resources if applicable (only positive amounts)
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
-        addResourcesToTask(inst, hero.carryingPayload);
-        clearHeroPayload(hero);
+        const consumed = addResourcesToTask(inst, hero.carryingPayload);
+        if (consumed >= hero.carryingPayload.amount) {
+            clearHeroPayload(hero);
+        } else if (consumed > 0) {
+            setHeroPayload(hero, { type: hero.carryingPayload.type, amount: hero.carryingPayload.amount - consumed });
+        }
+        // If consumed === 0, payload stays unchanged (resource not needed by this task)
     }
 
     // See if there are some resources still to be gathered, and send the hero to fetch the first needed resource
@@ -613,8 +647,13 @@ function dispatchRewardResourceDeliveries(participants: Hero[]) {
 }
 
 function findNearestWarehouse(q: number, r: number) {
-    const warehouse = findNearestWarehouseWithCapacity(q, r, 1);
-    return warehouse ? { q: warehouse.q, r: warehouse.r } : null;
+    // Prefer a warehouse with free capacity for normal deposit
+    const withCapacity = findNearestWarehouseWithCapacity(q, r, 1);
+    if (withCapacity) return { q: withCapacity.q, r: withCapacity.r };
+
+    // Fall back to any warehouse so the hero can attempt a resource swap
+    const any = findNearestWarehouseAccessTile(q, r);
+    return any ? { q: any.q, r: any.r } : null;
 }
 
 function findNearestWaterTile(q: number, r: number): { q: number; r: number } | null {

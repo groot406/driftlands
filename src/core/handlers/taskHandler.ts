@@ -12,7 +12,7 @@ import {rewardStat, startHeroMovement} from "../heroService.ts";
 import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
 import { PathService } from "../PathService.ts";
-import { findNearestWarehouseWithCapacity } from "../../shared/buildings/storage.ts";
+import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity } from "../../shared/buildings/storage.ts";
 import type { Hero } from "../types/Hero.ts";
 
 const rewardDeliveryPathService = new PathService();
@@ -265,7 +265,9 @@ class ClientTaskHandler {
             return;
         }
 
-        const warehouse = findNearestWarehouseWithCapacity(hero.q, hero.r, 1);
+        // Prefer a warehouse with capacity; fall back to any warehouse for swap
+        const warehouse = findNearestWarehouseWithCapacity(hero.q, hero.r, 1)
+            ?? findNearestWarehouseAccessTile(hero.q, hero.r);
         if (!warehouse) {
             return;
         }

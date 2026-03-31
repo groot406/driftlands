@@ -24,6 +24,7 @@ export class ServerGameStateHandler {
       tasks: snapshot.tasks,
       resources: snapshot.resources,
       storages: snapshot.storages,
+      population: snapshot.population,
       timestamp: Date.now(),
     } as any));
     const run = runState.getSnapshot();

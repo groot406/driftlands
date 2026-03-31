@@ -6,8 +6,9 @@ import {
     getTaskById,
     getTasksAtTile,
     resumeWaitingTasksForResource,
+    canStartTaskWhileCarrying,
 } from '../../store/taskStore';
-import { depositResourceToStorage, withdrawResourceFromStorage } from '../../store/resourceStore';
+import { depositResourceToStorage, swapResourceAtStorage, withdrawResourceFromStorage } from '../../store/resourceStore';
 import { tileIndex } from '../../core/world';
 import { getTaskDefinition } from './taskRegistry';
 import {listTaskDefinitions} from "./taskRegistry";
@@ -161,6 +162,25 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             const nextWarehouse = findNearestWarehouseWithCapacity(tile.q, tile.r, remainingAmount, [tile.id]);
             if (nextWarehouse) {
                 moveHeroWithRuntime(hero, nextWarehouse);
+            } else {
+                // All warehouses full - try swapping: deposit our resource and pick up
+                // a different type so the hero isn't permanently stuck holding one type.
+                const swap = swapResourceAtStorage(tile.id, carriedType, remainingAmount);
+                if (swap.deposited > 0 && swap.withdrawn) {
+                    broadcast({
+                        type: 'resource:deposit',
+                        heroId: hero.id,
+                        storageTileId: tile.id,
+                        resource: { type: carriedType, amount: swap.deposited },
+                    } as ResourceDepositMessage);
+                    broadcast({
+                        type: 'resource:withdraw',
+                        heroId: hero.id,
+                        storageTileId: tile.id,
+                        resource: swap.withdrawn,
+                    } as ResourceWithdrawMessage);
+                    setHeroPayload(hero, swap.withdrawn);
+                }
             }
             if (depositedAmount > 0) {
                 resumeWaitingTasksForResource(carriedType, tile.id);
@@ -274,7 +294,11 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
 }
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
-    let tasks = listTaskDefinitions().filter(def => isStoryTaskUnlocked(def.key) && def.canStart(tile, hero));
+    let tasks = listTaskDefinitions().filter(def =>
+        isStoryTaskUnlocked(def.key)
+        && def.canStart(tile, hero)
+        && canStartTaskWhileCarrying(hero, def, tile)
+    );
     if(tasks.length > 0 && isTileWalkable(tile)) {
         tasks.push({
             key: 'walk',

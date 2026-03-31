@@ -5,6 +5,7 @@ import type {Hero} from "../../../core/types/Hero";
 import type {Tile, TileSide} from "../../../core/types/Tile";
 import { moveHeroWithRuntime } from '../../game/runtime';
 import { getDistanceToNearestTowncenter } from '../../game/worldQueries';
+import { isTileWithinReach } from '../../../store/populationStore';
 
 const EXPLORE_CHAIN_DELAY_MS = 120;
 const EXPLORE_BASE_REQUIRED_XP = 450;
@@ -50,8 +51,8 @@ const exploreTask: TaskDefinition = {
         return {xp: getExploreRewardedXp(distance), hp: 0, atk: 0, spd: 0};
     },
 
-    canStart(tile: Tile, hero: Hero): boolean {
-        return !hero.carryingPayload && !tile.discovered;
+    canStart(tile: Tile, _hero: Hero): boolean {
+        return !tile.discovered && isTileWithinReach(tile.q, tile.r);
     },
 
     onStart(_tile, _instance, _participants) {
@@ -92,7 +93,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             if (!nm) break;
             const neighbor = nm[side];
 
-            if (neighbor && !neighbor.discovered) {
+            if (neighbor && !neighbor.discovered && isTileWithinReach(neighbor.q, neighbor.r)) {
                 if (!closestUndiscovered) {
                     closestUndiscovered = neighbor;
                 } else if (
@@ -104,7 +105,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             }
         }
 
-        if (closestUndiscovered && !closestUndiscovered.discovered) {
+        if (closestUndiscovered && !closestUndiscovered.discovered && isTileWithinReach(closestUndiscovered.q, closestUndiscovered.r)) {
             moveHeroWithRuntime(participant, closestUndiscovered, 'explore');
         }
     }

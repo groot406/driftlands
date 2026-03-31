@@ -8,8 +8,8 @@ const harvestGrainTask: TaskDefinition = {
     label: 'Harvest Grain',
     chainAdjacentSameTerrain: true,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'grain' && !tile.variant;
+    canStart(tile, _hero) {
+        return tile.terrain === 'grain' && !tile.variant;
     },
 
     requiredXp(distance: number) {
@@ -22,7 +22,7 @@ const harvestGrainTask: TaskDefinition = {
     },
 
     totalRewardedResources(distance: number) {
-        return { type: 'grain', amount: 3 * distance };
+        return { type: 'food', amount: 3 * distance };
     },
 
     onComplete(tile, _instance) {

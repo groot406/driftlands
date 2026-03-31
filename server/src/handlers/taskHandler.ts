@@ -21,6 +21,8 @@ export class ServerTaskHandler {
         if (!hero || !location) return;
         if (!coopState.canControlHero(_socket.id, heroId)) return;
 
+        coopState.touchHeroActivity(heroId);
+
         // Only allow if hero is already at the requested tile
         if (hero.q !== location.q || hero.r !== location.r) return;
 

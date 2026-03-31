@@ -71,7 +71,7 @@ import {
 import { selectedHeroId, selectHero } from '../store/uiStore';
 
 function select(hero: Hero) {
-  if (!isHeroClaimedByOtherPlayer(hero.id, currentPlayerId.value)) {
+  if (!isHeroClaimedByOtherPlayer(hero.id, currentPlayerId.value) && !isMine(hero.id)) {
     requestHeroClaim(hero.id);
   }
 

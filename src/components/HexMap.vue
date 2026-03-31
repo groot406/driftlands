@@ -8,6 +8,10 @@
                 @hover="handleTaskHover"
       />
     </transition>
+    <TownCenterPanel
+      :visible="showTownCenterPanel"
+      @close="closeTownCenterPanel"
+    />
     <div
       v-for="ping in renderedPings"
       :key="ping.id"
@@ -26,6 +30,7 @@ import {ensureTileExists, tileIndex} from '../core/world';
 import {requestHeroMovement, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
+import TownCenterPanel from './TownCenterPanel.vue';
 import {
   axialToPixel,
   camera,
@@ -51,6 +56,8 @@ import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/g
 import {addNotification} from '../store/notificationStore';
 import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
 import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOtherPlayer} from '../store/playerStore';
+import {computeReachTileIds, computeReachTileIdsForTC, computeReachTileIdsForWatchtower, isTileWithinReach} from '../store/populationStore';
+import {populationVersion} from '../store/clientPopulationStore';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -73,10 +80,16 @@ const pathPreviewTargetKey = ref<string | null>(null);
 const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
 const taskMenuTile = ref<Tile | null>(null);
+const showTownCenterPanel = ref(false);
 const containerSize = ref({width: 0, height: 0});
 const clusterBoundaryTiles = ref<Tile[]>([]); // boundary tiles for same-terrain cluster highlighting
 const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id set)
 const hoveredTask = ref<TaskDefinition | null>(null);
+const globalReachBoundary = ref<Array<{q: number; r: number}>>([]); // always-visible reach outline (all TCs)
+const globalReachTileIds = ref<Set<string>>(new Set());
+const hoveredReachBoundary = ref<Array<{q: number; r: number}>>([]); // hover-highlighted reach outline (specific TC)
+const hoveredReachTileIds = ref<Set<string>>(new Set());
+let lastGlobalReachComputeMs = 0;
 
 // Service instance
 const service = new HexMapService();
@@ -179,6 +192,13 @@ function animationLoop() {
       taskMenuTile: taskMenuTile.value,
       clusterBoundaryTiles: clusterBoundaryTiles.value,
       clusterTileIds: clusterTiles.value,
+      globalReachBoundary: globalReachBoundary.value,
+      globalReachTileIds: globalReachTileIds.value,
+      hoveredReachBoundary: hoveredReachBoundary.value,
+      hoveredReachTileIds: hoveredReachTileIds.value,
+      hoveredTileInReach: hoveredTile.value
+        ? (hoveredTile.value.discovered || isTileWithinReach(hoveredTile.value.q, hoveredTile.value.r))
+        : true,
     }, {
       effectNowMs,
       movementNowMs,
@@ -201,6 +221,11 @@ function updatePath() {
   pathPreviewTargetKey.value = hoveredTile.value ? `${hoveredTile.value.q},${hoveredTile.value.r}` : null;
 }
 
+function closeTownCenterPanel() {
+  showTownCenterPanel.value = false;
+  closeWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+}
+
 function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
 
@@ -221,6 +246,7 @@ function handleClick(e: PointerEvent) {
 
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
+    closeTownCenterPanel();
     if (!isHeroClaimedByOtherPlayer(hero.id, currentPlayerId.value)) {
       requestHeroClaim(hero.id);
     }
@@ -240,6 +266,22 @@ function handleClick(e: PointerEvent) {
   hoveredTile.value = tile;
   if (doubleClick) emit('tile-doubleclick', tile); else emit('tile-click', tile);
 
+  // Town center click — toggle the info panel
+  if (tile.terrain === 'towncenter') {
+    if (showTownCenterPanel.value) {
+      closeTownCenterPanel();
+    } else {
+      showTownCenterPanel.value = true;
+      openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+    }
+    return;
+  }
+
+  // Close town center panel when clicking elsewhere
+  if (showTownCenterPanel.value) {
+    closeTownCenterPanel();
+  }
+
   if (!selHero) {
     selectHero(null, false);
     return;
@@ -257,6 +299,12 @@ function handleClick(e: PointerEvent) {
   }
 
   if (!tile.discovered) {
+    // Block actions on tiles outside reach
+    if (!isTileWithinReach(tile.q, tile.r)) {
+      clearPathPreview();
+      return;
+    }
+
     const path = service.updatePath(selHero.id, tile).slice();
     pathCoords.value = path;
     pathPreviewHeroId.value = selHero.id;
@@ -430,6 +478,69 @@ function handleTaskHover(task: TaskDefinition | null) {
   hoveredTask.value = task;
 }
 
+// Axial neighbor deltas matching side order a..f (same as world.ts AXIAL_NEIGHBOR_DELTAS)
+const AXIAL_DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
+
+/** Extract boundary coordinates from a set of tile IDs (pure math, no world tile creation). */
+function findBoundaryCoords(ids: Set<string>): Array<{q: number; r: number}> {
+  const result: Array<{q: number; r: number}> = [];
+  for (const tileId of ids) {
+    const sep = tileId.indexOf(',');
+    const tq = Number(tileId.substring(0, sep));
+    const tr = Number(tileId.substring(sep + 1));
+    for (const [dq, dr] of AXIAL_DELTAS) {
+      if (!ids.has(`${tq + dq},${tr + dr}`)) {
+        result.push({q: tq, r: tr});
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+/** Recompute the always-visible global reach outline (all TCs combined). Cached for 2s. */
+function recomputeGlobalReach(force = false) {
+  const now = Date.now();
+  if (!force && now - lastGlobalReachComputeMs < 2000) return;
+  lastGlobalReachComputeMs = now;
+  const ids = computeReachTileIds();
+  globalReachTileIds.value = ids;
+  globalReachBoundary.value = findBoundaryCoords(ids);
+}
+
+const WATCHTOWER_VARIANTS = new Set(['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower']);
+
+/** Compute the hover-highlighted reach outline for a TC or watchtower tile. */
+function computeHoveredReach(tile: Tile | null) {
+  hoveredReachBoundary.value = [];
+  hoveredReachTileIds.value.clear();
+
+  if (!tile) return;
+
+  if (tile.terrain === 'towncenter') {
+    const ids = computeReachTileIdsForTC(tile.q, tile.r);
+    hoveredReachTileIds.value = ids;
+    hoveredReachBoundary.value = findBoundaryCoords(ids);
+    return;
+  }
+
+  if (tile.variant && WATCHTOWER_VARIANTS.has(tile.variant)) {
+    const ids = computeReachTileIdsForWatchtower(tile.q, tile.r);
+    hoveredReachTileIds.value = ids;
+    hoveredReachBoundary.value = findBoundaryCoords(ids);
+  }
+}
+
+watch(hoveredTile, (tile) => {
+  recomputeGlobalReach();
+  computeHoveredReach(tile);
+});
+
+watch(populationVersion, () => {
+  recomputeGlobalReach(true);
+  computeHoveredReach(hoveredTile.value);
+});
+
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
 
@@ -439,6 +550,8 @@ onMounted(async () => {
   // Re-capture after init & next frame (handles potential layout shifts)
   updateContainerSize();
   requestAnimationFrame(updateContainerSize);
+  // Compute initial global reach outline so it's visible immediately
+  recomputeGlobalReach(true);
   // Ignore if modifier keys pressed to avoid interfering with shortcuts
   window.addEventListener('orientationchange', onOrientationChange);
   window.addEventListener('resize', onWindowResize);

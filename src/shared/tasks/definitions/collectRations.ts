@@ -7,8 +7,8 @@ const collectRationsTask: TaskDefinition = {
     label: 'Collect Rations',
     chainAdjacentSameTerrain: false,
 
-    canStart(tile, hero) {
-        return !hero.carryingPayload && tile.terrain === 'grain' && tile.variant === 'grain_granary';
+    canStart(tile, _hero) {
+        return tile.terrain === 'grain' && tile.variant === 'grain_granary';
     },
 
     requiredXp(distance: number) {

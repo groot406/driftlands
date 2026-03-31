@@ -430,7 +430,7 @@ export function generateFoundingExpeditionMission(
     default:
       objectives = [
         surveyObjective(surveyTarget + 2, 45),
-        reachObjective(Math.max(frontierRingTarget, 10), 75),
+        reachObjective(Math.max(frontierRingTarget, 6 + missionScale), 75),
         deliverObjective('frontier-lumber', 'Raise the first structures', 'wood', woodTarget + 2, 60),
         createScoutingTaskObjective(progression, missionScale),
         (canDeliverOre(progression)

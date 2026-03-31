@@ -1,11 +1,9 @@
 import {axialKey, tileIndex} from './world';
 import {heroes} from '../store/heroStore';
-import {taskStore} from '../store/taskStore';
 import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import { axialDistanceCoords } from '../shared/game/hex';
 import { getTileMoveCost, isEdgeBlocked, isTileWalkable } from '../shared/game/navigation';
-import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 
 export interface PathCoord {
     q: number;
@@ -145,10 +143,6 @@ export class PathService {
 
     private isHeroIdle(hero: Hero): boolean {
         if (hero.movement) return false;
-        if (hero.currentTaskId) {
-            const inst = taskStore.taskIndex[hero.currentTaskId];
-            if (isHeroWorkingTask(hero, inst)) return false;
-        }
         return true;
     }
 

@@ -76,6 +76,13 @@
               >
                 {{ resourceLabel(resource.type) }} {{ getWarehouseAmount(resource.type) }}/{{ resource.amount }}
               </span>
+              <span
+                v-if="getPopulationRequirement(previewTask)"
+                class="task-cost-chip"
+                :class="{ 'task-cost-chip-missing': !isPopulationMet(previewTask) }"
+              >
+                Settlers {{ populationState.current }}/{{ getPopulationRequirement(previewTask) }}
+              </span>
             </div>
           </div>
         </div>
@@ -121,6 +128,7 @@ import type { TaskDefinition } from '../core/types/Task.ts';
 import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
 import { getBuildingDefinitionByTaskKey } from '../shared/buildings/registry';
 import { resourceInventory } from '../store/resourceStore';
+import { populationState } from '../store/clientPopulationStore';
 import { currentPlayerId } from '../core/socket';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName } from '../store/playerStore';
@@ -226,6 +234,16 @@ function isCostMissing(resource: ResourceAmount) {
 
 function taskHasMissingCosts(def: TaskDefinition) {
   return getBuildingCosts(def).some(isCostMissing);
+}
+
+function getPopulationRequirement(def: TaskDefinition): number | null {
+  return getBuildingMeta(def)?.requiredPopulation ?? null;
+}
+
+function isPopulationMet(def: TaskDefinition): boolean {
+  const req = getPopulationRequirement(def);
+  if (req == null) return true;
+  return populationState.current >= req;
 }
 
 function getBuildStateLabel(def: TaskDefinition) {

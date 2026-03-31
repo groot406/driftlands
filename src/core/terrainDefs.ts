@@ -131,6 +131,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             { key: 'plains_well', weight: 0, assetKey: 'plains' },
             { key: 'plains_watchtower', weight: 0, assetKey: 'plains' },
             { key: 'plains_depot', weight: 0, assetKey: 'plains' },
+            { key: 'plains_house', weight: 0, assetKey: 'house', walkable: false },
         ],
         decorativeBaseWeight: 52,
         decorativeVariants: [
@@ -235,6 +236,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_well', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_watchtower', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_depot', weight: 0, assetKey: 'dirt'},
+            {key: 'dirt_house', weight: 0, assetKey: 'house', walkable: false},
         ],
         decorativeBaseWeight: 24,
         decorativeVariants: [
