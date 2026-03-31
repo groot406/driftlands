@@ -1,17 +1,16 @@
 <template>
   <button
     v-if="run"
-    class="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-3 py-2 md:px-4 md:py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
+    class="mission-btn pointer-events-auto"
+    :title="`Mission ${run.missionNumber} — ${statusSummary}`"
     @click="openMissionCenter"
   >
-    <div class="pixel-font flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-300/15 text-[10px] uppercase tracking-[0.16em] text-amber-200">
-      Msn
-    </div>
-    <div class="min-w-0 hidden md:block">
-      <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-amber-300/85">Mission Centre</p>
-      <p class="mt-1 truncate text-sm font-semibold text-white">Mission {{ run.missionNumber }}</p>
-      <p class="mt-1 text-[11px] text-slate-300">{{ statusSummary }}</p>
-    </div>
+    <!-- Flag icon -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd" d="M3 2.25a.75.75 0 01.75.75v.54l1.838-.46a9.75 9.75 0 016.725.738l.108.054a8.25 8.25 0 005.58.652l.71-.178a.75.75 0 01.947.727v7.653a.75.75 0 01-.53.72l-.964.24a9.75 9.75 0 01-6.591-.77l-.108-.054a8.25 8.25 0 00-5.693-.625L3 13.07v8.68a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+    </svg>
+    <!-- Progress badge -->
+    <span class="mission-badge">{{ completedRequired }}/{{ totalRequired }}</span>
   </button>
 </template>
 
@@ -51,3 +50,17 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
+
+<style scoped>
+.mission-btn {
+  @apply relative flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2.5 py-2 text-amber-200/80 shadow-lg backdrop-blur-sm transition-all hover:border-amber-300/50 hover:text-amber-200 cursor-pointer;
+  background: rgba(2, 6, 23, 0.82);
+}
+.mission-btn:hover {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.mission-badge {
+  @apply text-[11px] font-mono leading-none text-amber-200;
+}
+</style>

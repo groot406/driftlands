@@ -14,9 +14,13 @@
       </div>
     </div>
     <HeroesBar />
-    <FpsCounter />
+    <FpsCounter v-if="showHelpers" />
   </div>
-  <OnlinePlayersIndicator />
+  <!-- Bottom-right toolbar -->
+  <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
+    <MusicPlayer />
+    <OnlinePlayersIndicator />
+  </div>
   <PlayerModal />
   <NotificationOverlay />
   <NotificationCenter />
@@ -37,6 +41,7 @@ import HeroesBar from './HeroesBar.vue';
 import InGameMenu from './InGameMenu.vue';
 import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
+import MusicPlayer from './MusicPlayer.vue';
 import PlayerModal from './PlayerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import RunOutcomeOverlay from './RunOutcomeOverlay.vue';

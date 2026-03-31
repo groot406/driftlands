@@ -127,7 +127,7 @@ interface Particle {
     gravity: number;
     drag: number;
     twinkle: number;
-    shape: 'circle' | 'diamond' | 'cloud';
+    shape: 'circle' | 'diamond' | 'cloud' | 'ring';
     renderMode?: 'glow' | 'smoke';
     growth?: number;
 }
@@ -1858,6 +1858,7 @@ export class HexMapService {
             ctx.globalCompositeOperation = 'screen';
             for (const { particle, alpha } of drawableParticles) {
                 if (particle.renderMode === 'smoke') continue;
+                if (particle.shape === 'ring') continue;
                 const glowRadius = particle.size * particle.glow;
                 const glow = ctx.createRadialGradient(particle.x, particle.y, 0, particle.x, particle.y, glowRadius);
                 glow.addColorStop(0, this.toRgba(particle.color, alpha * 1.25));
@@ -1874,6 +1875,20 @@ export class HexMapService {
         for (const { particle, alpha, progress } of drawableParticles) {
             if (particle.shape === 'cloud') {
                 this.drawSmokeParticle(ctx, particle, alpha, progress);
+                continue;
+            }
+
+            if (particle.shape === 'ring') {
+                // Expanding ripple ring
+                const maxRadius = particle.size * (particle.growth ?? 4);
+                const radius = particle.size + (maxRadius - particle.size) * progress;
+                const ringAlpha = alpha * (1 - progress * 0.6);
+                const lineWidth = Math.max(0.3, 1.2 * (1 - progress * 0.7));
+                ctx.strokeStyle = this.toRgba(particle.color, ringAlpha);
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
                 continue;
             }
 
@@ -2016,23 +2031,24 @@ export class HexMapService {
         const key = this.getTileImageKey(tile) ?? tile.terrain ?? '';
 
         if (tile.terrain === 'water' || key.startsWith('water')) {
-            if (Math.random() > 0.48) return;
-            const colors: GlowColor[] = [[208, 247, 255], [145, 223, 255], [118, 201, 255]];
+            if (Math.random() > 0.42) return;
+            const colors: GlowColor[] = [[208, 247, 255], [165, 230, 255], [130, 210, 255]];
             this.emitParticle({
                 x: x + this.randomBetween(-18, 18),
                 y: y + this.randomBetween(-10, 10),
-                vx: this.randomBetween(-10, 10),
-                vy: this.randomBetween(-18, -6),
-                size: this.randomBetween(1.5, 2.4),
+                vx: 0,
+                vy: 0,
+                size: this.randomBetween(0.8, 1.4),
                 bornMs: now,
-                lifeMs: this.randomBetween(800, 1450),
-                alpha: this.randomBetween(0.22, 0.46),
-                glow: this.randomBetween(2.4, 3.6),
+                lifeMs: this.randomBetween(1400, 2400),
+                alpha: this.randomBetween(0.18, 0.36),
+                glow: 1,
                 color: this.pickGlow(colors),
-                gravity: -6,
-                drag: 1.05,
+                gravity: 0,
+                drag: 0,
                 twinkle: this.randomBetween(0, 1000),
-                shape: 'circle',
+                shape: 'ring',
+                growth: this.randomBetween(3.5, 5.5),
             });
             return;
         }
@@ -2111,7 +2127,7 @@ export class HexMapService {
         // Forest: drifting leaves
         if (tile.terrain === 'forest' || key.startsWith('forest')) {
             if (Math.random() > 0.55) return;
-            const colors: GlowColor[] = [[80, 140, 60], [110, 160, 50], [60, 110, 40], [140, 120, 50]];
+            const colors: GlowColor[] = [[110, 190, 75], [145, 200, 65], [85, 155, 55], [180, 160, 60]];
             this.emitParticle({
                 x: x + this.randomBetween(-16, 16),
                 y: y + this.randomBetween(-14, 4),
@@ -2120,8 +2136,8 @@ export class HexMapService {
                 size: this.randomBetween(1.2, 2.0),
                 bornMs: now,
                 lifeMs: this.randomBetween(1800, 3200),
-                alpha: this.randomBetween(0.14, 0.26),
-                glow: this.randomBetween(1.8, 2.6),
+                alpha: this.randomBetween(0.32, 0.48),
+                glow: this.randomBetween(1.2, 1.6),
                 color: this.pickGlow(colors),
                 gravity: 3,
                 drag: 0.35,

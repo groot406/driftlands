@@ -227,48 +227,77 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
   {
     missionNumber: 1,
     heroes: ['h1', 'h2'],
-    buildings: ['dock', 'house'],
     tasks: [
       'explore',
       'chopWood',
       'clearRocks',
       'breakDirtRock',
+      'buildRoad',
+      'prepareRoadbed',
+    ],
+    terrains: ['plains', 'forest', 'dirt'],
+  },
+  {
+    missionNumber: 2,
+    buildings: ['dock', 'house'],
+    tasks: [
       'harvestWaterLilies',
       'plantTrees',
       'removeTrunks',
-      'buildRoad',
-      'prepareRoadbed',
+    ],
+    terrains: ['water'],
+  },
+  {
+    missionNumber: 3,
+    tasks: [
       'tillLand',
       'seedGrain',
       'harvestGrain',
     ],
-    terrains: ['plains', 'forest', 'dirt', 'water', 'grain'],
+    terrains: ['grain'],
   },
   {
-    missionNumber: 2,
+    missionNumber: 4,
     heroes: ['h3'],
-    buildings: ['well', 'granary', 'watchtower', 'mine'],
+    buildings: ['well'],
     tasks: [
       'irregateDirtTask',
+    ],
+  },
+  {
+    missionNumber: 5,
+    buildings: ['watchtower', 'granary'],
+    tasks: [
       'collectRations',
       'fishAtDock',
+    ],
+  },
+  {
+    missionNumber: 6,
+    buildings: ['mine'],
+    tasks: [
       'mineOre',
     ],
     terrains: ['mountain'],
   },
   {
-    missionNumber: 3,
+    missionNumber: 7,
     heroes: ['h4'],
     buildings: ['supplyDepot', 'lumberCamp'],
-    tasks: ['gatherTimber'],
+    tasks: [
+      'gatherTimber',
+    ],
   },
   {
-    missionNumber: 4,
-    buildings: ['townCenter'],
+    missionNumber: 8,
     terrains: ['snow', 'dessert'],
   },
   {
-    missionNumber: 5,
+    missionNumber: 9,
+    buildings: ['townCenter'],
+  },
+  {
+    missionNumber: 10,
     terrains: ['vulcano'],
   },
 ] as const;

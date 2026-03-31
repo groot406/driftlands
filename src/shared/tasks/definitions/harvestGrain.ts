@@ -22,7 +22,7 @@ const harvestGrainTask: TaskDefinition = {
     },
 
     totalRewardedResources(distance: number) {
-        return { type: 'food', amount: 3 * distance };
+        return { type: 'grain', amount: 3 * distance };
     },
 
     onComplete(tile, _instance) {

@@ -1,8 +1,9 @@
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition, TaskSoundConfig} from "../../../core/types/Task";
-import { terrainPositions } from '../../../core/terrainRegistry';
+import { terrainPositions, updateTileVariantIndex } from '../../../core/terrainRegistry';
 import type {Hero} from "../../../core/types/Hero";
 import { broadcastGameMessage as broadcast } from '../../game/runtime';
+import type { TileUpdatedMessage } from '../../protocol';
 
 const removeTrunksTask: TaskDefinition = {
     key: 'removeTrunks',
@@ -31,15 +32,17 @@ const removeTrunksTask: TaskDefinition = {
     onComplete(tile, _instance, _participants) {
         // Only convert if still chopped_forest (another task might have altered it).
         if (tile.variant === 'chopped_forest') {
-            tile.terrain = 'plains';
-            tile.variant = undefined;
-            tile.variantSetMs = undefined;
-            tile.variantAgeMs = undefined;
+            updateTileVariantIndex(tile.id, 'chopped_forest', null);
 
             terrainPositions.forest.delete(tile.id);
             terrainPositions.plains.add(tile.id);
 
-            broadcast({ type: 'tile:updated', tile});
+            tile.terrain = 'plains';
+            tile.variant = null;
+            tile.variantSetMs = undefined;
+            tile.variantAgeMs = undefined;
+
+            broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
         }
     },
     getSoundOnStart(): TaskSoundConfig {

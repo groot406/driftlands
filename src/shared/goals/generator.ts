@@ -57,7 +57,7 @@ function scoreReward(points: number): ObjectiveReward {
   };
 }
 
-function surveyObjective(target: number, rewardSeconds: number): ObjectiveBlueprint {
+function surveyObjective(target: number, rewardPoints: number): ObjectiveBlueprint {
   return {
     id: 'survey',
     title: 'Chart the perimeter',
@@ -65,11 +65,11 @@ function surveyObjective(target: number, rewardSeconds: number): ObjectiveBluepr
     kind: 'discover_tiles',
     required: true,
     target,
-    reward: scoreReward(rewardSeconds),
+    reward: scoreReward(rewardPoints),
   };
 }
 
-function reachObjective(target: number, rewardSeconds: number, required: boolean = true): ObjectiveBlueprint {
+function reachObjective(target: number, rewardPoints: number, required: boolean = true): ObjectiveBlueprint {
   return {
     id: `reach-ring-${target}`,
     title: `Reach frontier ring ${target}`,
@@ -77,7 +77,19 @@ function reachObjective(target: number, rewardSeconds: number, required: boolean
     kind: 'reach_distance',
     required,
     target,
-    reward: scoreReward(rewardSeconds),
+    reward: scoreReward(rewardPoints),
+  };
+}
+
+function populationObjective(target: number, rewardPoints: number, required: boolean = true): ObjectiveBlueprint {
+  return {
+    id: `grow-population-${target}`,
+    title: `Grow population to ${target}`,
+    description: `Reach a colony population of ${target} settlers by building houses and feeding your people.`,
+    kind: 'reach_population',
+    required,
+    target,
+    reward: scoreReward(rewardPoints),
   };
 }
 
@@ -86,7 +98,7 @@ function deliverObjective(
   title: string,
   resourceType: ResourceType,
   target: number,
-  rewardSeconds: number,
+  rewardPoints: number,
   required: boolean = true,
 ): ObjectiveBlueprint {
   return {
@@ -97,7 +109,7 @@ function deliverObjective(
     required,
     target,
     resourceType,
-    reward: scoreReward(rewardSeconds),
+    reward: scoreReward(rewardPoints),
   };
 }
 
@@ -107,7 +119,7 @@ function taskObjective(
   description: string,
   taskType: TaskType,
   target: number,
-  rewardSeconds: number,
+  rewardPoints: number,
   required: boolean = true,
 ): ObjectiveBlueprint {
   return {
@@ -118,7 +130,7 @@ function taskObjective(
     required,
     target,
     taskType,
-    reward: scoreReward(rewardSeconds),
+    reward: scoreReward(rewardPoints),
   };
 }
 
@@ -282,25 +294,279 @@ function createTownCenterTaskObjective(required: boolean = true) {
   );
 }
 
-export function generateFoundingExpedition(seed: number): RunBlueprint {
-  return generateFoundingExpeditionMission(seed, 1, 1);
+// ---------------------------------------------------------------------------
+// Hand-crafted tutorial missions (1-10)
+// Each mission introduces the mechanics unlocked by that mission's progression
+// step, with 3-4 focused objectives.
+// ---------------------------------------------------------------------------
+
+function tutorialMission1(): ObjectiveBlueprint[] {
+  // Unlocks: h1, h2, explore, chopWood, clearRocks, breakDirtRock, buildRoad, prepareRoadbed
+  // Terrains: plains, forest, dirt
+  // Teaches: basic exploration, clearing land, building roads
+  return [
+    surveyObjective(10, 45),
+    reachObjective(4, 60),
+    taskObjective(
+      'first-grove',
+      'Clear the first grove',
+      'Complete 2 woodcutting orders to turn the first stands into usable stock.',
+      'chopWood',
+      2,
+      60,
+    ),
+    taskObjective(
+      'first-road',
+      'Lay the first road',
+      'Build 1 road to connect the camp to the frontier.',
+      'buildRoad',
+      1,
+      45,
+      false,
+    ),
+  ];
 }
 
-export function generateFoundingExpeditionMission(
-  seed: number,
-  missionNumber: number,
-  currentFrontierDistance: number,
-): RunBlueprint {
-  const rng = createSeededRandom(seed ^ 0x9e3779b9);
-  for (let i = 1; i < missionNumber; i++) {
-    rng();
-    rng();
-    rng();
+function tutorialMission2(): ObjectiveBlueprint[] {
+  // Unlocks: dock, house, harvestWaterLilies, plantTrees, removeTrunks
+  // Terrains: water
+  // Teaches: building structures, shoreline foraging, tree management
+  return [
+    surveyObjective(12, 45),
+    taskObjective(
+      'harbor',
+      'Build a dock',
+      'Build 1 dock to open the shoreline to fishing and landings.',
+      'buildDock',
+      1,
+      75,
+    ),
+    taskObjective(
+      'first-shelter',
+      'Raise a house',
+      'Build 1 house to shelter settlers and raise the population cap.',
+      'buildHouse',
+      1,
+      75,
+    ),
+    taskObjective(
+      'shore-forage',
+      'Forage the shallows',
+      'Harvest 2 water lily patches from the newly discovered shoreline.',
+      'harvestWaterLilies',
+      2,
+      45,
+      false,
+    ),
+  ];
+}
+
+function tutorialMission3(): ObjectiveBlueprint[] {
+  // Unlocks: tillLand, seedGrain, harvestGrain
+  // Terrains: grain
+  // Teaches: the full farming cycle
+  return [
+    surveyObjective(14, 45),
+    taskObjective(
+      'till-fields',
+      'Prepare the fields',
+      'Till 2 plots of land to create workable farm ground.',
+      'tillLand',
+      2,
+      60,
+    ),
+    taskObjective(
+      'plant-grain',
+      'Sow the first seeds',
+      'Plant seeds on 2 prepared plots to establish grain fields.',
+      'seedGrain',
+      2,
+      60,
+    ),
+    deliverObjective('first-harvest', 'Bring in the harvest', 'grain', 8, 75),
+  ];
+}
+
+function tutorialMission4(): ObjectiveBlueprint[] {
+  // Unlocks: h3, well, irregateDirtTask
+  // Teaches: water management, irrigation, expanding the workforce
+  return [
+    surveyObjective(16, 45),
+    taskObjective(
+      'sink-well',
+      'Sink a well',
+      'Build 1 well to bring water inland for irrigation.',
+      'buildWell',
+      1,
+      75,
+    ),
+    taskObjective(
+      'irrigate',
+      'Irrigate dry land',
+      'Irrigate 2 dry plots to turn parched earth into productive ground.',
+      'irregateDirtTask',
+      2,
+      60,
+    ),
+    deliverObjective('wood-for-works', 'Stock the waterworks', 'wood', 15, 45, false),
+  ];
+}
+
+function tutorialMission5(): ObjectiveBlueprint[] {
+  // Unlocks: watchtower, granary, collectRations, fishAtDock
+  // Teaches: food security, scouting infrastructure
+  return [
+    surveyObjective(18, 45),
+    taskObjective(
+      'watchtower',
+      'Raise a watchtower',
+      'Build 1 watchtower to reveal nearby frontier and secure the perimeter.',
+      'buildWatchtower',
+      1,
+      75,
+    ),
+    taskObjective(
+      'granary',
+      'Build a granary',
+      'Build 1 granary to preserve harvested grain into rations.',
+      'buildGranary',
+      1,
+      75,
+    ),
+    deliverObjective('food-stores', 'Fill the food stores', 'food', 10, 60, false),
+  ];
+}
+
+function tutorialMission6(): ObjectiveBlueprint[] {
+  // Unlocks: mine, mineOre
+  // Terrains: mountain
+  // Teaches: mining industry
+  return [
+    surveyObjective(20, 45),
+    reachObjective(6, 60),
+    taskObjective(
+      'mine-head',
+      'Establish a mine',
+      'Build 1 mine in the mountain ridges to start ore production.',
+      'buildMine',
+      1,
+      75,
+    ),
+    deliverObjective('first-ore', 'Ship the first ore', 'ore', 12, 75),
+  ];
+}
+
+function tutorialMission7(): ObjectiveBlueprint[] {
+  // Unlocks: h4, supplyDepot, lumberCamp, gatherTimber
+  // Teaches: logistics, sustainable timber
+  return [
+    surveyObjective(22, 45),
+    taskObjective(
+      'supply-depot',
+      'Stage a supply depot',
+      'Build 1 supply depot to create a forward warehouse for materials.',
+      'buildSupplyDepot',
+      1,
+      75,
+    ),
+    taskObjective(
+      'lumber-camp',
+      'Establish a lumber camp',
+      'Build 1 lumber camp to turn a forest tile into a permanent timber site.',
+      'buildLumberCamp',
+      1,
+      75,
+    ),
+    deliverObjective('timber-haul', 'Gather sustainable timber', 'wood', 20, 60, false),
+  ];
+}
+
+function tutorialMission8(currentFrontierDistance: number): ObjectiveBlueprint[] {
+  // Unlocks: snow, dessert terrains (no new buildings/tasks)
+  // Teaches: working in harsh conditions with existing toolkit
+  return [
+    surveyObjective(24, 45),
+    reachObjective(Math.max(8, currentFrontierDistance + 2), 75),
+    deliverObjective('harsh-timber', 'Stockpile for the cold', 'wood', 24, 60),
+    deliverObjective('harsh-rations', 'Provision against the elements', 'food', 14, 60, false),
+  ];
+}
+
+function tutorialMission9(_currentFrontierDistance: number): ObjectiveBlueprint[] {
+  // Unlocks: townCenter
+  // Teaches: founding a second settlement
+  return [
+    surveyObjective(20, 45),
+    createTownCenterTaskObjective(),
+    taskObjective(
+      'settlers-road',
+      'Connect the new district',
+      'Build 3 roads to bind the new town center back into the colony.',
+      'buildRoad',
+      3,
+      75,
+    ),
+    populationObjective(3, 60, false),
+  ];
+}
+
+function tutorialMission10(currentFrontierDistance: number): ObjectiveBlueprint[] {
+  // Unlocks: vulcano terrain
+  // Teaches: final frontier push, uses all mechanics
+  return [
+    surveyObjective(26, 45),
+    reachObjective(Math.max(10, currentFrontierDistance + 3), 90),
+    deliverObjective('expedition-ore', 'Ore for the final push', 'ore', 18, 75),
+    deliverObjective('expedition-food', 'Provision the expedition', 'food', 16, 60, false),
+  ];
+}
+
+function getTutorialMissionObjectives(missionNumber: number, currentFrontierDistance: number): ObjectiveBlueprint[] {
+  switch (missionNumber) {
+    case 1: return tutorialMission1();
+    case 2: return tutorialMission2();
+    case 3: return tutorialMission3();
+    case 4: return tutorialMission4();
+    case 5: return tutorialMission5();
+    case 6: return tutorialMission6();
+    case 7: return tutorialMission7();
+    case 8: return tutorialMission8(currentFrontierDistance);
+    case 9: return tutorialMission9(currentFrontierDistance);
+    case 10: return tutorialMission10(currentFrontierDistance);
+    default: return tutorialMission1();
   }
-  const progression = createStoryProgression(missionNumber);
+}
+
+/** Fixed mutator assigned to each tutorial mission (no RNG). */
+function getTutorialMutator(missionNumber: number): RunMutatorKey {
+  switch (missionNumber) {
+    case 1: return 'open_frontier';
+    case 2: return 'timber_rush';
+    case 3: return 'open_frontier';
+    case 4: return 'open_frontier';
+    case 5: return 'foragers_feast';
+    case 6: return 'prospectors_call';
+    case 7: return 'roadworks_drive';
+    case 8: return 'open_frontier';
+    case 9: return 'new_hearths';
+    case 10: return 'open_frontier';
+    default: return 'open_frontier';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Procedural missions (11+)
+// Uses the existing mutator-based generation with random objectives.
+// ---------------------------------------------------------------------------
+
+function generateProceduralMission(
+  rng: () => number,
+  progression: StoryProgressionSnapshot,
+  currentFrontierDistance: number,
+): { mutatorKey: RunMutatorKey; objectives: ObjectiveBlueprint[] } {
   const mutatorKeys = getAvailableMutators(progression);
   const selectedMutator = mutatorKeys[Math.floor(rng() * mutatorKeys.length)] ?? 'open_frontier';
-  const missionScale = Math.max(0, missionNumber - 1);
+  const missionScale = Math.max(0, progression.missionNumber - 1);
   const surveyTarget = rollBetween(rng, 18, 24) + (missionScale * 3);
   const woodTarget = rollBetween(rng, 18, 28) + (missionScale * 4);
   const foodTarget = rollBetween(rng, 10, 18) + (missionScale * 3);
@@ -438,6 +704,44 @@ export function generateFoundingExpeditionMission(
           : createTimberTaskObjective(progression)),
       ];
       break;
+  }
+
+  return { mutatorKey: selectedMutator, objectives };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export function generateFoundingExpedition(seed: number): RunBlueprint {
+  return generateFoundingExpeditionMission(seed, 1, 1);
+}
+
+export function generateFoundingExpeditionMission(
+  seed: number,
+  missionNumber: number,
+  currentFrontierDistance: number,
+): RunBlueprint {
+  const progression = createStoryProgression(missionNumber);
+
+  let selectedMutator: RunMutatorKey;
+  let objectives: ObjectiveBlueprint[];
+
+  if (missionNumber <= 10) {
+    // Hand-crafted tutorial missions
+    selectedMutator = getTutorialMutator(missionNumber);
+    objectives = getTutorialMissionObjectives(missionNumber, currentFrontierDistance);
+  } else {
+    // Procedural missions using mutator system
+    const rng = createSeededRandom(seed ^ 0x9e3779b9);
+    for (let i = 1; i < missionNumber; i++) {
+      rng();
+      rng();
+      rng();
+    }
+    const result = generateProceduralMission(rng, progression, currentFrontierDistance);
+    selectedMutator = result.mutatorKey;
+    objectives = result.objectives;
   }
 
   const story = createStoryBeat(

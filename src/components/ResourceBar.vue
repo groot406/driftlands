@@ -1,8 +1,8 @@
 <template>
-  <div class="noscrollbar flex flex-row items-center flex-wrap w-max justify-center rounded-lg gap-2 max-w-full overflow-x-auto pointer-events-auto">
-    <div class='flex flex-row items-center w-max min-w-[120px] backdrop-blur-lg justify-center p-1 rounded-lg bg-slate-700/20 border-t-2 border-b-1 border-t-white/10 border-b-black/20 shadow gap-x-2 px-2 pr-4 pointer-events-auto'>
-      <div class='text-sm leading-none'>&#x1F465;</div>
-      <div class='pixel-font text-sm text-white/40'>{{ populationState.current }}/{{ populationState.max }}</div>
+  <div class="noscrollbar flex flex-row items-center flex-wrap gap-1.5 max-w-full overflow-x-auto pointer-events-auto">
+    <div class="pop-bubble">
+      <span class="text-xs leading-none">&#x1F465;</span>
+      <span class="text-[11px] font-mono leading-none text-slate-200">{{ populationState.current }}/{{ populationState.max }}</span>
     </div>
     <ResourceBubble v-for="r in resources" :key="r.key" :resource-key="r.key" :icon="r.icon" :label="r.label" :value="r.value"/>
   </div>
@@ -45,3 +45,10 @@ watch(() => resourceVersion.value, () => {
 <script lang="ts">
 export default {name: 'ResourceBar'};
 </script>
+
+<style scoped>
+.pop-bubble {
+  @apply flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2 py-1.5 shadow-lg backdrop-blur-sm;
+  background: rgba(2, 6, 23, 0.82);
+}
+</style>

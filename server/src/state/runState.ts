@@ -3,6 +3,7 @@ import { generateFoundingExpeditionMission } from '../../../src/shared/goals/gen
 import type { GameplayEvent } from '../../../src/shared/gameplay/events';
 import { tiles } from '../../../src/shared/game/world';
 import { syncHeroRoster } from '../../../src/shared/game/state/heroStore';
+import { getPopulationState } from '../../../src/shared/game/state/populationStore';
 import type { ResourceType } from '../../../src/shared/game/types/Resource';
 import { getDistanceToNearestTowncenter } from '../../../src/shared/game/worldQueries';
 import type { CompletedMissionSnapshot, ObjectiveSnapshot, RunSnapshot } from '../../../src/shared/goals/types';
@@ -20,6 +21,7 @@ interface MissionBaselines {
 interface RunMetrics {
   discoveredTiles: number;
   frontierDistance: number;
+  population: number;
 }
 
 function cloneProgression(progression: StoryProgressionSnapshot): StoryProgressionSnapshot {
@@ -196,6 +198,8 @@ class RunState {
         );
       case 'reach_distance':
         return metrics.frontierDistance;
+      case 'reach_population':
+        return metrics.population;
       default:
         return 0;
     }
@@ -212,6 +216,7 @@ class RunState {
         const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
         return Math.max(maxDistance, distance);
       }, 0),
+      population: getPopulationState().current,
     };
   }
 

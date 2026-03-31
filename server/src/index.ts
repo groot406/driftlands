@@ -30,6 +30,7 @@ const defaultLanOriginPatterns = [
   /^https?:\/\/192\.168(?:\.\d{1,3}){2}(?::\d+)?$/i,
   /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}(?::\d+)?$/i,
   /^https?:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?::\d+)?$/i,
+  /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i,
 ];
 
 function isAllowedFrontendOrigin(origin?: string): boolean {

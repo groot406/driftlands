@@ -5,48 +5,42 @@
         <div
           v-for="hero in heroes"
           :key="hero.id"
-          class="text-white flex-col items-center transition-all gap-3 backdrop-blur rounded-xl hover:bg-slate-600/40 cursor-pointer select-none pointer-events-auto relative overflow-hidden"
+          class="text-white flex-shrink-0 flex flex-col gap-1 p-2 transition-all backdrop-blur rounded-xl hover:bg-slate-600/40 cursor-pointer select-none pointer-events-auto"
           :class="cardClass(hero.id)"
           @click="select(hero)"
         >
-          <div class="absolute top-2 right-2 flex items-center gap-2">
-            <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold border" :class="statusClass(hero.id)">
-              {{ heroStatus(hero.id) }}
+          <div class="flex items-center justify-between gap-2">
+            <span v-if="!isMobile" class="opacity-85 font-semibold text-sm truncate">
+              {{ hero.name }}
             </span>
-            <button
-              v-if="canClaim(hero.id)"
-              class="rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-500/30"
-              @click.stop="claim(hero.id)"
-            >
-              Claim
-            </button>
-            <button
-              v-else-if="isMine(hero.id)"
-              class="rounded-full bg-slate-900/60 border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-200 hover:bg-slate-900/80"
-              @click.stop="release(hero.id)"
-            >
-              Release
-            </button>
+            <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
+              <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold border" :class="statusClass(hero.id)">
+                {{ heroStatus(hero.id) }}
+              </span>
+              <button
+                v-if="canClaim(hero.id)"
+                class="rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-500/30"
+                @click.stop="claim(hero.id)"
+              >
+                Claim
+              </button>
+              <button
+                v-else-if="isMine(hero.id)"
+                class="rounded-full bg-slate-900/60 border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-200 hover:bg-slate-900/80"
+                @click.stop="release(hero.id)"
+              >
+                Release
+              </button>
+            </div>
           </div>
 
-          <div v-if="!isMobile" class="p-3 pt-1.5 pb-0 pr-24 opacity-85 w-full font-semibold text-sm">
-            {{ hero.name }}
-          </div>
-          <div class="flex px-2 gap-x-2 pb-2 pt-4">
+          <div class="flex items-center gap-2">
             <div class="text-2xl leading-none rounded flex items-center justify-center">
               <div class="relative top-[-16px] left-[-16px] -m-1">
                 <Sprite :sprite="'src/assets/heroes/' + hero.avatar + '.png'" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
               </div>
             </div>
-            <div v-if="!isMobile" class="flex flex-col leading-tight w-1/2">
-              <div class="text-[10px] opacity-80 flex flex-col">
-                <span class="text-yellow-500">XP {{ hero.stats.xp }}</span>
-                <span>HP {{ hero.stats.hp }}</span>
-                <span>ATK {{ hero.stats.atk }}</span>
-                <span>SPD {{ hero.stats.spd }}</span>
-                <span class="text-cyan-200/90 pt-1">{{ heroOwnerSummary(hero.id) }}</span>
-              </div>
-            </div>
+            <span v-if="!isMobile" class="text-[10px] text-yellow-500 opacity-80">XP {{ hero.stats.xp }}</span>
           </div>
         </div>
       </template>
@@ -101,15 +95,6 @@ function heroStatus(heroId: string) {
 
   const ownerName = getHeroOwnerName(heroId);
   return ownerName ? ownerName : 'Public';
-}
-
-function heroOwnerSummary(heroId: string) {
-  if (isMine(heroId)) {
-    return 'Exclusive control';
-  }
-
-  const ownerName = getHeroOwnerName(heroId);
-  return ownerName ? `Claimed by ${ownerName}` : 'Unclaimed co-op slot';
 }
 
 function statusClass(heroId: string) {

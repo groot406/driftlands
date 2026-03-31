@@ -33,7 +33,7 @@ export const soundState: SoundState = reactive({
     musicVolume: 0.8,
     effectsVolume: 1.0,
     currentMusic: null,
-    musicCrossfadeTime: 3500, // ms
+    musicCrossfadeTime: 1200, // ms
     maxAudioDistance: 20, // hex distance
     panningStrength: 1,
     positionalSounds: new Map()
@@ -530,6 +530,18 @@ class SoundService {
     private updateAllVolumes() {
         this.updateMusicVolume();
         // Positional sound volumes are updated in the update loop
+    }
+
+    pauseMusic() {
+        if (this.musicAudio && !this.musicAudio.paused) {
+            this.musicAudio.pause();
+        }
+    }
+
+    resumeMusic() {
+        if (this.musicAudio && this.musicAudio.paused && soundState.currentMusic) {
+            this.musicAudio.play().catch(e => console.warn('Failed to resume music:', e));
+        }
     }
 
     pauseAll() {

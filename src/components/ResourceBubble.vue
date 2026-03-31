@@ -1,9 +1,7 @@
 <template>
-  <div
-      ref="bubbleEl"
-      class='flex flex-row items-center w-max min-w-[120px] backdrop-blur-lg justify-center p-1 rounded-lg bg-slate-700/20 border-t-2 border-b-1 border-t-white/10 border-b-black/20 shadow gap-x-2 px-2 pr-4 pointer-events-auto'>
-    <div class='text-sm leading-none'>{{ icon }}</div>
-    <div class='pixel-font text-sm text-white/40'>{{ value }}</div>
+  <div ref="bubbleEl" class="resource-bubble">
+    <span class="text-xs leading-none">{{ icon }}</span>
+    <span class="text-[11px] font-mono leading-none text-slate-200">{{ value }}</span>
   </div>
 </template>
 
@@ -30,3 +28,10 @@ watch(() => props.resourceKey, syncTarget);
 watch(bubbleEl, syncTarget);
 onBeforeUnmount(() => registerResourceTarget(props.resourceKey, null));
 </script>
+
+<style scoped>
+.resource-bubble {
+  @apply flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2 py-1.5 shadow-lg backdrop-blur-sm;
+  background: rgba(2, 6, 23, 0.82);
+}
+</style>

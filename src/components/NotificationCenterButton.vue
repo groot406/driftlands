@@ -1,22 +1,15 @@
 <template>
   <button
-    class="pointer-events-auto relative flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-950/78 px-3 py-2 md:px-4 md:py-3 text-left text-white shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40 hover:bg-slate-900/90"
+    class="reports-btn pointer-events-auto"
+    :title="statusLabel"
     @click="openNotificationCenter"
   >
-    <div class="pixel-font flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-300/15 text-[10px] uppercase tracking-[0.16em] text-sky-100">
-      Log
-    </div>
-    <div class="min-w-0 hidden md:block">
-      <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-sky-200/80">Field Reports</p>
-      <p class="mt-1 text-sm font-semibold text-white">{{ statusLabel }}</p>
-      <p class="mt-1 text-[11px] text-slate-300">{{ helperLabel }}</p>
-    </div>
-    <span
-      v-if="unreadCount > 0"
-      class="pixel-font absolute -right-1 -top-1 md:right-3 md:top-3 rounded-full border border-amber-300/30 bg-amber-300/15 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-100"
-    >
-      {{ badgeLabel }}
-    </span>
+    <!-- Bell icon -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+      <path fill-rule="evenodd" d="M5.25 9a6.75 6.75 0 0113.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 01-.297 1.206c-1.544.57-3.16.99-4.831 1.243a3.75 3.75 0 11-7.48 0 24.585 24.585 0 01-4.831-1.244.75.75 0 01-.298-1.205A8.217 8.217 0 005.25 9.75V9zm4.502 8.9a2.25 2.25 0 004.496 0 25.057 25.057 0 01-4.496 0z" clip-rule="evenodd" />
+    </svg>
+    <!-- Unread count badge -->
+    <span v-if="unreadCount > 0" class="count-badge">{{ badgeLabel }}</span>
   </button>
 </template>
 
@@ -67,3 +60,17 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
+
+<style scoped>
+.reports-btn {
+  @apply relative flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2.5 py-2 text-sky-300/80 shadow-lg backdrop-blur-sm transition-all hover:border-sky-300/50 hover:text-sky-300 cursor-pointer;
+  background: rgba(2, 6, 23, 0.82);
+}
+.reports-btn:hover {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.count-badge {
+  @apply text-[11px] font-mono leading-none text-sky-300;
+}
+</style>
