@@ -11,7 +11,7 @@ const tillLandTask: TaskDefinition = {
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'dirt',
 
     canStart(tile, _hero) {
-        return (tile.terrain === 'dirt' && !tile.variant) || (tile.terrain === 'plains' && !tile.variant);
+        return (tile.terrain === 'dirt' && tile.isBaseTile);
     },
 
     requiredXp(_distance: number) {

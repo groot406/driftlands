@@ -88,6 +88,7 @@ export interface RunSnapshot {
   endedAt?: number;
   score: number;
   missionScore: number;
+  discoveredTiles: number;
   summary: string;
   mutator: RunMutatorSnapshot;
   story: RunStoryBeat;

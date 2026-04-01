@@ -38,7 +38,7 @@ function getBaseGrowthAgeMs(growth: GrowthConfig, randomize: boolean): number {
 }
 
 export function registerAgingTile(tile: Tile) {
-    if (!tile.variant) return;
+    if (tile.isBaseTile) return;
     const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
     const variantDef = def?.variations?.find(v => v.key === tile.variant);
     if (variantDef?.growth) agingTiles.add(tile.id);
@@ -123,6 +123,8 @@ export function updateTileGrowth(nowMs: number = Date.now()) {
                 const nextDef = def?.variations?.find(v => v.key === next);
                 t.variantSetMs = nowMs;
                 t.variantAgeMs = undefined;
+                t.isBaseTile = nextDef?.decorative ?? false;
+
                 if (!nextDef?.growth) {
                     t.variantSetMs = undefined;
                     t.variantAgeMs = undefined;
@@ -133,6 +135,7 @@ export function updateTileGrowth(nowMs: number = Date.now()) {
             } else {
                 t.variantSetMs = undefined;
                 t.variantAgeMs = undefined;
+                t.isBaseTile = true;
                 toRemove.push(id);
             }
             broadcast({type: 'tile:updated', tile: t} );

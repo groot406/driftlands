@@ -39,6 +39,7 @@ const removeTrunksTask: TaskDefinition = {
 
             tile.terrain = 'plains';
             tile.variant = null;
+            tile.isBaseTile = true;
             tile.variantSetMs = undefined;
             tile.variantAgeMs = undefined;
 

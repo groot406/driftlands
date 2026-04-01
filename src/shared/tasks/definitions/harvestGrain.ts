@@ -9,7 +9,7 @@ const harvestGrainTask: TaskDefinition = {
     chainAdjacentSameTerrain: true,
 
     canStart(tile, _hero) {
-        return tile.terrain === 'grain' && !tile.variant;
+        return tile.terrain === 'grain' && tile.isBaseTile;
     },
 
     requiredXp(distance: number) {

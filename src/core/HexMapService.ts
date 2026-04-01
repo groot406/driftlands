@@ -2866,7 +2866,7 @@ export class HexMapService {
                 // Ripple arcs
                 const arcR = 2.5 + noise01(i, q, 650) * 3;
                 const startAngle = noise01(q, i, 651) * Math.PI * 2;
-                g.strokeStyle = `rgba(180, 220, 255, ${0.15 + noise01(i, r, 652) * 0.1})`;
+                g.strokeStyle = `rgba(180, 220, 255, ${0.35 + noise01(i, r, 652) * 0.1})`;
                 g.lineWidth = 0.7;
                 g.beginPath();
                 g.arc(px, py, arcR, startAngle, startAngle + Math.PI * 0.6);
@@ -2886,7 +2886,7 @@ export class HexMapService {
             } else if (terrain === 'forest') {
                 // Fallen leaves with variation
                 const radius = 1.2 + noise01(i, r, 670);
-                const leafAlpha = 0.2 + noise01(q, i, 671) * 0.15;
+                const leafAlpha = 1 + noise01(q, i, 671) * 0.15;
                 g.fillStyle = `rgba(15, 50, 15, ${leafAlpha})`;
                 g.beginPath();
                 g.ellipse(px, py, radius * 1.5, radius * 0.6, noise01(i, q, 672) * Math.PI, 0, Math.PI * 2);
@@ -2976,7 +2976,7 @@ export class HexMapService {
         if (!isRoadTile(tile)) return null;
 
         const roadMask = SIDE_NAMES
-            .map((side) => (isRoadConnectionTarget(tile.neighbors?.[side]) ? side : '-'))
+            .map((side) => (isRoadConnectionTarget(tile.neighbors?.[side], OPPOSITE_SIDE[side]) ? side : '-'))
             .join('');
 
         return `${tile.q},${tile.r}:${tile.variant ?? ''}:${roadMask}`;
@@ -4209,7 +4209,7 @@ export class HexMapService {
     }
 
     private getRoadConnectionSides(tile: Tile): TileSide[] {
-        const connections = SIDE_NAMES.filter(side => isRoadConnectionTarget(tile.neighbors?.[side]));
+        const connections = SIDE_NAMES.filter(side => isRoadConnectionTarget(tile.neighbors?.[side], OPPOSITE_SIDE[side]));
         if (connections.length >= 2) {
             return connections;
         }

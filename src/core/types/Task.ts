@@ -28,7 +28,7 @@ export interface TaskDefinition {
     totalRewardedStats?(distance: number): Record<HeroStat, number>;
 
     // Optional base reward resources for participants collectively (split proportionally)
-    totalRewardedResources?(distance: number): ResourceAmount;
+    totalRewardedResources?(distance: number, tile ?: Tile): ResourceAmount;
 
     requiredResources?(distance: number): ResourceAmount[]
 

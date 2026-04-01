@@ -3,6 +3,7 @@ import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {ResourceAmount} from "../../../core/types/Resource.ts";
 import { broadcastGameMessage as broadcast } from '../../game/runtime';
+import {applyVariant} from "../../../core/variants.ts";
 
 const seedGrainTask: TaskDefinition = {
     key: 'seedGrain',
@@ -20,7 +21,7 @@ const seedGrainTask: TaskDefinition = {
 
     requiredResources(): ResourceAmount[] {
         return [
-            { type: 'water', amount: 1 }
+           { type: 'water', amount: 1 }
         ];
     },
 
@@ -33,11 +34,7 @@ const seedGrainTask: TaskDefinition = {
         // Transform tilled dirt to grain field
         if (tile.terrain === 'dirt' && (tile.variant === 'dirt_tilled_hydrated' || tile.variant === 'dirt_tilled')) {
             tile.terrain = 'grain';
-            tile.variant = null;
-            tile.variantAgeMs = undefined;
-            // Set timestamp for potential future growth mechanics
-            tile.variantSetMs = Date.now();
-            broadcast({ type: 'tile:updated', tile});
+            applyVariant(tile, 'grain_planted', { stagger: false, respectBiome: false });
         }
     }
 };

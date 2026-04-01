@@ -21,6 +21,7 @@ function serializeTile(tile: Tile): Tile {
     biome: tile.biome,
     terrain: tile.terrain,
     discovered: tile.discovered,
+    isBaseTile: tile.isBaseTile,
     variant: tile.variant ?? null,
     variantSetMs: tile.variantSetMs,
     variantAgeMs: tile.variantAgeMs,

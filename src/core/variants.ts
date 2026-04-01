@@ -19,12 +19,16 @@ export function applyVariant(tile: Tile, variantKey: string | null, opts: ApplyV
     if (!variantKey) {
         tile.variantSetMs = undefined;
         tile.variantAgeMs = undefined;
+        tile.isBaseTile = true
         broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
         return;
     }
 
     const def = tile.terrain ? TERRAIN_DEFS[tile.terrain] : null;
     const variantDef = def?.variations?.find(v => v.key === variantKey);
+
+    tile.isBaseTile = variantDef?.decorative ?? false;
+
     if (!variantDef?.growth) {
         tile.variantSetMs = undefined;
         tile.variantAgeMs = undefined;

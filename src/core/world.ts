@@ -52,7 +52,7 @@ export function ensureTileExists(q: number, r: number): Tile {
     const id = axialKey(q, r);
     let t = tileIndex[id];
     if (!t) {
-        t = {id, q, r, terrain: null, biome: null, discovered: false};
+        t = {id, q, r, terrain: null, biome: null, discovered: false, isBaseTile: true};
         tiles.push(t);
         indexTile(t);
     }
@@ -133,6 +133,7 @@ export function discoverTile(tile: Tile) {
     if (tile.q === 0 && tile.r === 0) {
         tile.terrain = 'towncenter';
         tile.variant = null;
+        tile.isBaseTile = true;
         tile.discovered = true;
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
@@ -153,6 +154,7 @@ export function discoverTile(tile: Tile) {
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
     tile.discovered = true;
+    tile.isBaseTile = true;
     if (!tileIndex[tile.id]) indexTile(tile);
     ensureTileNeighbors(tile);
     if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);
@@ -171,6 +173,7 @@ export function discoverTile(tile: Tile) {
         const variations = def?.variations;
         if (variations && variations.length) {
             const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+
             // Build valid variants list based on constraints
             const valid: { key: string; weight: number }[] = [];
             for (const v of variations) {

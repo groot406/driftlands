@@ -142,9 +142,13 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     label: 'Build Road',
     description: 'Lay safe lanes across open ground.',
   },
-  prepareRoadbed: {
-    label: 'Prepare Roadbed',
-    description: 'Clear rough dirt into road-ready ground for the next lane crews.',
+  dig: {
+    label: 'Dig',
+    description: 'Turn grass into rough dirt, revealing the ground beneath.',
+  },
+  convertToGrass: {
+    label: 'Convert to grass',
+    description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
   tillLand: {
     label: 'Prepare Land',
@@ -233,7 +237,8 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
       'clearRocks',
       'breakDirtRock',
       'buildRoad',
-      'prepareRoadbed',
+      'dig',
+      'convertToGrass',
     ],
     terrains: ['plains', 'forest', 'dirt'],
   },

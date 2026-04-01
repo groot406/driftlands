@@ -15,6 +15,7 @@ export interface Tile {
     terrain: Terrain | null;
     discovered: boolean;
     // Functional terrain state such as crops, docks, rocks, or mines. Purely decorative art is resolved separately.
+    isBaseTile: boolean; // whether tile is a base tile (or decorative variant) for terrain generation and task logic
     variant?: string | null;
     // Timestamp when current variant was set (for growth progression)
     variantSetMs?: number;

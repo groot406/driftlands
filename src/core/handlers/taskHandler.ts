@@ -110,16 +110,6 @@ class ClientTaskHandler {
                         const previousAmount = previousByType.get(collected.type) ?? 0;
                         const addedAmount = collected.amount - previousAmount;
                         if (addedAmount <= 0) continue;
-
-                        triggerGameplayImpact({
-                            q: tile.q,
-                            r: tile.r,
-                            kind: 'handin',
-                            terrain: tile.terrain,
-                            resourceType: collected.type,
-                            amount: addedAmount,
-                            heroIds: impactedHeroIds,
-                        });
                     }
 
                     triggerCameraShake({

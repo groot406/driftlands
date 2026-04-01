@@ -8,11 +8,11 @@ import { getDistanceToNearestTowncenter } from '../../game/worldQueries';
 import { isTileWithinReach } from '../../../store/populationStore';
 
 const EXPLORE_CHAIN_DELAY_MS = 120;
-const EXPLORE_BASE_REQUIRED_XP = 450;
+const EXPLORE_BASE_REQUIRED_XP = 250;
 const EXPLORE_REQUIRED_XP_PER_DISTANCE = 850;
 const EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED = 25;
 const EXPLORE_MAX_REQUIRED_XP = 999999;
-const EXPLORE_SCOUTING_RATE = 24;
+const EXPLORE_SCOUTING_RATE = 30;
 
 export function getExploreRequiredXp(distance: number) {
     const clampedDistance = Math.max(0, distance);

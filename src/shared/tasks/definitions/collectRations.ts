@@ -12,11 +12,11 @@ const collectRationsTask: TaskDefinition = {
     },
 
     requiredXp(distance: number) {
-        return Math.max(2100, 1700 * distance);
+        return Math.max(4500, 1700 * distance);
     },
 
     heroRate(hero: Hero) {
-        return 14 * Math.max(1, hero.stats.spd);
+        return 14 * Math.max(10, hero.stats.spd);
     },
 
     totalRewardedResources(distance: number) {

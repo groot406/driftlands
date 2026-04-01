@@ -43,6 +43,8 @@ import {
   stopCameraAnimation
 } from '../core/camera';
 import {getSelectedHero, isPaused, selectedHeroId, selectHero,} from '../store/uiStore';
+import {isHeroWorkingTask} from '../shared/game/heroTaskState';
+import {taskStore} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
 import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
 import {requestHeroClaim, sendCoopPing} from '../core/coopService';
@@ -266,8 +268,23 @@ function handleClick(e: PointerEvent) {
   hoveredTile.value = tile;
   if (doubleClick) emit('tile-doubleclick', tile); else emit('tile-click', tile);
 
-  // Town center click — toggle the info panel
+  // Town center click — toggle the info panel or drop off goods
   if (tile.terrain === 'towncenter') {
+    const selHero = getSelectedHero();
+    const isWorking = selHero && selHero.currentTaskId && isHeroWorkingTask(selHero, taskStore.taskIndex[selHero.currentTaskId]);
+    const isCarrying = selHero && selHero.carryingPayload && selHero.carryingPayload.amount > 0;
+
+    if (selHero && isCarrying && !isWorking) {
+      const path = service.updatePath(selHero.id, tile).slice();
+      if (path.length > 0) {
+        pathCoords.value = path;
+        pathPreviewHeroId.value = selHero.id;
+        pathPreviewTargetKey.value = `${tile.q},${tile.r}`;
+        requestHeroMovement(selHero.id, path, tile);
+        return;
+      }
+    }
+
     if (showTownCenterPanel.value) {
       closeTownCenterPanel();
     } else {

@@ -3,10 +3,10 @@ import test from 'node:test';
 
 import { terrainPositions } from '../../../core/terrainRegistry';
 import { getTaskDefinition } from '../taskRegistry';
-import './prepareRoadbed';
+import './convertToGrass';
 
-test('prepareRoadbed starts on rough dirt but not on active dirt improvements', () => {
-  const definition = getTaskDefinition('prepareRoadbed');
+test('convertToGrass starts on rough dirt but not on active dirt improvements', () => {
+  const definition = getTaskDefinition('convertToGrass');
 
   assert.ok(definition);
   assert.equal(
@@ -45,8 +45,8 @@ test('prepareRoadbed starts on rough dirt but not on active dirt improvements', 
   );
 });
 
-test('prepareRoadbed converts dirt into plains for road placement', () => {
-  const definition = getTaskDefinition('prepareRoadbed');
+test('convertToGrass converts dirt into plains for road placement', () => {
+  const definition = getTaskDefinition('convertToGrass');
   const tileId = 'prepared-roadbed-test';
   const tile = {
     id: tileId,

@@ -301,11 +301,11 @@ function createTownCenterTaskObjective(required: boolean = true) {
 // ---------------------------------------------------------------------------
 
 function tutorialMission1(): ObjectiveBlueprint[] {
-  // Unlocks: h1, h2, explore, chopWood, clearRocks, breakDirtRock, buildRoad, prepareRoadbed
+  // Unlocks: h1, h2, explore, chopWood, clearRocks, breakDirtRock, buildRoad, convertToGrass
   // Terrains: plains, forest, dirt
   // Teaches: basic exploration, clearing land, building roads
   return [
-    surveyObjective(10, 45),
+    surveyObjective(30, 45),
     reachObjective(4, 60),
     taskObjective(
       'first-grove',
@@ -332,7 +332,7 @@ function tutorialMission2(): ObjectiveBlueprint[] {
   // Terrains: water
   // Teaches: building structures, shoreline foraging, tree management
   return [
-    surveyObjective(12, 45),
+    surveyObjective(50, 45),
     taskObjective(
       'harbor',
       'Build a dock',
@@ -366,7 +366,7 @@ function tutorialMission3(): ObjectiveBlueprint[] {
   // Terrains: grain
   // Teaches: the full farming cycle
   return [
-    surveyObjective(14, 45),
+    surveyObjective(80, 45),
     taskObjective(
       'till-fields',
       'Prepare the fields',
@@ -391,7 +391,7 @@ function tutorialMission4(): ObjectiveBlueprint[] {
   // Unlocks: h3, well, irregateDirtTask
   // Teaches: water management, irrigation, expanding the workforce
   return [
-    surveyObjective(16, 45),
+    surveyObjective(100, 45),
     taskObjective(
       'sink-well',
       'Sink a well',
@@ -416,7 +416,7 @@ function tutorialMission5(): ObjectiveBlueprint[] {
   // Unlocks: watchtower, granary, collectRations, fishAtDock
   // Teaches: food security, scouting infrastructure
   return [
-    surveyObjective(18, 45),
+    surveyObjective(125, 45),
     taskObjective(
       'watchtower',
       'Raise a watchtower',
@@ -442,7 +442,7 @@ function tutorialMission6(): ObjectiveBlueprint[] {
   // Terrains: mountain
   // Teaches: mining industry
   return [
-    surveyObjective(20, 45),
+    surveyObjective(150, 45),
     reachObjective(6, 60),
     taskObjective(
       'mine-head',
@@ -460,7 +460,7 @@ function tutorialMission7(): ObjectiveBlueprint[] {
   // Unlocks: h4, supplyDepot, lumberCamp, gatherTimber
   // Teaches: logistics, sustainable timber
   return [
-    surveyObjective(22, 45),
+    surveyObjective(175, 45),
     taskObjective(
       'supply-depot',
       'Stage a supply depot',
@@ -485,7 +485,7 @@ function tutorialMission8(currentFrontierDistance: number): ObjectiveBlueprint[]
   // Unlocks: snow, dessert terrains (no new buildings/tasks)
   // Teaches: working in harsh conditions with existing toolkit
   return [
-    surveyObjective(24, 45),
+    surveyObjective(200, 45),
     reachObjective(Math.max(8, currentFrontierDistance + 2), 75),
     deliverObjective('harsh-timber', 'Stockpile for the cold', 'wood', 24, 60),
     deliverObjective('harsh-rations', 'Provision against the elements', 'food', 14, 60, false),
@@ -496,7 +496,7 @@ function tutorialMission9(_currentFrontierDistance: number): ObjectiveBlueprint[
   // Unlocks: townCenter
   // Teaches: founding a second settlement
   return [
-    surveyObjective(20, 45),
+    surveyObjective(225, 45),
     createTownCenterTaskObjective(),
     taskObjective(
       'settlers-road',
@@ -514,7 +514,7 @@ function tutorialMission10(currentFrontierDistance: number): ObjectiveBlueprint[
   // Unlocks: vulcano terrain
   // Teaches: final frontier push, uses all mechanics
   return [
-    surveyObjective(26, 45),
+    surveyObjective(250, 45),
     reachObjective(Math.max(10, currentFrontierDistance + 3), 90),
     deliverObjective('expedition-ore', 'Ore for the final push', 'ore', 18, 75),
     deliverObjective('expedition-food', 'Provision the expedition', 'food', 16, 60, false),
@@ -567,7 +567,7 @@ function generateProceduralMission(
   const mutatorKeys = getAvailableMutators(progression);
   const selectedMutator = mutatorKeys[Math.floor(rng() * mutatorKeys.length)] ?? 'open_frontier';
   const missionScale = Math.max(0, progression.missionNumber - 1);
-  const surveyTarget = rollBetween(rng, 18, 24) + (missionScale * 3);
+  const surveyTarget = rollBetween(rng, 18, 24) + (missionScale * 25);
   const woodTarget = rollBetween(rng, 18, 28) + (missionScale * 4);
   const foodTarget = rollBetween(rng, 10, 18) + (missionScale * 3);
   const oreTarget = rollBetween(rng, 14, 24) + (missionScale * 4);

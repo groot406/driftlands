@@ -622,7 +622,7 @@ function rewardResourcesToParticipants(instance: TaskInstance, participants: Her
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
 
-        const totalRewards = def.totalRewardedResources(distance);
+        const totalRewards = def.totalRewardedResources(distance, tile);
         const reward = {
             type: totalRewards.type,
             amount: Math.ceil(totalRewards.amount * share),

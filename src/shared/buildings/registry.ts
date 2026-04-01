@@ -86,6 +86,7 @@ function promoteTileToTowncenter(tile: Tile) {
 
     tile.terrain = 'towncenter';
     tile.variant = null;
+    tile.isBaseTile = true;
     tile.variantSetMs = undefined;
     tile.discovered = true;
     terrainPositions.towncenter.add(tile.id);
@@ -109,7 +110,7 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (
                 (tile.terrain === 'plains' || tile.terrain === 'dirt') &&
-                !tile.variant &&
+                tile.isBaseTile &&
                 !hasAdjacentNaturalWater(tile)
             );
         },
@@ -148,7 +149,7 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (
                 (tile.terrain === 'plains' || tile.terrain === 'dirt' || tile.terrain === 'mountain') &&
-                !tile.variant
+                tile.isBaseTile
             );
         },
         requiredXp(distance: number) {
@@ -186,7 +187,7 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (
                 (tile.terrain === 'plains' || tile.terrain === 'dirt') &&
-                !tile.variant
+                tile.isBaseTile
             );
         },
         requiredXp(distance: number) {
@@ -221,7 +222,7 @@ const buildings: BuildingDefinition[] = [
         overlayAssetKey: 'building_depot_overlay',
         providesWarehouse: true,
         canPlace(tile, _hero) {
-            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && !tile.variant;
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return Math.max(3400, 2800 * distance);
@@ -260,7 +261,7 @@ const buildings: BuildingDefinition[] = [
             'water_dock_f',
         ],
         canPlace(tile, _hero) {
-            return tile.terrain === 'water' && !tile.variant;
+            return tile.terrain === 'water' && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return Math.max(3000, 3000 * distance);
@@ -315,7 +316,7 @@ const buildings: BuildingDefinition[] = [
         renderDecoration: 'lumberCamp',
         overlayAssetKey: 'building_lumber_camp_overlay',
         canPlace(tile, _hero) {
-            return tile.terrain === 'forest' && !tile.variant;
+            return tile.terrain === 'forest' && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return Math.max(3200, 2600 * distance);
@@ -345,7 +346,7 @@ const buildings: BuildingDefinition[] = [
         renderDecoration: 'granary',
         overlayAssetKey: 'building_granary_overlay',
         canPlace(tile, _hero) {
-            return tile.terrain === 'grain' && !tile.variant;
+            return tile.terrain === 'grain' && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return Math.max(3200, 2500 * distance);
@@ -372,7 +373,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 37,
         variantKeys: ['plains_house', 'dirt_house'],
         canPlace(tile, _hero) {
-            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && !tile.variant;
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return Math.max(2000, 1600 * distance);
@@ -407,7 +408,7 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 5,
         variantKeys: ['mountains_with_mine'],
         canPlace(tile, _hero) {
-            return tile.terrain === 'mountain' && !tile.variant;
+            return tile.terrain === 'mountain' && tile.isBaseTile;
         },
         requiredXp(distance: number) {
             return 5000 * distance;

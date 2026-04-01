@@ -14,15 +14,14 @@ const BLOCKED_DIRT_VARIANTS = new Set([
   'dirt_depot',
 ]);
 
-const prepareRoadbedTask: TaskDefinition = {
-  key: 'prepareRoadbed',
-  label: 'Prepare Roadbed',
+const convertToGrassTask: TaskDefinition = {
+  key: 'convertToGrass',
+  label: 'Convert to grass',
   chainAdjacentSameTerrain: false,
 
   canStart(tile, _hero) {
     return (
-      tile.terrain === 'dirt'
-      && !BLOCKED_DIRT_VARIANTS.has(tile.variant ?? '')
+      tile.terrain === 'dirt' && tile.isBaseTile && !BLOCKED_DIRT_VARIANTS.has(tile.variant ?? '')
     );
   },
 
@@ -49,6 +48,7 @@ const prepareRoadbedTask: TaskDefinition = {
 
     tile.terrain = 'plains';
     tile.variant = null;
+    tile.isBaseTile = true;
     tile.variantSetMs = undefined;
     tile.variantAgeMs = undefined;
 
@@ -56,4 +56,4 @@ const prepareRoadbedTask: TaskDefinition = {
   },
 };
 
-registerTask(prepareRoadbedTask);
+registerTask(convertToGrassTask);

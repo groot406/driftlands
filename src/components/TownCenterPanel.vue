@@ -12,10 +12,26 @@
           </button>
         </div>
 
+        <div class="tc-section">
+          <div class="tc-section-row">
+            <div class="tc-section-title">Colony Progress</div>
+          </div>
+          <div class="tc-stat-grid">
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ populationState.current }}</span>
+              <span class="tc-stat-label">Population</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ exploredTiles }}</span>
+              <span class="tc-stat-label">Explored Tiles</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Population Section -->
         <div class="tc-section">
           <div class="tc-section-row">
-            <div class="tc-section-title">Population</div>
+            <div class="tc-section-title">Housing</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
             <div class="tc-stat">
@@ -78,6 +94,7 @@
 import { computed, watch, onMounted, onUnmounted } from 'vue';
 import { populationState } from '../store/clientPopulationStore';
 import { resourceInventory, resourceVersion } from '../store/resourceStore';
+import { runSnapshot } from '../store/runStore';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
@@ -96,6 +113,12 @@ const emit = defineEmits<{
 function close() {
   emit('close');
 }
+
+// --- Colony Progress ---
+
+const exploredTiles = computed(() => {
+  return runSnapshot.value?.discoveredTiles ?? 0;
+});
 
 // --- Population ---
 

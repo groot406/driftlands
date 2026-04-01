@@ -10,7 +10,7 @@ const buildRoadTask: TaskDefinition = {
     chainAdjacentSameTerrain: false,
 
     canStart(tile, _hero) {
-        return tile.terrain === 'plains' && !tile.variant;
+        return tile.terrain === 'plains' && tile.isBaseTile ;
     },
 
     requiredXp(distance: number) {

@@ -172,6 +172,7 @@ class RunState {
     if (this.snapshot.status === 'active') {
       this.snapshot.summary = this.snapshot.story.kicker;
     }
+    this.snapshot.discoveredTiles = metrics.discoveredTiles;
     this.snapshot.missionScore = this.computeMissionScore();
     this.snapshot.score = this.totalScore + this.snapshot.missionScore;
 
@@ -183,7 +184,7 @@ class RunState {
   private computeObjectiveProgress(objective: ObjectiveSnapshot, metrics: RunMetrics) {
     switch (objective.kind) {
       case 'discover_tiles':
-        return Math.max(0, metrics.discoveredTiles - this.baselines.discoveredTiles);
+        return metrics.discoveredTiles;
       case 'deliver_resource':
         if (!objective.resourceType) return 0;
         return Math.max(
@@ -292,6 +293,7 @@ class RunState {
       startedAt: now,
       score: this.totalScore,
       missionScore: 0,
+      discoveredTiles: metrics.discoveredTiles,
       summary: blueprint.story.kicker,
       mutator: blueprint.mutator,
       story: { ...blueprint.story },
