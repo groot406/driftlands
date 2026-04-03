@@ -16,8 +16,10 @@ import { emitGameplayEvent } from '../shared/gameplay/events';
 export let tiles: Tile[] = [];
 export let tileIndex: Record<string, Tile> = {};
 const radiusOffsetCache = new Map<number, Array<[number, number]>>();
+const pendingRenderDirtyTileIds = new Set<string>();
 
 export let worldOuterRadius = 0;
+let worldRenderVersion = 0;
 
 // Per-axis discovered radius caches
 const maxRadiusByQ = new Map<number, number>();
@@ -28,8 +30,48 @@ export function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
 
+function bumpWorldRenderVersion() {
+    worldRenderVersion++;
+}
+
+export function getWorldRenderVersion() {
+    return worldRenderVersion;
+}
+
 export function hexDistance(q: number, r: number): number {
     return axialDistanceFromOrigin(q, r);
+}
+
+function markTileAndNeighborsRenderDirty(tile: Tile) {
+    if (tile.discovered) {
+        pendingRenderDirtyTileIds.add(tile.id);
+    }
+    for (const [dq, dr] of AXIAL_NEIGHBOR_DELTAS) {
+        const neighbor = tileIndex[axialKey(tile.q + dq, tile.r + dr)];
+        if (neighbor?.discovered) {
+            pendingRenderDirtyTileIds.add(neighbor.id);
+        }
+    }
+}
+
+export function consumePendingRenderDirtyTiles(): Tile[] {
+    if (!pendingRenderDirtyTileIds.size) {
+        return [];
+    }
+
+    const dirtyTiles: Tile[] = [];
+    for (const tileId of pendingRenderDirtyTileIds) {
+        const tile = tileIndex[tileId];
+        if (tile) {
+            dirtyTiles.push(tile);
+        }
+    }
+    pendingRenderDirtyTileIds.clear();
+    return dirtyTiles;
+}
+
+export function clearPendingRenderDirtyTiles() {
+    pendingRenderDirtyTileIds.clear();
 }
 
 function indexTile(t: Tile) {
@@ -78,6 +120,9 @@ export function updateTile(tile: Tile) {
     if(target.discovered) {
         ensureTileNeighbors(target);
     }
+
+    markTileAndNeighborsRenderDirty(target);
+    bumpWorldRenderVersion();
 }
 
 // Axial coordinate neighbor deltas (pointy-top layout):
@@ -145,6 +190,8 @@ export function discoverTile(tile: Tile) {
             r: tile.r,
             terrain: tile.terrain,
         });
+        markTileAndNeighborsRenderDirty(tile);
+        bumpWorldRenderVersion();
         return;
     }
     const neighborTerrains = getNeighborTerrains(tile);
@@ -212,6 +259,9 @@ export function discoverTile(tile: Tile) {
     if(!generating) {
         broadcast({type: 'tile:updated', tile} as TileUpdatedMessage)
     }
+
+    markTileAndNeighborsRenderDirty(tile);
+    bumpWorldRenderVersion();
 }
 
 function getRadiusOffsets(radius: number): Array<[number, number]> {
@@ -287,6 +337,7 @@ export async function generateInitialWorld(discoverRadius: number = 4) {
 function clearWorld() {
     tiles.length = 0;
     tileIndex = {};
+    clearPendingRenderDirtyTiles();
     resetTileGrowthTracking();
 
     minQ = 0;
@@ -297,6 +348,7 @@ function clearWorld() {
     maxRadiusByR.clear();
     resetTerrainWeightCache(); // ensure terrain weight contexts are recomputed for new world
     resetTerrainRegistry();
+    bumpWorldRenderVersion();
 }
 
 export function startWorldGeneration(radius: number) {
@@ -330,4 +382,6 @@ export function loadWorld(tileData: Tile[]) {
     }
     // Re-register aging tiles after load
     registerExistingAgingTiles(tiles);
+    clearPendingRenderDirtyTiles();
+    bumpWorldRenderVersion();
 }

@@ -1,8 +1,16 @@
-import {axialKey, getTilesInRadius, tileIndex} from './world';
+import {
+    axialKey,
+    clearPendingRenderDirtyTiles,
+    consumePendingRenderDirtyTiles,
+    getTilesInRadius,
+    getWorldRenderVersion,
+    tileIndex,
+} from './world';
 import {
     animateCamera,
     axialToPixel,
     camera,
+    isCameraMoving,
     hexDistance,
     nudgeCameraTowards,
     pixelToAxial,
@@ -18,7 +26,7 @@ import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './her
 import {taskStore} from '../store/taskStore';
 import { worldOuterRadius } from './world';
 import {getTextIndicators} from "./textIndicators.ts";
-import {PathService, type PathCoord } from './PathService';
+import type { PathCoord } from './PathService';
 import { OPPOSITE_SIDE, SIDE_NAMES, type Tile, type TileSide } from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import type {ResourceType} from "./types/Resource.ts";
@@ -33,6 +41,11 @@ import {
     shouldUseEdgeVignette,
     shouldUseParticleGlowPass,
 } from '../store/graphicsStore';
+import { updateRenderDebugState } from '../store/renderDebugStore';
+import {
+    isRenderFeatureForcedOn,
+    resolveRenderFeatureEnabled,
+} from '../store/renderFeatureStore';
 import { getStorageFreeCapacity, getStorageUsedCapacity, storageInventories } from '../store/resourceStore';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/buildings/storage';
@@ -49,9 +62,36 @@ import {
 } from './gameFeel';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from '../shared/game/roads';
-import { getClimateProfile, noise01, hash32 } from './worldVariation';
+import { getClimateProfile, hash32 } from './worldVariation';
 
 type GlowColor = readonly [number, number, number];
+
+const TILE_SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
+    a: [0, -1],
+    b: [1, -1],
+    c: [1, 0],
+    d: [0, 1],
+    e: [-1, 1],
+    f: [-1, 0],
+};
+
+const TILE_SIDE_INDEX: Record<TileSide, number> = {
+    a: 0,
+    b: 1,
+    c: 2,
+    d: 3,
+    e: 4,
+    f: 5,
+};
+
+const SHORELINE_EDGE_ALPHA_BY_SIDE: Record<TileSide, number> = {
+    a: 1,
+    b: 0.94,
+    c: 0.78,
+    d: 0.62,
+    e: 0.74,
+    f: 0.94,
+};
 
 function buildTileSources(): Record<string, string> {
     const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true });
@@ -96,7 +136,7 @@ interface DrawOptions {
 }
 
 interface OverlayRecord {
-    img: HTMLImageElement;
+    source: CanvasImageSource;
     x: number;
     y: number;
     width: number;
@@ -111,6 +151,109 @@ interface FrameTimes {
     effectNowMs: number;
     movementNowMs: number;
     perfNowMs: number;
+}
+
+interface RenderFrameContext {
+    finalCtx: CanvasRenderingContext2D;
+    worldCtx: CanvasRenderingContext2D;
+    worldCanvas: HTMLCanvasElement;
+    sceneCtx: CanvasRenderingContext2D;
+    sceneCanvas: HTMLCanvasElement;
+    cameraFx: CameraCompositeState;
+    effectNowMs: number;
+    movementNowMs: number;
+    perfNowMs: number;
+    visibleTiles: Tile[];
+    quality: RenderQualityProfile;
+    stressTier: RenderStressState['tier'];
+    cameraMoving: boolean;
+}
+
+interface RenderQualityProfile {
+    enableBackdropGlows: boolean;
+    enableMotionBlur: boolean;
+    motionBlurStrength: number;
+    enableBloom: boolean;
+    enableParticles: boolean;
+    enableEdgeVignette: boolean;
+    enableReachGlow: boolean;
+    enableHeroAuras: boolean;
+    enableFogShimmer: boolean;
+    enableManualShadowComposite: boolean;
+    particleBudgetScale: number;
+}
+
+interface StaticTerrainLayerState {
+    worldVersion: number;
+    anchorWorldX: number;
+    anchorWorldY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    terrainCanvasWidth: number;
+    terrainCanvasHeight: number;
+    cameraRadius: number;
+}
+
+interface BufferRegion {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+interface TileRenderState {
+    tile: Tile;
+    key: string;
+    x: number;
+    y: number;
+    now: number;
+    opacity: number;
+    maskedCanvasKey: string;
+    maskedCanvas: HTMLCanvasElement | null;
+}
+
+interface TileColorAdjustment {
+    hueDeg: number;
+    saturate: number;
+    brightness: number;
+}
+
+interface TileShaderVariant {
+    accentBucket: number;
+    accentVariant: number;
+    regionBucket: number;
+    regionVariant: number;
+}
+
+interface TileShaderPalette {
+    wash: GlowColor;
+    patch: GlowColor;
+    shadow: GlowColor;
+    highlight: GlowColor;
+    regionGlow: GlowColor;
+    regionGlowAlpha: number;
+    washAlpha: number;
+    patchAlpha: number;
+    shadowAlpha: number;
+    highlightAlpha: number;
+}
+
+interface TileShaderGeometry {
+    width: number;
+    height: number;
+    accentX: number;
+    accentY: number;
+    accentRadius: number;
+    accentX2: number;
+    accentY2: number;
+    accentRadius2: number;
+    regionShiftX: number;
+    sunX: number;
+    sunY: number;
+    sunRadius: number;
+    shadeX: number;
+    shadeY: number;
+    shadeRadius: number;
 }
 
 interface Particle {
@@ -176,7 +319,6 @@ interface BackdropPaletteWeights {
 interface RenderStressState {
     tier: 0 | 1 | 2;
     smoothedFrameMs: number;
-    lastPerfNowMs: number;
 }
 
 interface BackdropPaletteCache {
@@ -198,9 +340,21 @@ const DEFAULT_CAMERA_COMPOSITE_STATE: CameraCompositeState = {
     dirY: 0,
 };
 
-export class HexMapService {
+const DEFAULT_RENDER_QUALITY: RenderQualityProfile = {
+    enableBackdropGlows: true,
+    enableMotionBlur: true,
+    motionBlurStrength: 1,
+    enableBloom: true,
+    enableParticles: true,
+    enableEdgeVignette: true,
+    enableReachGlow: true,
+    enableHeroAuras: true,
+    enableFogShimmer: true,
+    enableManualShadowComposite: true,
+    particleBudgetScale: 1,
+};
 
-    private pathService = new PathService();
+export class HexMapService {
 
     readonly HEX_SIZE = 34;
     readonly HEX_SPACE = 2;
@@ -216,9 +370,17 @@ export class HexMapService {
     readonly heroShadowWidthFactor = 0.6; // relative to heroFrameSize * zoom
     readonly heroShadowHeightFactor = 0.20; // relative to heroFrameSize * zoom
     readonly heroShadowYOffset = 0.13; // move shadow up relative to tile center (in heroFrameSize units)
+    readonly STATIC_TERRAIN_PADDING_PX = this.TILE_DRAW_SIZE * 7;
+    readonly AMBIENT_PARTICLE_DENSITY = 0.58;
     private _canvas: HTMLCanvasElement | null = null;
     private _container: HTMLDivElement | null = null;
     private _ctx: CanvasRenderingContext2D | null = null;
+    private _terrainCanvas: HTMLCanvasElement | null = null;
+    private _terrainCtx: CanvasRenderingContext2D | null = null;
+    private _terrainScratchCanvas: HTMLCanvasElement | null = null;
+    private _terrainScratchCtx: CanvasRenderingContext2D | null = null;
+    private _worldCanvas: HTMLCanvasElement | null = null;
+    private _worldCtx: CanvasRenderingContext2D | null = null;
     private _layerCanvas: HTMLCanvasElement | null = null;
     private _layerCtx: CanvasRenderingContext2D | null = null;
     private _bloomCanvas: HTMLCanvasElement | null = null;
@@ -254,13 +416,23 @@ export class HexMapService {
     private _currentCameraFx: CameraCompositeState = {...DEFAULT_CAMERA_COMPOSITE_STATE};
     private _renderStress: RenderStressState = {
         tier: 0,
-        smoothedFrameMs: 16.67,
-        lastPerfNowMs: 0,
+        smoothedFrameMs: 5.5,
     };
     private _backdropPaletteCache: BackdropPaletteCache | null = null;
     private _hoveredReachAlpha = 0; // animated 0→0.7 for smooth TC hover transition
     private _lastHoveredReachBoundary: Array<{q: number; r: number}> = [];
     private _lastHoveredReachTileIds: Set<string> = new Set();
+    private _tileColorVariantCache = new Map<string, HTMLCanvasElement>();
+    private _tileShaderCache = new Map<string, HTMLCanvasElement>();
+    private _tileShorelineCache = new Map<string, HTMLCanvasElement>();
+    private _tileOverlayShaderCache = new Map<string, HTMLCanvasElement>();
+    private _tileOverlayAlphaBoundsCache = new Map<string, { top: number; bottom: number } | null>();
+    private _terrainLayerState: StaticTerrainLayerState | null = null;
+    private _currentRenderQuality: RenderQualityProfile = { ...DEFAULT_RENDER_QUALITY };
+    private _staticTerrainRebuilds = 0;
+    private _lastStaticTerrainReused = false;
+    private _lastStaticTerrainReason: 'init' | 'world' | 'viewport' | 'radius' | 'drift' | 'shift' | 'patch' | 'reuse' = 'init';
+    private _lastStaticTerrainShiftPx = 0;
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
     private _sortedHeroes: Hero[] = [];
@@ -285,6 +457,12 @@ export class HexMapService {
         this._canvas = null;
         this._container = null;
         this._ctx = null;
+        this._terrainCanvas = null;
+        this._terrainCtx = null;
+        this._terrainScratchCanvas = null;
+        this._terrainScratchCtx = null;
+        this._worldCanvas = null;
+        this._worldCtx = null;
         this._layerCanvas = null;
         this._layerCtx = null;
         this._bloomCanvas = null;
@@ -296,17 +474,24 @@ export class HexMapService {
         this._taskParticleEmitMs.clear();
         this._pendingHeroImageLoads.clear();
         this._fogTileCanvas = null;
-        this._microDecoCache.clear();
-        this._terrainEdgeBlendCache.clear();
         this._proceduralRoadCache.clear();
-        this._buildingDecorationCache.clear();
+        this._tileColorVariantCache.clear();
+        this._tileShaderCache.clear();
+        this._tileShorelineCache.clear();
+        this._tileOverlayShaderCache.clear();
+        this._tileOverlayAlphaBoundsCache.clear();
         this._backdropPaletteCache = null;
+        this._terrainLayerState = null;
+        this._staticTerrainRebuilds = 0;
+        this._lastStaticTerrainReused = false;
+        this._lastStaticTerrainReason = 'init';
+        this._lastStaticTerrainShiftPx = 0;
         this._renderStress = {
             tier: 0,
-            smoothedFrameMs: 16.67,
-            lastPerfNowMs: 0,
+            smoothedFrameMs: 5.5,
         };
         this.resetCameraCompositeState();
+        this._currentRenderQuality = { ...DEFAULT_RENDER_QUALITY };
     }
 
     resize() {
@@ -318,18 +503,34 @@ export class HexMapService {
         this._canvas.height = h * this._dpr;
         this._canvas.style.width = w + 'px';
         this._canvas.style.height = h + 'px';
-        this._ctx = this._canvas.getContext('2d');
+        this._ctx = this.get2dContext(this._canvas);
         if (this._ctx) this._ctx.imageSmoothingEnabled = false;
+        if (!this._terrainCanvas) this._terrainCanvas = document.createElement('canvas');
+        this._terrainCanvas.width = this._canvas.width + (Math.round(this.STATIC_TERRAIN_PADDING_PX * 2 * this._dpr));
+        this._terrainCanvas.height = this._canvas.height + (Math.round(this.STATIC_TERRAIN_PADDING_PX * 2 * this._dpr));
+        this._terrainCtx = this.get2dContext(this._terrainCanvas);
+        if (this._terrainCtx) this._terrainCtx.imageSmoothingEnabled = false;
+        if (!this._terrainScratchCanvas) this._terrainScratchCanvas = document.createElement('canvas');
+        this._terrainScratchCanvas.width = this._terrainCanvas.width;
+        this._terrainScratchCanvas.height = this._terrainCanvas.height;
+        this._terrainScratchCtx = this.get2dContext(this._terrainScratchCanvas);
+        if (this._terrainScratchCtx) this._terrainScratchCtx.imageSmoothingEnabled = false;
+        if (!this._worldCanvas) this._worldCanvas = document.createElement('canvas');
+        this._worldCanvas.width = this._canvas.width;
+        this._worldCanvas.height = this._canvas.height;
+        this._worldCtx = this.get2dContext(this._worldCanvas);
+        if (this._worldCtx) this._worldCtx.imageSmoothingEnabled = false;
         if (!this._layerCanvas) this._layerCanvas = document.createElement('canvas');
         this._layerCanvas.width = this._canvas.width;
         this._layerCanvas.height = this._canvas.height;
-        this._layerCtx = this._layerCanvas.getContext('2d');
+        this._layerCtx = this.get2dContext(this._layerCanvas);
         if (this._layerCtx) this._layerCtx.imageSmoothingEnabled = false;
         if (!this._bloomCanvas) this._bloomCanvas = document.createElement('canvas');
         this._bloomCanvas.width = this._canvas.width;
         this._bloomCanvas.height = this._canvas.height;
-        this._bloomCtx = this._bloomCanvas.getContext('2d');
+        this._bloomCtx = this.get2dContext(this._bloomCanvas);
         if (this._bloomCtx) this._bloomCtx.imageSmoothingEnabled = true;
+        this._terrainLayerState = null;
         this.adaptiveCameraRadius();
         // recenter camera if entire world comfortably fits inside current camera radius.
         this.recenterIfWorldFits();
@@ -345,76 +546,19 @@ export class HexMapService {
         if (Object.getPrototypeOf(this) !== HexMapService.prototype) {
             Object.setPrototypeOf(this, HexMapService.prototype);
         }
-        if (!this._ctx || !this._canvas || !this._layerCtx || !this._layerCanvas) return;
-        if (!this._imagesLoaded) return;
+        const renderStartMs = performance.now();
+        const frame = this.createRenderFrameContext(frameTimes);
+        if (!frame) return;
 
-        const { effectNowMs, movementNowMs, perfNowMs } = frameTimes;
-        const ctx = this._ctx;
-        const sceneCtx = this._layerCtx;
-        const sceneCanvas = this._layerCanvas;
-        const cameraFx = this.updateCameraCompositeState(perfNowMs);
-        const cq = Math.round(camera.q);
-        const cr = Math.round(camera.r);
-        const visibleTiles = getTilesInRadius(cq, cr, camera.radius);
-        const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
-        this.updateRenderStress(perfNowMs, visibleTiles.length, discoveredVisibleCount);
-        this._currentCameraFx = cameraFx;
-        this.applyPendingCameraNudges(cameraFx);
-        ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
-        if (this._canvas.style.filter) this._canvas.style.filter = 'none';
-        this.drawAtmosphericBackdrop(ctx, visibleTiles, effectNowMs, cameraFx);
-        sceneCtx.clearRect(0, 0, sceneCanvas.width, sceneCanvas.height);
-        this.drawTilesAndActors(sceneCtx, opts, false, false, cameraFx, effectNowMs, movementNowMs, visibleTiles);
-
-        ctx.globalAlpha = 1;
-        ctx.filter = 'none';
-        ctx.imageSmoothingEnabled = false;
-
-        // On Safari the CSS drop-shadow filter is disabled for performance.
-        // Replicate it via canvas shadow properties on the drawImage call instead.
-        if (!shouldUseCanvasDropShadow()) {
-            // Close shadow for edge definition
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 2;
-            ctx.shadowBlur = 5;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-            ctx.drawImage(sceneCanvas, 0, 0);
-
-            // Far shadow for depth
-            ctx.shadowOffsetX = 15;
-            ctx.shadowOffsetY = 35;
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-            ctx.drawImage(sceneCanvas, 0, 0);
-
-            // Reset shadow state
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
-        } else {
-            ctx.drawImage(sceneCanvas, 0, 0);
-        }
-
-        const motionBlur = this.getMotionBlurState();
-        if (motionBlur) {
-            this.drawMotionTrail(ctx, sceneCanvas, motionBlur);
-        }
-
-        if (isBloomEffectEnabled() && this._bloomCtx && this._bloomCanvas) {
-            this._bloomCtx.clearRect(0, 0, this._bloomCanvas.width, this._bloomCanvas.height);
-            this.drawBloomLayer(this._bloomCtx, opts, cameraFx, effectNowMs, movementNowMs, visibleTiles);
-            this.compositeBloom(ctx, this._bloomCanvas);
-        }
-
-        this.drawResourceFlights(ctx, cameraFx, effectNowMs);
-        if (shouldUseEdgeVignette()) {
-            this.applyCameraEdgeVignette(ctx, cameraFx);
-        }
-    }
-
-    updatePath(selectedId: string | null, hoveredTile: Tile | null): PathCoord[] {
-        return this.pathService.updatePath(selectedId, hoveredTile);
+        this.prepareFinalFrame(frame);
+        this.renderBackdropStage(frame);
+        this.renderStaticTerrainStage(frame);
+        this.renderSceneStage(frame, opts);
+        this.compositeSceneStage(frame);
+        const motionBlur = this.renderPostProcessStage(frame, opts);
+        const renderCostMs = performance.now() - renderStartMs;
+        this.recordRenderStress(renderCostMs);
+        this.publishRenderDebugInfo(frame, motionBlur);
     }
 
     pickTile(screenX: number, screenY: number): Tile | null {
@@ -460,10 +604,605 @@ export class HexMapService {
     }
 
     // ---------------- Private helpers ----------------
+    private get2dContext(canvas: HTMLCanvasElement) {
+        return canvas.getContext('2d', {
+            alpha: true,
+            desynchronized: true,
+        }) ?? canvas.getContext('2d');
+    }
+
     private setupCanvas() {
         if (!this._canvas) return;
-        this._ctx = this._canvas.getContext('2d');
+        this._ctx = this.get2dContext(this._canvas);
         if (this._ctx) this._ctx.imageSmoothingEnabled = false;
+    }
+
+    private publishRenderDebugInfo(
+        frame: RenderFrameContext,
+        motionBlur: {
+            samples: number;
+            strength: number;
+        } | null,
+    ) {
+        updateRenderDebugState({
+            stressTier: frame.stressTier,
+            qualityLabel: frame.stressTier === 0 ? 'full' : frame.stressTier === 1 ? 'reduced' : 'minimal',
+            smoothedFrameMs: Number(this._renderStress.smoothedFrameMs.toFixed(1)),
+            visibleTileCount: frame.visibleTiles.length,
+            discoveredVisibleCount: frame.visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0),
+            worldRenderVersion: getWorldRenderVersion(),
+            staticTerrainReused: this._lastStaticTerrainReused,
+            staticTerrainReason: this._lastStaticTerrainReason,
+            staticTerrainRebuilds: this._staticTerrainRebuilds,
+            staticTerrainPaddingPx: this.STATIC_TERRAIN_PADDING_PX,
+            staticTerrainThresholdPx: Math.round(this.getStaticTerrainRefreshThreshold()),
+            staticTerrainShiftPx: Math.round(this._lastStaticTerrainShiftPx),
+            motionBlurEnabled: frame.quality.enableMotionBlur,
+            motionBlurActive: !!motionBlur,
+            motionBlurSamples: motionBlur?.samples ?? 0,
+            motionBlurStrength: Number((motionBlur?.strength ?? frame.quality.motionBlurStrength).toFixed(2)),
+            bloomEnabled: frame.quality.enableBloom,
+            particlesEnabled: frame.quality.enableParticles,
+            edgeVignetteEnabled: frame.quality.enableEdgeVignette,
+            backdropGlowsEnabled: frame.quality.enableBackdropGlows,
+            reachGlowEnabled: frame.quality.enableReachGlow,
+            heroAurasEnabled: frame.quality.enableHeroAuras,
+            fogShimmerEnabled: frame.quality.enableFogShimmer,
+            manualShadowComposite: frame.quality.enableManualShadowComposite,
+        });
+    }
+
+    private createRenderFrameContext(frameTimes: FrameTimes): RenderFrameContext | null {
+        if (!this._ctx || !this._canvas || !this._terrainCtx || !this._terrainCanvas || !this._worldCtx || !this._worldCanvas || !this._layerCtx || !this._layerCanvas) return null;
+        if (!this._imagesLoaded) return null;
+
+        const { effectNowMs, movementNowMs, perfNowMs } = frameTimes;
+        const cameraFx = this.updateCameraCompositeState(perfNowMs);
+        const cq = Math.round(camera.q);
+        const cr = Math.round(camera.r);
+        const radiusTiles = getTilesInRadius(cq, cr, camera.radius);
+        const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
+        const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
+        const cameraMoving = isCameraMoving();
+
+        const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
+        const quality = this.getRenderQualityProfile(stressTier);
+        this._currentCameraFx = cameraFx;
+        this._currentRenderQuality = quality;
+        this.applyPendingCameraNudges(cameraFx);
+
+        return {
+            finalCtx: this._ctx,
+            worldCtx: this._worldCtx,
+            worldCanvas: this._worldCanvas,
+            sceneCtx: this._layerCtx,
+            sceneCanvas: this._layerCanvas,
+            cameraFx,
+            effectNowMs,
+            movementNowMs,
+            perfNowMs,
+            visibleTiles,
+            quality,
+            stressTier,
+            cameraMoving,
+        };
+    }
+
+    private prepareFinalFrame(frame: RenderFrameContext) {
+        if (!this._canvas) return;
+
+        frame.finalCtx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+        if (this._canvas.style.filter) this._canvas.style.filter = 'none';
+    }
+
+    private getRenderQualityProfile(stressTier: RenderStressState['tier']): RenderQualityProfile {
+        const baseProfile = stressTier === 2
+            ? {
+                enableBackdropGlows: false,
+                enableMotionBlur: false,
+                motionBlurStrength: 0,
+                enableBloom: false,
+                enableParticles: false,
+                enableEdgeVignette: false,
+                enableReachGlow: false,
+                enableHeroAuras: true,
+                enableFogShimmer: false,
+                enableManualShadowComposite: false,
+                particleBudgetScale: 0,
+            }
+            : stressTier === 1
+                ? {
+                    enableBackdropGlows: false,
+                    enableMotionBlur: isMotionBlurEffectEnabled(),
+                    motionBlurStrength: 0.52,
+                    enableBloom: false,
+                    enableParticles: graphicsStore.particles,
+                    enableEdgeVignette: false,
+                    enableReachGlow: false,
+                    enableHeroAuras: true,
+                    enableFogShimmer: false,
+                    enableManualShadowComposite: false,
+                    particleBudgetScale: 0.35,
+                }
+                : {
+                    enableBackdropGlows: true,
+                    enableMotionBlur: isMotionBlurEffectEnabled(),
+                    motionBlurStrength: 1.18,
+                    enableBloom: isBloomEffectEnabled(),
+                    enableParticles: graphicsStore.particles,
+                    enableEdgeVignette: shouldUseEdgeVignette(),
+                    enableReachGlow: true,
+                    enableHeroAuras: true,
+                    enableFogShimmer: true,
+                    enableManualShadowComposite: !shouldUseCanvasDropShadow(),
+                    particleBudgetScale: 1,
+                };
+
+        return this.applyManualRenderFeatureOverrides(baseProfile);
+    }
+
+    private applyManualRenderFeatureOverrides(profile: RenderQualityProfile): RenderQualityProfile {
+        const enableMotionBlur = resolveRenderFeatureEnabled('motionBlur', profile.enableMotionBlur);
+        const enableParticles = resolveRenderFeatureEnabled('particles', profile.enableParticles);
+
+        return {
+            ...profile,
+            enableBackdropGlows: resolveRenderFeatureEnabled('backdropGlows', profile.enableBackdropGlows),
+            enableMotionBlur,
+            motionBlurStrength: enableMotionBlur
+                ? Math.max(profile.motionBlurStrength, isRenderFeatureForcedOn('motionBlur') ? 0.52 : 0)
+                : 0,
+            enableBloom: resolveRenderFeatureEnabled('bloom', profile.enableBloom),
+            enableParticles,
+            enableEdgeVignette: resolveRenderFeatureEnabled('edgeVignette', profile.enableEdgeVignette),
+            enableReachGlow: resolveRenderFeatureEnabled('reachGlow', profile.enableReachGlow),
+            enableHeroAuras: resolveRenderFeatureEnabled('heroAuras', profile.enableHeroAuras),
+            enableFogShimmer: resolveRenderFeatureEnabled('fogShimmer', profile.enableFogShimmer),
+            enableManualShadowComposite: resolveRenderFeatureEnabled('manualShadowComposite', profile.enableManualShadowComposite),
+            particleBudgetScale: enableParticles
+                ? Math.max(profile.particleBudgetScale, isRenderFeatureForcedOn('particles') ? 0.35 : 0)
+                : 0,
+        };
+    }
+
+    private renderBackdropStage(frame: RenderFrameContext) {
+        this.drawAtmosphericBackdrop(frame.finalCtx, frame.visibleTiles, frame.effectNowMs, frame.cameraFx, frame.quality);
+    }
+
+    private renderStaticTerrainStage(frame: RenderFrameContext) {
+        if (!this._terrainCtx || !this._terrainCanvas) return;
+
+        if (!this.shouldRefreshStaticTerrainLayer()) {
+            this._lastStaticTerrainReused = true;
+            this._lastStaticTerrainReason = 'reuse';
+            return;
+        }
+
+        const anchor = axialToPixel(camera.q, camera.r);
+        if (this._lastStaticTerrainReason === 'drift' && this.shiftStaticTerrainLayer(anchor, frame.effectNowMs)) {
+            this._lastStaticTerrainReused = false;
+            this._lastStaticTerrainReason = 'shift';
+            this._lastStaticTerrainShiftPx = 0;
+            return;
+        }
+
+        if (this._lastStaticTerrainReason === 'world' && this.patchStaticTerrainLayerForWorldChanges(anchor, frame.effectNowMs)) {
+            this._lastStaticTerrainReused = false;
+            this._lastStaticTerrainReason = 'patch';
+            this._lastStaticTerrainShiftPx = 0;
+            return;
+        }
+
+        this.rebuildStaticTerrainLayer(anchor, frame.effectNowMs);
+    }
+
+    private rebuildStaticTerrainLayer(anchor: { x: number; y: number }, effectNowMs: number) {
+        if (!this._terrainCtx || !this._terrainCanvas) return;
+
+        const bufferWidth = this._terrainCanvas.width / this._dpr;
+        const bufferHeight = this._terrainCanvas.height / this._dpr;
+        const bufferCenterX = bufferWidth / 2;
+        const bufferCenterY = bufferHeight / 2;
+        const terrainTiles = getTilesInRadius(
+            Math.round(camera.q),
+            Math.round(camera.r),
+            camera.radius + this.getStaticTerrainRadiusPadding(),
+        );
+
+        this._terrainCtx.clearRect(0, 0, this._terrainCanvas.width, this._terrainCanvas.height);
+        this._terrainCtx.save();
+        this._terrainCtx.scale(this._dpr, this._dpr);
+        this._terrainCtx.translate(bufferCenterX - anchor.x, bufferCenterY - anchor.y);
+        this.drawDiscoveredTerrainTiles(this._terrainCtx, terrainTiles, effectNowMs, false);
+        this._terrainCtx.restore();
+
+        clearPendingRenderDirtyTiles();
+        this.updateStaticTerrainLayerState(anchor);
+        this._lastStaticTerrainReused = false;
+        this._lastStaticTerrainShiftPx = 0;
+        this._staticTerrainRebuilds++;
+    }
+
+    private patchStaticTerrainLayerForWorldChanges(_anchor: { x: number; y: number }, effectNowMs: number) {
+        if (!this._terrainCtx || !this._terrainCanvas || !this._terrainLayerState) {
+            return false;
+        }
+
+        const dirtyTiles = consumePendingRenderDirtyTiles();
+        if (!dirtyTiles.length) {
+            return false;
+        }
+        if (dirtyTiles.length > 24) {
+            return false;
+        }
+
+        const bufferWidth = this._terrainCanvas.width / this._dpr;
+        const bufferHeight = this._terrainCanvas.height / this._dpr;
+        const bufferCenterX = bufferWidth / 2;
+        const bufferCenterY = bufferHeight / 2;
+        // Patch into the cached terrain buffer using the anchor the buffer was
+        // actually rendered with. Re-anchoring here causes partial redraws to
+        // land a few pixels off from the existing cached terrain.
+        const bufferAnchor = {
+            x: this._terrainLayerState.anchorWorldX,
+            y: this._terrainLayerState.anchorWorldY,
+        };
+        const clearPadding = 3;
+        const dirtyRegions: BufferRegion[] = [];
+
+        for (const tile of dirtyTiles) {
+            if (!tile.discovered) {
+                continue;
+            }
+
+            const world = axialToPixel(tile.q, tile.r);
+            const drawX = bufferCenterX + (world.x - bufferAnchor.x) - this.HEX_SIZE;
+            const drawY = bufferCenterY + (world.y - bufferAnchor.y) - this.HEX_SIZE;
+            if (
+                drawX + this.TILE_DRAW_SIZE + clearPadding < 0
+                || drawY + this.TILE_DRAW_SIZE + clearPadding < 0
+                || drawX - clearPadding > bufferWidth
+                || drawY - clearPadding > bufferHeight
+            ) {
+                continue;
+            }
+
+            dirtyRegions.push({
+                x: drawX - clearPadding,
+                y: drawY - clearPadding,
+                width: this.TILE_DRAW_SIZE + (clearPadding * 2),
+                height: this.TILE_DRAW_SIZE + (clearPadding * 2),
+            });
+        }
+
+        if (!dirtyRegions.length) {
+            this.updateStaticTerrainLayerState(bufferAnchor);
+            return true;
+        }
+
+        const terrainTiles = getTilesInRadius(
+            Math.round(camera.q),
+            Math.round(camera.r),
+            camera.radius + this.getStaticTerrainRadiusPadding(),
+        );
+
+        this._terrainCtx.save();
+        this._terrainCtx.scale(this._dpr, this._dpr);
+        this._terrainCtx.translate(bufferCenterX - bufferAnchor.x, bufferCenterY - bufferAnchor.y);
+
+        for (const region of dirtyRegions) {
+            this._terrainCtx.clearRect(
+                region.x + bufferAnchor.x - bufferCenterX,
+                region.y + bufferAnchor.y - bufferCenterY,
+                region.width,
+                region.height,
+            );
+        }
+
+        this.drawDiscoveredTerrainTilesInRegions(
+            this._terrainCtx,
+            terrainTiles,
+            effectNowMs,
+            dirtyRegions,
+            bufferAnchor,
+            bufferCenterX,
+            bufferCenterY,
+        );
+
+        this._terrainCtx.restore();
+        this.updateStaticTerrainLayerState(bufferAnchor);
+        return true;
+    }
+
+    private renderSceneStage(frame: RenderFrameContext, opts: DrawOptions) {
+        const suppressWorldUi = frame.cameraMoving && frame.visibleTiles.length >= 180;
+        frame.sceneCtx.clearRect(0, 0, frame.sceneCanvas.width, frame.sceneCanvas.height);
+        this.drawTilesAndActors(
+            frame.sceneCtx,
+            opts,
+            false,
+            false,
+            frame.cameraFx,
+            frame.effectNowMs,
+            frame.movementNowMs,
+            frame.visibleTiles,
+            false,
+            suppressWorldUi,
+        );
+    }
+
+    private compositeSceneStage(frame: RenderFrameContext) {
+        frame.worldCtx.clearRect(0, 0, frame.worldCanvas.width, frame.worldCanvas.height);
+        frame.worldCtx.globalAlpha = 1;
+        frame.worldCtx.filter = 'none';
+        frame.worldCtx.imageSmoothingEnabled = false;
+        this.drawStaticTerrainLayer(frame.worldCtx, frame);
+        frame.worldCtx.drawImage(frame.sceneCanvas, 0, 0);
+
+        const ctx = frame.finalCtx;
+        ctx.globalAlpha = 1;
+        ctx.filter = 'none';
+        ctx.imageSmoothingEnabled = false;
+
+        if (frame.quality.enableManualShadowComposite) {
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.drawImage(frame.worldCanvas, 0, 0);
+
+            ctx.shadowOffsetX = 15;
+            ctx.shadowOffsetY = 35;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.drawImage(frame.worldCanvas, 0, 0);
+
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            return;
+        }
+
+        ctx.drawImage(frame.worldCanvas, 0, 0);
+    }
+
+    private renderPostProcessStage(frame: RenderFrameContext, opts: DrawOptions) {
+        const motionBlur = frame.quality.enableMotionBlur ? this.getMotionBlurState() : null;
+        if (motionBlur) {
+            this.drawMotionTrail(frame.finalCtx, frame.worldCanvas, motionBlur);
+        }
+
+        if (frame.quality.enableBloom && this._bloomCtx && this._bloomCanvas) {
+            this._bloomCtx.clearRect(0, 0, this._bloomCanvas.width, this._bloomCanvas.height);
+            this.drawBloomLayer(
+                this._bloomCtx,
+                opts,
+                frame.cameraFx,
+                frame.effectNowMs,
+                frame.movementNowMs,
+                frame.visibleTiles,
+            );
+            this.compositeBloom(frame.finalCtx, this._bloomCanvas);
+        }
+
+        this.drawResourceFlights(frame.finalCtx, frame.cameraFx, frame.effectNowMs);
+        if (frame.quality.enableEdgeVignette) {
+            this.applyCameraEdgeVignette(frame.finalCtx, frame.cameraFx);
+        }
+        return motionBlur;
+    }
+
+    private getStaticTerrainRadiusPadding() {
+        return Math.max(3, Math.ceil(this.STATIC_TERRAIN_PADDING_PX / (this.HEX_SIZE * 1.5)));
+    }
+
+    private getStaticTerrainRefreshThreshold() {
+        return this.STATIC_TERRAIN_PADDING_PX * (isCameraMoving() ? 0.86 : 0.72);
+    }
+
+    private shouldRefreshStaticTerrainLayer() {
+        if (!this._terrainLayerState || !this._terrainCanvas || !this._canvas) {
+            this._lastStaticTerrainReason = 'init';
+            return true;
+        }
+
+        const state = this._terrainLayerState;
+        if (state.worldVersion !== getWorldRenderVersion()) {
+            this._lastStaticTerrainReason = 'world';
+            return true;
+        }
+        if (state.viewportWidth !== this._canvas.width || state.viewportHeight !== this._canvas.height) {
+            this._lastStaticTerrainReason = 'viewport';
+            return true;
+        }
+        if (state.terrainCanvasWidth !== this._terrainCanvas.width || state.terrainCanvasHeight !== this._terrainCanvas.height) {
+            this._lastStaticTerrainReason = 'viewport';
+            return true;
+        }
+        if (state.cameraRadius !== Math.round(camera.radius)) {
+            this._lastStaticTerrainReason = 'radius';
+            return true;
+        }
+
+        const current = axialToPixel(camera.q, camera.r);
+        const driftX = Math.abs(current.x - state.anchorWorldX);
+        const driftY = Math.abs(current.y - state.anchorWorldY);
+        const refreshThreshold = this.getStaticTerrainRefreshThreshold();
+        const maxDrift = Math.max(driftX, driftY);
+        this._lastStaticTerrainShiftPx = maxDrift;
+        if (maxDrift >= refreshThreshold) {
+            this._lastStaticTerrainReason = 'drift';
+            return true;
+        }
+
+        this._lastStaticTerrainReason = 'reuse';
+        return false;
+    }
+
+    private shiftStaticTerrainLayer(anchor: { x: number; y: number }, effectNowMs: number) {
+        if (!this._terrainCtx || !this._terrainCanvas || !this._terrainScratchCanvas || !this._terrainScratchCtx || !this._terrainLayerState) {
+            return false;
+        }
+
+        const previousAnchorX = this._terrainLayerState.anchorWorldX;
+        const previousAnchorY = this._terrainLayerState.anchorWorldY;
+        const shiftX = previousAnchorX - anchor.x;
+        const shiftY = previousAnchorY - anchor.y;
+        const shiftDeviceX = shiftX * this._dpr;
+        const shiftDeviceY = shiftY * this._dpr;
+
+        if (Math.abs(shiftDeviceX) >= this._terrainCanvas.width || Math.abs(shiftDeviceY) >= this._terrainCanvas.height) {
+            return false;
+        }
+
+        const bufferWidth = this._terrainCanvas.width / this._dpr;
+        const bufferHeight = this._terrainCanvas.height / this._dpr;
+        const dirtyRegions = this.getShiftDirtyRegions(shiftX, shiftY, bufferWidth, bufferHeight);
+        if (!dirtyRegions.length) {
+            this.updateStaticTerrainLayerState(anchor);
+            return true;
+        }
+
+        this._terrainScratchCtx.clearRect(0, 0, this._terrainScratchCanvas.width, this._terrainScratchCanvas.height);
+        this._terrainScratchCtx.drawImage(this._terrainCanvas, 0, 0);
+        this._terrainCtx.clearRect(0, 0, this._terrainCanvas.width, this._terrainCanvas.height);
+        this._terrainCtx.drawImage(this._terrainScratchCanvas, shiftDeviceX, shiftDeviceY);
+
+        const terrainTiles = getTilesInRadius(
+            Math.round(camera.q),
+            Math.round(camera.r),
+            camera.radius + this.getStaticTerrainRadiusPadding(),
+        );
+        const bufferCenterX = bufferWidth / 2;
+        const bufferCenterY = bufferHeight / 2;
+
+        this._terrainCtx.save();
+        this._terrainCtx.scale(this._dpr, this._dpr);
+        this._terrainCtx.translate(bufferCenterX - anchor.x, bufferCenterY - anchor.y);
+        this.drawDiscoveredTerrainTilesInRegions(
+            this._terrainCtx,
+            terrainTiles,
+            effectNowMs,
+            dirtyRegions,
+            anchor,
+            bufferCenterX,
+            bufferCenterY,
+        );
+        this._terrainCtx.restore();
+
+        this.updateStaticTerrainLayerState(anchor);
+        return true;
+    }
+
+    private getShiftDirtyRegions(shiftX: number, shiftY: number, bufferWidth: number, bufferHeight: number): BufferRegion[] {
+        const regions: BufferRegion[] = [];
+
+        if (shiftX > 0) {
+            regions.push({ x: 0, y: 0, width: Math.min(bufferWidth, shiftX), height: bufferHeight });
+        } else if (shiftX < 0) {
+            const width = Math.min(bufferWidth, Math.abs(shiftX));
+            regions.push({ x: Math.max(0, bufferWidth - width), y: 0, width, height: bufferHeight });
+        }
+
+        if (shiftY > 0) {
+            regions.push({ x: 0, y: 0, width: bufferWidth, height: Math.min(bufferHeight, shiftY) });
+        } else if (shiftY < 0) {
+            const height = Math.min(bufferHeight, Math.abs(shiftY));
+            regions.push({ x: 0, y: Math.max(0, bufferHeight - height), width: bufferWidth, height });
+        }
+
+        return regions.filter((region) => region.width > 0 && region.height > 0);
+    }
+
+    private drawDiscoveredTerrainTilesInRegions(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        now: number,
+        regions: BufferRegion[],
+        anchor: { x: number; y: number },
+        bufferCenterX: number,
+        bufferCenterY: number,
+    ) {
+        for (const tile of tiles) {
+            if (!tile.discovered) continue;
+
+            const world = axialToPixel(tile.q, tile.r);
+            const drawX = bufferCenterX + (world.x - anchor.x) - this.HEX_SIZE;
+            const drawY = bufferCenterY + (world.y - anchor.y) - this.HEX_SIZE;
+            if (!this.tileIntersectsDirtyRegions(drawX, drawY, regions)) continue;
+
+            this.drawTile(tile, now, ctx, 1);
+        }
+    }
+
+    private tileIntersectsDirtyRegions(drawX: number, drawY: number, regions: BufferRegion[]) {
+        for (const region of regions) {
+            if (
+                drawX < region.x + region.width
+                && drawX + this.TILE_DRAW_SIZE > region.x
+                && drawY < region.y + region.height
+                && drawY + this.TILE_DRAW_SIZE > region.y
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private updateStaticTerrainLayerState(anchor: { x: number; y: number }) {
+        this._terrainLayerState = {
+            worldVersion: getWorldRenderVersion(),
+            anchorWorldX: anchor.x,
+            anchorWorldY: anchor.y,
+            viewportWidth: this._canvas?.width ?? 0,
+            viewportHeight: this._canvas?.height ?? 0,
+            terrainCanvasWidth: this._terrainCanvas?.width ?? 0,
+            terrainCanvasHeight: this._terrainCanvas?.height ?? 0,
+            cameraRadius: Math.round(camera.radius),
+        };
+    }
+
+    private filterTilesToViewport(tiles: Tile[], cameraFx: CameraCompositeState) {
+        if (!this._canvas || !tiles.length) {
+            return tiles;
+        }
+
+        const margin = Math.max(this.TILE_DRAW_SIZE * 1.5, 72);
+        const minX = -margin;
+        const maxX = (this._canvas.width / this._dpr) + margin;
+        const minY = -margin;
+        const maxY = (this._canvas.height / this._dpr) + margin;
+        const camPx = axialToPixel(camera.q, camera.r);
+        const { cx, cy } = this.getCanvasCenter();
+        const zoom = cameraFx.zoom;
+        const cos = Math.cos(cameraFx.roll);
+        const sin = Math.sin(cameraFx.roll);
+
+        return tiles.filter((tile) => {
+            const world = axialToPixel(tile.q, tile.r);
+            const relX = (world.x - camPx.x) * zoom;
+            const relY = (world.y - camPx.y) * zoom;
+            const screenX = cx + cameraFx.offsetX + ((relX * cos) - (relY * sin));
+            const screenY = cy + cameraFx.offsetY + ((relX * sin) + (relY * cos));
+            return screenX >= minX && screenX <= maxX && screenY >= minY && screenY <= maxY;
+        });
+    }
+
+    private drawStaticTerrainLayer(ctx: CanvasRenderingContext2D, frame: RenderFrameContext) {
+        if (!this._terrainCanvas || !this._terrainLayerState) return;
+
+        const state = this._terrainLayerState;
+        const current = axialToPixel(camera.q, camera.r);
+        const paddingPx = this.STATIC_TERRAIN_PADDING_PX * this._dpr;
+        const drawX = -paddingPx + ((state.anchorWorldX - current.x + frame.cameraFx.offsetX) * this._dpr);
+        const drawY = -paddingPx + ((state.anchorWorldY - current.y + frame.cameraFx.offsetY) * this._dpr);
+        this._lastStaticTerrainShiftPx = Math.max(
+            Math.abs(current.x - state.anchorWorldX),
+            Math.abs(current.y - state.anchorWorldY),
+        );
+        ctx.drawImage(this._terrainCanvas, drawX, drawY);
     }
 
     private computeFade(dist: number, inner: number, radius: number) {
@@ -485,7 +1224,7 @@ export class HexMapService {
     }
 
     private getMotionBlurState() {
-        if (!isMotionBlurEffectEnabled() || !this._layerCanvas) return null;
+        if (!this._currentRenderQuality.enableMotionBlur || !this._worldCanvas) return null;
 
         const SPEED_THRESHOLD = 70;
         const MAX_SPEED_FOR_SCALING = 1100;
@@ -499,16 +1238,18 @@ export class HexMapService {
         const norm = rawNorm * rawNorm * (3 - (2 * rawNorm));
         const dirX = camera.screenVelocityX / screenSpeed;
         const dirY = camera.screenVelocityY / screenSpeed;
-        const streakLength = 6 + norm * 26;
-        const samples = Math.round(6 + norm * 8);
+        const strength = this._currentRenderQuality.motionBlurStrength;
+        const streakLength = (7 + norm * 29) * (0.58 + (strength * 0.48));
+        const samples = Math.max(3, Math.round((4 + norm * 7.5) * (0.68 + (strength * 0.36))));
 
         return {
             offsetX: -dirX * streakLength,
             offsetY: -dirY * streakLength,
             samples,
-            alpha: 0.12 + norm * 0.16,
-            crispAlpha: 0.045 + norm * 0.05,
-            softness: 1.4 + norm * 1.8,
+            alpha: (0.09 + norm * 0.16) * strength,
+            crispAlpha: (0.032 + norm * 0.045) * strength,
+            softness: 1 + (norm * (1.55 * strength)),
+            strength,
         };
     }
 
@@ -519,6 +1260,7 @@ export class HexMapService {
         alpha: number;
         crispAlpha: number;
         softness: number;
+        strength: number;
     }) {
         ctx.save();
         ctx.imageSmoothingEnabled = true;
@@ -630,12 +1372,16 @@ export class HexMapService {
         ctx.save();
         ctx.imageSmoothingEnabled = true;
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = 0.4;
-        ctx.filter = 'blur(8px) saturate(122%)';
-        ctx.drawImage(bloomCanvas, 0, 0);
-        ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.26;
-        ctx.filter = 'none';
+        ctx.filter = 'blur(7px) brightness(82%) saturate(172%) contrast(112%)';
+        ctx.drawImage(bloomCanvas, 0, 0);
+        ctx.globalCompositeOperation = 'soft-light';
+        ctx.globalAlpha = 0.18;
+        ctx.filter = 'saturate(188%) contrast(108%)';
+        ctx.drawImage(bloomCanvas, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.08;
+        ctx.filter = 'blur(2px) saturate(160%)';
         ctx.drawImage(bloomCanvas, 0, 0);
         ctx.restore();
     }
@@ -797,6 +1543,7 @@ export class HexMapService {
         visibleTiles: Tile[],
         nowMs: number,
         cameraFx: CameraCompositeState,
+        quality: RenderQualityProfile = this._currentRenderQuality,
     ) {
         if (!this._canvas) return;
 
@@ -826,40 +1573,42 @@ export class HexMapService {
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
-        ctx.globalCompositeOperation = 'screen';
-        this.drawGlow(
-            ctx,
-            (width * 0.26) + (cameraFx.vignetteBiasX * 0.1),
-            (height * 0.3) + (cameraFx.vignetteBiasY * 0.08),
-            Math.min(width, height) * (0.34 + (weights.lush * 0.08)),
-            [120, 188, 144],
-            (0.03 + (weights.lush * 0.11)) * pulse,
-        );
-        this.drawGlow(
-            ctx,
-            (width * 0.34) - (cameraFx.vignetteBiasX * 0.06),
-            height * 0.26,
-            Math.min(width, height) * (0.28 + (weights.water * 0.08)),
-            [96, 182, 226],
-            (0.03 + (weights.water * 0.12) + (weights.cold * 0.02)) * pulse,
-        );
-        this.drawGlow(
-            ctx,
-            width * 0.74,
-            (height * 0.22) + (cameraFx.vignetteBiasY * 0.06),
-            Math.min(width, height) * (0.24 + (weights.warm * 0.06)),
-            [255, 191, 122],
-            (0.025 + (weights.warm * 0.09) + (weights.ember * 0.05)) * pulse,
-        );
-        if (weights.ember > 0.02) {
+        if (quality.enableBackdropGlows) {
+            ctx.globalCompositeOperation = 'screen';
             this.drawGlow(
                 ctx,
-                width * 0.82,
-                height * 0.16,
-                Math.min(width, height) * 0.2,
-                [255, 128, 82],
-                (0.02 + (weights.ember * 0.11)) * pulse,
+                (width * 0.26) + (cameraFx.vignetteBiasX * 0.1),
+                (height * 0.3) + (cameraFx.vignetteBiasY * 0.08),
+                Math.min(width, height) * (0.34 + (weights.lush * 0.08)),
+                [120, 188, 144],
+                (0.03 + (weights.lush * 0.11)) * pulse,
             );
+            this.drawGlow(
+                ctx,
+                (width * 0.34) - (cameraFx.vignetteBiasX * 0.06),
+                height * 0.26,
+                Math.min(width, height) * (0.28 + (weights.water * 0.08)),
+                [96, 182, 226],
+                (0.03 + (weights.water * 0.12) + (weights.cold * 0.02)) * pulse,
+            );
+            this.drawGlow(
+                ctx,
+                width * 0.74,
+                (height * 0.22) + (cameraFx.vignetteBiasY * 0.06),
+                Math.min(width, height) * (0.24 + (weights.warm * 0.06)),
+                [255, 191, 122],
+                (0.025 + (weights.warm * 0.09) + (weights.ember * 0.05)) * pulse,
+            );
+            if (weights.ember > 0.02) {
+                this.drawGlow(
+                    ctx,
+                    width * 0.82,
+                    height * 0.16,
+                    Math.min(width, height) * 0.2,
+                    [255, 128, 82],
+                    (0.02 + (weights.ember * 0.11)) * pulse,
+                );
+            }
         }
 
         ctx.globalCompositeOperation = 'multiply';
@@ -873,47 +1622,48 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private updateRenderStress(nowMs: number, visibleTileCount: number, discoveredVisibleCount: number) {
-        if (this._renderStress.lastPerfNowMs > 0) {
-            const frameMs = Math.max(10, Math.min(50, nowMs - this._renderStress.lastPerfNowMs));
-            this._renderStress.smoothedFrameMs += (frameMs - this._renderStress.smoothedFrameMs) * 0.14;
-        }
-        this._renderStress.lastPerfNowMs = nowMs;
+    private recordRenderStress(renderCostMs: number) {
+        const bounded = Math.max(0.5, Math.min(40, renderCostMs));
+        this._renderStress.smoothedFrameMs += (bounded - this._renderStress.smoothedFrameMs) * 0.18;
+    }
+
+    private updateRenderStress(visibleTileCount: number, discoveredVisibleCount: number) {
+        const smoothedFrameMs = this._renderStress.smoothedFrameMs;
+        const mediumDensity = discoveredVisibleCount >= 420 || visibleTileCount >= 1400;
+        const highDensity = discoveredVisibleCount >= 620 || visibleTileCount >= 1850;
+        const extremeDensity = discoveredVisibleCount >= 820 || visibleTileCount >= 2350;
 
         if (this._renderStress.tier === 0) {
             if (
-                discoveredVisibleCount >= 650
-                || visibleTileCount >= 1900
-                || this._renderStress.smoothedFrameMs >= 23.5
+                smoothedFrameMs >= 13
+                || (smoothedFrameMs >= 10.5 && extremeDensity)
             ) {
                 this._renderStress.tier = 2;
             } else if (
-                discoveredVisibleCount >= 420
-                || visibleTileCount >= 1400
-                || this._renderStress.smoothedFrameMs >= 18.5
+                smoothedFrameMs >= 8
+                || (smoothedFrameMs >= 6 && highDensity)
+                || (smoothedFrameMs >= 5.5 && extremeDensity)
             ) {
                 this._renderStress.tier = 1;
             }
         } else if (this._renderStress.tier === 1) {
             if (
-                discoveredVisibleCount >= 720
-                || visibleTileCount >= 2100
-                || this._renderStress.smoothedFrameMs >= 25
+                smoothedFrameMs >= 14
+                || (smoothedFrameMs >= 11.5 && highDensity)
             ) {
                 this._renderStress.tier = 2;
             } else if (
-                discoveredVisibleCount <= 240
-                && visibleTileCount <= 1150
-                && this._renderStress.smoothedFrameMs <= 16.8
+                smoothedFrameMs <= 5
+                || (smoothedFrameMs <= 5.4 && !mediumDensity)
             ) {
                 this._renderStress.tier = 0;
             }
-        } else if (
-            discoveredVisibleCount <= 520
-            && visibleTileCount <= 1700
-            && this._renderStress.smoothedFrameMs <= 21.5
-        ) {
-            this._renderStress.tier = 1;
+        } else {
+            if (!highDensity && smoothedFrameMs <= 9.5) {
+                this._renderStress.tier = mediumDensity ? 1 : 0;
+            } else if (smoothedFrameMs <= 7.5) {
+                this._renderStress.tier = mediumDensity ? 1 : 0;
+            }
         }
 
         return this._renderStress.tier;
@@ -1311,6 +2061,16 @@ export class HexMapService {
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         for (const loop of loops) {
+            if (!this._currentRenderQuality.enableReachGlow) {
+                ctx.globalAlpha = alpha * 0.9;
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+                ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.72)' : 'rgba(210,190,70,0.58)';
+                ctx.lineWidth = hovered ? 2.4 : 1.4;
+                this.strokeSmoothLoop(ctx, loop);
+                continue;
+            }
+
             // Dark drop shadow for contrast against tiles
             ctx.globalAlpha = alpha * 0.7;
             ctx.shadowOffsetX = 0;
@@ -1363,7 +2123,7 @@ export class HexMapService {
         ctx.stroke();
     }
 
-    private drawTilesAndActors(ctx: CanvasRenderingContext2D, opts: DrawOptions, applyCameraFade: boolean = true, forMotionBlur: boolean = false, cameraFx: CameraCompositeState = this._currentCameraFx, effectNowMs: number = Date.now(), movementNowMs: number = effectNowMs, precomputedVisibleTiles: Tile[] | null = null) {
+    private drawTilesAndActors(ctx: CanvasRenderingContext2D, opts: DrawOptions, applyCameraFade: boolean = true, forMotionBlur: boolean = false, cameraFx: CameraCompositeState = this._currentCameraFx, effectNowMs: number = Date.now(), movementNowMs: number = effectNowMs, precomputedVisibleTiles: Tile[] | null = null, includeDiscoveredTerrain: boolean = true, suppressWorldUi: boolean = false) {
         if (!this._canvas) return;
 
         const camPx = axialToPixel(camera.q, camera.r);
@@ -1373,13 +2133,15 @@ export class HexMapService {
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
         const visibleTiles = precomputedVisibleTiles ?? getTilesInRadius(cq, cr, camera.radius);
+        const allowInteractiveHighlights = !forMotionBlur;
+        const allowPersistentWorldUi = allowInteractiveHighlights && !suppressWorldUi;
         ctx.save();
         ctx.scale(this._dpr, this._dpr);
         this.applyWorldTransform(ctx, translateX, translateY, cameraFx);
 
         const overlayRecords: Array<{ img: HTMLImageElement; x: number; y: number; q: number; r: number; opacity: number; z: number }> = [];
-        this.drawTiles(ctx, overlayRecords, visibleTiles, effectNowMs, applyCameraFade, opts.globalReachTileIds);
-        if (!forMotionBlur) {
+        this.drawTiles(ctx, overlayRecords, visibleTiles, effectNowMs, applyCameraFade, opts.globalReachTileIds, includeDiscoveredTerrain, suppressWorldUi);
+        if (allowPersistentWorldUi) {
             this.drawGameplayWorldImpacts(ctx, effectNowMs, applyCameraFade);
         }
 
@@ -1389,7 +2151,7 @@ export class HexMapService {
         const selectedHeroWalking = selectedHero ? this.isHeroWalking(selectedHero, movementNowMs) : false;
 
         // Path highlight only when selected hero idle
-        if (!forMotionBlur && (selectedHeroIdle || selectedHeroWalking) && opts.pathCoords.length) {
+        if (allowInteractiveHighlights && (selectedHeroIdle || selectedHeroWalking) && opts.pathCoords.length) {
             const first = opts.pathCoords[0];
             const drawPath = selectedHero && first && (first.q !== selectedHero.q || first.r !== selectedHero.r)
                 ? [{q: selectedHero.q, r: selectedHero.r}, ...opts.pathCoords]
@@ -1408,7 +2170,7 @@ export class HexMapService {
                     last ? '#dbedff' : '#daf0ff',
                     opacity);
             }
-        } else if (!forMotionBlur && selectedHero && selectedHero.movement) {
+        } else if (allowInteractiveHighlights && selectedHero && selectedHero.movement) {
             // Movement in progress: show remaining planned path & target tile
             const m = selectedHero.movement;
             // Find current index within path (hero.q/r should be some path entry or origin before first step)
@@ -1449,7 +2211,7 @@ export class HexMapService {
         }
 
         // Hover highlight
-        if (!forMotionBlur && opts.hoveredTile) {
+        if (allowInteractiveHighlights && opts.hoveredTile) {
             const ht = opts.hoveredTile;
             if (hexDistance(camera, ht) <= camera.radius + 1) {
                 const dist = hexDistance(camera, ht);
@@ -1465,7 +2227,7 @@ export class HexMapService {
         }
 
         // Existing task menu tile highlight retained; add cluster border if provided
-        if (!forMotionBlur && opts.taskMenuTile && opts.clusterBoundaryTiles && opts.clusterBoundaryTiles.length) {
+        if (allowPersistentWorldUi && opts.taskMenuTile && opts.clusterBoundaryTiles && opts.clusterBoundaryTiles.length) {
             const clusterSet = opts.clusterTileIds || new Set<string>();
             // Draw only outer edges (outline) for the cluster
             for (const bt of opts.clusterBoundaryTiles) {
@@ -1513,7 +2275,7 @@ export class HexMapService {
         }
 
         // Hover highlight
-        if (!forMotionBlur && opts.taskMenuTile) {
+        if (allowPersistentWorldUi && opts.taskMenuTile) {
             const ht = opts.taskMenuTile;
             if (hexDistance(camera, ht) <= camera.radius + 1) {
                 const dist = hexDistance(camera, ht);
@@ -1525,13 +2287,15 @@ export class HexMapService {
             }
         }
 
-        if (!forMotionBlur) {
+        if (allowPersistentWorldUi && this._currentRenderQuality.enableParticles) {
             this.updateAndDrawParticles(ctx, effectNowMs, visibleTiles, applyCameraFade);
+        } else if (allowInteractiveHighlights && this._particles.length) {
+            this._particles.length = 0;
         }
 
         // Reach outline — rendered on top of tiles, particles, and highlights.
         // Draws smooth bezier curves through hex boundary corners.
-        if (!forMotionBlur) {
+        if (allowPersistentWorldUi) {
             // Animate hovered reach alpha (smooth ease-in / ease-out)
             const hasHovered = !!(opts.hoveredReachBoundary && opts.hoveredReachBoundary.length);
             if (hasHovered) {
@@ -1557,16 +2321,30 @@ export class HexMapService {
 
         // Heroes & overlays combined layering
         this.drawHeroes(ctx, forMotionBlur ? null : opts.hoveredHero, overlayRecords, applyCameraFade, movementNowMs);
-        if (!forMotionBlur) {
+        if (allowPersistentWorldUi) {
             this.drawTaskIndicators(ctx, visibleTiles, applyCameraFade);
         }
         ctx.restore();
 
-        if (!forMotionBlur) {
+        if (allowPersistentWorldUi) {
             ctx.save();
             ctx.scale(this._dpr, this._dpr);
             this.drawTextIndicators(ctx, effectNowMs, cameraFx);
             ctx.restore();
+        }
+    }
+
+    private drawDiscoveredTerrainTiles(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        now: number,
+        applyCameraFade: boolean = true,
+    ) {
+        for (const t of tiles) {
+            if (!t.discovered) continue;
+            const dist = hexDistance(camera, t);
+            const opacity = this.getTileOpacity(dist, applyCameraFade);
+            this.drawTile(t, now, ctx, opacity);
         }
     }
 
@@ -1577,13 +2355,17 @@ export class HexMapService {
         now: number,
         applyCameraFade: boolean = true,
         reachTileIds?: Set<string>,
+        includeDiscoveredTerrain: boolean = true,
+        suppressWorldUi: boolean = false,
     ) {
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = this.getTileOpacity(dist, applyCameraFade);
 
             if (t.discovered) {
-                this.drawTile(t, now, ctx, opacity);
+                if (includeDiscoveredTerrain) {
+                    this.drawTile(t, now, ctx, opacity);
+                }
             } else {
                 const inReach = !reachTileIds || reachTileIds.has(`${t.q},${t.r}`);
                 this.drawUndiscoveredTile(ctx, opacity, t, inReach);
@@ -1598,13 +2380,26 @@ export class HexMapService {
                     const ovImg = this._images[overlayKey];
                     if (ovImg) {
                         const off = this.getTileOverlayOffset(t);
+                        const baseKey = this.getTileImageKey(t) ?? t.terrain ?? 'plains';
+                        const sourceWidth = ovImg.naturalWidth || ovImg.width || this.TILE_DRAW_SIZE;
+                        const sourceHeight = ovImg.naturalHeight || ovImg.height || this.TILE_DRAW_SIZE;
+                        const drawWidth = this.TILE_DRAW_SIZE;
+                        const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+                        const overlaySource = this.buildShadedTileOverlayCanvas(
+                            t,
+                            baseKey,
+                            overlayKey,
+                            ovImg,
+                            drawWidth,
+                            drawHeight,
+                        ) ?? ovImg;
                         // store axial coords for later layering sort (r,q)
                         overlayRecords.push({
-                            img: ovImg,
+                            source: overlaySource,
                             x: x - this.HEX_SIZE + off.x,
                             y: y - this.HEX_SIZE + off.y,
-                            width: this.TILE_DRAW_SIZE,
-                            height: this.TILE_DRAW_SIZE,
+                            width: drawWidth,
+                            height: drawHeight,
                             q: t.q,
                             r: t.r,
                             opacity,
@@ -1623,7 +2418,7 @@ export class HexMapService {
                         const drawWidth = this.TILE_DRAW_SIZE;
                         const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
                         overlayRecords.push({
-                            img: buildingImg,
+                            source: buildingImg,
                             x: x - this.HEX_SIZE + off.x,
                             y: y + this.HEX_SIZE - drawHeight + off.y,
                             width: drawWidth,
@@ -1638,7 +2433,7 @@ export class HexMapService {
             }
 
             // active task highlight overlay (after drawing base tile)
-            const activeTasksForTile = taskStore.tasksByTile[t.id];
+            const activeTasksForTile = suppressWorldUi ? null : taskStore.tasksByTile[t.id];
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
                 let chosenTask: TaskInstance | null = null; // for progress bar
@@ -1882,8 +2677,31 @@ export class HexMapService {
                 // Expanding ripple ring
                 const maxRadius = particle.size * (particle.growth ?? 4);
                 const radius = particle.size + (maxRadius - particle.size) * progress;
-                const ringAlpha = alpha * (1 - progress * 0.6);
-                const lineWidth = Math.max(0.3, 1.2 * (1 - progress * 0.7));
+                const ringAlpha = alpha * (1.18 - (progress * 0.52));
+                const lineWidth = Math.max(0.55, 1.75 * (1 - progress * 0.62));
+
+                const ringGlow = ctx.createRadialGradient(
+                    particle.x,
+                    particle.y,
+                    Math.max(0, radius * 0.62),
+                    particle.x,
+                    particle.y,
+                    radius + (particle.size * 1.7),
+                );
+                ringGlow.addColorStop(0, this.toRgba(particle.color, 0));
+                ringGlow.addColorStop(0.62, this.toRgba(particle.color, ringAlpha * 0.28));
+                ringGlow.addColorStop(1, this.toRgba(particle.color, 0));
+                ctx.fillStyle = ringGlow;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, radius + (particle.size * 1.7), 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = this.toRgba([255, 255, 255], ringAlpha * 0.18);
+                ctx.lineWidth = lineWidth + 0.85;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+
                 ctx.strokeStyle = this.toRgba(particle.color, ringAlpha);
                 ctx.lineWidth = lineWidth;
                 ctx.beginPath();
@@ -1892,7 +2710,7 @@ export class HexMapService {
                 continue;
             }
 
-            const coreAlpha = Math.min(1, alpha * 0.78);
+            const coreAlpha = Math.min(1, alpha * (particle.shape === 'diamond' ? 0.98 : 0.78));
             ctx.fillStyle = this.toRgba(particle.color, coreAlpha);
             if (particle.shape === 'diamond') {
                 ctx.save();
@@ -2016,7 +2834,10 @@ export class HexMapService {
     private spawnAmbientParticles(now: number, tiles: Tile[]) {
         if (this._particles.length >= this.getMaxParticleBudget() || !tiles.length) return;
 
-        const attempts = Math.min(10, Math.max(3, Math.round(tiles.length / 18)));
+        const attempts = Math.min(
+            6,
+            Math.max(2, Math.round((tiles.length / 18) * this.AMBIENT_PARTICLE_DENSITY)),
+        );
         for (let i = 0; i < attempts; i++) {
             if (this._particles.length >= this.getMaxParticleBudget()) return;
 
@@ -2026,23 +2847,27 @@ export class HexMapService {
         }
     }
 
+    private shouldSpawnAmbientParticle(baseChance: number) {
+        return Math.random() <= Math.max(0, Math.min(1, baseChance * this.AMBIENT_PARTICLE_DENSITY));
+    }
+
     private spawnAmbientParticleForTile(tile: Tile, now: number) {
         const {x, y} = axialToPixel(tile.q, tile.r);
         const key = this.getTileImageKey(tile) ?? tile.terrain ?? '';
 
         if (tile.terrain === 'water' || key.startsWith('water')) {
-            if (Math.random() > 0.42) return;
+            if (!this.shouldSpawnAmbientParticle(0.42)) return;
             const colors: GlowColor[] = [[208, 247, 255], [165, 230, 255], [130, 210, 255]];
             this.emitParticle({
                 x: x + this.randomBetween(-18, 18),
                 y: y + this.randomBetween(-10, 10),
                 vx: 0,
                 vy: 0,
-                size: this.randomBetween(0.8, 1.4),
+                size: this.randomBetween(1.05, 1.75),
                 bornMs: now,
                 lifeMs: this.randomBetween(1400, 2400),
-                alpha: this.randomBetween(0.18, 0.36),
-                glow: 1,
+                alpha: this.randomBetween(0.28, 0.46),
+                glow: 1.35,
                 color: this.pickGlow(colors),
                 gravity: 0,
                 drag: 0,
@@ -2054,7 +2879,7 @@ export class HexMapService {
         }
 
         if (tile.terrain === 'towncenter') {
-            if (Math.random() > 0.46) return;
+            if (!this.shouldSpawnAmbientParticle(0.46)) return;
             const colors: GlowColor[] = [[255, 228, 168], [255, 188, 112], [188, 247, 218]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
@@ -2081,7 +2906,7 @@ export class HexMapService {
         }
 
         if (tile.terrain === 'snow' || key.startsWith('snow')) {
-            if (Math.random() > 0.42) return;
+            if (!this.shouldSpawnAmbientParticle(0.42)) return;
             const colors: GlowColor[] = [[255, 255, 255], [216, 239, 255], [196, 228, 255]];
             this.emitParticle({
                 x: x + this.randomBetween(-20, 20),
@@ -2103,7 +2928,7 @@ export class HexMapService {
         }
 
         if (key === 'grain_bloom') {
-            if (Math.random() > 0.35) return;
+            if (!this.shouldSpawnAmbientParticle(0.35)) return;
             const colors: GlowColor[] = [[255, 236, 168], [255, 222, 120], [214, 246, 161]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
@@ -2126,18 +2951,18 @@ export class HexMapService {
 
         // Forest: drifting leaves
         if (tile.terrain === 'forest' || key.startsWith('forest')) {
-            if (Math.random() > 0.55) return;
+            if (!this.shouldSpawnAmbientParticle(0.55)) return;
             const colors: GlowColor[] = [[110, 190, 75], [145, 200, 65], [85, 155, 55], [180, 160, 60]];
             this.emitParticle({
                 x: x + this.randomBetween(-16, 16),
                 y: y + this.randomBetween(-14, 4),
                 vx: this.randomBetween(-12, 12),
                 vy: this.randomBetween(4, 14),
-                size: this.randomBetween(1.2, 2.0),
+                size: this.randomBetween(1.35, 2.2),
                 bornMs: now,
                 lifeMs: this.randomBetween(1800, 3200),
-                alpha: this.randomBetween(0.32, 0.48),
-                glow: this.randomBetween(1.2, 1.6),
+                alpha: this.randomBetween(0.44, 0.62),
+                glow: this.randomBetween(1.45, 1.9),
                 color: this.pickGlow(colors),
                 gravity: 3,
                 drag: 0.35,
@@ -2149,7 +2974,7 @@ export class HexMapService {
 
         // Grain (non-bloom): gentle golden pollen
         if (tile.terrain === 'grain' || key.startsWith('grain')) {
-            if (Math.random() > 0.6) return;
+            if (!this.shouldSpawnAmbientParticle(0.6)) return;
             const colors: GlowColor[] = [[255, 228, 140], [240, 210, 110], [255, 242, 180]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
@@ -2172,7 +2997,7 @@ export class HexMapService {
 
         // Dessert: wind-blown sand particles
         if (tile.terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') {
-            if (Math.random() > 0.52) return;
+            if (!this.shouldSpawnAmbientParticle(0.52)) return;
             const colors: GlowColor[] = [[210, 185, 140], [190, 165, 120], [225, 200, 155]];
             this.emitParticle({
                 x: x + this.randomBetween(-18, 18),
@@ -2194,7 +3019,7 @@ export class HexMapService {
     }
 
     private spawnVolcanoAmbientParticles(x: number, y: number, now: number) {
-        if (Math.random() > 0.84) {
+        if (!this.shouldSpawnAmbientParticle(0.16)) {
             return;
         }
 
@@ -2222,7 +3047,7 @@ export class HexMapService {
             });
         }
 
-        if (Math.random() > 0.28) {
+        if (!this.shouldSpawnAmbientParticle(0.28)) {
             return;
         }
 
@@ -2490,14 +3315,17 @@ export class HexMapService {
     }
 
     private emitParticle(particle: Particle) {
-        if (this._particles.length >= this.getMaxParticleBudget()) {
+        const budget = this.getMaxParticleBudget();
+        if (budget <= 0) return;
+
+        if (this._particles.length >= budget) {
             this._particles.shift();
         }
         this._particles.push(particle);
     }
 
     private getMaxParticleBudget() {
-        return getEffectiveParticleBudget();
+        return Math.round(getEffectiveParticleBudget() * this._currentRenderQuality.particleBudgetScale);
     }
 
     private pickGlow(colors: GlowColor[]): GlowColor {
@@ -2564,344 +3392,924 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private drawTile(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
-        const {x, y} = axialToPixel(t.q, t.r);
-        const key = this.getTileImageKey(t);
-        const baseImg = this._images[key ?? 'plains'];
-        if (!baseImg) return;
-        // Determine animation frame if terrain has frames
+    private getTileMaskedCanvasKey(t: Tile, key: string, now: number) {
         const def: any = t.terrain ? (TERRAIN_DEFS as any)[t.terrain] : null;
-        let masked: HTMLCanvasElement | null | undefined = null;
         const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
         if (!frames) {
-            masked = this._maskedImages[key ?? 'plains'];
-        } else {
-            const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
-            const elapsed = now - this._tileAnimStart;
-            const frameIndex = Math.floor(elapsed / frameTime) % frames;
-            // Build per-frame masked canvas lazily (cache by key+frameIndex)
-            const cacheKey = key + '__f' + frameIndex;
-            let frameCanvas = this._maskedImages[cacheKey];
-            if (!frameCanvas) {
-                const frameWidth = baseImg.width / frames;
-                const sx = frameIndex * frameWidth;
-                const c = document.createElement('canvas');
-                c.width = this.TILE_DRAW_SIZE;
-                c.height = this.TILE_DRAW_SIZE;
-                const g = c.getContext('2d')!;
-                // Clip to hex shape then draw specific frame portion
-                g.save();
-                g.beginPath();
-                const w = this.TILE_DRAW_SIZE;
-                const h = this.TILE_DRAW_SIZE;
-                g.moveTo(0.5 * w, 0);
-                g.lineTo(w, 0.25 * h);
-                g.lineTo(w, 0.75 * h);
-                g.lineTo(0.5 * w, h);
-                g.lineTo(0, 0.75 * h);
-                g.lineTo(0, 0.25 * h);
-                g.closePath();
-                g.clip();
-                g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, w, h);
-                g.restore();
-                this._maskedImages[cacheKey] = c;
-                frameCanvas = c;
-            }
-            masked = frameCanvas;
+            return key;
         }
 
-        ctx.globalAlpha = opacity;
-        if (masked) {
-            ctx.drawImage(masked, x - this.HEX_SIZE, y - this.HEX_SIZE);
-        }
-        const proceduralRoadCanvas = this.getProceduralRoadCanvas(t);
-        if (proceduralRoadCanvas) {
-            ctx.drawImage(proceduralRoadCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
-        }
-        ctx.globalAlpha = 1;
+        const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
+        const elapsed = now - this._tileAnimStart;
+        const frameIndex = Math.floor(elapsed / frameTime) % frames;
+        return key + '__f' + frameIndex;
     }
 
-    private drawDynamicTerrainAccent(
-        ctx: CanvasRenderingContext2D,
-        tile: Tile,
-        x: number,
-        y: number,
-        opacity: number,
-        now: number,
-        tileKey: string,
-    ) {
-        if (tile.terrain === 'towncenter') {
-            this.drawTowncenterAccent(ctx, x, y, opacity, now);
-            return;
+    private resolveTileMaskedCanvas(t: Tile, key: string, baseImg: HTMLImageElement, now: number): HTMLCanvasElement | null {
+        const cacheKey = this.getTileMaskedCanvasKey(t, key, now);
+        const existingCanvas = this._maskedImages[cacheKey];
+        if (existingCanvas) {
+            return existingCanvas;
         }
 
-        if (tile.terrain === 'water' || tileKey.startsWith('water')) {
-            this.drawWaterSheen(ctx, tile, x, y, opacity, now, tileKey);
+        const def: any = t.terrain ? (TERRAIN_DEFS as any)[t.terrain] : null;
+        const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
+        if (!frames) {
+            return null;
+        }
+
+        const frameIndexText = cacheKey.split('__f')[1] ?? '0';
+        const frameIndex = Number.parseInt(frameIndexText, 10) || 0;
+        const frameWidth = baseImg.width / frames;
+        const sx = frameIndex * frameWidth;
+        const c = document.createElement('canvas');
+        c.width = this.TILE_DRAW_SIZE;
+        c.height = this.TILE_DRAW_SIZE;
+        const g = c.getContext('2d');
+        if (!g) {
+            return null;
+        }
+
+        g.save();
+        this.traceHexClipPath(g, this.HEX_SIZE, this.HEX_SIZE);
+        g.clip();
+        g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+        g.restore();
+        this._maskedImages[cacheKey] = c;
+        return c;
+    }
+
+    private createTileRenderState(t: Tile, now: number, opacity: number): TileRenderState | null {
+        const key = this.getTileImageKey(t);
+        const resolvedKey = key ?? 'plains';
+        const baseImg = this._images[resolvedKey];
+        if (!baseImg) return null;
+
+        const maskedCanvasKey = this.getTileMaskedCanvasKey(t, resolvedKey, now);
+        const maskedCanvas = this.resolveTileMaskedCanvas(t, resolvedKey, baseImg, now);
+        const {x, y} = axialToPixel(t.q, t.r);
+        return {
+            tile: t,
+            key: resolvedKey,
+            x,
+            y,
+            now,
+            opacity,
+            maskedCanvasKey,
+            maskedCanvas,
+        };
+    }
+
+    private drawTileBaseStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+        const baseCanvas = this.buildTileColorVariantCanvas(state) ?? state.maskedCanvas;
+        ctx.globalAlpha = state.opacity;
+        if (baseCanvas) {
+            ctx.drawImage(baseCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
         }
     }
 
-    private drawWaterSheen(
-        ctx: CanvasRenderingContext2D,
-        tile: Tile,
-        x: number,
-        y: number,
-        opacity: number,
-        now: number,
-        tileKey: string,
-    ) {
-        const seed = hash32(tile.q, tile.r);
-        if ((seed % 5) > 2) {
-            return;
+    private getSignedTileNoise(q: number, r: number, salt: number, scale: number = 1) {
+        const scaledQ = Math.floor(q / Math.max(1, scale));
+        const scaledR = Math.floor(r / Math.max(1, scale));
+        const value = hash32(
+            scaledQ + (salt * 193),
+            scaledR - (salt * 389),
+        ) / 0xffffffff;
+        return (value * 2) - 1;
+    }
+
+    private getTileColorAdjustment(tile: Tile, key: string, variant: TileShaderVariant = this.getTileShaderVariant(tile, key)): TileColorAdjustment {
+        const regionalHueNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 11, 3);
+        const localHueNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 29, 1);
+        const regionalSatNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 37, 3);
+        const localSatNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 47, 1);
+        const regionalBrightnessNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 59, 3);
+        const localBrightnessNoise = this.getSignedTileNoise(tile.q, tile.r, key.length + 71, 1);
+        const hueBlend = Math.max(
+            -1,
+            Math.min(
+                1,
+                (regionalHueNoise * 0.58)
+                + (localHueNoise * 0.5)
+                + ((variant.regionVariant - 0.5) * 0.56)
+                + ((variant.accentVariant - 0.5) * 0.34),
+            ),
+        );
+        const saturationBlend = Math.max(
+            0,
+            Math.min(
+                1,
+                0.5
+                + (regionalSatNoise * 0.24)
+                + (localSatNoise * 0.3)
+                + ((variant.regionVariant - 0.5) * 0.18)
+                + ((variant.accentVariant - 0.5) * 0.14),
+            ),
+        );
+        const brightnessBlend = Math.max(
+            0,
+            Math.min(
+                1,
+                0.5
+                + (regionalBrightnessNoise * 0.2)
+                + (localBrightnessNoise * 0.24)
+                + ((variant.regionVariant - 0.5) * 0.12)
+                - ((variant.accentVariant - 0.5) * 0.08),
+            ),
+        );
+
+        return {
+            hueDeg: hueBlend * 12.5,
+            saturate: 0.75 + (saturationBlend * 0.75),
+            brightness: 1 - (brightnessBlend * 0.25),
+        };
+    }
+
+    private normalizeTileColorAdjustment(adjustment: TileColorAdjustment): TileColorAdjustment {
+        const hueDeg = Math.round(adjustment.hueDeg / 1) * 1;
+        const saturate = Math.round(adjustment.saturate / 0.02) * 0.02;
+        const brightness = Math.round(adjustment.brightness / 0.02) * 0.02;
+        return {
+            hueDeg,
+            saturate,
+            brightness,
+        };
+    }
+
+    private getTileColorAdjustmentKey(adjustment: TileColorAdjustment) {
+        return `h${Math.round(adjustment.hueDeg)}:s${Math.round(adjustment.saturate * 100)}:b${Math.round(adjustment.brightness * 100)}`;
+    }
+
+    private getTileColorFilter(adjustment: TileColorAdjustment) {
+        const hue = Math.max(-12.5, Math.min(12.5, adjustment.hueDeg));
+        const saturate = Math.max(0.75, Math.min(1.5, adjustment.saturate));
+        const brightness = Math.max(0.75, Math.min(1, adjustment.brightness));
+
+        return `hue-rotate(${hue.toFixed(2)}deg) saturate(${(saturate * 100).toFixed(1)}%) brightness(${(brightness * 100).toFixed(1)}%)`;
+    }
+
+    private buildTileColorVariantCanvas(state: TileRenderState): HTMLCanvasElement | null {
+        if (!state.maskedCanvas) {
+            return null;
         }
 
-        const accentBoost = tileKey === 'water_reflections'
-            ? 1.35
-            : tileKey === 'water_foam'
-                ? 1.18
-                : tileKey === 'water_shallows'
-                    ? 0.94
-                    : 1;
-        const alpha = opacity * 0.16 * accentBoost;
-        if (alpha <= 0.02) return;
+        const variant = this.getTileShaderVariant(state.tile, state.key);
+        const adjustment = this.normalizeTileColorAdjustment(this.getTileColorAdjustment(state.tile, state.key, variant));
+        const cacheKey = `v${HexMapService.TILE_COLOR_VARIANT_VERSION}:${state.maskedCanvasKey}:${this.getTileColorAdjustmentKey(adjustment)}`;
+        const cached = this.getCachedCanvas(this._tileColorVariantCache, cacheKey);
+        if (cached) {
+            return cached;
+        }
 
-        const drawX = x - this.HEX_SIZE;
-        const drawY = y - this.HEX_SIZE;
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        const speed = 0.00024 + ((seed % 7) * 0.000015);
-        const phase = (((now * speed) + ((seed & 1023) * 0.017)) % 1 + 1) % 1;
-        const laneX = drawX - 10 + (phase * (w + 20));
-        const laneY = drawY + (h * (0.24 + (((seed >> 4) % 30) / 100)));
-        const secondLanePhase = ((phase + 0.43) % 1 + 1) % 1;
-        const secondLaneX = drawX - 8 + (secondLanePhase * (w + 16));
-        const secondLaneY = laneY + 7;
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.filter = this.getTileColorFilter(adjustment);
+        ctx.drawImage(state.maskedCanvas, 0, 0);
+        ctx.filter = 'none';
+        return this.storeCachedCanvas(
+            this._tileColorVariantCache,
+            cacheKey,
+            canvas,
+            HexMapService.TILE_COLOR_VARIANT_CACHE_MAX,
+        );
+    }
+
+    private mixGlowColor(from: GlowColor, to: GlowColor, amount: number): GlowColor {
+        const t = Math.max(0, Math.min(1, amount));
+        return [
+            Math.round(from[0] + ((to[0] - from[0]) * t)),
+            Math.round(from[1] + ((to[1] - from[1]) * t)),
+            Math.round(from[2] + ((to[2] - from[2]) * t)),
+        ] as GlowColor;
+    }
+
+    private getTileShaderVariant(tile: Tile, key: string): TileShaderVariant {
+        const accentBucket = hash32(tile.q + key.length, tile.r - key.length) % 6;
+        const regionBucket = hash32(
+            Math.floor(tile.q / 4) + (key.length * 3),
+            Math.floor(tile.r / 4) - (key.length * 5),
+        ) % 4;
+
+        return {
+            accentBucket,
+            accentVariant: accentBucket / 5,
+            regionBucket,
+            regionVariant: regionBucket / 3,
+        };
+    }
+
+    private shouldUseOverlaySafeTileShader(tile: Tile) {
+        return !!this.getTileOverlayKey(tile);
+    }
+
+    private getTileNeighbor(tile: Tile, side: TileSide) {
+        const direct = tile.neighbors?.[side];
+        if (direct) {
+            return direct;
+        }
+
+        const [dq, dr] = TILE_SIDE_DELTAS[side];
+        return tileIndex[axialKey(tile.q + dq, tile.r + dr)] ?? null;
+    }
+
+    private getTileShorelineSignature(tile: Tile): string | null {
+        if (!tile.discovered || !tile.terrain || tile.terrain === 'water') {
+            return null;
+        }
+
+        let signature = '';
+        let hasShoreline = false;
+        for (const side of SIDE_NAMES) {
+            const neighbor = this.getTileNeighbor(tile, side);
+            const isShoreline = neighbor?.discovered && neighbor.terrain === 'water';
+            signature += isShoreline ? side : '-';
+            hasShoreline = hasShoreline || isShoreline;
+        }
+        return hasShoreline ? signature : null;
+    }
+
+    private getTileShaderCacheKey(tile: Tile, key: string) {
+        const terrain = tile.terrain ?? 'plains';
+        const variant = this.getTileShaderVariant(tile, key);
+        const reliefMode = this.shouldUseOverlaySafeTileShader(tile) ? 'overlay-safe' : 'full';
+        return `v${HexMapService.TILE_SHADER_VERSION}:${terrain}:${key}:${reliefMode}:r${variant.regionBucket}:a${variant.accentBucket}`;
+    }
+
+    private getTileShaderTone(terrain: string, key: string, regionBucket: number) {
+        if (terrain === 'water' || key.startsWith('water')) {
+            return [
+                {
+                    wash: [88, 152, 214] as GlowColor,
+                    patch: [138, 208, 238] as GlowColor,
+                    shadow: [14, 42, 78] as GlowColor,
+                    highlight: [232, 248, 255] as GlowColor,
+                },
+                {
+                    wash: [72, 164, 184] as GlowColor,
+                    patch: [126, 214, 210] as GlowColor,
+                    shadow: [12, 58, 68] as GlowColor,
+                    highlight: [226, 252, 246] as GlowColor,
+                },
+                {
+                    wash: [118, 164, 216] as GlowColor,
+                    patch: [190, 222, 242] as GlowColor,
+                    shadow: [26, 54, 92] as GlowColor,
+                    highlight: [244, 250, 255] as GlowColor,
+                },
+                {
+                    wash: [92, 170, 210] as GlowColor,
+                    patch: [176, 224, 232] as GlowColor,
+                    shadow: [18, 56, 82] as GlowColor,
+                    highlight: [242, 250, 250] as GlowColor,
+                },
+            ][regionBucket]!;
+        }
+
+        if (terrain === 'forest' || key.startsWith('forest')) {
+            return [
+                {
+                    wash: [66, 118, 62] as GlowColor,
+                    patch: [112, 166, 90] as GlowColor,
+                    shadow: [18, 38, 16] as GlowColor,
+                    highlight: [206, 210, 140] as GlowColor,
+                },
+                {
+                    wash: [58, 128, 54] as GlowColor,
+                    patch: [102, 178, 88] as GlowColor,
+                    shadow: [18, 42, 16] as GlowColor,
+                    highlight: [200, 220, 140] as GlowColor,
+                },
+                {
+                    wash: [92, 126, 60] as GlowColor,
+                    patch: [152, 182, 98] as GlowColor,
+                    shadow: [26, 42, 18] as GlowColor,
+                    highlight: [220, 208, 138] as GlowColor,
+                },
+                {
+                    wash: [84, 114, 66] as GlowColor,
+                    patch: [136, 164, 100] as GlowColor,
+                    shadow: [24, 40, 20] as GlowColor,
+                    highlight: [214, 204, 146] as GlowColor,
+                },
+            ][regionBucket]!;
+        }
+
+        if (terrain === 'grain' || key.startsWith('grain')) {
+            return [
+                {
+                    wash: [166, 164, 84] as GlowColor,
+                    patch: [222, 204, 114] as GlowColor,
+                    shadow: [88, 72, 26] as GlowColor,
+                    highlight: [248, 236, 180] as GlowColor,
+                },
+                {
+                    wash: [186, 176, 76] as GlowColor,
+                    patch: [232, 212, 106] as GlowColor,
+                    shadow: [94, 76, 24] as GlowColor,
+                    highlight: [252, 240, 174] as GlowColor,
+                },
+                {
+                    wash: [204, 168, 78] as GlowColor,
+                    patch: [242, 206, 108] as GlowColor,
+                    shadow: [104, 72, 22] as GlowColor,
+                    highlight: [255, 236, 172] as GlowColor,
+                },
+                {
+                    wash: [194, 152, 92] as GlowColor,
+                    patch: [236, 198, 122] as GlowColor,
+                    shadow: [102, 66, 28] as GlowColor,
+                    highlight: [255, 232, 182] as GlowColor,
+                },
+            ][regionBucket]!;
+        }
+
+        if (terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')) {
+            const isDessert = terrain === 'dessert' || key.startsWith('dessert');
+            return isDessert
+                ? [
+                    {
+                        wash: [204, 170, 118] as GlowColor,
+                        patch: [236, 206, 150] as GlowColor,
+                        shadow: [88, 62, 34] as GlowColor,
+                        highlight: [255, 234, 194] as GlowColor,
+                    },
+                    {
+                        wash: [214, 178, 126] as GlowColor,
+                        patch: [244, 212, 156] as GlowColor,
+                        shadow: [92, 66, 36] as GlowColor,
+                        highlight: [255, 236, 198] as GlowColor,
+                    },
+                    {
+                        wash: [222, 182, 118] as GlowColor,
+                        patch: [248, 214, 146] as GlowColor,
+                        shadow: [94, 64, 30] as GlowColor,
+                        highlight: [255, 238, 188] as GlowColor,
+                    },
+                    {
+                        wash: [198, 166, 124] as GlowColor,
+                        patch: [232, 204, 160] as GlowColor,
+                        shadow: [84, 60, 38] as GlowColor,
+                        highlight: [250, 232, 200] as GlowColor,
+                    },
+                ][regionBucket]!
+                : [
+                    {
+                        wash: [136, 98, 72] as GlowColor,
+                        patch: [178, 136, 106] as GlowColor,
+                        shadow: [62, 44, 28] as GlowColor,
+                        highlight: [228, 206, 176] as GlowColor,
+                    },
+                    {
+                        wash: [146, 104, 70] as GlowColor,
+                        patch: [190, 144, 102] as GlowColor,
+                        shadow: [68, 46, 26] as GlowColor,
+                        highlight: [236, 212, 176] as GlowColor,
+                    },
+                    {
+                        wash: [158, 110, 68] as GlowColor,
+                        patch: [204, 150, 98] as GlowColor,
+                        shadow: [72, 46, 24] as GlowColor,
+                        highlight: [242, 214, 170] as GlowColor,
+                    },
+                    {
+                        wash: [128, 96, 78] as GlowColor,
+                        patch: [172, 136, 112] as GlowColor,
+                        shadow: [60, 44, 30] as GlowColor,
+                        highlight: [224, 206, 184] as GlowColor,
+                    },
+                ][regionBucket]!;
+        }
+
+        return [
+            {
+                wash: [94, 160, 82] as GlowColor,
+                patch: [156, 204, 98] as GlowColor,
+                shadow: [28, 60, 24] as GlowColor,
+                highlight: [226, 232, 154] as GlowColor,
+            },
+            {
+                wash: [82, 170, 76] as GlowColor,
+                patch: [150, 212, 92] as GlowColor,
+                shadow: [24, 66, 22] as GlowColor,
+                highlight: [216, 238, 150] as GlowColor,
+            },
+            {
+                wash: [126, 170, 82] as GlowColor,
+                patch: [192, 208, 108] as GlowColor,
+                shadow: [42, 68, 22] as GlowColor,
+                highlight: [242, 232, 152] as GlowColor,
+            },
+            {
+                wash: [142, 164, 86] as GlowColor,
+                patch: [210, 202, 116] as GlowColor,
+                shadow: [54, 66, 24] as GlowColor,
+                highlight: [246, 226, 158] as GlowColor,
+            },
+        ][regionBucket]!;
+    }
+
+    private getTileShaderPalette(terrain: string, key: string, variant: TileShaderVariant): TileShaderPalette {
+        const tone = this.getTileShaderTone(terrain, key, variant.regionBucket);
+        const accentAlphaBoost = 1 + (variant.accentVariant * 0.18);
+
+        if (terrain === 'water' || key.startsWith('water')) {
+            return {
+                ...tone,
+                regionGlow: this.mixGlowColor(tone.patch, tone.highlight, 0.38),
+                regionGlowAlpha: 0.13 + (variant.regionVariant * 0.04),
+                washAlpha: 0.17 + (variant.regionVariant * 0.04),
+                patchAlpha: (0.12 + ((1 - variant.accentVariant) * 0.04)) * accentAlphaBoost,
+                shadowAlpha: 0.08 + (variant.accentVariant * 0.026),
+                highlightAlpha: 0.06 + ((1 - variant.regionVariant) * 0.02),
+            };
+        }
+
+        return {
+            ...tone,
+            regionGlow: this.mixGlowColor(tone.patch, tone.highlight, 0.26 + (variant.regionVariant * 0.18)),
+            regionGlowAlpha:
+                terrain === 'forest' || key.startsWith('forest')
+                    ? 0.11 + (variant.regionVariant * 0.035)
+                    : terrain === 'grain' || key.startsWith('grain')
+                        ? 0.14 + (variant.regionVariant * 0.035)
+                        : terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')
+                            ? 0.12 + (variant.regionVariant * 0.03)
+                            : 0.13 + (variant.regionVariant * 0.035),
+            washAlpha:
+                terrain === 'forest' || key.startsWith('forest')
+                    ? 0.16 + (variant.regionVariant * 0.035)
+                    : terrain === 'grain' || key.startsWith('grain')
+                        ? 0.18 + (variant.regionVariant * 0.03)
+                        : terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')
+                            ? 0.16 + (variant.regionVariant * 0.03)
+                            : 0.17 + (variant.regionVariant * 0.035),
+            patchAlpha:
+                (terrain === 'forest' || key.startsWith('forest')
+                    ? 0.1
+                    : terrain === 'grain' || key.startsWith('grain')
+                        ? 0.12
+                        : terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')
+                            ? 0.11
+                            : 0.12) + ((1 - variant.accentVariant) * 0.04),
+            shadowAlpha:
+                terrain === 'forest' || key.startsWith('forest')
+                    ? 0.095 + (variant.accentVariant * 0.03)
+                    : terrain === 'grain' || key.startsWith('grain')
+                        ? 0.08 + (variant.accentVariant * 0.026)
+                        : terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')
+                            ? 0.085 + (variant.accentVariant * 0.026)
+                            : 0.09 + (variant.accentVariant * 0.028),
+            highlightAlpha:
+                terrain === 'forest' || key.startsWith('forest')
+                    ? 0.05 + ((1 - variant.regionVariant) * 0.018)
+                    : terrain === 'grain' || key.startsWith('grain')
+                        ? 0.064 + ((1 - variant.regionVariant) * 0.02)
+                        : terrain === 'dirt' || key.startsWith('dirt') || terrain === 'dessert' || key.startsWith('dessert')
+                            ? 0.05 + ((1 - variant.regionVariant) * 0.016)
+                            : 0.058 + ((1 - variant.regionVariant) * 0.018),
+        };
+    }
+
+    private getTileShaderGeometry(variant: TileShaderVariant, width: number, height: number): TileShaderGeometry {
+        return {
+            width,
+            height,
+            accentX: width * (0.2 + ((((variant.accentBucket * 37) + (variant.regionBucket * 13)) % 38) / 100)),
+            accentY: height * (0.18 + ((((variant.accentBucket * 31) + (variant.regionBucket * 17)) % 34) / 100)),
+            accentRadius: width * (0.32 + ((((variant.accentBucket * 23) + (variant.regionBucket * 11)) % 10) / 100)),
+            accentX2: width * (0.44 + ((((variant.accentBucket * 19) + (variant.regionBucket * 29)) % 24) / 100)),
+            accentY2: height * (0.42 + ((((variant.accentBucket * 41) + (variant.regionBucket * 7)) % 18) / 100)),
+            accentRadius2: width * (0.24 + ((((variant.accentBucket * 13) + (variant.regionBucket * 19)) % 12) / 100)),
+            regionShiftX: width * (0.14 + (variant.regionVariant * 0.12)),
+            sunX: width * (0.18 + (variant.regionVariant * 0.08)),
+            sunY: height * (0.12 + (variant.accentVariant * 0.05)),
+            sunRadius: width * (0.66 + (variant.regionVariant * 0.08)),
+            shadeX: width * (0.8 - (variant.regionVariant * 0.04)),
+            shadeY: height * (0.82 - (variant.accentVariant * 0.05)),
+            shadeRadius: width * (0.56 + (variant.accentVariant * 0.08)),
+        };
+    }
+
+    private drawTileShaderBackdrop(
+        ctx: CanvasRenderingContext2D,
+        palette: TileShaderPalette,
+        geometry: TileShaderGeometry,
+    ) {
+        const wash = ctx.createLinearGradient(0, 0, geometry.width, geometry.height);
+        wash.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha * 1.15));
+        wash.addColorStop(0.28, this.toRgba(palette.patch, palette.patchAlpha * 0.9));
+        wash.addColorStop(0.66, this.toRgba(palette.wash, palette.washAlpha));
+        wash.addColorStop(1, this.toRgba(palette.shadow, palette.shadowAlpha * 1.08));
+        ctx.fillStyle = wash;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const regionSweep = ctx.createLinearGradient(
+            geometry.regionShiftX,
+            0,
+            geometry.width - geometry.regionShiftX,
+            geometry.height,
+        );
+        regionSweep.addColorStop(0, this.toRgba(palette.regionGlow, palette.regionGlowAlpha));
+        regionSweep.addColorStop(0.5, this.toRgba(palette.patch, palette.patchAlpha * 0.38));
+        regionSweep.addColorStop(1, this.toRgba(palette.shadow, palette.shadowAlpha * 0.4));
+        ctx.fillStyle = regionSweep;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+    }
+
+    private drawTileShaderDirectionalRelief(
+        ctx: CanvasRenderingContext2D,
+        palette: TileShaderPalette,
+        geometry: TileShaderGeometry,
+    ) {
+        const sunlight = this.mixGlowColor(palette.highlight, palette.patch, 0.34);
+        const shadeTint = this.mixGlowColor(palette.shadow, palette.wash, 0.18);
+
+        const lightSweep = ctx.createLinearGradient(
+            geometry.sunX,
+            geometry.sunY,
+            geometry.shadeX,
+            geometry.shadeY,
+        );
+        lightSweep.addColorStop(0, this.toRgba(sunlight, palette.highlightAlpha * 0.92));
+        lightSweep.addColorStop(0.34, this.toRgba(palette.highlight, palette.highlightAlpha * 0.28));
+        lightSweep.addColorStop(0.62, this.toRgba(palette.wash, palette.washAlpha * 0.06));
+        lightSweep.addColorStop(1, this.toRgba(shadeTint, palette.shadowAlpha * 0.7));
+        ctx.fillStyle = lightSweep;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const sunPool = ctx.createRadialGradient(
+            geometry.sunX,
+            geometry.sunY,
+            0,
+            geometry.sunX,
+            geometry.sunY,
+            geometry.sunRadius,
+        );
+        sunPool.addColorStop(0, this.toRgba(sunlight, palette.highlightAlpha * 1.1));
+        sunPool.addColorStop(0.5, this.toRgba(palette.highlight, palette.highlightAlpha * 0.34));
+        sunPool.addColorStop(1, this.toRgba(palette.highlight, 0));
+        ctx.fillStyle = sunPool;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const shadePool = ctx.createRadialGradient(
+            geometry.shadeX,
+            geometry.shadeY,
+            0,
+            geometry.shadeX,
+            geometry.shadeY,
+            geometry.shadeRadius,
+        );
+        shadePool.addColorStop(0, this.toRgba(shadeTint, palette.shadowAlpha * 0.5));
+        shadePool.addColorStop(0.62, this.toRgba(palette.shadow, palette.shadowAlpha * 0.18));
+        shadePool.addColorStop(1, this.toRgba(palette.shadow, 0));
+        ctx.fillStyle = shadePool;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+    }
+
+    private drawTileShaderAccentRelief(
+        ctx: CanvasRenderingContext2D,
+        palette: TileShaderPalette,
+        geometry: TileShaderGeometry,
+    ) {
+        const accent = ctx.createRadialGradient(
+            geometry.accentX,
+            geometry.accentY,
+            0,
+            geometry.accentX,
+            geometry.accentY,
+            geometry.accentRadius,
+        );
+        accent.addColorStop(0, this.toRgba(palette.patch, palette.patchAlpha * 1.42));
+        accent.addColorStop(0.62, this.toRgba(palette.regionGlow, palette.regionGlowAlpha * 0.9));
+        accent.addColorStop(1, this.toRgba(palette.wash, 0));
+        ctx.fillStyle = accent;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const accentTwo = ctx.createRadialGradient(
+            geometry.accentX2,
+            geometry.accentY2,
+            0,
+            geometry.accentX2,
+            geometry.accentY2,
+            geometry.accentRadius2,
+        );
+        accentTwo.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha * 1.45));
+        accentTwo.addColorStop(0.74, this.toRgba(palette.patch, palette.patchAlpha * 0.82));
+        accentTwo.addColorStop(1, this.toRgba(palette.patch, 0));
+        ctx.fillStyle = accentTwo;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const shadowPool = ctx.createRadialGradient(
+            geometry.width * 0.64,
+            geometry.height * 0.72,
+            0,
+            geometry.width * 0.64,
+            geometry.height * 0.72,
+            geometry.width * 0.44,
+        );
+        shadowPool.addColorStop(0, this.toRgba(palette.shadow, palette.shadowAlpha * 0.58));
+        shadowPool.addColorStop(0.7, this.toRgba(palette.shadow, palette.shadowAlpha * 0.22));
+        shadowPool.addColorStop(1, this.toRgba(palette.shadow, 0));
+        ctx.fillStyle = shadowPool;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+    }
+
+    private drawTileShaderEdgeRelief(
+        ctx: CanvasRenderingContext2D,
+        palette: TileShaderPalette,
+        geometry: TileShaderGeometry,
+    ) {
+        const rimLight = ctx.createLinearGradient(
+            geometry.width * 0.08,
+            geometry.height * 0.06,
+            geometry.width * 0.58,
+            geometry.height * 0.56,
+        );
+        rimLight.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha * 0.7));
+        rimLight.addColorStop(0.45, this.toRgba(palette.regionGlow, palette.regionGlowAlpha * 0.34));
+        rimLight.addColorStop(1, this.toRgba(palette.regionGlow, 0));
+        ctx.fillStyle = rimLight;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const edgeShade = ctx.createLinearGradient(
+            geometry.width * 0.18,
+            geometry.height * 0.1,
+            geometry.width * 0.88,
+            geometry.height * 0.92,
+        );
+        edgeShade.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha * 0.56));
+        edgeShade.addColorStop(0.52, this.toRgba(palette.wash, palette.washAlpha * 0.24));
+        edgeShade.addColorStop(1, this.toRgba(palette.shadow, palette.shadowAlpha * 0.96));
+        ctx.fillStyle = edgeShade;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+    }
+
+    private getTileShorelinePalette(terrain: string) {
+        if (terrain === 'dirt' || terrain === 'dessert') {
+            return {
+                outerLand: [175, 136, 80] as GlowColor,
+                innerLand: [201, 163, 100] as GlowColor,
+                sand: [226, 177, 120] as GlowColor,
+            };
+        }
+
+        if (terrain === 'snow') {
+            return {
+                outerLand: [172, 196, 206] as GlowColor,
+                innerLand: [198, 220, 226] as GlowColor,
+                sand: [220, 214, 186] as GlowColor,
+            };
+        }
+
+        if (terrain === 'mountain' || terrain === 'vulcano') {
+            return {
+                outerLand: [116, 130, 112] as GlowColor,
+                innerLand: [148, 158, 126] as GlowColor,
+                sand: [206, 182, 126] as GlowColor,
+            };
+        }
+
+        return {
+            outerLand: [123, 184, 70] as GlowColor,
+            innerLand: [154, 205, 90] as GlowColor,
+            sand: [221, 172, 113] as GlowColor,
+        };
+    }
+
+    private buildTileShorelineCanvas(terrain: string, shorelineSignature: string): HTMLCanvasElement | null {
+        const cacheKey = `v${HexMapService.TILE_SHORELINE_VERSION}:${terrain}:${shorelineSignature}`;
+        const cached = this.getCachedCanvas(this._tileShorelineCache, cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const geometry = this.getTileShaderGeometry(
+            { accentBucket: 0, accentVariant: 0, regionBucket: 0, regionVariant: 0 },
+            this.TILE_DRAW_SIZE,
+            this.TILE_DRAW_SIZE,
+        );
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+
+        const vertices = [
+            { x: geometry.width * 0.5, y: 0 },
+            { x: geometry.width, y: geometry.height * 0.25 },
+            { x: geometry.width, y: geometry.height * 0.75 },
+            { x: geometry.width * 0.5, y: geometry.height },
+            { x: 0, y: geometry.height * 0.75 },
+            { x: 0, y: geometry.height * 0.25 },
+        ];
+        const centerX = geometry.width * 0.5;
+        const centerY = geometry.height * 0.5;
+        const palette = this.getTileShorelinePalette(terrain);
+        const outerLandDepth = geometry.width * 0.22;
+        const innerLandDepth = geometry.width * 0.15;
+        const sandDepth = geometry.width * 0.075;
 
         ctx.save();
-        this.traceHexClipPath(ctx, x, y);
+        this.traceHexClipPath(ctx, this.HEX_SIZE, this.HEX_SIZE);
         ctx.clip();
-        ctx.imageSmoothingEnabled = true;
-        ctx.globalCompositeOperation = 'screen';
-        ctx.lineCap = 'round';
 
-        ctx.strokeStyle = `rgba(248, 253, 255, ${Math.min(0.22, alpha)})`;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(laneX - 7, laneY);
-        ctx.quadraticCurveTo(laneX, laneY - 2.6, laneX + 7, laneY);
-        ctx.stroke();
+        for (const side of SIDE_NAMES) {
+            if (shorelineSignature[TILE_SIDE_INDEX[side]] !== side) {
+                continue;
+            }
 
-        ctx.strokeStyle = `rgba(201, 239, 255, ${Math.min(0.18, alpha * 0.72)})`;
-        ctx.lineWidth = 0.9;
-        ctx.beginPath();
-        ctx.moveTo(secondLaneX - 5, secondLaneY);
-        ctx.quadraticCurveTo(secondLaneX, secondLaneY - 1.8, secondLaneX + 5, secondLaneY);
-        ctx.stroke();
+            const sideIndex = TILE_SIDE_INDEX[side];
+            const edgeAlpha = SHORELINE_EDGE_ALPHA_BY_SIDE[side];
+            const start = vertices[(sideIndex + 5) % 6]!;
+            const end = vertices[sideIndex]!;
+            const midX = (start.x + end.x) * 0.5;
+            const midY = (start.y + end.y) * 0.5;
+            const inwardX = centerX - midX;
+            const inwardY = centerY - midY;
+            const inwardLength = Math.hypot(inwardX, inwardY) || 1;
+            const nx = inwardX / inwardLength;
+            const ny = inwardY / inwardLength;
 
-        if (tileKey === 'water_reflections' || tileKey === 'water_foam') {
-            const shimmer = ctx.createRadialGradient(laneX + 1, laneY - 2, 0, laneX + 1, laneY - 2, 10);
-            shimmer.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.2, alpha * 0.9)})`);
-            shimmer.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = shimmer;
+            const snapPoint = (x: number, y: number) => ({ x: Math.round(x), y: Math.round(y) });
+            const edgeStart = snapPoint(start.x, start.y);
+            const edgeEnd = snapPoint(end.x, end.y);
+            const outerLandStart = snapPoint(start.x + (nx * outerLandDepth), start.y + (ny * outerLandDepth));
+            const outerLandEnd = snapPoint(end.x + (nx * outerLandDepth), end.y + (ny * outerLandDepth));
+            const innerLandStart = snapPoint(start.x + (nx * innerLandDepth), start.y + (ny * innerLandDepth));
+            const innerLandEnd = snapPoint(end.x + (nx * innerLandDepth), end.y + (ny * innerLandDepth));
+            const sandStart = snapPoint(start.x + (nx * sandDepth), start.y + (ny * sandDepth));
+            const sandEnd = snapPoint(end.x + (nx * sandDepth), end.y + (ny * sandDepth));
+
+            ctx.fillStyle = this.toRgba(palette.outerLand, 0.46 * edgeAlpha);
             ctx.beginPath();
-            ctx.arc(laneX + 1, laneY - 2, 10, 0, Math.PI * 2);
+            ctx.moveTo(edgeStart.x, edgeStart.y);
+            ctx.lineTo(edgeEnd.x, edgeEnd.y);
+            ctx.lineTo(outerLandEnd.x, outerLandEnd.y);
+            ctx.lineTo(outerLandStart.x, outerLandStart.y);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = this.toRgba(palette.innerLand, 0.52 * edgeAlpha);
+            ctx.beginPath();
+            ctx.moveTo(edgeStart.x, edgeStart.y);
+            ctx.lineTo(edgeEnd.x, edgeEnd.y);
+            ctx.lineTo(innerLandEnd.x, innerLandEnd.y);
+            ctx.lineTo(innerLandStart.x, innerLandStart.y);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = this.toRgba(palette.sand, 0.88 * edgeAlpha);
+            ctx.beginPath();
+            ctx.moveTo(edgeStart.x, edgeStart.y);
+            ctx.lineTo(edgeEnd.x, edgeEnd.y);
+            ctx.lineTo(sandEnd.x, sandEnd.y);
+            ctx.lineTo(sandStart.x, sandStart.y);
+            ctx.closePath();
             ctx.fill();
         }
 
         ctx.restore();
+        return this.storeCachedCanvas(
+            this._tileShorelineCache,
+            cacheKey,
+            canvas,
+            HexMapService.TILE_SHORELINE_CACHE_MAX,
+        );
     }
 
-    private drawTowncenterAccent(
-        ctx: CanvasRenderingContext2D,
-        x: number,
-        y: number,
-        opacity: number,
-        now: number,
-    ) {
-        const drawX = x - this.HEX_SIZE;
-        const drawY = y - this.HEX_SIZE;
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        const pulse = 0.5 + (0.5 * Math.sin(now / 520));
-
-        ctx.save();
-        this.traceHexClipPath(ctx, x, y);
-        ctx.clip();
-        ctx.imageSmoothingEnabled = true;
-
-        const plazaGlow = ctx.createRadialGradient(x, y + 5, 0, x, y + 5, w * 0.34);
-        plazaGlow.addColorStop(0, `rgba(247, 206, 146, ${opacity * 0.16})`);
-        plazaGlow.addColorStop(0.55, `rgba(181, 117, 64, ${opacity * 0.08})`);
-        plazaGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = plazaGlow;
-        ctx.fillRect(drawX, drawY, w, h);
-
-        ctx.strokeStyle = `rgba(102, 72, 46, ${Math.min(0.28, opacity * 0.28)})`;
-        ctx.lineWidth = 5.8;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(x - 14, y + 14);
-        ctx.quadraticCurveTo(x - 5, y + 6, x, y + 2);
-        ctx.moveTo(x + 14, y + 14);
-        ctx.quadraticCurveTo(x + 5, y + 6, x, y + 2);
-        ctx.moveTo(x, y + 18);
-        ctx.quadraticCurveTo(x, y + 10, x, y + 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = `rgba(230, 198, 152, ${Math.min(0.18, opacity * 0.18)})`;
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(x - 12, y + 14);
-        ctx.quadraticCurveTo(x - 4, y + 7, x, y + 3);
-        ctx.moveTo(x + 12, y + 14);
-        ctx.quadraticCurveTo(x + 4, y + 7, x, y + 3);
-        ctx.stroke();
-
-        ctx.globalCompositeOperation = 'screen';
-        const hearthGlow = ctx.createRadialGradient(x, y + 2, 0, x, y + 2, 15);
-        hearthGlow.addColorStop(0, `rgba(255, 234, 192, ${opacity * (0.16 + (pulse * 0.05))})`);
-        hearthGlow.addColorStop(0.44, `rgba(255, 170, 94, ${opacity * 0.11})`);
-        hearthGlow.addColorStop(1, 'rgba(255, 170, 94, 0)');
-        ctx.fillStyle = hearthGlow;
-        ctx.fillRect(drawX, drawY, w, h);
-
-        const lanternGlowAlpha = Math.min(0.16, opacity * (0.11 + (pulse * 0.04)));
-        this.drawGlow(ctx, x - 10, y - 3, 8, [255, 217, 160], lanternGlowAlpha);
-        this.drawGlow(ctx, x + 10, y - 4, 8, [255, 217, 160], lanternGlowAlpha * 0.92);
-
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = `rgba(106, 63, 34, ${Math.min(0.38, opacity * 0.34)})`;
-        ctx.beginPath();
-        ctx.ellipse(x, y + 4, 2.3, 1.8, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = `rgba(255, 238, 198, ${Math.min(0.34, opacity * (0.22 + (pulse * 0.08)))})`;
-        ctx.beginPath();
-        ctx.arc(x - 0.4, y + 3.4, 1.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    private buildMicroDecoCanvas(t: Tile): HTMLCanvasElement {
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        const g = c.getContext('2d')!;
-        const terrain = t.terrain!;
-        const q = t.q;
-        const r = t.r;
-
-        // Clip to hex
-        g.save();
-        g.beginPath();
-        g.moveTo(0.5 * w, 0);
-        g.lineTo(w, 0.25 * h);
-        g.lineTo(w, 0.75 * h);
-        g.lineTo(0.5 * w, h);
-        g.lineTo(0, 0.75 * h);
-        g.lineTo(0, 0.25 * h);
-        g.closePath();
-        g.clip();
-
-        const count = 6 + (hash32(q, r) % 5);
-        for (let i = 0; i < count; i++) {
-            const px = noise01(q + i * 7, r - i * 3, 601) * w * 0.72 + w * 0.14;
-            const py = noise01(q - i * 5, r + i * 11, 602) * h * 0.72 + h * 0.14;
-
-            if (terrain === 'plains' || terrain === 'grain') {
-                // Grass blades with curve
-                const angle = (noise01(q, r + i, 610) - 0.5) * 0.7;
-                const len = 3.5 + noise01(q + i, r, 611) * 3;
-                g.strokeStyle = terrain === 'grain'
-                    ? `rgba(160, 140, 40, ${0.35 + noise01(i, q, 612) * 0.2})`
-                    : `rgba(30, 80, 20, ${0.3 + noise01(i, q, 612) * 0.2})`;
-                g.lineWidth = 1.0;
-                g.beginPath();
-                g.moveTo(px, py);
-                g.quadraticCurveTo(px + Math.sin(angle) * len * 0.5, py - len * 0.6, px + Math.sin(angle) * len, py - len);
-                g.stroke();
-            } else if (terrain === 'dirt') {
-                // Scattered pebbles with highlight
-                const radius = 1.0 + noise01(i, r, 620) * 1.2;
-                g.fillStyle = `rgba(100, 75, 50, ${0.25 + noise01(q, i, 621) * 0.15})`;
-                g.beginPath();
-                g.ellipse(px, py, radius * 1.2, radius * 0.8, noise01(i, q, 622) * Math.PI, 0, Math.PI * 2);
-                g.fill();
-                g.fillStyle = `rgba(180, 155, 120, ${0.15})`;
-                g.beginPath();
-                g.arc(px - 0.3, py - 0.3, radius * 0.4, 0, Math.PI * 2);
-                g.fill();
-            } else if (terrain === 'mountain') {
-                // Rocky stone chips
-                const radius = 1.2 + noise01(i, r, 630) * 1.5;
-                g.fillStyle = `rgba(60, 60, 70, ${0.22 + noise01(q, i, 631) * 0.15})`;
-                g.beginPath();
-                g.ellipse(px, py, radius, radius * 0.7, noise01(i, q, 632) * Math.PI, 0, Math.PI * 2);
-                g.fill();
-                g.fillStyle = 'rgba(150, 150, 165, 0.12)';
-                g.beginPath();
-                g.arc(px - 0.4, py - 0.4, radius * 0.35, 0, Math.PI * 2);
-                g.fill();
-            } else if (terrain === 'dessert') {
-                // Branching crack lines
-                const len = 4 + noise01(i, q, 640) * 5;
-                const angle = noise01(q, r + i, 641) * Math.PI;
-                g.strokeStyle = `rgba(80, 55, 30, ${0.2 + noise01(i, r, 642) * 0.15})`;
-                g.lineWidth = 0.8;
-                g.beginPath();
-                g.moveTo(px, py);
-                const mx2 = px + Math.cos(angle) * len * 0.5;
-                const my2 = py + Math.sin(angle) * len * 0.5;
-                g.lineTo(mx2, my2);
-                if (noise01(i, q + r, 643) > 0.4) {
-                    const branchAngle = angle + (noise01(i, r, 644) - 0.5) * 1.2;
-                    g.moveTo(mx2, my2);
-                    g.lineTo(mx2 + Math.cos(branchAngle) * len * 0.4, my2 + Math.sin(branchAngle) * len * 0.4);
-                }
-                g.stroke();
-            } else if (terrain === 'water') {
-                // Ripple arcs
-                const arcR = 2.5 + noise01(i, q, 650) * 3;
-                const startAngle = noise01(q, i, 651) * Math.PI * 2;
-                g.strokeStyle = `rgba(180, 220, 255, ${0.35 + noise01(i, r, 652) * 0.1})`;
-                g.lineWidth = 0.7;
-                g.beginPath();
-                g.arc(px, py, arcR, startAngle, startAngle + Math.PI * 0.6);
-                g.stroke();
-            } else if (terrain === 'snow') {
-                // Ice crystal sparkles (cross + diagonal)
-                const sparkSize = 1.2 + noise01(i, q, 660);
-                g.fillStyle = `rgba(210, 235, 255, ${0.25 + noise01(i, r, 661) * 0.15})`;
-                g.fillRect(px - sparkSize, py - 0.4, sparkSize * 2, 0.8);
-                g.fillRect(px - 0.4, py - sparkSize, 0.8, sparkSize * 2);
-                g.save();
-                g.translate(px, py);
-                g.rotate(Math.PI / 4);
-                g.fillRect(-sparkSize * 0.6, -0.3, sparkSize * 1.2, 0.6);
-                g.fillRect(-0.3, -sparkSize * 0.6, 0.6, sparkSize * 1.2);
-                g.restore();
-            } else if (terrain === 'forest') {
-                // Fallen leaves with variation
-                const radius = 1.2 + noise01(i, r, 670);
-                const leafAlpha = 1 + noise01(q, i, 671) * 0.15;
-                g.fillStyle = `rgba(15, 50, 15, ${leafAlpha})`;
-                g.beginPath();
-                g.ellipse(px, py, radius * 1.5, radius * 0.6, noise01(i, q, 672) * Math.PI, 0, Math.PI * 2);
-                g.fill();
-                if (noise01(i, q + r, 673) > 0.5) {
-                    g.fillStyle = `rgba(50, 90, 30, ${leafAlpha * 0.7})`;
-                    g.beginPath();
-                    g.ellipse(px + 2, py + 1, radius, radius * 0.5, noise01(i, q, 674) * Math.PI, 0, Math.PI * 2);
-                    g.fill();
-                }
-            }
+    private buildTileShaderCanvas(tile: Tile, key: string): HTMLCanvasElement | null {
+        const cacheKey = this.getTileShaderCacheKey(tile, key);
+        const cached = this.getCachedCanvas(this._tileShaderCache, cacheKey);
+        if (cached) {
+            return cached;
         }
 
-        g.restore();
-        return c;
+        const variant = this.getTileShaderVariant(tile, key);
+        const palette = this.getTileShaderPalette(tile.terrain ?? 'plains', key, variant);
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        const geometry = this.getTileShaderGeometry(variant, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+        const applyExtendedRelief = !this.shouldUseOverlaySafeTileShader(tile);
+
+        ctx.save();
+        this.traceHexClipPath(ctx, this.HEX_SIZE, this.HEX_SIZE);
+        ctx.clip();
+
+        this.drawTileShaderBackdrop(ctx, palette, geometry);
+        if (applyExtendedRelief) {
+            this.drawTileShaderDirectionalRelief(ctx, palette, geometry);
+            this.drawTileShaderAccentRelief(ctx, palette, geometry);
+            this.drawTileShaderEdgeRelief(ctx, palette, geometry);
+        }
+
+        ctx.restore();
+        return this.storeCachedCanvas(this._tileShaderCache, cacheKey, canvas, HexMapService.TILE_SHADER_CACHE_MAX);
+    }
+
+    private buildShadedTileOverlayCanvas(
+        tile: Tile,
+        baseKey: string,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        drawWidth: number,
+        drawHeight: number,
+    ): HTMLCanvasElement | null {
+        const variant = this.getTileShaderVariant(tile, baseKey);
+        const palette = this.getTileShaderPalette(tile.terrain ?? 'plains', baseKey, variant);
+        const geometry = this.getTileShaderGeometry(variant, drawWidth, drawHeight);
+        const adjustment = this.normalizeTileColorAdjustment(this.getTileColorAdjustment(tile, baseKey, variant));
+        const cacheKey = `v${HexMapService.TILE_OVERLAY_SHADER_VERSION}:${overlayKey}:${drawWidth}x${drawHeight}:${this.getTileShaderCacheKey(tile, baseKey)}:${this.getTileColorAdjustmentKey(adjustment)}`;
+        const cached = this.getCachedCanvas(this._tileOverlayShaderCache, cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = drawWidth;
+        canvas.height = drawHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.filter = this.getTileColorFilter(adjustment);
+        ctx.drawImage(overlayImg, 0, 0, drawWidth, drawHeight);
+        ctx.filter = 'none';
+
+        const harmonySweep = ctx.createLinearGradient(
+            geometry.regionShiftX,
+            0,
+            geometry.width - geometry.regionShiftX,
+            geometry.height,
+        );
+        harmonySweep.addColorStop(0, this.toRgba(palette.regionGlow, 0.12));
+        harmonySweep.addColorStop(0.52, this.toRgba(palette.patch, 0.06));
+        harmonySweep.addColorStop(1, this.toRgba(palette.wash, 0.08));
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = harmonySweep;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        const shadeSweep = ctx.createLinearGradient(
+            geometry.sunX,
+            geometry.sunY,
+            geometry.shadeX,
+            geometry.shadeY,
+        );
+        shadeSweep.addColorStop(0, this.toRgba(palette.highlight, 0.025));
+        shadeSweep.addColorStop(0.58, this.toRgba(palette.wash, 0));
+        shadeSweep.addColorStop(1, this.toRgba(palette.shadow, 0.095));
+        ctx.fillStyle = shadeSweep;
+        ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        this.applyOverlayFeatherMask(ctx, overlayKey, overlayImg, drawWidth, drawHeight);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+
+        return this.storeCachedCanvas(
+            this._tileOverlayShaderCache,
+            cacheKey,
+            canvas,
+            HexMapService.TILE_OVERLAY_SHADER_CACHE_MAX,
+        );
+    }
+
+    private drawTileShaderStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+        if (!state.tile.terrain || state.opacity <= 0.03) {
+            return;
+        }
+
+        const shaderCanvas = this.buildTileShaderCanvas(state.tile, state.key);
+        if (!shaderCanvas) {
+            return;
+        }
+
+        ctx.globalAlpha = state.opacity;
+        ctx.drawImage(shaderCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
+    }
+
+    private drawTileProceduralStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+        const proceduralRoadCanvas = this.getProceduralRoadCanvas(state.tile);
+        if (proceduralRoadCanvas) {
+            ctx.drawImage(proceduralRoadCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
+        }
+    }
+
+    private drawTile(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
+        const state = this.createTileRenderState(t, now, opacity);
+        if (!state) return;
+
+        this.drawTileBaseStage(ctx, state);
+        this.drawTileShaderStage(ctx, state);
+        this.drawTileProceduralStage(ctx, state);
+        ctx.globalAlpha = 1;
     }
 
     private getCachedCanvas(cache: Map<string, HTMLCanvasElement>, key: string) {
@@ -2927,49 +4335,88 @@ export class HexMapService {
         return canvas;
     }
 
+    private getOverlayOpaqueBounds(overlayKey: string, overlayImg: HTMLImageElement) {
+        if (this._tileOverlayAlphaBoundsCache.has(overlayKey)) {
+            return this._tileOverlayAlphaBoundsCache.get(overlayKey) ?? null;
+        }
+
+        const sourceWidth = overlayImg.naturalWidth || overlayImg.width;
+        const sourceHeight = overlayImg.naturalHeight || overlayImg.height;
+        if (!sourceWidth || !sourceHeight) {
+            this._tileOverlayAlphaBoundsCache.set(overlayKey, null);
+            return null;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = sourceWidth;
+        canvas.height = sourceHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+            this._tileOverlayAlphaBoundsCache.set(overlayKey, null);
+            return null;
+        }
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(overlayImg, 0, 0, sourceWidth, sourceHeight);
+        const data = ctx.getImageData(0, 0, sourceWidth, sourceHeight).data;
+
+        let top = -1;
+        let bottom = -1;
+        for (let y = 0; y < sourceHeight; y++) {
+            for (let x = 0; x < sourceWidth; x++) {
+                if (data[((y * sourceWidth) + x) * 4 + 3] > 0) {
+                    if (top === -1) top = y;
+                    bottom = y;
+                    break;
+                }
+            }
+        }
+
+        const bounds = top === -1 || bottom === -1 ? null : { top, bottom };
+        this._tileOverlayAlphaBoundsCache.set(overlayKey, bounds);
+        return bounds;
+    }
+
+    private applyOverlayFeatherMask(
+        ctx: CanvasRenderingContext2D,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        drawWidth: number,
+        drawHeight: number,
+    ) {
+        const bounds = this.getOverlayOpaqueBounds(overlayKey, overlayImg);
+        if (!bounds) {
+            return;
+        }
+
+        const sourceHeight = overlayImg.naturalHeight || overlayImg.height || drawHeight;
+        if (!sourceHeight) {
+            return;
+        }
+
+        const scaleY = drawHeight / sourceHeight;
+        const top = bounds.top * scaleY;
+        const bottom = (bounds.bottom + 1) * scaleY;
+        const opaqueHeight = Math.max(1, bottom - top);
+        const featherPx = Math.max(3, Math.min(12, opaqueHeight * 0.36));
+        const fadeStart = Math.max(top, bottom - featherPx);
+        const span = Math.max(1, bottom - top);
+        const fadeStop = Math.max(0, Math.min(1, (fadeStart - top) / span));
+
+        const mask = ctx.createLinearGradient(0, top, 0, bottom);
+        mask.addColorStop(0, 'rgba(255,255,255,1)');
+        mask.addColorStop(fadeStop, 'rgba(255,255,255,1)');
+        mask.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.fillStyle = mask;
+        ctx.fillRect(0, 0, drawWidth, drawHeight);
+    }
+
     private createTileSizedCanvas() {
         const canvas = document.createElement('canvas');
         canvas.width = this.TILE_DRAW_SIZE;
         canvas.height = this.TILE_DRAW_SIZE;
         return canvas;
-    }
-
-    private getTerrainEdgeBlendPatternKey(t: Tile) {
-        if (!t.terrain || !t.neighbors) return null;
-
-        let hasBlend = false;
-        const neighborPattern = SIDE_NAMES.map((side) => {
-            const neighbor = t.neighbors?.[side];
-            if (!neighbor?.discovered || !neighbor.terrain || neighbor.terrain === t.terrain) {
-                return '-';
-            }
-
-            hasBlend = true;
-            return neighbor.terrain;
-        });
-
-        if (!hasBlend) return null;
-        return `${t.terrain}|${neighborPattern.join('|')}`;
-    }
-
-    private getTerrainEdgeBlendCanvas(t: Tile) {
-        const cacheKey = this.getTerrainEdgeBlendPatternKey(t);
-        if (!cacheKey) return null;
-
-        const cached = this.getCachedCanvas(this._terrainEdgeBlendCache, cacheKey);
-        if (cached) return cached;
-
-        const canvas = this.createTileSizedCanvas();
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-
-        this.drawTerrainEdgeBlend(ctx, t, this.HEX_SIZE, this.HEX_SIZE, 1);
-        return this.storeCachedCanvas(
-            this._terrainEdgeBlendCache,
-            cacheKey,
-            canvas,
-            HexMapService.TERRAIN_EDGE_BLEND_CACHE_MAX,
-        );
     }
 
     private getProceduralRoadCacheKey(tile: Tile) {
@@ -3001,370 +4448,17 @@ export class HexMapService {
             HexMapService.PROCEDURAL_ROAD_CACHE_MAX,
         );
     }
-
-    private getBuildingDecorationCanvas(tile: Tile) {
-        const building = getBuildingDefinitionForTile(tile);
-        const decoration = building?.renderDecoration;
-        if (!decoration) return null;
-
-        const cached = this.getCachedCanvas(this._buildingDecorationCache, decoration);
-        if (cached) return cached;
-
-        const canvas = this.createTileSizedCanvas();
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-
-        switch (decoration) {
-            case 'well':
-                this.drawWellDecoration(ctx, this.HEX_SIZE, this.HEX_SIZE, 1);
-                break;
-            case 'watchtower':
-                this.drawWatchtowerDecoration(ctx, this.HEX_SIZE, this.HEX_SIZE, 1);
-                break;
-            case 'depot':
-                this.drawDepotDecoration(ctx, this.HEX_SIZE, this.HEX_SIZE, 1);
-                break;
-            case 'lumberCamp':
-                this.drawLumberCampDecoration(ctx, this.HEX_SIZE, this.HEX_SIZE, 1);
-                break;
-            case 'granary':
-                this.drawGranaryDecoration(ctx, this.HEX_SIZE, this.HEX_SIZE, 1);
-                break;
-            default:
-                return null;
-        }
-
-        return this.storeCachedCanvas(
-            this._buildingDecorationCache,
-            decoration,
-            canvas,
-            HexMapService.BUILDING_DECORATION_CACHE_MAX,
-        );
-    }
-
-    private drawMicroDecorations(ctx: CanvasRenderingContext2D, t: Tile, x: number, y: number, opacity: number) {
-        if (!t.terrain || t.terrain === 'towncenter' || t.terrain === 'vulcano') return;
-
-        const cacheKey = `${t.q},${t.r}:${t.terrain}`;
-        let decoCanvas = this._microDecoCache.get(cacheKey);
-        if (!decoCanvas) {
-            // LRU eviction
-            if (this._microDecoCache.size >= HexMapService.MICRO_DECO_CACHE_MAX) {
-                const firstKey = this._microDecoCache.keys().next().value;
-                if (firstKey !== undefined) this._microDecoCache.delete(firstKey);
-            }
-            decoCanvas = this.buildMicroDecoCanvas(t);
-            this._microDecoCache.set(cacheKey, decoCanvas);
-        }
-
-        ctx.globalAlpha = opacity * 0.7;
-        ctx.drawImage(decoCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
-        ctx.globalAlpha = opacity;
-    }
-
-    private static readonly EDGE_BLEND_DEPTH = 6;
-    // Side index → two corner indices (hex edges)
-    private static readonly SIDE_CORNER_MAP: Array<[number, number]> = [
-        [5, 0], // a: upper-left → top
-        [0, 1], // b: top → upper-right
-        [1, 2], // c: upper-right → lower-right
-        [2, 3], // d: lower-right → bottom
-        [3, 4], // e: bottom → lower-left
-        [4, 5], // f: lower-left → upper-left
-    ];
-
-    private drawTerrainEdgeBlend(ctx: CanvasRenderingContext2D, t: Tile, x: number, y: number, opacity: number) {
-        if (!t.terrain || !t.neighbors) return;
-
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-        const ox = x - this.HEX_SIZE;
-        const oy = y - this.HEX_SIZE;
-        const corners: Array<[number, number]> = [
-            [ox + 0.5 * w, oy],          // 0: top
-            [ox + w, oy + 0.25 * h],     // 1: upper-right
-            [ox + w, oy + 0.75 * h],     // 2: lower-right
-            [ox + 0.5 * w, oy + h],      // 3: bottom
-            [ox, oy + 0.75 * h],         // 4: lower-left
-            [ox, oy + 0.25 * h],         // 5: upper-left
-        ];
-
-        const sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
-        const depth = HexMapService.EDGE_BLEND_DEPTH;
-
-        for (let i = 0; i < 6; i++) {
-            const side = sides[i]!;
-            const neighbor = t.neighbors[side];
-            if (!neighbor?.discovered || !neighbor.terrain || neighbor.terrain === t.terrain) continue;
-
-            const nColor = (TERRAIN_DEFS as any)[neighbor.terrain]?.color;
-            if (!nColor) continue;
-
-            const mapping = HexMapService.SIDE_CORNER_MAP[i];
-            if (!mapping) continue;
-            const [ci1, ci2] = mapping;
-            const p1 = corners[ci1];
-            const p2 = corners[ci2];
-            if (!p1 || !p2) continue;
-
-            // Midpoint of the edge
-            const mx = (p1[0] + p2[0]) / 2;
-            const my = (p1[1] + p2[1]) / 2;
-            // Edge direction and inward normal
-            const edx = p2[0] - p1[0];
-            const edy = p2[1] - p1[1];
-            const elen = Math.sqrt(edx * edx + edy * edy) || 1;
-            // Inward normal (pointing into this tile's center)
-            const nx = -edy / elen;
-            const ny = edx / elen;
-
-            ctx.save();
-            // Clip to a narrow trapezoid along this edge
-            ctx.beginPath();
-            ctx.moveTo(p1[0], p1[1]);
-            ctx.lineTo(p2[0], p2[1]);
-            ctx.lineTo(p2[0] + nx * depth, p2[1] + ny * depth);
-            ctx.lineTo(p1[0] + nx * depth, p1[1] + ny * depth);
-            ctx.closePath();
-            ctx.clip();
-
-            // Feathered gradient from edge inward
-            const grad = ctx.createLinearGradient(mx, my, mx + nx * depth, my + ny * depth);
-            grad.addColorStop(0, nColor + '1F'); // ~12% alpha
-            grad.addColorStop(0.4, nColor + '0A'); // ~4%
-            grad.addColorStop(1, nColor + '00'); // 0%
-            ctx.globalAlpha = opacity * 0.65;
-            ctx.fillStyle = grad;
-            ctx.fillRect(
-                Math.min(p1[0], p2[0], p1[0] + nx * depth, p2[0] + nx * depth) - 2,
-                Math.min(p1[1], p2[1], p1[1] + ny * depth, p2[1] + ny * depth) - 2,
-                Math.abs(edx) + Math.abs(nx * depth) + 4,
-                Math.abs(edy) + Math.abs(ny * depth) + 4,
-            );
-            ctx.restore();
-        }
-    }
-
-    private drawBuildingDecoration(
-        ctx: CanvasRenderingContext2D,
-        tile: Tile,
-        x: number,
-        y: number,
-        opacity: number,
-    ) {
-        const decorationCanvas = this.getBuildingDecorationCanvas(tile);
-        if (!decorationCanvas) return;
-
-        ctx.globalAlpha = opacity;
-        ctx.drawImage(decorationCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
-    }
-
-    private drawWellDecoration(ctx: CanvasRenderingContext2D, x: number, y: number, opacity: number) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.imageSmoothingEnabled = true;
-
-        const bodyY = y + 3;
-        const stoneGradient = ctx.createLinearGradient(x - 10, bodyY - 8, x + 10, bodyY + 8);
-        stoneGradient.addColorStop(0, '#cbd5e1');
-        stoneGradient.addColorStop(0.55, '#94a3b8');
-        stoneGradient.addColorStop(1, '#64748b');
-        ctx.fillStyle = stoneGradient;
-        ctx.beginPath();
-        ctx.ellipse(x, bodyY, 11, 8, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#0f172a';
-        ctx.beginPath();
-        ctx.ellipse(x, bodyY, 7, 5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        const waterGradient = ctx.createRadialGradient(x, bodyY - 1, 0, x, bodyY - 1, 6);
-        waterGradient.addColorStop(0, '#dbeafe');
-        waterGradient.addColorStop(0.4, '#7dd3fc');
-        waterGradient.addColorStop(1, '#0ea5e9');
-        ctx.fillStyle = waterGradient;
-        ctx.beginPath();
-        ctx.ellipse(x, bodyY - 1, 5.5, 3.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(15, 23, 42, 0.68)';
-        ctx.lineWidth = 1.25;
-        ctx.beginPath();
-        ctx.moveTo(x - 9, y - 14);
-        ctx.lineTo(x - 9, y - 1);
-        ctx.moveTo(x + 9, y - 14);
-        ctx.lineTo(x + 9, y - 1);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(120, 53, 15, 0.92)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x - 11, y - 14);
-        ctx.quadraticCurveTo(x, y - 22, x + 11, y - 14);
-        ctx.stroke();
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.beginPath();
-        ctx.ellipse(x - 1, bodyY - 2.5, 1.3, 0.9, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    private drawWatchtowerDecoration(ctx: CanvasRenderingContext2D, x: number, y: number, opacity: number) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.imageSmoothingEnabled = true;
-
-        ctx.strokeStyle = 'rgba(67, 37, 17, 0.96)';
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(x - 7, y + 10);
-        ctx.lineTo(x - 4, y - 11);
-        ctx.moveTo(x + 7, y + 10);
-        ctx.lineTo(x + 4, y - 11);
-        ctx.moveTo(x - 5, y + 10);
-        ctx.lineTo(x + 5, y + 10);
-        ctx.moveTo(x - 4, y - 4);
-        ctx.lineTo(x + 4, y - 4);
-        ctx.stroke();
-
-        ctx.fillStyle = '#8b5a2b';
-        ctx.fillRect(x - 8, y - 7, 16, 5);
-
-        ctx.fillStyle = '#c2410c';
-        ctx.beginPath();
-        ctx.moveTo(x + 2, y - 20);
-        ctx.lineTo(x + 2, y - 8);
-        ctx.lineTo(x + 12, y - 12);
-        ctx.lineTo(x + 2, y - 15);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x + 2, y - 20);
-        ctx.lineTo(x + 2, y - 8);
-        ctx.stroke();
-
-        ctx.restore();
-    }
-
-    private drawDepotDecoration(ctx: CanvasRenderingContext2D, x: number, y: number, opacity: number) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.imageSmoothingEnabled = true;
-
-        ctx.fillStyle = '#7c2d12';
-        ctx.fillRect(x - 10, y - 2, 20, 10);
-
-        ctx.fillStyle = '#e2e8f0';
-        ctx.beginPath();
-        ctx.moveTo(x - 12, y - 2);
-        ctx.lineTo(x, y - 13);
-        ctx.lineTo(x + 12, y - 2);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(71, 85, 105, 0.75)';
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(x - 9, y + 8);
-        ctx.lineTo(x - 9, y - 2);
-        ctx.moveTo(x + 9, y + 8);
-        ctx.lineTo(x + 9, y - 2);
-        ctx.stroke();
-
-        ctx.fillStyle = '#92400e';
-        ctx.fillRect(x - 15, y + 3, 7, 5);
-        ctx.fillRect(x + 8, y + 1, 6, 7);
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-        ctx.fillRect(x - 14, y + 4, 5, 1);
-        ctx.fillRect(x + 9, y + 2, 4, 1);
-
-        ctx.restore();
-    }
-
-    private drawLumberCampDecoration(ctx: CanvasRenderingContext2D, x: number, y: number, opacity: number) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.imageSmoothingEnabled = true;
-
-        ctx.strokeStyle = 'rgba(92, 51, 23, 0.95)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x - 9, y + 8);
-        ctx.lineTo(x - 3, y + 1);
-        ctx.lineTo(x + 3, y + 8);
-        ctx.moveTo(x + 9, y + 8);
-        ctx.lineTo(x + 3, y + 1);
-        ctx.stroke();
-
-        ctx.fillStyle = '#8b5a2b';
-        for (let i = 0; i < 3; i++) {
-            ctx.beginPath();
-            ctx.roundRect(x - 12 + (i * 6), y - 1 - (i % 2), 10, 4, 2);
-            ctx.fill();
-        }
-
-        ctx.fillStyle = '#f59e0b';
-        ctx.beginPath();
-        ctx.moveTo(x + 2, y - 4);
-        ctx.lineTo(x + 6, y - 8);
-        ctx.lineTo(x + 7, y - 6);
-        ctx.lineTo(x + 4, y - 2);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    private drawGranaryDecoration(ctx: CanvasRenderingContext2D, x: number, y: number, opacity: number) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.imageSmoothingEnabled = true;
-
-        ctx.fillStyle = '#b45309';
-        ctx.fillRect(x - 10, y - 3, 20, 12);
-
-        ctx.fillStyle = '#7c2d12';
-        ctx.beginPath();
-        ctx.moveTo(x - 12, y - 3);
-        ctx.lineTo(x, y - 15);
-        ctx.lineTo(x + 12, y - 3);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = '#fef3c7';
-        ctx.fillRect(x - 3, y + 1, 6, 8);
-
-        ctx.fillStyle = '#facc15';
-        ctx.beginPath();
-        ctx.ellipse(x + 11, y + 4, 4, 6, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(120, 53, 15, 0.72)';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(x + 11, y - 3);
-        ctx.lineTo(x + 11, y + 10);
-        ctx.stroke();
-
-        ctx.restore();
-    }
-
     private _fogTileCanvas: HTMLCanvasElement | null = null;
-    private _microDecoCache = new Map<string, HTMLCanvasElement>();
-    private _terrainEdgeBlendCache = new Map<string, HTMLCanvasElement>();
     private _proceduralRoadCache = new Map<string, HTMLCanvasElement>();
-    private _buildingDecorationCache = new Map<string, HTMLCanvasElement>();
-    private static readonly MICRO_DECO_CACHE_MAX = 300;
-    private static readonly TERRAIN_EDGE_BLEND_CACHE_MAX = 256;
     private static readonly PROCEDURAL_ROAD_CACHE_MAX = 768;
-    private static readonly BUILDING_DECORATION_CACHE_MAX = 16;
+    private static readonly TILE_COLOR_VARIANT_VERSION = 7;
+    private static readonly TILE_COLOR_VARIANT_CACHE_MAX = 2048;
+    private static readonly TILE_SHADER_VERSION = 3;
+    private static readonly TILE_SHADER_CACHE_MAX = 192;
+    private static readonly TILE_SHORELINE_VERSION = 2;
+    private static readonly TILE_SHORELINE_CACHE_MAX = 96;
+    private static readonly TILE_OVERLAY_SHADER_CACHE_MAX = 1024;
+    private static readonly TILE_OVERLAY_SHADER_VERSION = 10;
 
     private ensureFogTileCanvas(): HTMLCanvasElement {
         if (this._fogTileCanvas) return this._fogTileCanvas;
@@ -3447,25 +4541,27 @@ export class HexMapService {
         ctx.globalAlpha = opacity * 0.85 * reachDim;
         ctx.drawImage(fogCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
 
-        // Per-tile variation: subtle shimmer using deterministic offset
-        const shimmerSeed = ((t.q * 374761393) ^ (t.r * 668265263)) >>> 0;
-        const shimmerX = ((shimmerSeed % 100) / 100) * this.TILE_DRAW_SIZE * 0.4 + this.TILE_DRAW_SIZE * 0.2;
-        const shimmerY = (((shimmerSeed >> 8) % 100) / 100) * this.TILE_DRAW_SIZE * 0.4 + this.TILE_DRAW_SIZE * 0.2;
-        const shimmerR = this.TILE_DRAW_SIZE * 0.18 + (((shimmerSeed >> 16) % 50) / 50) * this.TILE_DRAW_SIZE * 0.12;
-        ctx.save();
-        ctx.beginPath();
-        this.drawHexPath(ctx, x, y);
-        ctx.clip();
-        const shimGrad = ctx.createRadialGradient(
-            x - this.HEX_SIZE + shimmerX, y - this.HEX_SIZE + shimmerY, 0,
-            x - this.HEX_SIZE + shimmerX, y - this.HEX_SIZE + shimmerY, shimmerR,
-        );
-        shimGrad.addColorStop(0, 'rgba(160, 180, 220, 0.09)');
-        shimGrad.addColorStop(1, 'rgba(120, 140, 180, 0)');
-        ctx.fillStyle = shimGrad;
-        ctx.globalAlpha = reachDim;
-        ctx.fill();
-        ctx.restore();
+        if (this._currentRenderQuality.enableFogShimmer) {
+            // Per-tile variation: subtle shimmer using deterministic offset
+            const shimmerSeed = ((t.q * 374761393) ^ (t.r * 668265263)) >>> 0;
+            const shimmerX = ((shimmerSeed % 100) / 100) * this.TILE_DRAW_SIZE * 0.4 + this.TILE_DRAW_SIZE * 0.2;
+            const shimmerY = (((shimmerSeed >> 8) % 100) / 100) * this.TILE_DRAW_SIZE * 0.4 + this.TILE_DRAW_SIZE * 0.2;
+            const shimmerR = this.TILE_DRAW_SIZE * 0.18 + (((shimmerSeed >> 16) % 50) / 50) * this.TILE_DRAW_SIZE * 0.12;
+            ctx.save();
+            ctx.beginPath();
+            this.drawHexPath(ctx, x, y);
+            ctx.clip();
+            const shimGrad = ctx.createRadialGradient(
+                x - this.HEX_SIZE + shimmerX, y - this.HEX_SIZE + shimmerY, 0,
+                x - this.HEX_SIZE + shimmerX, y - this.HEX_SIZE + shimmerY, shimmerR,
+            );
+            shimGrad.addColorStop(0, 'rgba(160, 180, 220, 0.09)');
+            shimGrad.addColorStop(1, 'rgba(120, 140, 180, 0)');
+            ctx.fillStyle = shimGrad;
+            ctx.globalAlpha = reachDim;
+            ctx.fill();
+            ctx.restore();
+        }
 
         // Distance label with glow
         const centerDist = getDistanceToNearestTowncenter(t.q, t.r);
@@ -3489,7 +4585,7 @@ export class HexMapService {
             for (const ov of overlayRecords) {
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.img, ov.x, ov.y, ov.width, ov.height);
+                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
             }
             ctx.globalAlpha = 1;
             return;
@@ -3595,7 +4691,7 @@ export class HexMapService {
                 const {ov} = layer;
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.img, ov.x, ov.y, ov.width, ov.height);
+                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
                 continue;
             }
             const { hero: h, img, pos, interp, destX, destY, opacity, frameIndex, animRow } = layer.rec;
@@ -3627,7 +4723,7 @@ export class HexMapService {
 
             const selected = (selectedHeroId.value === h.id);
             const hovered = hoveredHero && hoveredHero.id === h.id;
-            if (selected || hovered) {
+            if (selected || (this._currentRenderQuality.enableHeroAuras && hovered)) {
                 this.drawHeroSelectionAura(ctx, interp, pos, opacity, selected, now);
             }
 
@@ -3817,74 +4913,6 @@ export class HexMapService {
         }
         this._maskedImages = canvasCache;
         this._imagesLoaded = true;
-    }
-
-    private buildTilePolishOverlay(): HTMLCanvasElement {
-        const c = document.createElement('canvas');
-        c.width = this.TILE_DRAW_SIZE;
-        c.height = this.TILE_DRAW_SIZE;
-        const g = c.getContext('2d')!;
-        const w = this.TILE_DRAW_SIZE;
-        const h = this.TILE_DRAW_SIZE;
-
-        // Hex corner coordinates
-        const corners: Array<[number, number]> = [
-            [0.5 * w, 0],          // 0: top
-            [w, 0.25 * h],         // 1: upper-right
-            [w, 0.75 * h],         // 2: lower-right
-            [0.5 * w, h],          // 3: bottom
-            [0, 0.75 * h],         // 4: lower-left
-            [0, 0.25 * h],         // 5: upper-left
-        ];
-
-        g.save();
-        g.beginPath();
-        g.moveTo(corners[0]![0], corners[0]![1]);
-        for (let i = 1; i < 6; i++) g.lineTo(corners[i]![0], corners[i]![1]);
-        g.closePath();
-        g.clip();
-
-        // Ambient lighting: warm top-left to cool bottom-right
-        const ambient = g.createLinearGradient(0, 0, w, h);
-        ambient.addColorStop(0, 'rgba(255, 248, 228, 0.16)');
-        ambient.addColorStop(0.35, 'rgba(255, 255, 255, 0.04)');
-        ambient.addColorStop(0.65, 'rgba(20, 24, 35, 0.06)');
-        ambient.addColorStop(1, 'rgba(12, 16, 24, 0.24)');
-        g.fillStyle = ambient;
-        g.fillRect(0, 0, w, h);
-
-        // Top-left specular highlight
-        const highlight = g.createRadialGradient(w * 0.22, h * 0.14, 0, w * 0.22, h * 0.14, w * 0.44);
-        highlight.addColorStop(0, 'rgba(255,255,255,0.20)');
-        highlight.addColorStop(0.5, 'rgba(255,252,240,0.06)');
-        highlight.addColorStop(1, 'rgba(255,255,255,0)');
-        g.fillStyle = highlight;
-        g.fillRect(0, 0, w, h);
-
-        // Bottom-right shadow vignette
-        const vignette = g.createRadialGradient(w * 0.74, h * 0.84, 0, w * 0.74, h * 0.84, w * 0.5);
-        vignette.addColorStop(0, 'rgba(16,14,18,0.2)');
-        vignette.addColorStop(0.6, 'rgba(16,14,18,0.08)');
-        vignette.addColorStop(1, 'rgba(16,14,18,0)');
-        g.fillStyle = vignette;
-        g.fillRect(0, 0, w, h);
-
-        g.restore();
-
-        // Subtle hex border
-        g.strokeStyle = 'rgba(90, 110, 145, 0.25)';
-        g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(0.5 * w, 0.5);
-        g.lineTo(w - 0.5, 0.25 * h);
-        g.lineTo(w - 0.5, 0.75 * h);
-        g.lineTo(0.5 * w, h - 0.5);
-        g.lineTo(0.5, 0.75 * h);
-        g.lineTo(0.5, 0.25 * h);
-        g.closePath();
-        g.stroke();
-
-        return c;
     }
 
     private buildHeroMasks(img: HTMLImageElement, avatar: string) {

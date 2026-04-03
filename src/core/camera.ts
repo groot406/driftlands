@@ -324,11 +324,18 @@ export function isKeyboardNavigating(): boolean {
     return heldKeys.size > 0;
 }
 
+export function isCameraMoving(): boolean {
+    if (dragging || heldKeys.size > 0) return true;
+    if (Math.hypot(camera.targetQ - camera.q, camera.targetR - camera.r) > 0.05) return true;
+    return Math.hypot(camera.screenVelocityX, camera.screenVelocityY) > 24;
+}
+
 export function keyDown(e: KeyboardEvent) {
     if (isPaused()) return; // suppress movement key capture while paused
     if (isKeyboardBlocked.value) return; // don't capture keys when any modal is blocking input
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) {
-        heldKeys.add(e.key);
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(key)) {
+        heldKeys.add(key);
         e.preventDefault();
     }
 }
@@ -336,7 +343,8 @@ export function keyDown(e: KeyboardEvent) {
 export function keyUp(e: KeyboardEvent) {
     if (isPaused()) return; // suppress release processing while paused
     if (isKeyboardBlocked.value) return; // don't process key releases when any modal is blocking input
-    if (heldKeys.delete(e.key)) e.preventDefault();
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (heldKeys.delete(key)) e.preventDefault();
 }
 
 // Animation loop

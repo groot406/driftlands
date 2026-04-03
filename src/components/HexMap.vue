@@ -37,6 +37,7 @@ import {
   createPointerHandlers,
   dragged,
   dragging,
+  isCameraMoving,
   isKeyboardNavigating,
   keyDown,
   keyUp,
@@ -76,8 +77,7 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
 const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
-const pathPreviewHeroId = ref<string | null>(null);
-const pathPreviewTargetKey = ref<string | null>(null);
+const pathPreviewState = shallowRef<{ heroId: string; targetKey: string; sourceKey: string } | null>(null);
 
 const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
@@ -127,6 +127,9 @@ function onOrientationChange() {
 let rafId: number | null = null;
 let lastClickTime = 0;
 let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mobile short taps
+let lastPointerClient: { x: number; y: number } | null = null;
+let pendingPathPreviewUpdate = false;
+let lastPathPreviewComputeMs = 0;
 
 // Cap canvas rendering to the target FPS while movement simulation stays on real time.
 let lastDrawTime = 0;
@@ -135,18 +138,45 @@ const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
 function clearPathPreview() {
   pathCoords.value = [];
-  pathPreviewHeroId.value = null;
-  pathPreviewTargetKey.value = null;
+  pathPreviewState.value = null;
+  pendingPathPreviewUpdate = false;
+}
+
+function getTileKey(tile: Tile) {
+  return `${tile.q},${tile.r}`;
+}
+
+function getPreviewSourceKey(hero: Hero) {
+  return `${hero.q},${hero.r}:${hero.movement ? 'moving' : 'idle'}`;
+}
+
+function hasMatchingPathPreview(hero: Hero, tile: Tile) {
+  return pathPreviewState.value?.heroId === hero.id
+    && pathPreviewState.value.targetKey === getTileKey(tile)
+    && pathPreviewState.value.sourceKey === getPreviewSourceKey(hero);
+}
+
+function setPathPreview(path: { q: number; r: number }[], hero: Hero, tile: Tile, nowMs: number = Date.now()) {
+  pathCoords.value = path;
+  pathPreviewState.value = {
+    heroId: hero.id,
+    targetKey: getTileKey(tile),
+    sourceKey: getPreviewSourceKey(hero),
+  };
+  pendingPathPreviewUpdate = false;
+  lastPathPreviewComputeMs = nowMs;
 }
 
 function handlePointerMoveEvent(ev: Event) {
   const pointerEvent = ev as PointerEvent;
+  lastPointerClient = { x: pointerEvent.clientX, y: pointerEvent.clientY };
   pointerMove(pointerEvent);
   updateHover(pointerEvent);
 }
 
 function handlePointerUpEvent(ev: Event) {
   const pointerEvent = ev as PointerEvent;
+  lastPointerClient = { x: pointerEvent.clientX, y: pointerEvent.clientY };
   pointerUp();
   handleClick(pointerEvent);
   if (!showTaskMenu.value) updateHover(pointerEvent);
@@ -158,6 +188,10 @@ function handlePointerCancelEvent() {
 
 function handlePointerLeaveEvent() {
   pointerUp();
+  lastPointerClient = null;
+  hoveredTile.value = null;
+  hoveredHero.value = null;
+  clearPathPreview();
 }
 
 function animationLoop() {
@@ -165,6 +199,7 @@ function animationLoop() {
   const effectNowMs = sampleGameFeelTime(movementNowMs);
   const deltaTime = movementNowMs - lastDrawTime;
   const hitStopActive = isHitStopActive(movementNowMs);
+  const cameraMoving = isCameraMoving();
 
   // Movement must stay on wall-clock time; hit-stop only affects visual effects.
   updateHeroMovements(movementNowMs);
@@ -173,18 +208,12 @@ function animationLoop() {
   if (deltaTime >= FRAME_INTERVAL) {
     lastDrawTime = movementNowMs;
 
-    if (!hitStopActive && isKeyboardNavigating()) {
-      if (hoveredTile.value) hoveredTile.value = null;
-      if (pathCoords.value.length) clearPathPreview();
-    } else if (!hitStopActive && selectedHeroId.value && hoveredTile.value) {
-      const selectedHero = getSelectedHero();
-      if (selectedHero && canControlHero(selectedHero.id, currentPlayerId.value)) {
-        pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
-        pathPreviewHeroId.value = selectedHero.id;
-        pathPreviewTargetKey.value = `${hoveredTile.value.q},${hoveredTile.value.r}`;
-      } else {
-        clearPathPreview();
-      }
+    if (!hitStopActive && lastPointerClient && !showTaskMenu.value && (isKeyboardNavigating() || cameraMoving)) {
+      updateHoverAt(lastPointerClient.x, lastPointerClient.y);
+    }
+
+    if (!hitStopActive) {
+      updatePath(false, movementNowMs);
     }
 
     service.draw({
@@ -211,16 +240,38 @@ function animationLoop() {
   rafId = requestAnimationFrame(animationLoop);
 }
 
-function updatePath() {
+function getPathPreviewThrottleMs(hero: Hero, tile: Tile) {
+  const distance = pathService.axialDistance(hero.q, hero.r, tile.q, tile.r);
+  if (distance >= 34) return 90;
+  if (distance >= 22) return 56;
+  if (distance >= 12) return 28;
+  return 0;
+}
+
+function updatePath(force = false, nowMs: number = Date.now()) {
   const hero = getSelectedHero();
   if (!hero || !canControlHero(hero.id, currentPlayerId.value)) {
     clearPathPreview();
     return;
   }
 
-  pathCoords.value = service.updatePath(selectedHeroId.value, hoveredTile.value);
-  pathPreviewHeroId.value = hero.id;
-  pathPreviewTargetKey.value = hoveredTile.value ? `${hoveredTile.value.q},${hoveredTile.value.r}` : null;
+  if (!hoveredTile.value) {
+    clearPathPreview();
+    return;
+  }
+
+  if (!force) {
+    if (!pendingPathPreviewUpdate && hasMatchingPathPreview(hero, hoveredTile.value)) {
+      return;
+    }
+
+    const throttleMs = getPathPreviewThrottleMs(hero, hoveredTile.value);
+    if ((nowMs - lastPathPreviewComputeMs) < throttleMs) {
+      return;
+    }
+  }
+
+  setPathPreview(pathService.updatePath(hero, hoveredTile.value), hero, hoveredTile.value, nowMs);
 }
 
 function closeTownCenterPanel() {
@@ -275,12 +326,11 @@ function handleClick(e: PointerEvent) {
     const isCarrying = selHero && selHero.carryingPayload && selHero.carryingPayload.amount > 0;
 
     if (selHero && isCarrying && !isWorking) {
-      const path = service.updatePath(selHero.id, tile).slice();
+      const path = pathService.updatePath(selHero, tile).slice();
       if (path.length > 0) {
-        pathCoords.value = path;
-        pathPreviewHeroId.value = selHero.id;
-        pathPreviewTargetKey.value = `${tile.q},${tile.r}`;
+        setPathPreview(path, selHero, tile);
         requestHeroMovement(selHero.id, path, tile);
+        clearPathPreview();
         return;
       }
     }
@@ -322,16 +372,14 @@ function handleClick(e: PointerEvent) {
       return;
     }
 
-    const path = service.updatePath(selHero.id, tile).slice();
-    pathCoords.value = path;
-    pathPreviewHeroId.value = selHero.id;
-    pathPreviewTargetKey.value = `${tile.q},${tile.r}`;
+    const path = pathService.updatePath(selHero, tile).slice();
+    setPathPreview(path, selHero, tile);
 
     if (path.length) {
       requestHeroMovement(selHero.id, path, tile, 'explore');
+      clearPathPreview();
+      return;
     }
-
-    updatePath();
     return;
   }
 
@@ -357,10 +405,7 @@ function handleClick(e: PointerEvent) {
     closeWindow(WINDOW_IDS.TASK_MENU);
   }
 
-  const previewKey = `${tile.q},${tile.r}`;
-  const canReusePreviewPath =
-    pathPreviewHeroId.value === selHero.id &&
-    pathPreviewTargetKey.value === previewKey &&
+  const canReusePreviewPath = hasMatchingPathPreview(selHero, tile) &&
     pathCoords.value.length > 0 &&
     pathCoords.value[pathCoords.value.length - 1]?.q === tile.q &&
     pathCoords.value[pathCoords.value.length - 1]?.r === tile.r;
@@ -371,8 +416,11 @@ function handleClick(e: PointerEvent) {
 
   if (path.length) {
     requestHeroMovement(selHero.id, path, tile, !tile.discovered ? 'explore' : undefined);
+    clearPathPreview();
+    return;
   }
-  updatePath();
+
+  updatePath(true);
 }
 
 function handleContextMenu(e: MouseEvent) {
@@ -391,27 +439,35 @@ function handleContextMenu(e: MouseEvent) {
   sendCoopPing(kind, { q: tile.q, r: tile.r }, heroId);
 }
 
-function updateHover(e: PointerEvent) {
-  if (isPaused() || dragging || showTaskMenu.value) {
+function updateHoverAt(clientX: number, clientY: number) {
+  if (isPaused() || showTaskMenu.value) {
     hoveredTile.value = null;
     hoveredHero.value = null;
     clearPathPreview();
     return;
   }
-  const hero = service.pickHero(e.clientX, e.clientY);
+
+  const hero = service.pickHero(clientX, clientY);
   if (hero) {
     hoveredHero.value = hero;
     hoveredTile.value = null;
     clearPathPreview();
     return;
   }
+
   hoveredHero.value = null;
-  const tile = service.pickTile(e.clientX, e.clientY);
+  const tile = service.pickTile(clientX, clientY);
   if (tile !== hoveredTile.value) hoveredTile.value = tile;
-  updatePath();
 }
 
-watch(selectedHeroId, () => updatePath());
+function updateHover(e: PointerEvent) {
+  updateHoverAt(e.clientX, e.clientY);
+}
+
+watch(selectedHeroId, () => {
+  pendingPathPreviewUpdate = true;
+  updatePath(true);
+});
 
 // Adjust facing: look towards first step in current path preview (if any), rather than final hovered tile.
 watch([pathCoords, selectedHeroId], () => {
@@ -548,9 +604,18 @@ function computeHoveredReach(tile: Tile | null) {
   }
 }
 
-watch(hoveredTile, (tile) => {
+watch(hoveredTile, (tile, previousTile) => {
   recomputeGlobalReach();
   computeHoveredReach(tile);
+
+  if (!tile) {
+    clearPathPreview();
+    return;
+  }
+
+  if (!previousTile || previousTile.q !== tile.q || previousTile.r !== tile.r) {
+    pendingPathPreviewUpdate = true;
+  }
 });
 
 watch(populationVersion, () => {

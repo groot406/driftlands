@@ -1,5 +1,4 @@
 import {axialKey, tileIndex} from './world';
-import {heroes} from '../store/heroStore';
 import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import { axialDistanceCoords } from '../shared/game/hex';
@@ -8,6 +7,69 @@ import { getTileMoveCost, isEdgeBlocked, isTileWalkable } from '../shared/game/n
 export interface PathCoord {
     q: number;
     r: number;
+}
+
+interface PathNode {
+    key: string;
+    q: number;
+    r: number;
+    g: number;
+    f: number;
+}
+
+class MinHeap<T> {
+    private items: T[] = [];
+
+    constructor(private readonly compare: (a: T, b: T) => number) {}
+
+    get size() {
+        return this.items.length;
+    }
+
+    push(value: T) {
+        this.items.push(value);
+        this.bubbleUp(this.items.length - 1);
+    }
+
+    pop(): T | undefined {
+        if (this.items.length === 0) return undefined;
+        const top = this.items[0]!;
+        const tail = this.items.pop()!;
+        if (this.items.length > 0) {
+            this.items[0] = tail;
+            this.bubbleDown(0);
+        }
+        return top;
+    }
+
+    private bubbleUp(index: number) {
+        while (index > 0) {
+            const parentIndex = Math.floor((index - 1) / 2);
+            if (this.compare(this.items[index]!, this.items[parentIndex]!) >= 0) break;
+            [this.items[index], this.items[parentIndex]] = [this.items[parentIndex]!, this.items[index]!];
+            index = parentIndex;
+        }
+    }
+
+    private bubbleDown(index: number) {
+        const { length } = this.items;
+        while (true) {
+            const left = (index * 2) + 1;
+            const right = left + 1;
+            let smallest = index;
+
+            if (left < length && this.compare(this.items[left]!, this.items[smallest]!) < 0) {
+                smallest = left;
+            }
+            if (right < length && this.compare(this.items[right]!, this.items[smallest]!) < 0) {
+                smallest = right;
+            }
+            if (smallest === index) break;
+
+            [this.items[index], this.items[smallest]] = [this.items[smallest]!, this.items[index]!];
+            index = smallest;
+        }
+    }
 }
 
 const BASE_NODE_BUDGET = 7000;
@@ -24,14 +86,12 @@ export class PathService {
     private _lastPathKey: string = '';
     private _lastPath: { q: number; r: number }[] = [];
 
-    updatePath(selectedId: string | null, hoveredTile: Tile | null): PathCoord[] {
-        if (!selectedId || !hoveredTile) return [];
-        const hero = heroes.find(h => h.id === selectedId);
-        if (!hero) return [];
+    updatePath(hero: Hero | null, hoveredTile: Tile | null): PathCoord[] {
+        if (!hero || !hoveredTile) return [];
         if (!this.isHeroIdle(hero)) return [];
 
         // Build cache key from hero id/coords and hovered coords
-        const key = `${selectedId}:${hero.q},${hero.r}->${hoveredTile.q},${hoveredTile.r}:${hoveredTile.discovered ? hoveredTile.terrain ?? 'discovered' : 'undiscovered'}:${hoveredTile.variant ?? ''}`;
+        const key = `${hero.id}:${hero.q},${hero.r}->${hoveredTile.q},${hoveredTile.r}:${hoveredTile.discovered ? hoveredTile.terrain ?? 'discovered' : 'undiscovered'}:${hoveredTile.variant ?? ''}`;
         if (this._lastPathKey === key) {
             return this._lastPath;
         }
@@ -49,14 +109,6 @@ export class PathService {
         if (directDistance === 0) return [];
         const searchProfile = this.buildSearchProfile(directDistance);
 
-        interface PathNode {
-            q: number;
-            r: number;
-            g: number; // accumulated movement cost
-            f: number; // g + heuristic
-            parent?: PathNode
-        }
-
         const costFor = (q: number, r: number): number => {
             return getTileMoveCost(tileIndex[axialKey(q, r)] ?? null);
         };
@@ -66,37 +118,35 @@ export class PathService {
             return this.axialDistance(q, r, goalQ, goalR) * 0.1;
         };
 
-        const open: PathNode[] = [];
-        const openMap = new Map<string, PathNode>();
+        const open = new MinHeap<PathNode>((a, b) => {
+            if (a.f !== b.f) return a.f - b.f;
+            return a.g - b.g;
+        });
+        const bestCosts = new Map<string, number>();
+        const parents = new Map<string, string | null>();
+        const coords = new Map<string, PathCoord>();
         const closed = new Set<string>();
-        const startNode: PathNode = {q: startQ, r: startR, g: 0, f: heuristic(startQ, startR)};
+        const startKey = axialKey(startQ, startR);
+        const startNode: PathNode = { key: startKey, q: startQ, r: startR, g: 0, f: heuristic(startQ, startR) };
         open.push(startNode);
-        openMap.set(axialKey(startQ, startR), startNode);
+        bestCosts.set(startKey, 0);
+        parents.set(startKey, null);
+        coords.set(startKey, { q: startQ, r: startR });
         let iterations = 0;
-        while (open.length && iterations < searchProfile.maxNodes) {
+        while (open.size && iterations < searchProfile.maxNodes) {
             iterations++;
-            let bestIndex = 0;
-            let best = open[0]!;
-            for (let i = 1; i < open.length; i++) {
-                if (open[i]!.f < best.f) {
-                    best = open[i]!;
-                    bestIndex = i;
-                }
+            const current = open.pop()!;
+            const bestKnownCost = bestCosts.get(current.key);
+            if (bestKnownCost === undefined || current.g !== bestKnownCost || closed.has(current.key)) {
+                continue;
             }
-            const current = best;
-            open.splice(bestIndex, 1);
-            openMap.delete(axialKey(current.q, current.r));
-            closed.add(axialKey(current.q, current.r));
+
             if (current.q === goalQ && current.r === goalR) {
-                const rev: PathCoord[] = [];
-                let n: PathNode | undefined = current;
-                while (n && !(n.q === startQ && n.r === startR)) {
-                    rev.push({q: n.q, r: n.r});
-                    n = n.parent;
-                }
-                rev.reverse();
-                return rev;
+                return this.reconstructPath(current.key, startKey, parents, coords);
             }
+
+            closed.add(current.key);
+            const currTile = tileIndex[current.key];
             for (let i = 0; i < this.AXIAL_DELTAS.length; i++) {
                 const [dq, dr] = this.AXIAL_DELTAS[i]!;
                 const side = this.SIDE_NAMES[i]!;
@@ -106,28 +156,23 @@ export class PathService {
                 if (closed.has(key)) continue;
                 if (!this.isWithinSearchWindow(nq, nr, startQ, startR, goalQ, goalR, searchProfile.maxRange)) continue;
 
-                const currTile = tileIndex[axialKey(current.q, current.r)];
                 const nextTile = tileIndex[key];
                 if (isEdgeBlocked(currTile, nextTile, side)) continue;
                 if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
                 const stepCost = costFor(nq, nr);
                 const tentativeG = current.g + stepCost;
-                let node = openMap.get(key);
-                if (!node) {
-                    node = {
-                        q: nq,
-                        r: nr,
-                        g: tentativeG,
-                        f: tentativeG + heuristic(nq, nr),
-                        parent: current
-                    };
-                    open.push(node);
-                    openMap.set(key, node);
-                } else if (tentativeG < node.g) {
-                    node.g = tentativeG;
-                    node.f = tentativeG + heuristic(nq, nr);
-                    node.parent = current;
-                }
+                if (tentativeG >= (bestCosts.get(key) ?? Number.POSITIVE_INFINITY)) continue;
+
+                bestCosts.set(key, tentativeG);
+                parents.set(key, current.key);
+                coords.set(key, { q: nq, r: nr });
+                open.push({
+                    key,
+                    q: nq,
+                    r: nr,
+                    g: tentativeG,
+                    f: tentativeG + heuristic(nq, nr),
+                });
             }
         }
         return [];
@@ -175,5 +220,25 @@ export class PathService {
     ) {
         return this.axialDistance(startQ, startR, q, r) <= maxRange
             && this.axialDistance(goalQ, goalR, q, r) <= maxRange;
+    }
+
+    private reconstructPath(
+        goalKey: string,
+        startKey: string,
+        parents: Map<string, string | null>,
+        coords: Map<string, PathCoord>,
+    ) {
+        const reversed: PathCoord[] = [];
+        let currentKey: string | null = goalKey;
+
+        while (currentKey && currentKey !== startKey) {
+            const coord = coords.get(currentKey);
+            if (!coord) return [];
+            reversed.push({ q: coord.q, r: coord.r });
+            currentKey = parents.get(currentKey) ?? null;
+        }
+
+        reversed.reverse();
+        return reversed;
     }
 }
