@@ -1,9 +1,17 @@
 import { terrainPositions } from '../core/terrainRegistry';
-import { variantPositions } from '../core/terrainRegistry';
 import { tileIndex } from '../core/world';
 import { axialDistanceCoords } from '../shared/game/hex';
 import type { Tile } from '../core/types/Tile';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
+import {
+    countActiveHouseTiles,
+    type PressureState,
+    type SettlementSupportCounts,
+    computeControlledTileIds,
+    computeControlledTileIdsForTC,
+    computeControlledTileIdsForWatchtower,
+    getSettlementSupportSnapshot,
+} from './settlementSupportStore';
 
 // --- Constants ---
 
@@ -12,12 +20,6 @@ export const TC_BASE_POPULATION = 10;
 
 /** Additional population provided by each house within a town center's reach. */
 export const HOUSE_POPULATION_BONUS = 2;
-
-/** Reach radius (in hex distance) from a town center. */
-export const TC_REACH_RADIUS = 8;
-
-/** Additional reach radius (in hex distance) from a watchtower position. */
-export const WATCHTOWER_REACH_EXTENSION = 5;
 
 /** Food consumed per settler per minute. */
 export const FOOD_PER_SETTLER_PER_MINUTE = 1;
@@ -31,7 +33,6 @@ export const MIN_POPULATION = 1;
 // --- House variant keys (must match terrainDefs) ---
 
 export const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house'] as const;
-const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'] as const;
 
 // --- State ---
 
@@ -46,6 +47,16 @@ export interface PopulationState {
     hungerMs: number;
     /** Timestamp of last food consumption tick. */
     lastFoodTickMs: number;
+    /** Total support slots available for non-towncenter tiles. */
+    supportCapacity: number;
+    /** Active non-towncenter tile count. */
+    activeTileCount: number;
+    /** Inactive non-towncenter tile count. */
+    inactiveTileCount: number;
+    /** Current colony pressure readout. */
+    pressureState: PressureState;
+    /** Per-settlement support counts. */
+    settlements: SettlementSupportCounts[];
 }
 
 const state: PopulationState = {
@@ -54,6 +65,11 @@ const state: PopulationState = {
     beds: 0,
     hungerMs: 0,
     lastFoodTickMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
 };
 
 export function getPopulationState(): Readonly<PopulationState> {
@@ -66,6 +82,11 @@ export function resetPopulationState() {
     state.beds = 0;
     state.hungerMs = 0;
     state.lastFoodTickMs = 0;
+    state.supportCapacity = 0;
+    state.activeTileCount = 0;
+    state.inactiveTileCount = 0;
+    state.pressureState = 'stable';
+    state.settlements = [];
 }
 
 // --- Reach Calculation ---
@@ -75,7 +96,7 @@ export function resetPopulationState() {
  * including watchtower extensions.
  */
 export function computeReachTileIds(): Set<string> {
-    return computeReachTileIdsFromTownCenters(getTownCenters());
+    return computeControlledTileIds();
 }
 
 /**
@@ -83,7 +104,7 @@ export function computeReachTileIds(): Set<string> {
  * including watchtower extensions for that TC.
  */
 export function computeReachTileIdsForTC(tcQ: number, tcR: number): Set<string> {
-    return computeReachTileIdsFromTownCenters([{ q: tcQ, r: tcR }]);
+    return computeControlledTileIdsForTC(tcQ, tcR);
 }
 
 /**
@@ -112,12 +133,7 @@ export function findNearestTownCenterForWatchtower(wtQ: number, wtR: number): Ti
  * Returns the full merged reach of the town center that powers this watchtower.
  */
 export function computeReachTileIdsForWatchtower(wtQ: number, wtR: number): Set<string> {
-    const townCenter = findNearestTownCenterForWatchtower(wtQ, wtR);
-    if (!townCenter) {
-        return new Set<string>();
-    }
-
-    return computeReachTileIdsForTC(townCenter.q, townCenter.r);
+    return computeControlledTileIdsForWatchtower(wtQ, wtR);
 }
 
 /**
@@ -137,21 +153,7 @@ export function isTileWithinReach(q: number, r: number): boolean {
 export function recalculatePopulationLimits(): { max: number; beds: number } {
     const tcCount = terrainPositions.towncenter.size;
     const maxPop = tcCount * TC_BASE_POPULATION;
-
-    // Count houses within reach of any TC
-    const globalReach = computeReachTileIds();
-    let houseCount = 0;
-    for (const variantKey of HOUSE_VARIANT_KEYS) {
-        const positions = variantPositions[variantKey];
-        if (!positions) continue;
-        for (const tileId of positions) {
-            if (globalReach.has(tileId)) {
-                houseCount++;
-            }
-        }
-    }
-
-    const beds = houseCount * HOUSE_POPULATION_BONUS;
+    const beds = countActiveHouseTiles() * HOUSE_POPULATION_BONUS;
 
     state.max = maxPop;
     state.beds = beds;
@@ -171,7 +173,7 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
  */
 export function onBuildingCompleted() {
     recalculatePopulationLimits();
-    broadcastPopulationUpdate();
+    broadcastPopulationState();
 }
 
 /**
@@ -187,7 +189,7 @@ export function growPopulation(): boolean {
     if (state.current >= state.beds) return false;
 
     state.current++;
-    broadcastPopulationUpdate();
+    broadcastPopulationState();
     return true;
 }
 
@@ -200,7 +202,7 @@ export function killSettler(): boolean {
     }
 
     state.current--;
-    broadcastPopulationUpdate();
+    broadcastPopulationState();
     return true;
 }
 
@@ -212,6 +214,14 @@ export function setHungerMs(ms: number) {
     state.hungerMs = ms;
 }
 
+export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSupportSnapshot>) {
+    state.supportCapacity = snapshot.supportCapacity;
+    state.activeTileCount = snapshot.activeTileCount;
+    state.inactiveTileCount = snapshot.inactiveTileCount;
+    state.pressureState = snapshot.pressureState;
+    state.settlements = snapshot.settlements.map((settlement) => ({ ...settlement }));
+}
+
 /**
  * Initialize population for a new game (after world generation).
  * Starts at MIN_POPULATION — growth happens passively on food ticks.
@@ -221,7 +231,7 @@ export function initializePopulation() {
     state.current = MIN_POPULATION;
     state.hungerMs = 0;
     state.lastFoodTickMs = Date.now();
-    broadcastPopulationUpdate();
+    broadcastPopulationState();
 }
 
 // --- Snapshot for protocol ---
@@ -231,6 +241,11 @@ export interface PopulationSnapshot {
     max: number;
     beds: number;
     hungerMs: number;
+    supportCapacity: number;
+    activeTileCount: number;
+    inactiveTileCount: number;
+    pressureState: PressureState;
+    settlements: SettlementSupportCounts[];
 }
 
 export function getPopulationSnapshot(): PopulationSnapshot {
@@ -239,6 +254,11 @@ export function getPopulationSnapshot(): PopulationSnapshot {
         max: state.max,
         beds: state.beds,
         hungerMs: state.hungerMs,
+        supportCapacity: state.supportCapacity,
+        activeTileCount: state.activeTileCount,
+        inactiveTileCount: state.inactiveTileCount,
+        pressureState: state.pressureState,
+        settlements: state.settlements.map((settlement) => ({ ...settlement })),
     };
 }
 
@@ -248,6 +268,11 @@ export function loadPopulationSnapshot(snapshot: PopulationSnapshot) {
     state.beds = snapshot.beds ?? 0;
     state.hungerMs = snapshot.hungerMs;
     state.lastFoodTickMs = Date.now();
+    state.supportCapacity = snapshot.supportCapacity ?? 0;
+    state.activeTileCount = snapshot.activeTileCount ?? 0;
+    state.inactiveTileCount = snapshot.inactiveTileCount ?? 0;
+    state.pressureState = snapshot.pressureState ?? 'stable';
+    state.settlements = snapshot.settlements?.map((settlement) => ({ ...settlement })) ?? [];
 }
 
 // --- Broadcast ---
@@ -259,63 +284,14 @@ function broadcastPopulationUpdate() {
         max: state.max,
         beds: state.beds,
         hungerMs: state.hungerMs,
+        supportCapacity: state.supportCapacity,
+        activeTileCount: state.activeTileCount,
+        inactiveTileCount: state.inactiveTileCount,
+        pressureState: state.pressureState,
+        settlements: state.settlements.map((settlement) => ({ ...settlement })),
     });
 }
 
-// --- Helpers ---
-
-function addTilesInRadius(centerQ: number, centerR: number, radius: number, set: Set<string>) {
-    for (let dq = -radius; dq <= radius; dq++) {
-        for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
-            set.add(`${centerQ + dq},${centerR + dr}`);
-        }
-    }
-}
-
-function getTownCenters(): Tile[] {
-    const townCenters: Tile[] = [];
-    for (const tcId of terrainPositions.towncenter) {
-        const tc = tileIndex[tcId];
-        if (tc) townCenters.push(tc);
-    }
-    return townCenters;
-}
-
-function getWatchtowerTiles(): Tile[] {
-    const watchtowerTiles: Tile[] = [];
-    for (const variantKey of WATCHTOWER_VARIANT_KEYS) {
-        const positions = variantPositions[variantKey];
-        if (!positions) continue;
-        for (const tileId of positions) {
-            const tile = tileIndex[tileId];
-            if (tile) watchtowerTiles.push(tile);
-        }
-    }
-    return watchtowerTiles;
-}
-
-function computeReachTileIdsFromTownCenters(townCenters: Array<Pick<Tile, 'q' | 'r'>>): Set<string> {
-    const reachSet = new Set<string>();
-    const watchtowerTiles = getWatchtowerTiles();
-    const activatedWatchtowers = new Set<string>();
-
-    for (const tc of townCenters) {
-        addTilesInRadius(tc.q, tc.r, TC_REACH_RADIUS, reachSet);
-    }
-
-    let changed = true;
-    while (changed) {
-        changed = false;
-
-        for (const watchtower of watchtowerTiles) {
-            if (activatedWatchtowers.has(watchtower.id)) continue;
-            if (!reachSet.has(watchtower.id)) continue;
-
-            activatedWatchtowers.add(watchtower.id);
-            addTilesInRadius(watchtower.q, watchtower.r, WATCHTOWER_REACH_EXTENSION, reachSet);
-            changed = true;
-        }
-    }
-
-    return reachSet;
+export function broadcastPopulationState() {
+    broadcastPopulationUpdate();
 }

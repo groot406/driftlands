@@ -3,6 +3,8 @@ import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {Tile} from "../../../core/types/Tile";
 import { applyVariant } from '../../../core/variants';
+import { isTileControlled } from '../../game/state/settlementSupportStore';
+import { listTaskAccessTiles } from '../taskAccess';
 
 const harvestWaterLiliesTask: TaskDefinition = {
     key: 'harvestWaterLilies',
@@ -10,7 +12,10 @@ const harvestWaterLiliesTask: TaskDefinition = {
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'water' && tile.variant === 'water_lily',
 
     canStart(tile, _hero) {
-        return tile.terrain === 'water' && tile.variant === 'water_lily';
+        return tile.terrain === 'water'
+            && tile.variant === 'water_lily'
+            && isTileControlled(tile)
+            && listTaskAccessTiles('harvestWaterLilies', tile).length > 0;
     },
 
     requiredXp(distance: number) {
@@ -24,8 +29,8 @@ const harvestWaterLiliesTask: TaskDefinition = {
     },
 
     totalRewardedResources(distance: number) {
-        // Water lilies provide food resource
-        return { type: 'food', amount: 2 * distance };
+        // Harvested lilies can be replanted to extend walkable water paths.
+        return { type: 'water_lily', amount: 2 * distance };
     },
 
     onComplete(tile, _instance) {
@@ -33,7 +38,13 @@ const harvestWaterLiliesTask: TaskDefinition = {
         if (tile.terrain === 'water' && tile.variant === 'water_lily') {
             applyVariant(tile, null, { stagger: false, respectBiome: false });
         }
-    }
+    },
+    onStart(_tile, instance) {
+        instance.context = {
+            ...(instance.context ?? {}),
+            adjacentWalkableAccess: true,
+        };
+    },
 };
 
 registerTask(harvestWaterLiliesTask);

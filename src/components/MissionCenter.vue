@@ -43,6 +43,25 @@
               <p class="mt-2 text-lg font-semibold text-white">{{ run.mutator.name }}</p>
             </div>
           </div>
+
+          <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/65 px-4 py-3">
+              <p class="text-[10px] uppercase tracking-[0.14em] text-slate-400">Active / Owned</p>
+              <p class="mt-2 text-2xl font-semibold text-white">{{ activeOwnedLabel }}</p>
+            </div>
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/65 px-4 py-3">
+              <p class="text-[10px] uppercase tracking-[0.14em] text-slate-400">Support Capacity</p>
+              <p class="mt-2 text-2xl font-semibold text-white">{{ supportCapacity }}</p>
+            </div>
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/65 px-4 py-3">
+              <p class="text-[10px] uppercase tracking-[0.14em] text-slate-400">Inactive Tiles</p>
+              <p class="mt-2 text-2xl font-semibold text-white">{{ inactiveTileCount }}</p>
+            </div>
+            <div class="rounded-2xl border px-4 py-3" :class="pressureClass">
+              <p class="text-[10px] uppercase tracking-[0.14em] text-slate-300">Pressure State</p>
+              <p class="mt-2 text-lg font-semibold text-white">{{ pressureLabel }}</p>
+            </div>
+          </div>
         </header>
 
         <div class="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto lg:grid-cols-[1.1fr_0.9fr]">
@@ -180,6 +199,7 @@
               <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Campaign Notes</p>
               <ul class="mt-3 space-y-2 text-sm text-slate-300">
                 <li>Press <span class="rounded bg-slate-800 px-2 py-1 text-xs text-white">M</span> to reopen this log at any time.</li>
+                <li>Press <span class="rounded bg-slate-800 px-2 py-1 text-xs text-white">V</span> to inspect stable, fragile, inactive, and uncontrolled territory.</li>
                 <li>Primary objectives carry the colony forward. Bonus goals add score, but only primary goals advance the campaign.</li>
                 <li>{{ run.story.nextHint }}</li>
               </ul>
@@ -196,6 +216,7 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { closeWindow, isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 import { runSnapshot } from '../store/runStore.ts';
 import { getNewlyUnlockedStoryDescriptors, getStoryProgressionCategoryDescriptors } from '../shared/story/progression.ts';
+import { populationState } from '../store/clientPopulationStore';
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.MISSION_CENTER));
 const run = computed(() => runSnapshot.value);
@@ -217,6 +238,33 @@ const unlockSections = computed(() => {
 });
 const newUnlocks = computed(() => run.value ? getNewlyUnlockedStoryDescriptors(run.value.progression) : []);
 const primaryGoalProgress = computed(() => run.value ? `${completedRequired.value}/${totalRequired.value || 0}` : '--');
+const activeTileCount = computed(() => run.value?.activeTiles ?? populationState.activeTileCount);
+const inactiveTileCount = computed(() => run.value?.inactiveTiles ?? populationState.inactiveTileCount);
+const ownedTileCount = computed(() => activeTileCount.value + inactiveTileCount.value);
+const activeOwnedLabel = computed(() => `${activeTileCount.value}/${ownedTileCount.value || 0}`);
+const supportCapacity = computed(() => populationState.supportCapacity);
+const pressureLabel = computed(() => {
+  switch (populationState.pressureState) {
+    case 'collapsing':
+      return 'Collapsing';
+    case 'strained':
+      return 'Strained';
+    case 'stable':
+    default:
+      return 'Stable';
+  }
+});
+const pressureClass = computed(() => {
+  switch (populationState.pressureState) {
+    case 'collapsing':
+      return 'border-rose-500/30 bg-rose-500/10';
+    case 'strained':
+      return 'border-amber-400/30 bg-amber-400/10';
+    case 'stable':
+    default:
+      return 'border-emerald-500/25 bg-emerald-500/10';
+  }
+});
 
 function closeMissionCenter() {
   closeWindow(WINDOW_IDS.MISSION_CENTER);

@@ -5,6 +5,7 @@ import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../
 import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
+import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 
 export class ServerTaskHandler {
     constructor(_io: Server) {
@@ -23,11 +24,10 @@ export class ServerTaskHandler {
 
         coopState.touchHeroActivity(heroId);
 
-        // Only allow if hero is already at the requested tile
-        if (hero.q !== location.q || hero.r !== location.r) return;
-
         const tile = getTile(location);
         if (!tile) return;
+
+        if (!isHeroAtTaskAccess(hero, task, tile)) return;
 
         // If a task of this type already exists on this tile, join it; else start it.
         const existing = getTaskByTile(tile.id, task);

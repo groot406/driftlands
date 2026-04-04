@@ -76,6 +76,7 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     artifact: {icon: '\uD83C\uDFFA', color: '#e5d489'},
     water: {icon: '\uD83D\uDCA7', color: '#70d6ff'},
     grain: {icon: '\uD83C\uDF3E', color: '#f4d36b'},
+    water_lily: {icon: '\uD83E\uDEB7', color: '#8fd9a8'},
 };
 
 const hitStopByKind: Record<GameplayImpactKind, number> = {

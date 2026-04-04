@@ -59,8 +59,13 @@ import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/g
 import {addNotification} from '../store/notificationStore';
 import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
 import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOtherPlayer} from '../store/playerStore';
-import {computeReachTileIds, computeReachTileIdsForTC, computeReachTileIdsForWatchtower, isTileWithinReach} from '../store/populationStore';
 import {populationVersion} from '../store/clientPopulationStore';
+import {
+  computeControlledTileIds,
+  computeOwnedTileIdsForSettlement,
+  isPositionControlled,
+  isTileActive,
+} from '../store/settlementSupportStore';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -91,6 +96,7 @@ const globalReachBoundary = ref<Array<{q: number; r: number}>>([]); // always-vi
 const globalReachTileIds = ref<Set<string>>(new Set());
 const hoveredReachBoundary = ref<Array<{q: number; r: number}>>([]); // hover-highlighted reach outline (specific TC)
 const hoveredReachTileIds = ref<Set<string>>(new Set());
+const showSupportOverlay = ref(false);
 let lastGlobalReachComputeMs = 0;
 
 // Service instance
@@ -227,8 +233,11 @@ function animationLoop() {
       globalReachTileIds: globalReachTileIds.value,
       hoveredReachBoundary: hoveredReachBoundary.value,
       hoveredReachTileIds: hoveredReachTileIds.value,
+      showSupportOverlay: showSupportOverlay.value,
       hoveredTileInReach: hoveredTile.value
-        ? (hoveredTile.value.discovered || isTileWithinReach(hoveredTile.value.q, hoveredTile.value.r))
+        ? (hoveredTile.value.discovered
+          ? isTileActive(hoveredTile.value)
+          : isPositionControlled(hoveredTile.value.q, hoveredTile.value.r))
         : true,
     }, {
       effectNowMs,
@@ -367,7 +376,7 @@ function handleClick(e: PointerEvent) {
 
   if (!tile.discovered) {
     // Block actions on tiles outside reach
-    if (!isTileWithinReach(tile.q, tile.r)) {
+    if (!isPositionControlled(tile.q, tile.r)) {
       clearPathPreview();
       return;
     }
@@ -403,6 +412,18 @@ function handleClick(e: PointerEvent) {
     showTaskMenu.value = false;
     taskMenuTile.value = null;
     closeWindow(WINDOW_IDS.TASK_MENU);
+  }
+
+  if (tile.activationState === 'inactive') {
+    addNotification({
+      type: 'run_state',
+      title: tile.controlledBySettlementId ? 'Tile offline' : 'Border disconnected',
+      message: tile.controlledBySettlementId
+        ? 'This tile is inactive. Restore it from adjacent active ground or grow support to bring it back online.'
+        : 'This tile is outside live control. Reconnect it to an active town center or watchtower chain first.',
+      duration: 3200,
+    });
+    return;
   }
 
   const canReusePreviewPath = hasMatchingPathPreview(selHero, tile) &&
@@ -576,12 +597,10 @@ function recomputeGlobalReach(force = false) {
   const now = Date.now();
   if (!force && now - lastGlobalReachComputeMs < 2000) return;
   lastGlobalReachComputeMs = now;
-  const ids = computeReachTileIds();
+  const ids = computeControlledTileIds();
   globalReachTileIds.value = ids;
   globalReachBoundary.value = findBoundaryCoords(ids);
 }
-
-const WATCHTOWER_VARIANTS = new Set(['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower']);
 
 /** Compute the hover-highlighted reach outline for a TC or watchtower tile. */
 function computeHoveredReach(tile: Tile | null) {
@@ -590,18 +609,34 @@ function computeHoveredReach(tile: Tile | null) {
 
   if (!tile) return;
 
-  if (tile.terrain === 'towncenter') {
-    const ids = computeReachTileIdsForTC(tile.q, tile.r);
+  const settlementId = tile.terrain === 'towncenter'
+    ? tile.id
+    : (tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null);
+
+  if (settlementId) {
+    const ids = computeOwnedTileIdsForSettlement(settlementId);
     hoveredReachTileIds.value = ids;
     hoveredReachBoundary.value = findBoundaryCoords(ids);
+  }
+}
+
+function shouldIgnoreShortcut(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null;
+  if (!target) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
+function handleSupportOverlayShortcut(event: KeyboardEvent) {
+  if (event.repeat || shouldIgnoreShortcut(event)) {
     return;
   }
 
-  if (tile.variant && WATCHTOWER_VARIANTS.has(tile.variant)) {
-    const ids = computeReachTileIdsForWatchtower(tile.q, tile.r);
-    hoveredReachTileIds.value = ids;
-    hoveredReachBoundary.value = findBoundaryCoords(ids);
+  if (event.code !== 'KeyV') {
+    return;
   }
+
+  event.preventDefault();
+  showSupportOverlay.value = !showSupportOverlay.value;
 }
 
 watch(hoveredTile, (tile, previousTile) => {
@@ -638,6 +673,7 @@ onMounted(async () => {
   window.addEventListener('orientationchange', onOrientationChange);
   window.addEventListener('resize', onWindowResize);
   window.addEventListener('keydown', keyDown);
+  window.addEventListener('keydown', handleSupportOverlayShortcut);
   window.addEventListener('keyup', keyUp);
   const el = container.value;
 
@@ -658,6 +694,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize);
   window.removeEventListener('orientationchange', onOrientationChange);
   window.removeEventListener('keydown', keyDown);
+  window.removeEventListener('keydown', handleSupportOverlayShortcut);
   window.removeEventListener('keyup', keyUp);
   const el = container.value;
   if (el) {

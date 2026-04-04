@@ -39,10 +39,15 @@ export class ServerMovementHandler {
         serverMessageRouter.on('hero:move_request', this.handleMoveRequest.bind(this));
     }
 
-    private canUseNonWalkableTaskTarget(hero: Hero, target: { q: number; r: number }, task?: TaskType): boolean {
+    private canUseNonWalkableTaskTarget(
+        hero: Hero,
+        target: { q: number; r: number },
+        task?: TaskType,
+        taskLocation?: { q: number; r: number },
+    ): boolean {
         if (!task) return false;
 
-        const tile = getTile(target);
+        const tile = getTile(taskLocation ?? target);
         if (!tile) return false;
 
         const existing = getTaskByTile(tile.id, task);
@@ -83,7 +88,9 @@ export class ServerMovementHandler {
             return;
         }
 
-        const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task);
+        const logicalTaskTarget = message.taskLocation ?? target;
+        const logicalTaskTile = getTile(logicalTaskTarget);
+        const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
         if (!isWalkablePosition(target.q, target.r) && targetTile.discovered && !canUseTaskTarget) return;
 
         let path: { q: number; r: number }[] = [];
@@ -118,11 +125,21 @@ export class ServerMovementHandler {
         const {durations, cumulative} = computePathTimings(path, origin, 1);
 
         hero.pendingTask = message.task
-            ? { tileId: targetTile.id, taskType: message.task }
+            ? { tileId: logicalTaskTile?.id ?? targetTile.id, taskType: message.task }
             : undefined;
         detachHeroFromCurrentTask(hero);
         hero.delayedMovementTimer = undefined;
-        this.registerMovement(heroId, target, path, durations, origin, startAt, message.task, message.id, message.task ? targetTile.id : undefined);
+        this.registerMovement(
+            heroId,
+            target,
+            path,
+            durations,
+            origin,
+            startAt,
+            message.task,
+            message.id,
+            message.task ? (logicalTaskTile?.id ?? targetTile.id) : undefined,
+        );
 
         const startDelayMs = Math.max(0, startAt - now);
 
@@ -139,17 +156,26 @@ export class ServerMovementHandler {
             stepDurations: durations,
             cumulative,
             task: message.task,
+            taskLocation: message.task ? logicalTaskTarget : undefined,
         };
         broadcast(update);
 
         updateActiveTasks(heroes);
     }
 
-    public moveHero(hero: Hero, target: { q: number, r: number }, task ?: TaskType) {
+    public moveHero(
+        hero: Hero,
+        target: { q: number, r: number },
+        task ?: TaskType,
+        taskLocation?: { q: number; r: number },
+    ) {
         const targetTile = getTile(target);
         if (!targetTile) {
             return;
         }
+
+        const logicalTaskTarget = taskLocation ?? target;
+        const logicalTaskTile = getTile(logicalTaskTarget);
 
         const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r);
 
@@ -164,12 +190,22 @@ export class ServerMovementHandler {
 
         if (task) {
             hero.pendingTask = {
-                tileId: targetTile.id,
+                tileId: logicalTaskTile?.id ?? targetTile.id,
                 taskType: task,
             };
         }
         detachHeroFromCurrentTask(hero);
-        this.registerMovement(hero.id, targetPosition, path, durations, origin, startAt, task, undefined, task ? targetTile.id : undefined);
+        this.registerMovement(
+            hero.id,
+            targetPosition,
+            path,
+            durations,
+            origin,
+            startAt,
+            task,
+            undefined,
+            task ? (logicalTaskTile?.id ?? targetTile.id) : undefined,
+        );
         broadcast({
             type: 'hero:path_update',
             heroId: hero.id,
@@ -181,6 +217,7 @@ export class ServerMovementHandler {
             stepDurations: durations,
             cumulative,
             task,
+            taskLocation: task ? logicalTaskTarget : undefined,
         } as PathUpdateMessage)
 
         updateActiveTasks(heroes);

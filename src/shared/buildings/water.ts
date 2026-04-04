@@ -5,13 +5,18 @@ import { isTileWalkable } from '../game/navigation';
 import { ensureTileExists, tileIndex } from '../game/world';
 import { findNearestWalkableNeighborToTerrain } from '../game/worldQueries';
 import { getBuildingDefinitionForTile, listBuildingDefinitions } from './registry';
+import { isTileActive } from '../game/state/settlementSupportStore';
 
 function getNeighbors(tile: Tile) {
     return tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
 }
 
+function isNaturalWaterSourceTile(tile: Tile | null | undefined) {
+    return !!tile && tile.discovered && tile.terrain === 'water';
+}
+
 export function isWaterSourceBuildingTile(tile: Tile | null | undefined) {
-    return !!tile && !!getBuildingDefinitionForTile(tile)?.providesWaterSource;
+    return !!tile && isTileActive(tile) && !!getBuildingDefinitionForTile(tile)?.providesWaterSource;
 }
 
 export function hasAdjacentWaterSource(tile: Tile | null | undefined): boolean {
@@ -23,7 +28,7 @@ export function hasAdjacentWaterSource(tile: Tile | null | undefined): boolean {
     for (const side of SIDE_NAMES) {
         const neighbor = neighbors[side];
         if (!neighbor?.discovered) continue;
-        if (neighbor.terrain === 'water' || isWaterSourceBuildingTile(neighbor)) {
+        if (isNaturalWaterSourceTile(neighbor) || isWaterSourceBuildingTile(neighbor)) {
             return true;
         }
     }
@@ -42,7 +47,7 @@ export function canDrawWaterFromTile(tile: Tile | null | undefined): boolean {
     if (!neighbors) return false;
 
     for (const side of SIDE_NAMES) {
-        if (neighbors[side]?.terrain === 'water') {
+        if (isNaturalWaterSourceTile(neighbors[side])) {
             return true;
         }
     }

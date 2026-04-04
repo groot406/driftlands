@@ -32,6 +32,7 @@ test('growthSystem keeps ranged growth duration stable across ticks and matures 
       biome: 'forest',
       terrain: 'forest',
       discovered: true,
+      isBaseTile: true,
       variant: null,
     } satisfies Tile,
   ]);
@@ -82,6 +83,7 @@ test('growthSystem advances fixed-duration tilled soil into draught state', () =
       biome: 'dessert',
       terrain: 'dirt',
       discovered: true,
+      isBaseTile: true,
       variant: null,
     } satisfies Tile,
   ]);

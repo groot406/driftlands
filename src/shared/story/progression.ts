@@ -11,6 +11,7 @@ export type StoryBuildingKey =
   | 'dock'
   | 'lumberCamp'
   | 'granary'
+  | 'bakery'
   | 'mine'
   | 'house';
 
@@ -84,7 +85,7 @@ const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
   },
   dock: {
     label: 'Dock',
-    description: 'Opens the shoreline to fishing and steadier landings.',
+    description: 'Opens the shoreline to fishing and steadier landings from active shore.',
     taskKey: 'buildDock',
   },
   lumberCamp: {
@@ -94,8 +95,13 @@ const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
   },
   granary: {
     label: 'Granary',
-    description: 'Secures grain fields into reliable ration production.',
+    description: 'Turns grain fields into a staffed source of stored grain.',
     taskKey: 'buildGranary',
+  },
+  bakery: {
+    label: 'Bakery',
+    description: 'Turns stored grain into dependable food once workers staff it.',
+    taskKey: 'buildBakery',
   },
   mine: {
     label: 'Mine',
@@ -128,7 +134,11 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
   },
   harvestWaterLilies: {
     label: 'Harvest Water Lilies',
-    description: 'Forage the shallows for early food.',
+    description: 'Cut lily pads from the shallows for bridge-making stock.',
+  },
+  placeWaterLilies: {
+    label: 'Place Water Lilies',
+    description: 'Lay harvested lily pads onto open water to create walkable stepping stones.',
   },
   plantTrees: {
     label: 'Plant Trees',
@@ -166,17 +176,9 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     label: 'Harvest Grain',
     description: 'Cut ripe grain into usable crop stock.',
   },
-  collectRations: {
-    label: 'Collect Rations',
-    description: 'Pull preserved food from granary stores.',
-  },
   fishAtDock: {
     label: 'Fish At Dock',
     description: 'Turn shoreline works into steady food hauling.',
-  },
-  gatherTimber: {
-    label: 'Gather Timber',
-    description: 'Work established lumber camps for repeat wood output.',
   },
   mineOre: {
     label: 'Mine Ore',
@@ -240,17 +242,18 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
       'dig',
       'convertToGrass',
     ],
-    terrains: ['plains', 'forest', 'dirt'],
+    terrains: ['plains', 'forest', 'dirt', 'water'],
   },
   {
     missionNumber: 2,
     buildings: ['dock', 'house'],
     tasks: [
+      'fishAtDock',
       'harvestWaterLilies',
+      'placeWaterLilies',
       'plantTrees',
       'removeTrunks',
     ],
-    terrains: ['water'],
   },
   {
     missionNumber: 3,
@@ -271,11 +274,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
   },
   {
     missionNumber: 5,
-    buildings: ['watchtower', 'granary'],
-    tasks: [
-      'collectRations',
-      'fishAtDock',
-    ],
+    buildings: ['watchtower', 'granary', 'bakery'],
   },
   {
     missionNumber: 6,
@@ -289,9 +288,6 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
     missionNumber: 7,
     heroes: ['h4'],
     buildings: ['supplyDepot', 'lumberCamp'],
-    tasks: [
-      'gatherTimber',
-    ],
   },
   {
     missionNumber: 8,

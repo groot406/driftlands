@@ -20,6 +20,7 @@ type StartHeroMovementOptions = {
     origin?: AxialCoord;
     requestId?: string;
     authoritative?: boolean;
+    taskLocation?: AxialCoord;
 };
 
 export function updateHeroMovements(nowMs: number = Date.now()) {
@@ -230,7 +231,8 @@ export function requestHeroMovement(
     heroId: string,
     path: { q: number; r: number }[],
     target: { q: number; r: number },
-    taskType?: string
+    taskType?: string,
+    taskLocation?: { q: number; r: number },
 ) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
@@ -240,7 +242,7 @@ export function requestHeroMovement(
 
     // If there is no path (hero already at target), request immediate task start
     if (!normalizedPath.length) {
-        if (taskType) startTaskRequest(heroId, taskType, target);
+        if (taskType) startTaskRequest(heroId, taskType, taskLocation ?? target);
         return;
     }
 
@@ -256,6 +258,7 @@ export function requestHeroMovement(
         startAt,
         path: normalizedPath.slice(),
         task: taskType as any,
+        taskLocation,
     };
     sendMessage(msg as any);
 }
@@ -377,8 +380,9 @@ function syncPendingTask(
     options?: StartHeroMovementOptions,
 ) {
     if (taskType) {
+        const logicalTarget = options?.taskLocation ?? target;
         hero.pendingTask = {
-            tileId: ensureTileExists(target.q, target.r).id,
+            tileId: ensureTileExists(logicalTarget.q, logicalTarget.r).id,
             taskType,
         } as HeroPendingTaskIntent;
         return;

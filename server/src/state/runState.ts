@@ -15,6 +15,7 @@ interface MissionBaselines {
   discoveredTiles: number;
   deliveredResources: Partial<Record<ResourceType, number>>;
   completedTasks: Record<string, number>;
+  restoredTiles: number;
   bonusScore: number;
 }
 
@@ -22,6 +23,9 @@ interface RunMetrics {
   discoveredTiles: number;
   frontierDistance: number;
   population: number;
+  activeTiles: number;
+  inactiveTiles: number;
+  restoredTiles: number;
 }
 
 function cloneProgression(progression: StoryProgressionSnapshot): StoryProgressionSnapshot {
@@ -53,10 +57,12 @@ class RunState {
   private bonusScore: number = 0;
   private deliveredResources: Partial<Record<ResourceType, number>> = {};
   private completedTasks: Record<string, number> = {};
+  private restoredTiles: number = 0;
   private baselines: MissionBaselines = {
     discoveredTiles: 0,
     deliveredResources: {},
     completedTasks: {},
+    restoredTiles: 0,
     bonusScore: 0,
   };
 
@@ -66,10 +72,12 @@ class RunState {
     this.bonusScore = 0;
     this.deliveredResources = {};
     this.completedTasks = {};
+    this.restoredTiles = 0;
     this.baselines = {
       discoveredTiles: 0,
       deliveredResources: {},
       completedTasks: {},
+      restoredTiles: 0,
       bonusScore: 0,
     };
 
@@ -132,6 +140,9 @@ class RunState {
         break;
       case 'tile:discovered':
         break;
+      case 'tile:restored':
+        this.restoredTiles += 1;
+        break;
       default:
         return;
     }
@@ -173,6 +184,9 @@ class RunState {
       this.snapshot.summary = this.snapshot.story.kicker;
     }
     this.snapshot.discoveredTiles = metrics.discoveredTiles;
+    this.snapshot.activeTiles = metrics.activeTiles;
+    this.snapshot.inactiveTiles = metrics.inactiveTiles;
+    this.snapshot.restoredTiles = Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles);
     this.snapshot.missionScore = this.computeMissionScore();
     this.snapshot.score = this.totalScore + this.snapshot.missionScore;
 
@@ -201,12 +215,18 @@ class RunState {
         return metrics.frontierDistance;
       case 'reach_population':
         return metrics.population;
+      case 'reach_active_tiles':
+        return metrics.activeTiles;
+      case 'restore_tiles':
+        return Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles);
       default:
         return 0;
     }
   }
 
   private captureMetrics(): RunMetrics {
+    const population = getPopulationState();
+
     return {
       discoveredTiles: tiles.filter((tile) => tile.discovered && tile.terrain && tile.terrain !== 'towncenter').length,
       frontierDistance: tiles.reduce((maxDistance, tile) => {
@@ -217,7 +237,10 @@ class RunState {
         const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
         return Math.max(maxDistance, distance);
       }, 0),
-      population: getPopulationState().current,
+      population: population.current,
+      activeTiles: population.activeTileCount,
+      inactiveTiles: population.inactiveTileCount,
+      restoredTiles: this.restoredTiles,
     };
   }
 
@@ -270,7 +293,12 @@ class RunState {
 
   private issueMission(missionNumber: number, lastCompletedMission?: CompletedMissionSnapshot) {
     const metrics = this.captureMetrics();
-    const blueprint = generateFoundingExpeditionMission(this.baseSeed, missionNumber, metrics.frontierDistance);
+    const blueprint = generateFoundingExpeditionMission(this.baseSeed, missionNumber, {
+      frontierDistance: metrics.frontierDistance,
+      population: metrics.population,
+      activeTiles: metrics.activeTiles,
+      inactiveTiles: metrics.inactiveTiles,
+    });
     const now = Date.now();
 
     setStoryProgressionForMission(missionNumber);
@@ -280,6 +308,7 @@ class RunState {
       discoveredTiles: metrics.discoveredTiles,
       deliveredResources: { ...this.deliveredResources },
       completedTasks: { ...this.completedTasks },
+      restoredTiles: metrics.restoredTiles,
       bonusScore: this.bonusScore,
     };
 
@@ -294,6 +323,9 @@ class RunState {
       score: this.totalScore,
       missionScore: 0,
       discoveredTiles: metrics.discoveredTiles,
+      activeTiles: metrics.activeTiles,
+      inactiveTiles: metrics.inactiveTiles,
+      restoredTiles: Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles),
       summary: blueprint.story.kicker,
       mutator: blueprint.mutator,
       story: { ...blueprint.story },

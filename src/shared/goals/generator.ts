@@ -4,6 +4,13 @@ import type { ObjectiveBlueprint, ObjectiveReward, RunBlueprint, RunMutatorKey }
 import { createStoryProgression, getAvailableStoryTaskKeys, type StoryProgressionSnapshot } from '../story/progression.ts';
 import { createStoryBeat } from '../story/storyMode.ts';
 
+export interface RunGenerationMetrics {
+  frontierDistance: number;
+  population: number;
+  activeTiles: number;
+  inactiveTiles: number;
+}
+
 const MUTATORS: Record<RunMutatorKey, { name: string; description: string }> = {
   open_frontier: {
     name: 'Open Frontier',
@@ -93,6 +100,30 @@ function populationObjective(target: number, rewardPoints: number, required: boo
   };
 }
 
+function activeTilesObjective(target: number, rewardPoints: number, required: boolean = false): ObjectiveBlueprint {
+  return {
+    id: `active-tiles-${target}`,
+    title: `Hold ${target} active tiles`,
+    description: `Keep ${target} non-towncenter tiles active by sustaining population support across the frontier.`,
+    kind: 'reach_active_tiles',
+    required,
+    target,
+    reward: scoreReward(rewardPoints),
+  };
+}
+
+function restoreTilesObjective(target: number, rewardPoints: number, required: boolean = false): ObjectiveBlueprint {
+  return {
+    id: `restore-tiles-${target}`,
+    title: `Restore ${target} frontier tile${target === 1 ? '' : 's'}`,
+    description: `Bring ${target} inactive tile${target === 1 ? '' : 's'} back online from adjacent active ground.`,
+    kind: 'restore_tiles',
+    required,
+    target,
+    reward: scoreReward(rewardPoints),
+  };
+}
+
 function deliverObjective(
   id: string,
   title: string,
@@ -140,7 +171,7 @@ function hasUnlockedTask(progression: StoryProgressionSnapshot, taskKey: TaskTyp
 
 function canDeliverFood(progression: StoryProgressionSnapshot) {
   return (
-    hasUnlockedTask(progression, 'collectRations')
+    hasUnlockedTask(progression, 'buildBakery')
     || hasUnlockedTask(progression, 'fishAtDock')
   );
 }
@@ -224,7 +255,7 @@ function createHarborOrWaterObjective(progression: StoryProgressionSnapshot, mis
     return taskObjective(
       'harbor',
       'Prepare a landing point',
-      'Build 1 dock to improve shoreline access.',
+      'Build 1 dock from adjacent active shore to improve shoreline access.',
       'buildDock',
       1,
       90,
@@ -248,7 +279,7 @@ function createHarborOrWaterObjective(progression: StoryProgressionSnapshot, mis
     return taskObjective(
       'shore-forage',
       'Forage the shallows',
-      'Harvest 2 lily patches to prove the shoreline can support the camp.',
+      'Harvest 2 lily patches from shore or an existing lily path to stock materials for your first water bridge.',
       'harvestWaterLilies',
       2,
       60,
@@ -264,7 +295,7 @@ function createFoodTaskObjective(progression: StoryProgressionSnapshot) {
     return taskObjective(
       'granary',
       'Raise a granary',
-      'Build 1 granary to stabilize rations before the next charter lands.',
+      'Build 1 granary to keep grain flowing into the colony stores before the next charter lands.',
       'buildGranary',
       1,
       75,
@@ -274,7 +305,7 @@ function createFoodTaskObjective(progression: StoryProgressionSnapshot) {
   return taskObjective(
     'shore-forage',
     'Forage the shallows',
-    'Harvest 2 lily patches to prove the shoreline can feed the camp.',
+    'Harvest 2 lily patches from shore or an existing lily path to keep the water bridge crews supplied.',
     'harvestWaterLilies',
     2,
     60,
@@ -292,6 +323,57 @@ function createTownCenterTaskObjective(required: boolean = true) {
     120,
     required,
   );
+}
+
+function injectSupportObjectives(
+  objectives: ObjectiveBlueprint[],
+  missionNumber: number,
+  metrics: RunGenerationMetrics,
+): ObjectiveBlueprint[] {
+  if (missionNumber < 5) {
+    return objectives;
+  }
+
+  const nextObjectives = objectives.map((objective) => ({ ...objective }));
+  const activeTileTarget = metrics.activeTiles + (missionNumber <= 8 ? 4 : 6);
+  const supportObjective = activeTilesObjective(activeTileTarget, missionNumber >= 9 ? 90 : 75, false);
+
+  const replaceOptionalObjective = (replacement: ObjectiveBlueprint, preferredKinds: ObjectiveBlueprint['kind'][] = []) => {
+    let replaceIndex = -1;
+
+    if (preferredKinds.length > 0) {
+      replaceIndex = nextObjectives.findIndex(
+        (objective) => !objective.required && preferredKinds.includes(objective.kind),
+      );
+    }
+
+    if (replaceIndex < 0) {
+      replaceIndex = nextObjectives.findIndex((objective) => !objective.required);
+    }
+
+    if (replaceIndex >= 0) {
+      nextObjectives.splice(replaceIndex, 1, replacement);
+      return true;
+    }
+
+    return false;
+  };
+
+  const replacedSupportObjective = replaceOptionalObjective(supportObjective, ['reach_distance']);
+  if (!replacedSupportObjective) {
+    nextObjectives.push(supportObjective);
+  }
+
+  if (metrics.inactiveTiles > 0) {
+    const restoreObjective = restoreTilesObjective(Math.min(2, metrics.inactiveTiles), 75, false);
+    const replaced = replaceOptionalObjective(restoreObjective, ['deliver_resource', 'complete_task', 'reach_distance']);
+
+    if (!replaced) {
+      nextObjectives.push(restoreObjective);
+    }
+  }
+
+  return nextObjectives;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,7 +418,7 @@ function tutorialMission2(): ObjectiveBlueprint[] {
     taskObjective(
       'harbor',
       'Build a dock',
-      'Build 1 dock to open the shoreline to fishing and landings.',
+      'Build 1 dock from adjacent active shore to open the shoreline to fishing and landings.',
       'buildDock',
       1,
       75,
@@ -352,7 +434,7 @@ function tutorialMission2(): ObjectiveBlueprint[] {
     taskObjective(
       'shore-forage',
       'Forage the shallows',
-      'Harvest 2 water lily patches from the newly discovered shoreline.',
+      'Harvest 2 water lily patches from shore or an existing lily path along the newly discovered shoreline.',
       'harvestWaterLilies',
       2,
       45,
@@ -413,8 +495,8 @@ function tutorialMission4(): ObjectiveBlueprint[] {
 }
 
 function tutorialMission5(): ObjectiveBlueprint[] {
-  // Unlocks: watchtower, granary, collectRations, fishAtDock
-  // Teaches: food security, scouting infrastructure
+  // Unlocks: watchtower, granary, bakery, fishAtDock
+  // Teaches: food security, staffed production, scouting infrastructure
   return [
     surveyObjective(125, 45),
     taskObjective(
@@ -428,8 +510,16 @@ function tutorialMission5(): ObjectiveBlueprint[] {
     taskObjective(
       'granary',
       'Build a granary',
-      'Build 1 granary to preserve harvested grain into rations.',
+      'Build 1 granary to turn a grain field into steady stored grain for the colony.',
       'buildGranary',
+      1,
+      75,
+    ),
+    taskObjective(
+      'bakery',
+      'Build a bakery',
+      'Build 1 bakery so stored grain can be turned into food by assigned settlers.',
+      'buildBakery',
       1,
       75,
     ),
@@ -457,8 +547,8 @@ function tutorialMission6(): ObjectiveBlueprint[] {
 }
 
 function tutorialMission7(): ObjectiveBlueprint[] {
-  // Unlocks: h4, supplyDepot, lumberCamp, gatherTimber
-  // Teaches: logistics, sustainable timber
+  // Unlocks: h4, supplyDepot, lumberCamp
+  // Teaches: logistics, staffed timber production
   return [
     surveyObjective(175, 45),
     taskObjective(
@@ -562,7 +652,7 @@ function getTutorialMutator(missionNumber: number): RunMutatorKey {
 function generateProceduralMission(
   rng: () => number,
   progression: StoryProgressionSnapshot,
-  currentFrontierDistance: number,
+  metrics: RunGenerationMetrics,
 ): { mutatorKey: RunMutatorKey; objectives: ObjectiveBlueprint[] } {
   const mutatorKeys = getAvailableMutators(progression);
   const selectedMutator = mutatorKeys[Math.floor(rng() * mutatorKeys.length)] ?? 'open_frontier';
@@ -571,7 +661,7 @@ function generateProceduralMission(
   const woodTarget = rollBetween(rng, 18, 28) + (missionScale * 4);
   const foodTarget = rollBetween(rng, 10, 18) + (missionScale * 3);
   const oreTarget = rollBetween(rng, 14, 24) + (missionScale * 4);
-  const frontierRingTarget = Math.max(6 + missionScale, currentFrontierDistance + 3 + Math.floor(missionScale / 2));
+  const frontierRingTarget = Math.max(6 + missionScale, metrics.frontierDistance + 3 + Math.floor(missionScale / 2));
 
   let objectives: ObjectiveBlueprint[];
 
@@ -706,7 +796,7 @@ function generateProceduralMission(
       break;
   }
 
-  return { mutatorKey: selectedMutator, objectives };
+  return { mutatorKey: selectedMutator, objectives: injectSupportObjectives(objectives, progression.missionNumber, metrics) };
 }
 
 // ---------------------------------------------------------------------------
@@ -714,13 +804,18 @@ function generateProceduralMission(
 // ---------------------------------------------------------------------------
 
 export function generateFoundingExpedition(seed: number): RunBlueprint {
-  return generateFoundingExpeditionMission(seed, 1, 1);
+  return generateFoundingExpeditionMission(seed, 1, {
+    frontierDistance: 1,
+    population: 1,
+    activeTiles: 0,
+    inactiveTiles: 0,
+  });
 }
 
 export function generateFoundingExpeditionMission(
   seed: number,
   missionNumber: number,
-  currentFrontierDistance: number,
+  metrics: RunGenerationMetrics,
 ): RunBlueprint {
   const progression = createStoryProgression(missionNumber);
 
@@ -730,7 +825,11 @@ export function generateFoundingExpeditionMission(
   if (missionNumber <= 10) {
     // Hand-crafted tutorial missions
     selectedMutator = getTutorialMutator(missionNumber);
-    objectives = getTutorialMissionObjectives(missionNumber, currentFrontierDistance);
+    objectives = injectSupportObjectives(
+      getTutorialMissionObjectives(missionNumber, metrics.frontierDistance),
+      missionNumber,
+      metrics,
+    );
   } else {
     // Procedural missions using mutator system
     const rng = createSeededRandom(seed ^ 0x9e3779b9);
@@ -739,14 +838,14 @@ export function generateFoundingExpeditionMission(
       rng();
       rng();
     }
-    const result = generateProceduralMission(rng, progression, currentFrontierDistance);
+    const result = generateProceduralMission(rng, progression, metrics);
     selectedMutator = result.mutatorKey;
     objectives = result.objectives;
   }
 
   const story = createStoryBeat(
     missionNumber,
-    currentFrontierDistance,
+    metrics.frontierDistance,
     {
       key: selectedMutator,
       name: MUTATORS[selectedMutator].name,

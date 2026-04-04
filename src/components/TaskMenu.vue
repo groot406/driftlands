@@ -13,6 +13,9 @@
                   : 'Choose what your hero should do on this tile.'
               }}
             </p>
+            <p v-if="previewTaskHint" class="task-header-hint">
+              {{ previewTaskHint }}
+            </p>
           </div>
           <button class="task-close" @click.stop.prevent="close" title="Close">
             ✕
@@ -133,6 +136,12 @@ import { currentPlayerId } from '../core/socket';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName } from '../store/playerStore';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
+import {
+  findNearestTaskAccessTile,
+  taskUsesAdjacentAccess,
+  taskUsesAdjacentActiveAccess,
+  taskUsesAdjacentWalkableAccess,
+} from '../shared/tasks/taskAccess';
 
 interface Props {
   tile: Tile | null;
@@ -162,6 +171,7 @@ const resourceLabels: Record<ResourceType, string> = {
   artifact: 'Artifact',
   water: 'Water',
   grain: 'Grain',
+  water_lily: 'Water Lilies',
 };
 
 const sortedTasks = computed(() => props.availableTasks ?? []);
@@ -175,6 +185,46 @@ const previewTask = computed(() => {
   }
 
   return buildingTasks.value[0] ?? null;
+});
+const previewTaskHint = computed(() => {
+  const task = previewTask.value;
+  const tile = props.tile;
+  const hero = getSelectedHero();
+
+  if (!task || !tile) {
+    return null;
+  }
+
+  if (taskUsesAdjacentAccess(task.key)) {
+    const accessTile = hero ? findNearestTaskAccessTile(task.key, tile, hero.q, hero.r) : null;
+    if (!accessTile) {
+      if (taskUsesAdjacentWalkableAccess(task.key)) {
+        return tile.controlledBySettlementId
+          ? 'This water tile needs a neighboring walkable step first. Approach from shore or extend a lily path to reach it.'
+          : 'This shoreline is outside live control. Reconnect the border before extending lily paths here.';
+      }
+
+      return tile.controlledBySettlementId
+        ? 'This shoreline is offline. Restore nearby support or bring an active shore tile next to it first.'
+        : 'This shoreline is outside live control. Reconnect the border before issuing shore work here.';
+    }
+
+    if (taskUsesAdjacentWalkableAccess(task.key)) {
+      return 'Water work is done from a neighboring walkable tile, so shore and lily paths can extend step by step over the shallows.';
+    }
+
+    return tile.activationState === 'inactive'
+      ? 'This shoreline tile is offline, but crews can still work it from adjacent active shore.'
+      : 'Shoreline work is done from adjacent active shore rather than standing in the water.';
+  }
+
+  if (tile.activationState === 'inactive') {
+    return tile.controlledBySettlementId
+      ? 'Inactive tiles need Restore Tile or more support before most work can begin.'
+      : 'This tile is outside live control. Reconnect it before working here.';
+  }
+
+  return null;
 });
 const panelWidth = computed(() => {
   const containerWidth = props.containerSize?.width ?? 0;
@@ -275,6 +325,19 @@ function selectTask(def: TaskDefinition) {
   if (!props.tile) return;
   const hero = getSelectedHero();
   if (!hero) return;
+  const accessTile = findNearestTaskAccessTile(def.key, props.tile, hero.q, hero.r);
+  if (taskUsesAdjacentActiveAccess(def.key) && !accessTile) {
+    addNotification({
+      type: 'run_state',
+      title: props.tile.controlledBySettlementId ? 'Shoreline offline' : 'Border disconnected',
+      message: props.tile.controlledBySettlementId
+        ? 'Bring support back to an adjacent shore tile, then issue the order again.'
+        : 'Reconnect this shoreline to an active town center or watchtower chain first.',
+      duration: 3200,
+    });
+    close();
+    return;
+  }
   if (!canControlHero(hero.id, currentPlayerId.value)) {
     addNotification({
       type: 'coop_state',
@@ -286,16 +349,24 @@ function selectTask(def: TaskDefinition) {
     return;
   }
 
-  if (hero.q === props.tile.q && hero.r === props.tile.r) {
+  if (accessTile && hero.q === accessTile.q && hero.r === accessTile.r) {
     if (def.key !== 'walk') {
       startTaskRequest(hero.id, def.key, { q: props.tile.q, r: props.tile.r });
       emit('started', def.key, props.tile);
     }
   } else {
-    const path = pathService.findWalkablePath(hero.q, hero.r, props.tile.q, props.tile.r);
+    const path = accessTile
+      ? pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r)
+      : [];
     if (path.length) {
       detachHeroFromCurrentTask(hero);
-      requestHeroMovement(hero.id, path, props.tile, def.key);
+      requestHeroMovement(
+        hero.id,
+        path,
+        accessTile ?? props.tile,
+        def.key,
+        taskUsesAdjacentAccess(def.key) ? props.tile : undefined,
+      );
       emit('started', def.key, props.tile);
     }
   }
@@ -528,6 +599,14 @@ onUnmounted(() => {
   font-size: 12.5px;
   line-height: 1.45;
   color: rgba(226, 232, 240, 0.78);
+}
+
+.task-header-hint {
+  margin: 8px 0 0;
+  max-width: 38ch;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(125, 211, 252, 0.9);
 }
 
 .task-close {

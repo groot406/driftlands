@@ -53,6 +53,30 @@
           </div>
         </div>
 
+        <div class="tc-section">
+          <div class="tc-section-row">
+            <div class="tc-section-title">Frontier Support</div>
+          </div>
+          <div class="tc-stat-grid tc-stat-grid-3">
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ populationState.activeTileCount }}/{{ ownedTiles }}</span>
+              <span class="tc-stat-label">Active / Owned</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ populationState.supportCapacity }}</span>
+              <span class="tc-stat-label">Support Capacity</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ populationState.inactiveTileCount }}</span>
+              <span class="tc-stat-label">Inactive Tiles</span>
+            </div>
+          </div>
+          <div class="tc-status-row" :class="supportStatusClass">
+            <span class="tc-status-dot" :class="supportStatusClass" />
+            <span class="tc-status-text">{{ supportStatusText }}</span>
+          </div>
+        </div>
+
         <!-- Food Section -->
         <div class="tc-section">
           <div class="tc-section-row">
@@ -78,12 +102,46 @@
         </div>
 
         <!-- Job Sites Section (placeholder) -->
-        <div class="tc-section tc-section-muted">
+        <div class="tc-section">
           <div class="tc-section-row">
             <div class="tc-section-title">Job Sites</div>
-            <div class="tc-section-caption">Coming soon</div>
+            <div class="tc-section-caption">{{ workforceState.assignedWorkers }}/{{ workforceState.availableWorkers }} staffed</div>
           </div>
-          <p class="tc-placeholder-text">Track where your settlers are working.</p>
+          <div class="tc-stat-grid tc-stat-grid-3">
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ workforceState.availableWorkers }}</span>
+              <span class="tc-stat-label">Available</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ workforceState.assignedWorkers }}</span>
+              <span class="tc-stat-label">Assigned</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ workforceState.idleWorkers }}</span>
+              <span class="tc-stat-label">Idle</span>
+            </div>
+          </div>
+          <div class="tc-status-row" :class="jobsStatusClass">
+            <span class="tc-status-dot" :class="jobsStatusClass" />
+            <span class="tc-status-text">{{ jobsStatusText }}</span>
+          </div>
+          <div v-if="jobSites.length" class="tc-job-list">
+            <div
+              v-for="site in jobSites"
+              :key="site.tileId"
+              class="tc-job-site"
+            >
+              <div class="tc-job-site-top">
+                <div>
+                  <div class="tc-job-site-name">{{ site.label }}</div>
+                  <div class="tc-job-site-meta">{{ site.tileId }}</div>
+                </div>
+                <div class="tc-job-site-staff">{{ site.assignedWorkers }}/{{ site.slots }}</div>
+              </div>
+              <div class="tc-job-site-status" :class="site.statusClass">{{ site.statusText }}</div>
+            </div>
+          </div>
+          <p v-else class="tc-placeholder-text">Build a granary, bakery, or lumber camp to create settler jobs.</p>
         </div>
       </div>
     </div>
@@ -91,8 +149,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted } from 'vue';
+import { computed, watch, onUnmounted } from 'vue';
+import { getBuildingDefinitionByKey } from '../shared/buildings/registry';
 import { populationState } from '../store/clientPopulationStore';
+import { workforceState } from '../store/clientJobStore';
 import { resourceInventory, resourceVersion } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
@@ -119,6 +179,8 @@ function close() {
 const exploredTiles = computed(() => {
   return runSnapshot.value?.discoveredTiles ?? 0;
 });
+
+const ownedTiles = computed(() => populationState.activeTileCount + populationState.inactiveTileCount);
 
 // --- Population ---
 
@@ -151,6 +213,27 @@ const populationStatusText = computed(() => {
   const effectiveCap = Math.min(populationState.max, populationState.beds);
   const slots = effectiveCap - populationState.current;
   return `Growing — ${slots} bed${slots !== 1 ? 's' : ''} available`;
+});
+
+const supportStatusClass = computed(() => {
+  if (populationState.pressureState === 'collapsing') return 'tc-status-danger';
+  if (populationState.pressureState === 'strained') return 'tc-status-warn';
+  return 'tc-status-ok';
+});
+
+const supportStatusText = computed(() => {
+  switch (populationState.pressureState) {
+    case 'collapsing':
+      return `Collapsing — ${populationState.inactiveTileCount} tile${populationState.inactiveTileCount === 1 ? '' : 's'} offline`;
+    case 'strained':
+      return `Strained — fringe tiles are at risk, restore support before expanding again`;
+    case 'stable':
+    default:
+      if (ownedTiles.value <= 0) {
+        return 'Stable — claim more territory to build a larger district';
+      }
+      return `Stable — ${populationState.activeTileCount} of ${ownedTiles.value} owned tiles remain online`;
+  }
 });
 
 // --- Food ---
@@ -199,6 +282,73 @@ const foodStatusText = computed(() => {
   if (mins < 1) return 'Less than a minute of food left';
   if (mins === 1) return '~1 minute of food remaining';
   return `~${mins} minutes of food remaining`;
+});
+
+// --- Jobs ---
+
+const jobSites = computed(() => {
+  return workforceState.sites.map((site) => {
+    const building = getBuildingDefinitionByKey(site.buildingKey);
+
+    let statusText = 'Ready to work';
+    let statusClass = 'tc-job-site-status-ok';
+    switch (site.status) {
+      case 'offline':
+        statusText = 'Offline — reconnect and restore support';
+        statusClass = 'tc-job-site-status-danger';
+        break;
+      case 'unstaffed':
+        statusText = 'Unstaffed — waiting for an available settler';
+        statusClass = 'tc-job-site-status-warn';
+        break;
+      case 'missing_input':
+        statusText = 'Missing input — supply required resources';
+        statusClass = 'tc-job-site-status-warn';
+        break;
+      case 'storage_full':
+        statusText = 'Storage full — clear space in colony stores';
+        statusClass = 'tc-job-site-status-danger';
+        break;
+      case 'staffed':
+      default:
+        statusText = 'Staffed — production is running';
+        statusClass = 'tc-job-site-status-ok';
+        break;
+    }
+
+    return {
+      ...site,
+      label: building?.label ?? site.buildingKey,
+      statusText,
+      statusClass,
+    };
+  });
+});
+
+const jobsStatusClass = computed(() => {
+  if (populationState.hungerMs > 0 && workforceState.sites.length > 0) {
+    return 'tc-status-danger';
+  }
+  if (!workforceState.sites.length || workforceState.idleWorkers > 0) {
+    return 'tc-status-warn';
+  }
+  return 'tc-status-ok';
+});
+
+const jobsStatusText = computed(() => {
+  if (!workforceState.sites.length) {
+    return 'No job buildings online yet';
+  }
+  if (populationState.hungerMs > 0) {
+    return 'Hungry settlers abandon their posts until food recovers';
+  }
+  if (workforceState.availableWorkers <= 0) {
+    return 'No housed settlers are available for work';
+  }
+  if (workforceState.idleWorkers > 0) {
+    return `${workforceState.idleWorkers} worker${workforceState.idleWorkers === 1 ? '' : 's'} waiting for more job slots`;
+  }
+  return 'Every available worker is assigned';
 });
 
 // --- Keyboard ---
@@ -470,6 +620,70 @@ onUnmounted(() => {
 
 .tc-bar-danger {
   background: linear-gradient(90deg, rgba(248, 113, 113, 0.7), rgba(239, 68, 68, 0.9));
+}
+
+.tc-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tc-job-site {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.tc-job-site-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tc-job-site-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.tc-job-site-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: rgba(191, 219, 254, 0.44);
+}
+
+.tc-job-site-staff {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(252, 211, 77, 0.9);
+}
+
+.tc-job-site-status {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tc-job-site-status-ok {
+  color: rgba(134, 239, 172, 0.92);
+}
+
+.tc-job-site-status-warn {
+  color: rgba(253, 224, 71, 0.92);
+}
+
+.tc-job-site-status-danger {
+  color: rgba(252, 165, 165, 0.94);
+}
+
+.tc-placeholder-text {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(226, 232, 240, 0.62);
 }
 
 /* Placeholder */

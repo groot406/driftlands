@@ -13,6 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start:server": "tsx server/src/index.ts",
+    "test": "tsx --test src/**/*.test.ts server/**/*.test.ts",
     "typecheck:server": "tsc --noEmit --project tsconfig.server.json"
   },
   "dependencies": {

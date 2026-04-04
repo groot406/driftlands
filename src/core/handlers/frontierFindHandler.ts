@@ -15,6 +15,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   artifact: 'artifact',
   water: 'water',
   grain: 'grain',
+  water_lily: 'water lilies',
 };
 
 function formatRewardSummary(message: FrontierFindMessage) {

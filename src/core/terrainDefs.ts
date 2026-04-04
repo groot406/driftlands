@@ -128,6 +128,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             { key: 'plains_well', weight: 0, assetKey: 'plains' },
             { key: 'plains_watchtower', weight: 0, assetKey: 'plains', walkable: false, connectsToRoad: true },
             { key: 'plains_depot', weight: 0, assetKey: 'plains', connectsToRoad: true },
+            { key: 'plains_bakery', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_house', weight: 0, assetKey: 'house', walkable: false, connectsToRoad: true },
             { key: 'plains2', weight: 4, minMoisture: 0.3, maxMoisture: 0.7, decorative: true },
             { key: 'plains_wildflowers', weight: 12, minMoisture: 0.48, minTemperature: 0.38, maxRuggedness: 0.48, decorative: true },
@@ -139,7 +140,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         decorativeBaseWeight: 52,
     },
     water: {
-        minDistanceFromCenter: 5,
+        minDistanceFromCenter: 4,
         color: '#0ea5e9',
         baseWeight: 30,
         assetKey: 'water-v2',
@@ -152,7 +153,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         frameTime: 220,
         connectsToRoad: false,
         variations: [
-            {key: 'water_lily', weight: 2, decorative: true},
+            {key: 'water_lily', weight: 2, decorative: true, walkable: true},
             {key: 'water_dock_a', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { b: true, c: true, d: true, e: true, f: true }},
             {key: 'water_dock_b', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { a: true, c: true, d: true, e: true, f: true }},
             {key: 'water_dock_c', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { a: true, b: true, d: true, e: true, f: true }},
@@ -200,7 +201,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         assetKey: 'vulcano',
     },
     dirt: {
-        minDistanceFromCenter: 6,
+        minDistanceFromCenter: 1,
         color: '#a0522d',
         baseWeight: 25,
         walkable: true,
@@ -219,6 +220,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_well', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_watchtower', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_depot', weight: 0, assetKey: 'dirt'},
+            {key: 'dirt_bakery', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_house', weight: 0, assetKey: 'house', walkable: false},
             { key: 'dirt_cracked', weight: 7, maxMoisture: 0.42, minTemperature: 0.44, decorative: true },
             { key: 'dirt_pebbles', weight: 8, minRuggedness: 0.38, decorative: true },
@@ -253,7 +255,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         minDistanceFromCenter: 15,
         color: '#a0522d',
         baseWeight: 10,
-        assetKey: 'snow-v2',
+        assetKey: 'snow',
         walkable: true,
         adjacency: {
             plains: 5,

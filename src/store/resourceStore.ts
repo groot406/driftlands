@@ -14,6 +14,7 @@ const RESOURCE_TYPES: ResourceType[] = [
     'artifact',
     'water',
     'grain',
+    'water_lily',
 ];
 
 function createEmptyInventory(): Partial<Record<ResourceType, number>> {
@@ -26,6 +27,7 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         artifact: 0,
         water: 0,
         grain: 0,
+        water_lily: 0,
     };
 }
 
@@ -197,6 +199,24 @@ export function depositResourceToStorage(tileId: string, type: ResourceType, amo
     return amountToStore;
 }
 
+export interface StorageResourceTransfer {
+    storageTileId: string;
+    amount: number;
+}
+
+function compareStorageWithdrawalPriority(a: string, b: string) {
+    const aTile = tileIndex[a];
+    const bTile = tileIndex[b];
+    const aPriority = aTile?.terrain === 'towncenter' ? 0 : 1;
+    const bPriority = bTile?.terrain === 'towncenter' ? 0 : 1;
+
+    if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+    }
+
+    return a.localeCompare(b);
+}
+
 export function withdrawResourceFromStorage(tileId: string, type: ResourceType, amount: number = 1) {
     if (amount <= 0) return 0;
 
@@ -215,6 +235,93 @@ export function withdrawResourceFromStorage(tileId: string, type: ResourceType, 
     recomputeAggregateInventory();
     resourceVersion.value++;
     return amountToTake;
+}
+
+export function withdrawResourceAcrossStorages(type: ResourceType, amount: number = 1): StorageResourceTransfer[] {
+    if (amount <= 0) {
+        return [];
+    }
+
+    const transfers: StorageResourceTransfer[] = [];
+    let remaining = amount;
+
+    const prioritizedStorageIds = Object.keys(storageInventories).sort(compareStorageWithdrawalPriority);
+    for (const storageTileId of prioritizedStorageIds) {
+        if (remaining <= 0) {
+            break;
+        }
+
+        const withdrawnAmount = withdrawResourceFromStorage(storageTileId, type, remaining);
+        if (withdrawnAmount <= 0) {
+            continue;
+        }
+
+        transfers.push({
+            storageTileId,
+            amount: withdrawnAmount,
+        });
+        remaining -= withdrawnAmount;
+    }
+
+    if (transfers.length > 0) {
+        return transfers;
+    }
+
+    const current = resourceInventory[type] ?? 0;
+    const withdrawnAmount = Math.min(amount, current);
+    if (withdrawnAmount <= 0) {
+        return [];
+    }
+
+    resourceInventory[type] = Math.max(0, current - withdrawnAmount);
+    resourceVersion.value++;
+    return [{
+        storageTileId: '0,0',
+        amount: withdrawnAmount,
+    }];
+}
+
+export function planResourceWithdrawalsAcrossStorages(type: ResourceType, amount: number = 1): StorageResourceTransfer[] {
+    if (amount <= 0) {
+        return [];
+    }
+
+    const transfers: StorageResourceTransfer[] = [];
+    let remaining = amount;
+    const prioritizedStorageIds = Object.keys(storageInventories).sort(compareStorageWithdrawalPriority);
+
+    for (const storageTileId of prioritizedStorageIds) {
+        if (remaining <= 0) {
+            break;
+        }
+
+        const available = storageInventories[storageTileId]?.resources[type] ?? 0;
+        const amountToTake = Math.min(remaining, available);
+        if (amountToTake <= 0) {
+            continue;
+        }
+
+        transfers.push({
+            storageTileId,
+            amount: amountToTake,
+        });
+        remaining -= amountToTake;
+    }
+
+    if (transfers.length > 0) {
+        return transfers;
+    }
+
+    const current = resourceInventory[type] ?? 0;
+    const amountToTake = Math.min(amount, current);
+    if (amountToTake <= 0) {
+        return [];
+    }
+
+    return [{
+        storageTileId: '0,0',
+        amount: amountToTake,
+    }];
 }
 
 /**
@@ -286,17 +393,8 @@ export function depositResource(type: ResourceType, amount: number = 1) {
 }
 
 export function withdrawResource(type: ResourceType, amount: number = 1) {
-    if (amount <= 0) return;
-
-    const originStorage = ensureStorageSnapshotForTileInternal(tileIndex['0,0']);
-    if (originStorage) {
-        withdrawResourceFromStorage(originStorage.tileId, type, amount);
-        return;
-    }
-
-    const current = resourceInventory[type] ?? 0;
-    resourceInventory[type] = Math.max(0, current - amount);
-    resourceVersion.value++;
+    return withdrawResourceAcrossStorages(type, amount)
+        .reduce((sum, transfer) => sum + transfer.amount, 0);
 }
 
 export function setResourceAmount(type: ResourceType, amount: number) {

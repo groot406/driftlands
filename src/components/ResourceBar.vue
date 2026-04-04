@@ -35,6 +35,7 @@ watch(() => resourceVersion.value, () => {
     {key: 'ore', label: 'Ore', icon: '\u26CF\uFE0F'},
     {key: 'stone', label: 'Stone', icon: '\uD83E\uDEA8'},
     {key: 'food', label: 'Food', icon: '\uD83C\uDF56'},
+    {key: 'water_lily', label: 'Water Lilies', icon: '\uD83E\uDEB7'},
     {key: 'crystal', label: 'Crystal', icon: '\uD83D\uDC8E'},
     {key: 'artifact', label: 'Artifact', icon: '\uD83C\uDFFA'},
   ];

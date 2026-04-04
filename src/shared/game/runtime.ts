@@ -6,7 +6,7 @@ type TargetPosition = { q: number; r: number };
 
 export interface GameRuntime {
   broadcast: <T extends RuntimeMessage>(message: T) => void;
-  moveHero: (hero: Hero, target: TargetPosition, task?: TaskType) => void;
+  moveHero: (hero: Hero, target: TargetPosition, task?: TaskType, taskLocation?: TargetPosition) => void;
 }
 
 const defaultRuntime: GameRuntime = {
@@ -31,6 +31,6 @@ export function broadcastGameMessage<T extends RuntimeMessage>(message: T) {
   runtime.broadcast(message);
 }
 
-export function moveHeroWithRuntime(hero: Hero, target: TargetPosition, task?: TaskType) {
-  runtime.moveHero(hero, target, task);
+export function moveHeroWithRuntime(hero: Hero, target: TargetPosition, task?: TaskType, taskLocation?: TargetPosition) {
+  runtime.moveHero(hero, target, task, taskLocation);
 }

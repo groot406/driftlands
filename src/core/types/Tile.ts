@@ -1,6 +1,8 @@
 import type {TerrainKey} from '../terrainDefs';
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
 export type Terrain = TerrainKey;
+export type TileActivationState = 'active' | 'inactive';
+export type TileSupportBand = 'stable' | 'fragile' | 'inactive' | 'uncontrolled';
 
 export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
 export type TileSide = typeof SIDE_NAMES[number];
@@ -25,4 +27,8 @@ export interface Tile {
     neighbors?: TileNeighborMap;
     // Optional per-edge fencing: when true for a side, movement cannot cross that edge.
     fencedEdges?: Partial<Record<TileSide, boolean>>;
+    ownerSettlementId?: string | null;
+    controlledBySettlementId?: string | null;
+    activationState?: TileActivationState | null;
+    supportBand?: TileSupportBand | null;
 }

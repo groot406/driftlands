@@ -14,6 +14,8 @@ import {movementSystem} from "./systems/movementSystem";
 import {taskSystem} from "./systems/taskSystem";
 import { runSystem } from './systems/runSystem';
 import { populationSystem } from './systems/populationSystem';
+import { supportSystem } from './systems/supportSystem';
+import { jobSystem } from './systems/jobSystem';
 import { coopSystem } from './systems/coopSystem';
 import { runState } from './state/runState';
 import { frontierFindState } from './state/frontierFindState';
@@ -68,8 +70,8 @@ const io = new Server(httpServer, {
 setIo(io);
 configureGameRuntime({
   broadcast,
-  moveHero: (hero, target, task) => {
-    ServerMovementHandler.getInstance().moveHero(hero, target, task);
+  moveHero: (hero, target, task, taskLocation) => {
+    ServerMovementHandler.getInstance().moveHero(hero, target, task, taskLocation);
   }
 });
 configureGameplayEventRuntime((event) => {
@@ -91,6 +93,8 @@ tickEngine.register(movementSystem);
 tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
 tickEngine.register(populationSystem);
+tickEngine.register(supportSystem);
+tickEngine.register(jobSystem);
 tickEngine.register(coopSystem);
 tickEngine.register(runSystem);
 

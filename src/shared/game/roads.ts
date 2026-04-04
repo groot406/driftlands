@@ -1,5 +1,5 @@
 import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
-import { OPPOSITE_SIDE, type Tile, type TileSide } from '../../core/types/Tile.ts';
+import type { Tile, TileSide } from '../../core/types/Tile.ts';
 
 const PROCEDURAL_ROAD_VARIANTS = new Set([
   'road',

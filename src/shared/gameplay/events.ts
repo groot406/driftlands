@@ -20,6 +20,13 @@ export type GameplayEvent =
       taskType: TaskType;
       tileId: string;
       participantIds: string[];
+    }
+  | {
+      type: 'tile:restored';
+      tileId: string;
+      q: number;
+      r: number;
+      terrain: string | null;
     };
 
 type GameplayListener = (event: GameplayEvent) => void;

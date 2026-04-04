@@ -24,9 +24,12 @@ import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWareh
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
+import { cancelRestoreTileReservation, reserveRestoreTile } from './settlementSupportStore';
+import { findNearestTaskAccessTile, taskUsesAdjacentAccess } from '../shared/tasks/taskAccess';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
+const TASK_PROGRESS_MULTIPLIER = 1.2;
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -87,6 +90,10 @@ function makeId(state: TaskState) {
 
 // Remove a task instance from all indices
 export function removeTask(inst: TaskInstance) {
+    if (inst.type === 'restoreTile' && !inst.completedMs) {
+        cancelRestoreTileReservation(inst.tileId, inst.id);
+    }
+
     doRemoveTask(inst);
     // detach any heroes that still reference this task
     for (const hero of heroes) {
@@ -212,8 +219,9 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             // Find path to fetch location
             const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r);
             if (pathToFetch && pathToFetch.length > 0) {
+                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r) ?? targetTile;
                 // Store task info so hero can return after fetching
-                setHeroFetchIntent(hero, targetTile.id, taskType, { q: targetTile.q, r: targetTile.r }, resource);
+                setHeroFetchIntent(hero, targetTile.id, taskType, { q: returnTile.q, r: returnTile.r }, resource);
 
                 moveHeroWithRuntime(hero, fetchLocation);
                 return true; // Resource fetch initiated
@@ -227,8 +235,9 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     continue;
                 }
 
+                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r) ?? targetTile;
                 // Prepare carrying intent
-                setHeroFetchIntent(hero, targetTile.id, taskType, { q: targetTile.q, r: targetTile.r }, resource);
+                setHeroFetchIntent(hero, targetTile.id, taskType, { q: returnTile.q, r: returnTile.r }, resource);
 
                 // Immediate pickup logic
                 const currentTile = ensureTileExists(hero.q, hero.r);
@@ -317,7 +326,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
-    if (!isStoryTaskUnlocked(type)) return null;
+    if (type !== 'restoreTile' && !isStoryTaskUnlocked(type)) return null;
     if (!def.canStart(tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
@@ -332,9 +341,14 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     const tasksForTile = taskStore.tasksByTile[tile.id]!;
     if (tasksForTile[type]) return taskStore.taskIndex[tasksForTile[type]] || null;
     const nowMs = Date.now();
+    const taskId = makeId(taskStore);
+
+    if (type === 'restoreTile' && !reserveRestoreTile(tile.id, taskId)) {
+        return null;
+    }
 
     const inst: TaskInstance = {
-        id: makeId(taskStore),
+        id: taskId,
         type,
         tileId: tile.id,
         progressXp: 0,
@@ -514,7 +528,7 @@ export function updateActiveTasks(heroes: Hero[]) {
         let totalContributionThisUpdate = 0;
         for (const hero of participants) {
             const ratePerSecond = def.heroRate(hero, tile); // treat as per-second rate now
-            const contrib = ratePerSecond * elapsedSeconds;
+            const contrib = ratePerSecond * elapsedSeconds * TASK_PROGRESS_MULTIPLIER;
             inst.participants[hero.id] = (inst.participants[hero.id] || 0) + contrib;
             totalContributionThisUpdate += contrib;
         }
@@ -707,7 +721,13 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
         // Try each candidate until a path is found
         for (const targetTile of candidates) {
-            moveHeroWithRuntime(hero, targetTile, inst.type);
+            const accessTile = findNearestTaskAccessTile(inst.type, targetTile, hero.q, hero.r) ?? targetTile;
+            moveHeroWithRuntime(
+                hero,
+                accessTile,
+                inst.type,
+                taskUsesAdjacentAccess(inst.type) ? { q: targetTile.q, r: targetTile.r } : undefined,
+            );
             break; // only chain to one tile per hero
         }
     }

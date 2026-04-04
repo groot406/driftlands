@@ -30,6 +30,7 @@ import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWar
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
 import { isStoryTaskUnlocked } from '../story/progressionState.ts';
+import { findNearestTaskAccessTile, isHeroAtTaskAccess, taskUsesAdjacentAccess } from './taskAccess';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -79,13 +80,37 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
     }
 }
 
+function tryDepositPayloadIntoTask(hero: Hero, task: ReturnType<typeof getTaskById> | undefined) {
+    if (!task || !hero.carryingPayload || hero.carryingPayload.amount <= 0) {
+        return false;
+    }
+
+    const consumed = addResourcesToTask(task, hero.carryingPayload);
+    if (consumed <= 0) {
+        return false;
+    }
+
+    hero.carryingPayload.amount -= consumed;
+    if (hero.carryingPayload.amount <= 0) {
+        clearHeroPayload(hero);
+    } else {
+        setHeroPayload(hero, hero.carryingPayload);
+    }
+
+    joinTask(task.id, hero);
+    return true;
+}
+
 // Helper invoked when hero arrives at a tile (from heroStore)
 export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (!hero || !tile) return;
 
     const pending = hero.pendingChain; // capture before potential clearing
     const arrivalTask = hero.pendingTask;
-    const isAtPendingTaskTile = !!arrivalTask && arrivalTask.tileId === tile.id;
+    const pendingTaskTile = arrivalTask ? tileIndex[arrivalTask.tileId] : undefined;
+    const isAtPendingTaskAccess = !!arrivalTask
+        && !!pendingTaskTile
+        && isHeroAtTaskAccess(hero, arrivalTask.taskType, pendingTaskTile);
 
     // Handle resource fetch: if hero is fetching a resource and arrived at source
     if (isFetching(hero)) {
@@ -109,13 +134,30 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
 
         // Now return to task location
         if (hero.carryingPayload && hero.carryingPayload.amount > 0 && hero.returnPos) {
-            moveHeroWithRuntime(hero, hero.returnPos, arrivalTask?.taskType)
+            moveHeroWithRuntime(
+                hero,
+                hero.returnPos,
+                arrivalTask?.taskType,
+                pendingTaskTile ? { q: pendingTaskTile.q, r: pendingTaskTile.r } : undefined,
+            );
             return;
         }
     }
 
     // Resource deposit: if hero carrying a payload and tile is a warehouse node, deposit and send hero back
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
+        const pendingTaskInstance = arrivalTask && pendingTaskTile
+            ? getTaskByTile(pendingTaskTile.id, arrivalTask.taskType)
+            : undefined;
+
+        if (tryDepositPayloadIntoTask(hero, hero.currentTaskId ? getTaskById(hero.currentTaskId) : undefined)) {
+            return;
+        }
+
+        if (isAtPendingTaskAccess && tryDepositPayloadIntoTask(hero, pendingTaskInstance)) {
+            return;
+        }
+
         if (canUseWarehouseAtTile(tile)) {
             const carriedType = hero.carryingPayload.type;
             const carriedAmount = hero.carryingPayload.amount;
@@ -186,23 +228,6 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 resumeWaitingTasksForResource(carriedType, tile.id);
             }
             return;
-        } else if(hero.currentTaskId) {
-            // If not at a warehouse node but carrying resource for a task, try to deposit to that task if possible
-            const task = getTaskById(hero.currentTaskId);
-            if (task) {
-                const consumed = addResourcesToTask(task, hero.carryingPayload);
-                if (consumed > 0) {
-                    hero.carryingPayload.amount -= consumed;
-                    if (hero.carryingPayload.amount <= 0) {
-                        clearHeroPayload(hero);
-                    } else {
-                        setHeroPayload(hero, hero.carryingPayload);
-                    }
-                }
-                //playPositionalSound('drop-' + tile.q + '.' + tile.r, 'drop.mp3', tile.q, tile.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
-                joinTask(task.id, hero);
-                return;
-            }
         } else {
             // Lets check if there is a task on this tile that can accept resources
             const tasksHere = getTasksAtTile(tile.id);
@@ -228,7 +253,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         }
     }
 
-    if (!isAtPendingTaskTile) {
+    if (!isAtPendingTaskAccess) {
         hero.movement = undefined; // clear movement on arrival
         // Trigger deferred chain for non-task arrivals such as reward delivery.
         if (!arrivalTask && pending) {
@@ -241,9 +266,10 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     const selected = arrivalTask?.taskType;
     hero.pendingTask = undefined;
     if (selected) {
-        const existing = getTaskByTile(tile.id, selected);
+        const taskTile = pendingTaskTile ?? tile;
+        const existing = getTaskByTile(taskTile.id, selected);
         if (!existing) {
-            startTask(tile, selected, hero);
+            startTask(taskTile, selected, hero);
         } else {
             joinTask(existing.id, hero);
         }
@@ -288,14 +314,20 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     });
 
     for (const targetTile of candidates) {
-        moveHeroWithRuntime(hero, targetTile, pending.taskType);
+        const accessTile = findNearestTaskAccessTile(pending.taskType, targetTile, hero.q, hero.r) ?? targetTile;
+        moveHeroWithRuntime(
+            hero,
+            accessTile,
+            pending.taskType,
+            taskUsesAdjacentAccess(pending.taskType) ? { q: targetTile.q, r: targetTile.r } : undefined,
+        );
         break;
     }
 }
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     let tasks = listTaskDefinitions().filter(def =>
-        isStoryTaskUnlocked(def.key)
+        (def.key === 'restoreTile' || isStoryTaskUnlocked(def.key))
         && def.canStart(tile, hero)
         && canStartTaskWhileCarrying(hero, def, tile)
     );

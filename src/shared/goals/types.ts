@@ -4,7 +4,14 @@ import type { StoryProgressionSnapshot } from '../story/progression.ts';
 
 export type RunMode = 'story_mode';
 export type RunStatus = 'active';
-export type ObjectiveKind = 'discover_tiles' | 'deliver_resource' | 'complete_task' | 'reach_distance' | 'reach_population';
+export type ObjectiveKind =
+  | 'discover_tiles'
+  | 'deliver_resource'
+  | 'complete_task'
+  | 'reach_distance'
+  | 'reach_population'
+  | 'reach_active_tiles'
+  | 'restore_tiles';
 export type RunMutatorKey =
   | 'open_frontier'
   | 'timber_rush'
@@ -89,6 +96,9 @@ export interface RunSnapshot {
   score: number;
   missionScore: number;
   discoveredTiles: number;
+  activeTiles: number;
+  inactiveTiles: number;
+  restoredTiles: number;
   summary: string;
   mutator: RunMutatorSnapshot;
   story: RunStoryBeat;

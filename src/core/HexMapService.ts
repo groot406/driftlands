@@ -132,6 +132,7 @@ interface DrawOptions {
     globalReachTileIds?: Set<string>;
     hoveredReachBoundary?: Array<{q: number; r: number}>; // hover-highlighted reach outline (specific TC)
     hoveredReachTileIds?: Set<string>;
+    showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
 }
 
@@ -422,6 +423,7 @@ export class HexMapService {
     private _hoveredReachAlpha = 0; // animated 0→0.7 for smooth TC hover transition
     private _lastHoveredReachBoundary: Array<{q: number; r: number}> = [];
     private _lastHoveredReachTileIds: Set<string> = new Set();
+    private _storageIndicatorAlphaByTileId = new Map<string, number>();
     private _tileColorVariantCache = new Map<string, HTMLCanvasElement>();
     private _tileShaderCache = new Map<string, HTMLCanvasElement>();
     private _tileShorelineCache = new Map<string, HTMLCanvasElement>();
@@ -626,7 +628,7 @@ export class HexMapService {
     ) {
         updateRenderDebugState({
             stressTier: frame.stressTier,
-            qualityLabel: frame.stressTier === 0 ? 'full' : frame.stressTier === 1 ? 'reduced' : 'minimal',
+            qualityLabel: 'full',
             smoothedFrameMs: Number(this._renderStress.smoothedFrameMs.toFixed(1)),
             visibleTileCount: frame.visibleTiles.length,
             discoveredVisibleCount: frame.visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0),
@@ -666,7 +668,7 @@ export class HexMapService {
         const cameraMoving = isCameraMoving();
 
         const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
-        const quality = this.getRenderQualityProfile(stressTier);
+        const quality = this.getRenderQualityProfile();
         this._currentCameraFx = cameraFx;
         this._currentRenderQuality = quality;
         this.applyPendingCameraNudges(cameraFx);
@@ -695,48 +697,20 @@ export class HexMapService {
         if (this._canvas.style.filter) this._canvas.style.filter = 'none';
     }
 
-    private getRenderQualityProfile(stressTier: RenderStressState['tier']): RenderQualityProfile {
-        const baseProfile = stressTier === 2
-            ? {
-                enableBackdropGlows: false,
-                enableMotionBlur: false,
-                motionBlurStrength: 0,
-                enableBloom: false,
-                enableParticles: false,
-                enableEdgeVignette: false,
-                enableReachGlow: false,
-                enableHeroAuras: true,
-                enableFogShimmer: false,
-                enableManualShadowComposite: false,
-                particleBudgetScale: 0,
-            }
-            : stressTier === 1
-                ? {
-                    enableBackdropGlows: false,
-                    enableMotionBlur: isMotionBlurEffectEnabled(),
-                    motionBlurStrength: 0.52,
-                    enableBloom: false,
-                    enableParticles: graphicsStore.particles,
-                    enableEdgeVignette: false,
-                    enableReachGlow: false,
-                    enableHeroAuras: true,
-                    enableFogShimmer: false,
-                    enableManualShadowComposite: false,
-                    particleBudgetScale: 0.35,
-                }
-                : {
-                    enableBackdropGlows: true,
-                    enableMotionBlur: isMotionBlurEffectEnabled(),
-                    motionBlurStrength: 1.18,
-                    enableBloom: isBloomEffectEnabled(),
-                    enableParticles: graphicsStore.particles,
-                    enableEdgeVignette: shouldUseEdgeVignette(),
-                    enableReachGlow: true,
-                    enableHeroAuras: true,
-                    enableFogShimmer: true,
-                    enableManualShadowComposite: !shouldUseCanvasDropShadow(),
-                    particleBudgetScale: 1,
-                };
+    private getRenderQualityProfile(): RenderQualityProfile {
+        const baseProfile = {
+            enableBackdropGlows: true,
+            enableMotionBlur: isMotionBlurEffectEnabled(),
+            motionBlurStrength: 1.18,
+            enableBloom: isBloomEffectEnabled(),
+            enableParticles: graphicsStore.particles,
+            enableEdgeVignette: shouldUseEdgeVignette(),
+            enableReachGlow: true,
+            enableHeroAuras: true,
+            enableFogShimmer: true,
+            enableManualShadowComposite: !shouldUseCanvasDropShadow(),
+            particleBudgetScale: 1,
+        };
 
         return this.applyManualRenderFeatureOverrides(baseProfile);
     }
@@ -1216,6 +1190,22 @@ export class HexMapService {
         if (!applyCameraFade) return 1;
         const fade = this.computeFade(dist, camera.innerRadius, camera.radius);
         return fade * fade;
+    }
+
+    private getSupportAwareTileOpacity(tile: Tile, opacity: number) {
+        if (!tile.discovered || tile.terrain === 'towncenter') {
+            return opacity;
+        }
+
+        if (tile.activationState === 'inactive') {
+            return opacity * 0.58;
+        }
+
+        if (tile.supportBand === 'fragile') {
+            return opacity * 0.94;
+        }
+
+        return opacity;
     }
 
     private getActorOpacity(dist: number, applyCameraFade: boolean) {
@@ -1968,6 +1958,69 @@ export class HexMapService {
         ctx.globalAlpha = 1;
     }
 
+    private drawSupportOverlay(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        applyCameraFade: boolean,
+        showSupportOverlay: boolean,
+    ) {
+        for (const tile of tiles) {
+            if (!tile.discovered || tile.terrain === 'towncenter') {
+                continue;
+            }
+
+            const band = tile.supportBand ?? (tile.activationState === 'inactive' ? 'inactive' : null);
+            if (!band) {
+                continue;
+            }
+
+            const shouldDraw = showSupportOverlay || band === 'inactive';
+            if (!shouldDraw) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            if (dist > camera.radius + 1) {
+                continue;
+            }
+
+            const opacity = this.getTileOpacity(dist, applyCameraFade);
+            if (opacity <= 0.04) {
+                continue;
+            }
+
+            let fill: string | null = null;
+            let stroke: string | null = null;
+            let alpha = opacity;
+
+            switch (band) {
+                case 'stable':
+                    fill = 'rgba(74, 222, 128, 0.16)';
+                    stroke = 'rgba(34, 197, 94, 0.55)';
+                    alpha *= 0.42;
+                    break;
+                case 'fragile':
+                    fill = 'rgba(245, 158, 11, 0.18)';
+                    stroke = 'rgba(251, 191, 36, 0.72)';
+                    alpha *= 0.58;
+                    break;
+                case 'uncontrolled':
+                    fill = 'rgba(100, 116, 139, 0.2)';
+                    stroke = 'rgba(148, 163, 184, 0.55)';
+                    alpha *= 0.52;
+                    break;
+                case 'inactive':
+                default:
+                    fill = showSupportOverlay ? 'rgba(120, 53, 15, 0.34)' : 'rgba(38, 32, 30, 0.42)';
+                    stroke = showSupportOverlay ? 'rgba(217, 119, 6, 0.8)' : 'rgba(140, 102, 94, 0.64)';
+                    alpha *= showSupportOverlay ? 0.72 : 0.68;
+                    break;
+            }
+
+            this.drawHexHighlight(ctx, tile.q, tile.r, fill, stroke, alpha);
+        }
+    }
+
     private drawReachOutline(
         ctx: CanvasRenderingContext2D,
         boundary: Array<{q: number; r: number}>,
@@ -2061,13 +2114,14 @@ export class HexMapService {
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         for (const loop of loops) {
+            const expandedLoop = this.offsetLoopOutward(loop, hovered ? 5 : 4);
             if (!this._currentRenderQuality.enableReachGlow) {
                 ctx.globalAlpha = alpha * 0.9;
                 ctx.shadowBlur = 0;
                 ctx.shadowColor = 'transparent';
                 ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.72)' : 'rgba(210,190,70,0.58)';
                 ctx.lineWidth = hovered ? 2.4 : 1.4;
-                this.strokeSmoothLoop(ctx, loop);
+                this.strokeSmoothLoop(ctx, expandedLoop);
                 continue;
             }
 
@@ -2079,7 +2133,7 @@ export class HexMapService {
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.strokeStyle = 'rgba(0,0,0,0.01)';
             ctx.lineWidth = hovered ? 8 : 6;
-            this.strokeSmoothLoop(ctx, loop);
+            this.strokeSmoothLoop(ctx, expandedLoop);
 
             // Diffuse glow pass
             ctx.shadowOffsetX = 0;
@@ -2089,7 +2143,7 @@ export class HexMapService {
             ctx.shadowBlur = hovered ? 24 : 18;
             ctx.strokeStyle = hovered ? 'rgba(220,200,60,0.5)' : 'rgba(180,160,50,0.4)';
             ctx.lineWidth = hovered ? 7 : 5;
-            this.strokeSmoothLoop(ctx, loop);
+            this.strokeSmoothLoop(ctx, expandedLoop);
 
             // Core line — bright and crisp
             ctx.shadowBlur = 0;
@@ -2097,9 +2151,64 @@ export class HexMapService {
             ctx.globalAlpha = alpha * 0.85;
             ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.6)' : 'rgba(210,190,70,0.5)';
             ctx.lineWidth = hovered ? 2.5 : 1.5;
-            this.strokeSmoothLoop(ctx, loop);
+            this.strokeSmoothLoop(ctx, expandedLoop);
         }
         ctx.restore();
+    }
+
+    private offsetLoopOutward(pts: Array<{x: number; y: number}>, amount: number) {
+        if (pts.length < 3 || amount === 0) {
+            return pts;
+        }
+
+        const centroid = this.getLoopCentroid(pts);
+        return pts.map((point) => {
+            const dx = point.x - centroid.x;
+            const dy = point.y - centroid.y;
+            const length = Math.hypot(dx, dy);
+
+            if (length <= 0.001) {
+                return point;
+            }
+
+            return {
+                x: point.x + ((dx / length) * amount),
+                y: point.y + ((dy / length) * amount),
+            };
+        });
+    }
+
+    private getLoopCentroid(pts: Array<{x: number; y: number}>) {
+        let signedArea = 0;
+        let cx = 0;
+        let cy = 0;
+
+        for (let i = 0; i < pts.length; i++) {
+            const current = pts[i]!;
+            const next = pts[(i + 1) % pts.length]!;
+            const cross = (current.x * next.y) - (next.x * current.y);
+            signedArea += cross;
+            cx += (current.x + next.x) * cross;
+            cy += (current.y + next.y) * cross;
+        }
+
+        if (Math.abs(signedArea) < 0.001) {
+            const average = pts.reduce((acc, point) => {
+                acc.x += point.x;
+                acc.y += point.y;
+                return acc;
+            }, { x: 0, y: 0 });
+
+            return {
+                x: average.x / pts.length,
+                y: average.y / pts.length,
+            };
+        }
+
+        return {
+            x: cx / (3 * signedArea),
+            y: cy / (3 * signedArea),
+        };
     }
 
     /** Draw a closed smooth curve through the given points using quadratic beziers. */
@@ -2143,6 +2252,7 @@ export class HexMapService {
         this.drawTiles(ctx, overlayRecords, visibleTiles, effectNowMs, applyCameraFade, opts.globalReachTileIds, includeDiscoveredTerrain, suppressWorldUi);
         if (allowPersistentWorldUi) {
             this.drawGameplayWorldImpacts(ctx, effectNowMs, applyCameraFade);
+            this.drawSupportOverlay(ctx, visibleTiles, applyCameraFade, opts.showSupportOverlay === true);
         }
 
         // Determine if selected hero is idle (gate path and selected highlight)
@@ -2322,7 +2432,7 @@ export class HexMapService {
         // Heroes & overlays combined layering
         this.drawHeroes(ctx, forMotionBlur ? null : opts.hoveredHero, overlayRecords, applyCameraFade, movementNowMs);
         if (allowPersistentWorldUi) {
-            this.drawTaskIndicators(ctx, visibleTiles, applyCameraFade);
+            this.drawTaskIndicators(ctx, visibleTiles, applyCameraFade, forMotionBlur ? null : opts.hoveredTile);
         }
         ctx.restore();
 
@@ -2343,7 +2453,7 @@ export class HexMapService {
         for (const t of tiles) {
             if (!t.discovered) continue;
             const dist = hexDistance(camera, t);
-            const opacity = this.getTileOpacity(dist, applyCameraFade);
+            const opacity = this.getSupportAwareTileOpacity(t, this.getTileOpacity(dist, applyCameraFade));
             this.drawTile(t, now, ctx, opacity);
         }
     }
@@ -2360,7 +2470,7 @@ export class HexMapService {
     ) {
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
-            const opacity = this.getTileOpacity(dist, applyCameraFade);
+            const opacity = this.getSupportAwareTileOpacity(t, this.getTileOpacity(dist, applyCameraFade));
 
             if (t.discovered) {
                 if (includeDiscoveredTerrain) {
@@ -2519,13 +2629,18 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private drawTaskIndicators(ctx: CanvasRenderingContext2D, tiles: Tile[], applyCameraFade: boolean = true) {
+    private drawTaskIndicators(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        applyCameraFade: boolean = true,
+        hoveredTile: Tile | null = null,
+    ) {
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = this.getTileOpacity(dist, applyCameraFade);
 
             if (canUseWarehouseAtTile(t)) {
-                this.drawStorageIndicator(ctx, t, opacity);
+                this.drawStorageIndicator(ctx, t, opacity, hoveredTile);
             }
 
             const activeTasksForTile = taskStore.tasksByTile[t.id];
@@ -2540,9 +2655,22 @@ export class HexMapService {
         }
     }
 
-    private drawStorageIndicator(ctx: CanvasRenderingContext2D, tile: Tile, opacity: number) {
+    private drawStorageIndicator(ctx: CanvasRenderingContext2D, tile: Tile, opacity: number, hoveredTile: Tile | null = null) {
         const storageKind = getStorageKindForTile(tile);
         if (!storageKind) return;
+
+        const isHoveredStorageTile = hoveredTile?.id === tile.id && !!getStorageKindForTile(hoveredTile);
+        const currentAlpha = this._storageIndicatorAlphaByTileId.get(tile.id) ?? 0;
+        const targetAlpha = isHoveredStorageTile ? 1 : 0;
+        const lerpSpeed = isHoveredStorageTile ? 0.24 : 0.18;
+        const nextAlpha = currentAlpha + ((targetAlpha - currentAlpha) * lerpSpeed);
+
+        if (nextAlpha <= 0.02 && targetAlpha === 0) {
+            this._storageIndicatorAlphaByTileId.delete(tile.id);
+            return;
+        }
+
+        this._storageIndicatorAlphaByTileId.set(tile.id, nextAlpha);
 
         const usedCapacity = getStorageUsedCapacity(tile.id);
         const freeCapacity = getStorageFreeCapacity(tile.id);
@@ -2580,17 +2708,17 @@ export class HexMapService {
         const drawX = x - (width / 2);
         const drawY = y - this.HEX_SIZE - 19;
 
-        ctx.globalAlpha = opacity * 0.72;
+        ctx.globalAlpha = opacity * nextAlpha * 0.72;
         this.drawRoundedRect(ctx, drawX, drawY, width, height, 6);
         ctx.fillStyle = 'rgba(7, 16, 29, 0.88)';
         ctx.fill();
 
-        ctx.globalAlpha = opacity * 0.95;
+        ctx.globalAlpha = opacity * nextAlpha * 0.95;
         ctx.strokeStyle = accent;
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        ctx.globalAlpha = opacity;
+        ctx.globalAlpha = opacity * nextAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = 'rgba(246, 250, 255, 0.94)';
@@ -3976,6 +4104,9 @@ export class HexMapService {
         palette: TileShaderPalette,
         geometry: TileShaderGeometry,
     ) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'color-burn';
+
         const accent = ctx.createRadialGradient(
             geometry.accentX,
             geometry.accentY,
@@ -3984,8 +4115,8 @@ export class HexMapService {
             geometry.accentY,
             geometry.accentRadius,
         );
-        accent.addColorStop(0, this.toRgba(palette.patch, palette.patchAlpha * 1.42));
-        accent.addColorStop(0.62, this.toRgba(palette.regionGlow, palette.regionGlowAlpha * 0.9));
+        accent.addColorStop(0, this.toRgba(palette.patch, palette.patchAlpha));
+        accent.addColorStop(0.4, this.toRgba(palette.regionGlow, palette.regionGlowAlpha * 0.5));
         accent.addColorStop(1, this.toRgba(palette.wash, 0));
         ctx.fillStyle = accent;
         ctx.fillRect(0, 0, geometry.width, geometry.height);
@@ -3998,9 +4129,10 @@ export class HexMapService {
             geometry.accentY2,
             geometry.accentRadius2,
         );
-        accentTwo.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha * 1.45));
-        accentTwo.addColorStop(0.74, this.toRgba(palette.patch, palette.patchAlpha * 0.82));
+        accentTwo.addColorStop(0, this.toRgba(palette.highlight, palette.highlightAlpha));
+        accentTwo.addColorStop(0.74, this.toRgba(palette.patch, palette.patchAlpha * 0.5));
         accentTwo.addColorStop(1, this.toRgba(palette.patch, 0));
+
         ctx.fillStyle = accentTwo;
         ctx.fillRect(0, 0, geometry.width, geometry.height);
 
@@ -4017,6 +4149,8 @@ export class HexMapService {
         shadowPool.addColorStop(1, this.toRgba(palette.shadow, 0));
         ctx.fillStyle = shadowPool;
         ctx.fillRect(0, 0, geometry.width, geometry.height);
+
+        ctx.restore();
     }
 
     private drawTileShaderEdgeRelief(
@@ -4838,6 +4972,7 @@ export class HexMapService {
         artifact: '🗿',
         water: '💧',
         grain: '🌾',
+        water_lily: '🪷',
     };
 
     private getTileOverlayKey(t: Tile): string | null {

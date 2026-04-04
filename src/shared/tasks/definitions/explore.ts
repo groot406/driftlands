@@ -5,7 +5,7 @@ import type {Hero} from "../../../core/types/Hero";
 import type {Tile, TileSide} from "../../../core/types/Tile";
 import { moveHeroWithRuntime } from '../../game/runtime';
 import { getDistanceToNearestTowncenter } from '../../game/worldQueries';
-import { isTileWithinReach } from '../../../store/populationStore';
+import { isPositionControlled } from '../../game/state/settlementSupportStore';
 
 const EXPLORE_CHAIN_DELAY_MS = 120;
 const EXPLORE_BASE_REQUIRED_XP = 250;
@@ -29,7 +29,7 @@ export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
     const speed = Math.max(1, hero.stats.spd);
 
     // Exploration should benefit from experience, but not snowball linearly off the same stat it rewards.
-    return Math.round(EXPLORE_SCOUTING_RATE * (Math.sqrt(experience) + (2 * speed)));
+    return Math.round(EXPLORE_SCOUTING_RATE * (Math.sqrt(experience) + (2 * speed))) * 2;
 }
 
 export function getExploreRewardedXp(distance: number) {
@@ -52,7 +52,7 @@ const exploreTask: TaskDefinition = {
     },
 
     canStart(tile: Tile, _hero: Hero): boolean {
-        return !tile.discovered && isTileWithinReach(tile.q, tile.r);
+        return !tile.discovered && isPositionControlled(tile.q, tile.r);
     },
 
     onStart(_tile, _instance, _participants) {
@@ -93,7 +93,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             if (!nm) break;
             const neighbor = nm[side];
 
-            if (neighbor && !neighbor.discovered && isTileWithinReach(neighbor.q, neighbor.r)) {
+            if (neighbor && !neighbor.discovered && isPositionControlled(neighbor.q, neighbor.r)) {
                 if (!closestUndiscovered) {
                     closestUndiscovered = neighbor;
                 } else if (
@@ -105,7 +105,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             }
         }
 
-        if (closestUndiscovered && !closestUndiscovered.discovered && isTileWithinReach(closestUndiscovered.q, closestUndiscovered.r)) {
+        if (closestUndiscovered && !closestUndiscovered.discovered && isPositionControlled(closestUndiscovered.q, closestUndiscovered.r)) {
             moveHeroWithRuntime(participant, closestUndiscovered, 'explore');
         }
     }

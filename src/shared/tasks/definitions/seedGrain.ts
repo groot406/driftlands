@@ -2,7 +2,6 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import type {ResourceAmount} from "../../../core/types/Resource.ts";
-import { broadcastGameMessage as broadcast } from '../../game/runtime';
 import {applyVariant} from "../../../core/variants.ts";
 
 const seedGrainTask: TaskDefinition = {

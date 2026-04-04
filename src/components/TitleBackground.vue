@@ -18,6 +18,14 @@ const wrapper = ref<HTMLDivElement | null>(null);
 const ctxRef = shallowRef<CanvasRenderingContext2D | null>(null);
 let dpr = window.devicePixelRatio || 1;
 
+const tileImageModules = import.meta.glob('../assets/tiles/*.png', { eager: true, import: 'default' }) as Record<string, string>;
+const tileImageSources: Record<string, string> = {};
+for (const [path, url] of Object.entries(tileImageModules)) {
+  const nameMatch = path.match(/([^/]+)\.png$/);
+  if (!nameMatch) continue;
+  tileImageSources[nameMatch[1]!] = url;
+}
+
 const props = defineProps<{
   move: boolean
   speed?: number;
@@ -56,6 +64,8 @@ function axialToPixel(q: number, r: number) {
 // Dynamic sprite image cache keyed by sprite names (terrain or variant asset keys)
 const spriteRaw: Record<string, HTMLImageElement> = {};
 const spriteMasked: Record<string, HTMLCanvasElement> = {};
+const spriteLoading = new Set<string>();
+const spriteMissing = new Set<string>();
 
 function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
   const drawSize = (HEX_SIZE * 2) - 2;
@@ -90,16 +100,30 @@ function createMaskedImage(img: HTMLImageElement): HTMLCanvasElement {
 }
 
 function ensureSpriteLoaded(key: string) {
-  if (spriteMasked[key]) return;
+  if (!key || spriteMasked[key] || spriteLoading.has(key) || spriteMissing.has(key)) return;
   const img = spriteRaw[key];
-  if (img && img.width > 0) {
+  if (img && img.naturalWidth > 0) {
     spriteMasked[key] = createMaskedImage(img);
     return;
   }
-  // Try loading image dynamically from assets/tiles folder
-  const url = new URL(`../assets/tiles/${key}.png`, import.meta.url).href;
+
+  const url = tileImageSources[key];
+  if (!url) {
+    spriteMissing.add(key);
+    return;
+  }
+
+  spriteLoading.add(key);
   const image = new Image();
-  image.onload = () => { spriteRaw[key] = image; spriteMasked[key] = createMaskedImage(image); };
+  image.onload = () => {
+    spriteLoading.delete(key);
+    spriteRaw[key] = image;
+    spriteMasked[key] = createMaskedImage(image);
+  };
+  image.onerror = () => {
+    spriteLoading.delete(key);
+    spriteMissing.add(key);
+  };
   image.src = url;
 }
 

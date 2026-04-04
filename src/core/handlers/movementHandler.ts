@@ -35,6 +35,7 @@ class ClientMovementHandler {
       origin: message.origin,
       requestId: message.id,
       authoritative: true,
+      taskLocation: message.taskLocation,
     });
   }
 }

@@ -7,6 +7,7 @@ import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/typ
 import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
 import type {PopulationSnapshot} from "../store/populationStore.ts";
+import type { WorkforceSnapshot } from '../store/jobStore.ts';
 
 export interface BaseMessage {
     type: string;
@@ -88,6 +89,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     resources: Partial<Record<ResourceType, number>>;
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
+    jobs: WorkforceSnapshot;
 }
 
 export interface TileUpdatedMessage extends BaseMessage {
@@ -104,6 +106,7 @@ export interface MoveRequestMessage extends BaseMessage {
     // optional client-computed path for validation; server may override
     path?: { q: number; r: number }[];
     task?: TaskType;
+    taskLocation?: { q: number; r: number };
 }
 
 export interface PathUpdateMessage extends BaseMessage {
@@ -117,6 +120,7 @@ export interface PathUpdateMessage extends BaseMessage {
     stepDurations: number[]; // per-step durations
     cumulative: number[]; // cumulative end times
     task?: TaskType;
+    taskLocation?: { q: number; r: number };
 }
 
 // Hero state updates
@@ -228,6 +232,19 @@ export interface PopulationUpdateMessage extends BaseMessage {
     max: number;
     beds: number;
     hungerMs: number;
+    supportCapacity: number;
+    activeTileCount: number;
+    inactiveTileCount: number;
+    pressureState: PopulationSnapshot['pressureState'];
+    settlements: PopulationSnapshot['settlements'];
+}
+
+export interface JobsUpdateMessage extends BaseMessage {
+    type: 'jobs:update';
+    availableWorkers: number;
+    assignedWorkers: number;
+    idleWorkers: number;
+    sites: WorkforceSnapshot['sites'];
 }
 
 export type ClientMessage =
@@ -265,4 +282,5 @@ export type ServerMessage =
     | HeroPayloadUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
-    | PopulationUpdateMessage;
+    | PopulationUpdateMessage
+    | JobsUpdateMessage;

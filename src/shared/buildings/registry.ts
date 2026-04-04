@@ -3,6 +3,10 @@ import { discoverTile, ensureTileExists } from '../../core/world';
 import { terrainPositions } from '../../core/terrainRegistry';
 import { isTileWalkable } from '../game/navigation';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
+import {
+    isTileControlled,
+    listActiveAdjacentAccessTiles,
+} from '../game/state/settlementSupportStore';
 import type { Hero } from '../../core/types/Hero';
 import type { ResourceAmount } from '../../core/types/Resource';
 import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
@@ -25,6 +29,11 @@ export interface BuildingDefinition {
     providesWaterSource?: boolean;
     providesWarehouse?: boolean;
     requiredPopulation?: number; // minimum population to build
+    jobSlots?: number;
+    cycleMs?: number;
+    consumes?: ResourceAmount[];
+    produces?: ResourceAmount[];
+    jobLabel?: string;
     canPlace(tile: Tile, hero: Hero): boolean;
     requiredXp(distance: number): number;
     heroRate(hero: Hero, tile: Tile): number;
@@ -247,7 +256,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'dock',
         label: 'Dock',
-        summary: 'Creates a landing point and unlocks fishing on the shoreline.',
+        summary: 'Creates a landing point from adjacent shore and unlocks fishing on the shoreline.',
         categoryLabel: 'Harbor',
         buildTaskKey: 'buildDock',
         buildTaskLabel: 'Build Dock',
@@ -261,7 +270,10 @@ const buildings: BuildingDefinition[] = [
             'water_dock_f',
         ],
         canPlace(tile, _hero) {
-            return tile.terrain === 'water' && tile.isBaseTile;
+            return tile.terrain === 'water'
+                && tile.isBaseTile
+                && isTileControlled(tile)
+                && listActiveAdjacentAccessTiles(tile).length > 0;
         },
         requiredXp(distance: number) {
             return Math.max(3000, 3000 * distance);
@@ -275,6 +287,11 @@ const buildings: BuildingDefinition[] = [
         onStart(tile, instance, participants) {
             const starter = participants[0];
             if (!starter) return;
+
+            instance.context = {
+                ...(instance.context ?? {}),
+                adjacentActiveAccess: true,
+            };
 
             const movement = starter.movement;
             const neighbors = tile.neighbors;
@@ -306,7 +323,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'lumberCamp',
         label: 'Lumber Camp',
-        summary: 'Claims a forest tile as a permanent timber site for repeat wood gathering.',
+        summary: 'Claims a forest tile as a permanent timber site staffed by settlers.',
         categoryLabel: 'Industry',
         buildTaskKey: 'buildLumberCamp',
         buildTaskLabel: 'Build Lumber Camp',
@@ -315,6 +332,10 @@ const buildings: BuildingDefinition[] = [
         variantKeys: ['forest_lumber_camp'],
         renderDecoration: 'lumberCamp',
         overlayAssetKey: 'building_lumber_camp_overlay',
+        jobSlots: 1,
+        cycleMs: 60_000,
+        produces: [{ type: 'wood', amount: 2 }],
+        jobLabel: 'Timber crew',
         canPlace(tile, _hero) {
             return tile.terrain === 'forest' && tile.isBaseTile;
         },
@@ -336,7 +357,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'granary',
         label: 'Granary',
-        summary: 'Secures a grain tile as a lasting ration site that produces food.',
+        summary: 'Secures a grain tile as a lasting grain site staffed by settlers.',
         categoryLabel: 'Agriculture',
         buildTaskKey: 'buildGranary',
         buildTaskLabel: 'Build Granary',
@@ -345,6 +366,10 @@ const buildings: BuildingDefinition[] = [
         variantKeys: ['grain_granary'],
         renderDecoration: 'granary',
         overlayAssetKey: 'building_granary_overlay',
+        jobSlots: 1,
+        cycleMs: 60_000,
+        produces: [{ type: 'grain', amount: 2 }],
+        jobLabel: 'Grain keeper',
         canPlace(tile, _hero) {
             return tile.terrain === 'grain' && tile.isBaseTile;
         },
@@ -360,6 +385,45 @@ const buildings: BuildingDefinition[] = [
         onComplete(tile) {
             if (tile.terrain === 'grain') {
                 applyVariant(tile, 'grain_granary', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'bakery',
+        label: 'Bakery',
+        summary: 'Turns stored grain into food once a settler staffs the ovens.',
+        categoryLabel: 'Agriculture',
+        buildTaskKey: 'buildBakery',
+        buildTaskLabel: 'Build Bakery',
+        sortOrder: 36,
+        requiredPopulation: 3,
+        variantKeys: ['plains_bakery', 'dirt_bakery'],
+        overlayAssetKey: 'building_depot_overlay',
+        jobSlots: 1,
+        cycleMs: 60_000,
+        consumes: [{ type: 'grain', amount: 1 }],
+        produces: [{ type: 'food', amount: 2 }],
+        jobLabel: 'Baker',
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(distance: number) {
+            return Math.max(3000, 2200 * distance);
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(distance: number) {
+            return [
+                { type: 'wood', amount: Math.max(6, 4 * distance) },
+                { type: 'stone', amount: Math.max(2, 2 * distance) },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_bakery', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_bakery', { stagger: false, respectBiome: false });
             }
         },
     },
@@ -433,6 +497,10 @@ export function listBuildingDefinitions() {
 
 export function getBuildingDefinitionByTaskKey(taskKey: TaskType) {
     return buildings.find((building) => building.buildTaskKey === taskKey) ?? null;
+}
+
+export function getBuildingDefinitionByKey(buildingKey: string) {
+    return buildings.find((building) => building.key === buildingKey) ?? null;
 }
 
 export function getBuildingDefinitionForTile(tile: Tile | null | undefined) {
