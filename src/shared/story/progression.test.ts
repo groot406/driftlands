@@ -18,14 +18,14 @@ test('mission 1 starts with basic exploration heroes, tasks, and terrains', () =
   assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildMine'));
 });
 
-test('mission 2 unlocks dock, house, and shore tasks', () => {
+test('mission 2 unlocks dock, house, and shore logistics', () => {
   const progression = createStoryProgression(2);
   const taskKeys = getAvailableStoryTaskKeys(progression);
   const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
 
   assert.ok(taskKeys.includes('buildDock'));
   assert.ok(taskKeys.includes('buildHouse'));
-  assert.ok(taskKeys.includes('fishAtDock'));
+  assert.ok(!taskKeys.includes('fishAtDock'));
   assert.ok(taskKeys.includes('harvestWaterLilies'));
   assert.ok(taskKeys.includes('placeWaterLilies'));
   assert.ok(taskKeys.includes('plantTrees'));
@@ -65,19 +65,19 @@ test('mission 5 unlocks watchtower, granary, and bakery', () => {
   assert.ok(taskKeys.includes('buildWatchtower'));
   assert.ok(taskKeys.includes('buildGranary'));
   assert.ok(taskKeys.includes('buildBakery'));
-  assert.ok(taskKeys.includes('fishAtDock'));
+  assert.ok(taskKeys.includes('buildDock'));
   assert.ok(progression.buildings.available.includes('watchtower'));
   assert.ok(progression.buildings.available.includes('granary'));
   assert.ok(progression.buildings.available.includes('bakery'));
 });
 
-test('mission 6 unlocks mine, ore extraction, and mountain terrain', () => {
+test('mission 6 unlocks mine and mountain terrain', () => {
   const progression = createStoryProgression(6);
   const taskKeys = getAvailableStoryTaskKeys(progression);
   const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
 
   assert.ok(taskKeys.includes('buildMine'));
-  assert.ok(taskKeys.includes('mineOre'));
+  assert.ok(!taskKeys.includes('mineOre'));
   assert.ok(progression.buildings.available.includes('mine'));
   assert.ok(progression.terrains.available.includes('mountain'));
   assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'mine'));

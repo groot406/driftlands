@@ -28,9 +28,9 @@ const harvestWaterLiliesTask: TaskDefinition = {
         return 12 * hero.stats.atk;
     },
 
-    totalRewardedResources(distance: number) {
+    totalRewardedResources(_distance: number) {
         // Harvested lilies can be replanted to extend walkable water paths.
-        return { type: 'water_lily', amount: 2 * distance };
+        return { type: 'water_lily', amount: 1 };
     },
 
     onComplete(tile, _instance) {

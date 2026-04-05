@@ -26,6 +26,11 @@ const HUNGER_DEATH_THRESHOLD_MS = HUNGER_GRACE_MINUTES * 60_000;
 
 let lastFoodTickMs = 0;
 
+function canGrowAfterMeal(foodAvailable: number, foodNeeded: number) {
+    const nextPopulationMeal = foodNeeded + FOOD_PER_SETTLER_PER_MINUTE;
+    return foodAvailable >= (foodNeeded + nextPopulationMeal);
+}
+
 function broadcastFoodWithdrawals(transfers: StorageResourceTransfer[]) {
     for (const transfer of transfers) {
         if (transfer.amount <= 0) {
@@ -111,7 +116,9 @@ export const populationSystem = {
                 setHungerMs(0);
             }
 
-            const grew = growPopulation();
+            const grew = canGrowAfterMeal(foodAvailable, foodNeeded)
+                ? growPopulation()
+                : false;
             if (wasHungry && !grew) {
                 broadcastPopulation(getPopulationState());
             }

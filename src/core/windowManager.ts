@@ -107,6 +107,7 @@ export const WINDOW_IDS = {
   NOTIFICATION_CENTER: 'notification-center',
   TASK_MENU: 'task-menu',
   TOWN_CENTER_PANEL: 'town-center-panel',
+  BUILDING_DETAIL_MODAL: 'building-detail-modal',
 } as const;
 
 // Register common windows with default configurations
@@ -149,5 +150,11 @@ registerWindow({
 registerWindow({
   id: WINDOW_IDS.TOWN_CENTER_PANEL,
   priority: 60,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.BUILDING_DETAIL_MODAL,
+  priority: 70,
   blocksKeyboard: true,
 });

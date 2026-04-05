@@ -32,20 +32,11 @@ export interface SettlementSupportSnapshot {
     settlements: SettlementSupportCounts[];
 }
 
-type RestoreReservationStatus = 'pending' | 'completed';
-
-interface RestoreReservation {
-    tileId: string;
-    taskId: string;
-    status: RestoreReservationStatus;
-}
-
 interface RecalculateResult {
     changedTileIds: string[];
     newlyInactiveTileIds: string[];
     newlyActiveTileIds: string[];
     restoredTileIds: string[];
-    canceledReservationTaskIds: string[];
     snapshot: SettlementSupportSnapshot;
 }
 
@@ -53,7 +44,6 @@ interface SupportSelectionResult {
     supportCapacity: number;
     activeNonTowncenterIds: Set<string>;
     activeWatchtowerIds: Set<string>;
-    pendingReservationCount: number;
 }
 
 const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'] as const;
@@ -78,8 +68,6 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'water_dock_e',
     'water_dock_f',
 ]);
-
-const reservations: Record<string, RestoreReservation> = {};
 
 let lastSnapshot: SettlementSupportSnapshot = {
     supportCapacity: 0,
@@ -206,10 +194,6 @@ function setsEqual(a: Set<string>, b: Set<string>) {
     return true;
 }
 
-function getReservationEntries() {
-    return Object.values(reservations).sort((a, b) => a.tileId.localeCompare(b.tileId));
-}
-
 function selectActiveTiles(
     townCenters: Tile[],
     populationCurrent: number,
@@ -217,35 +201,19 @@ function selectActiveTiles(
     townCenterBySettlementId: Map<string, Tile>,
     ownerByTileId: Map<string, string | null>,
 ): SupportSelectionResult {
-    const reservationEntries = getReservationEntries()
-        .filter((reservation) => controlledTileIds.has(reservation.tileId));
-    const completedReservationIds = new Set(
-        reservationEntries
-            .filter((reservation) => reservation.status === 'completed')
-            .map((reservation) => reservation.tileId),
-    );
-    const pendingReservationCount = reservationEntries.filter((reservation) => reservation.status === 'pending').length;
-    const reservationCount = reservationEntries.length;
-    const forcedActiveWatchtowerCount = Array.from(completedReservationIds)
-        .filter((tileId) => isWatchtowerTile(tileIndex[tileId]))
-        .length;
+    let remainingCapacity = Math.max(0, (townCenters.length * TC_FREE_ACTIVE_TILES) + (populationCurrent * SUPPORT_PER_SETTLER));
 
-    let remainingCapacity = Math.max(0, (townCenters.length * TC_FREE_ACTIVE_TILES) + (populationCurrent * SUPPORT_PER_SETTLER) - reservationCount);
-    remainingCapacity += forcedActiveWatchtowerCount * WATCHTOWER_SUPPORT_BONUS;
-
-    const activeNonTowncenterIds = new Set<string>(completedReservationIds);
-    const activeWatchtowerIds = new Set<string>(
-        Array.from(completedReservationIds).filter((tileId) => isWatchtowerTile(tileIndex[tileId])),
-    );
+    const activeNonTowncenterIds = new Set<string>();
+    const activeWatchtowerIds = new Set<string>();
 
     const candidates = Array.from(controlledTileIds)
         .map((tileId) => tileIndex[tileId])
         .filter((tile): tile is Tile => {
-            if (!tile || tile.terrain === 'towncenter' || completedReservationIds.has(tile.id)) {
+            if (!tile || tile.terrain === 'towncenter') {
                 return false;
             }
 
-            return tile.activationState !== 'inactive';
+            return true;
         })
         .sort((a, b) => compareActivationPriority(a, b, townCenterBySettlementId, ownerByTileId));
 
@@ -269,7 +237,6 @@ function selectActiveTiles(
             + (activeWatchtowerIds.size * WATCHTOWER_SUPPORT_BONUS),
         activeNonTowncenterIds,
         activeWatchtowerIds,
-        pendingReservationCount,
     };
 }
 
@@ -376,10 +343,6 @@ function buildSupportSnapshot(
 }
 
 export function resetSettlementSupportState() {
-    for (const reservation of Object.values(reservations)) {
-        delete reservations[reservation.tileId];
-    }
-
     lastSnapshot = {
         supportCapacity: 0,
         activeTileCount: 0,
@@ -406,51 +369,6 @@ export function syncSettlementSupportSnapshot(snapshot: Partial<SettlementSuppor
     };
 }
 
-export function reserveRestoreTile(tileId: string, taskId: string) {
-    if (reservations[tileId]) {
-        return false;
-    }
-
-    reservations[tileId] = {
-        tileId,
-        taskId,
-        status: 'pending',
-    };
-    return true;
-}
-
-export function markRestoreTileCompleted(tileId: string, taskId: string) {
-    const reservation = reservations[tileId];
-    if (!reservation || reservation.taskId !== taskId) {
-        return false;
-    }
-
-    reservation.status = 'completed';
-    return true;
-}
-
-export function cancelRestoreTileReservation(tileId: string, taskId?: string) {
-    const reservation = reservations[tileId];
-    if (!reservation) {
-        return false;
-    }
-
-    if (taskId && reservation.taskId !== taskId) {
-        return false;
-    }
-
-    delete reservations[tileId];
-    return true;
-}
-
-export function getReservedRestoreTileCount() {
-    return Object.keys(reservations).length;
-}
-
-export function getRestoreReservationTaskId(tileId: string) {
-    return reservations[tileId]?.taskId ?? null;
-}
-
 export function recalculateSettlementSupport(populationCurrent: number, hungerMs: number): RecalculateResult {
     const townCenters = getTownCenters();
     const townCenterBySettlementId = new Map<string, Tile>(townCenters.map((townCenter) => [townCenter.id, townCenter]));
@@ -473,9 +391,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
         supportCapacity: townCenters.length * TC_FREE_ACTIVE_TILES + (populationCurrent * SUPPORT_PER_SETTLER),
         activeNonTowncenterIds: new Set<string>(),
         activeWatchtowerIds: new Set<string>(),
-        pendingReservationCount: 0,
     };
-    let canceledReservationTaskIds: string[] = [];
 
     for (let iteration = 0; iteration <= getWatchtowerTiles().length + 1; iteration++) {
         const liveReachBySettlementId = new Map<string, Set<string>>();
@@ -509,14 +425,6 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
             controlledByTileId.set(tile.id, controlledSettlementId);
             if (controlledSettlementId) {
                 controlledTileIds.add(tile.id);
-            }
-        }
-
-        canceledReservationTaskIds = [];
-        for (const reservation of getReservationEntries()) {
-            if (!controlledTileIds.has(reservation.tileId)) {
-                canceledReservationTaskIds.push(reservation.taskId);
-                delete reservations[reservation.tileId];
             }
         }
 
@@ -594,7 +502,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
                 newlyInactiveTileIds.push(tile.id);
             } else {
                 newlyActiveTileIds.push(tile.id);
-                if (reservations[tile.id]?.status === 'completed') {
+                if (previousActivationState === 'inactive') {
                     restoredTileIds.push(tile.id);
                 }
             }
@@ -615,10 +523,6 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
         }
     }
 
-    for (const tileId of restoredTileIds) {
-        delete reservations[tileId];
-    }
-
     lastSnapshot = buildSupportSnapshot(
         selection.supportCapacity,
         selection.activeNonTowncenterIds,
@@ -632,7 +536,6 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
         newlyInactiveTileIds,
         newlyActiveTileIds,
         restoredTileIds,
-        canceledReservationTaskIds,
         snapshot: getSettlementSupportSnapshot(),
     };
 }
@@ -736,10 +639,6 @@ export function countActiveHouseTiles() {
     }
 
     return houseCount;
-}
-
-export function hasFreeSupportCapacity() {
-    return (lastSnapshot.supportCapacity - lastSnapshot.activeTileCount - getReservedRestoreTileCount()) >= ACTIVE_TILE_COST;
 }
 
 export function listActiveAdjacentTiles(tile: Tile | null | undefined) {

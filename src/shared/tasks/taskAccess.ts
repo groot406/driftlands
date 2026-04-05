@@ -11,7 +11,6 @@ import {
 import { tileIndex } from '../game/world';
 
 const ADJACENT_ACTIVE_ACCESS_TASKS = new Set<string>([
-    'restoreTile',
     'buildDock',
 ]);
 

@@ -327,7 +327,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     let tasks = listTaskDefinitions().filter(def =>
-        (def.key === 'restoreTile' || isStoryTaskUnlocked(def.key))
+        isStoryTaskUnlocked(def.key)
         && def.canStart(tile, hero)
         && canStartTaskWhileCarrying(hero, def, tile)
     );

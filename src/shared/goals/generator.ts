@@ -172,12 +172,12 @@ function hasUnlockedTask(progression: StoryProgressionSnapshot, taskKey: TaskTyp
 function canDeliverFood(progression: StoryProgressionSnapshot) {
   return (
     hasUnlockedTask(progression, 'buildBakery')
-    || hasUnlockedTask(progression, 'fishAtDock')
+    || hasUnlockedTask(progression, 'buildDock')
   );
 }
 
 function canDeliverOre(progression: StoryProgressionSnapshot) {
-  return hasUnlockedTask(progression, 'buildMine') && hasUnlockedTask(progression, 'mineOre');
+  return hasUnlockedTask(progression, 'buildMine');
 }
 
 function getAvailableMutators(progression: StoryProgressionSnapshot): RunMutatorKey[] {
@@ -495,7 +495,7 @@ function tutorialMission4(): ObjectiveBlueprint[] {
 }
 
 function tutorialMission5(): ObjectiveBlueprint[] {
-  // Unlocks: watchtower, granary, bakery, fishAtDock
+  // Unlocks: watchtower, granary, bakery
   // Teaches: food security, staffed production, scouting infrastructure
   return [
     surveyObjective(125, 45),
@@ -528,7 +528,7 @@ function tutorialMission5(): ObjectiveBlueprint[] {
 }
 
 function tutorialMission6(): ObjectiveBlueprint[] {
-  // Unlocks: mine, mineOre
+  // Unlocks: mine
   // Terrains: mountain
   // Teaches: mining industry
   return [

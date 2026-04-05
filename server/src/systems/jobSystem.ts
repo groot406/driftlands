@@ -1,5 +1,9 @@
 import type { TickContext } from '../tick';
-import { getBuildingDefinitionForTile, type BuildingDefinition } from '../../../src/shared/buildings/registry';
+import {
+    getBuildingDefinitionForTile,
+    resolveBuildingJobResources,
+    type BuildingDefinition,
+} from '../../../src/shared/buildings/registry';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import {
@@ -37,18 +41,11 @@ interface ResolvedJobSite {
 
 const siteRuntime = new Map<string, RuntimeSiteState>();
 
-function cloneResource(resource: ResourceAmount): ResourceAmount {
-    return {
-        type: resource.type,
-        amount: resource.amount,
-    };
-}
-
 function isJobBuilding(building: BuildingDefinition | null | undefined): building is BuildingDefinition {
     return !!building
         && (building.jobSlots ?? 0) > 0
         && (building.cycleMs ?? 0) > 0
-        && (building.produces?.length ?? 0) > 0;
+        && ((building.produces?.length ?? 0) > 0 || typeof building.getJobResources === 'function');
 }
 
 function compareResolvedSites(a: ResolvedJobSite, b: ResolvedJobSite) {
@@ -92,10 +89,6 @@ function isOnlineJobSite(tile: Tile) {
 
 function getAvailableWorkers() {
     const population = getPopulationState();
-    if (population.hungerMs > 0) {
-        return 0;
-    }
-
     return Math.max(0, Math.min(population.current, population.beds));
 }
 
@@ -124,15 +117,8 @@ function assignWorkersEvenly(sites: ResolvedJobSite[], availableWorkers: number)
     }
 }
 
-function scaleResources(resources: ResourceAmount[] | undefined, multiplier: number) {
-    if (!resources?.length || multiplier <= 0) {
-        return [] as ResourceAmount[];
-    }
-
-    return resources.map((resource) => ({
-        type: resource.type,
-        amount: resource.amount * multiplier,
-    }));
+function resolveJobResources(site: ResolvedJobSite) {
+    return resolveBuildingJobResources(site.building, site.tile, site.assignedWorkers);
 }
 
 function hasMissingInputs(resources: ResourceAmount[]) {
@@ -182,12 +168,11 @@ function resolveSiteStatus(site: ResolvedJobSite): JobSiteStatus {
         return 'unstaffed';
     }
 
-    const scaledInputs = scaleResources(site.building.consumes, site.assignedWorkers);
+    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site);
     if (hasMissingInputs(scaledInputs)) {
         return 'missing_input';
     }
 
-    const scaledOutputs = scaleResources(site.building.produces, site.assignedWorkers);
     if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
         return 'storage_full';
     }
@@ -283,18 +268,17 @@ function broadcastOutputDeposits(tile: Tile, outputs: ResourceAmount[]) {
 }
 
 function attemptSiteCycle(site: ResolvedJobSite) {
-    const scaledInputs = scaleResources(site.building.consumes, site.assignedWorkers);
+    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site);
     if (hasMissingInputs(scaledInputs)) {
         return;
     }
 
-    const scaledOutputs = scaleResources(site.building.produces, site.assignedWorkers);
     if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
         return;
     }
 
-    broadcastInputWithdrawals(scaledInputs.map(cloneResource));
-    broadcastOutputDeposits(site.tile, scaledOutputs.map(cloneResource));
+    broadcastInputWithdrawals(scaledInputs);
+    broadcastOutputDeposits(site.tile, scaledOutputs);
 }
 
 function pruneRuntimeState(siteIds: Set<string>) {

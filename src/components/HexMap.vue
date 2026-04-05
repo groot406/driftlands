@@ -9,6 +9,7 @@
       />
     </transition>
     <TownCenterPanel
+      ref="townCenterPanel"
       :visible="showTownCenterPanel"
       @close="closeTownCenterPanel"
     />
@@ -31,6 +32,7 @@ import {requestHeroMovement, updateHeroFacing, updateHeroMovements} from '../cor
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
+import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import {
   axialToPixel,
   camera,
@@ -88,6 +90,7 @@ const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
 const taskMenuTile = ref<Tile | null>(null);
 const showTownCenterPanel = ref(false);
+const townCenterPanel = ref<InstanceType<typeof TownCenterPanel> | null>(null);
 const containerSize = ref({width: 0, height: 0});
 const clusterBoundaryTiles = ref<Tile[]>([]); // boundary tiles for same-terrain cluster highlighting
 const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id set)
@@ -288,6 +291,16 @@ function closeTownCenterPanel() {
   closeWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
 }
 
+function isInspectableJobSiteTile(tile: Tile) {
+  return (getBuildingDefinitionForTile(tile)?.jobSlots ?? 0) > 0;
+}
+
+function openJobSiteDetailFromTile(tile: Tile) {
+  showTownCenterPanel.value = true;
+  openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+  townCenterPanel.value?.openJobSiteDetail(tile.id);
+}
+
 function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
 
@@ -350,6 +363,17 @@ function handleClick(e: PointerEvent) {
       showTownCenterPanel.value = true;
       openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
     }
+    return;
+  }
+
+  if (tile.discovered && isInspectableJobSiteTile(tile)) {
+    if (showTaskMenu.value) {
+      showTaskMenu.value = false;
+      taskMenuTile.value = null;
+      closeWindow(WINDOW_IDS.TASK_MENU);
+    }
+
+    openJobSiteDetailFromTile(tile);
     return;
   }
 

@@ -1,5 +1,6 @@
 import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
-import type { Tile, TileSide } from '../../core/types/Tile.ts';
+import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile.ts';
+import { getBuildingDefinitionForTile } from '../buildings/registry.ts';
 
 const PROCEDURAL_ROAD_VARIANTS = new Set([
   'road',
@@ -17,41 +18,81 @@ export function isRoadTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | unde
   return tile?.terrain === 'plains' && isProceduralRoadVariant(tile.variant);
 }
 
-/**
- * Checks if a tile is a valid target for a road to connect to.
- * @param tile The potential target tile
- * @param fromSide The side of the target tile that the road is coming FROM (e.g. if we are at tile T and look at neighbor at side 'a', fromSide is 'd')
- */
-export function isRoadConnectionTarget(tile: Tile | null | undefined, fromSide?: TileSide) {
+function getVariantDefinition(tile: Tile) {
+  const def = TERRAIN_DEFS[tile.terrain!];
+  if (!def || !tile.variant) {
+    return null;
+  }
+
+  return (
+    def.variations?.find((variation) => variation.key === tile.variant) ??
+    def.decorativeVariants?.find((variation) => variation.key === tile.variant) ??
+    null
+  );
+}
+
+function isRoadConnectionAllowedByTerrain(tile: Tile | null | undefined, fromSide?: TileSide) {
   if (!tile || !tile.terrain) return false;
 
   if (isRoadTile(tile)) {
     return true;
   }
 
-
   const def = TERRAIN_DEFS[tile.terrain];
   if (!def) return false;
 
-  // Check variant override first
-  if (tile.variant) {
-    const variantDef = def.variations?.find(v => v.key === tile.variant) ||
-        def.decorativeVariants?.find(v => v.key === tile.variant);
+  const variantDef = getVariantDefinition(tile);
+  const fencedEdges = tile.fencedEdges ?? variantDef?.fencedEdges ?? def.fencedEdges;
 
-    // Check if the side we are connecting to is fenced
-    if (fromSide && variantDef && variantDef.fencedEdges?.[fromSide]) {
-      return false;
-    }
-
-    if (variantDef && variantDef.connectsToRoad !== undefined) {
-      return variantDef.connectsToRoad;
-    }
-  }
-
-  // Check if the side we are connecting to is fenced
-  if (fromSide && def.fencedEdges?.[fromSide]) {
+  if (fromSide && fencedEdges?.[fromSide]) {
     return false;
   }
 
+  if (variantDef && variantDef.connectsToRoad !== undefined) {
+    return variantDef.connectsToRoad;
+  }
+
   return !!def.connectsToRoad;
+}
+
+function getMaxIncomingRoads(tile: Tile | null | undefined) {
+  return tile ? getBuildingDefinitionForTile(tile)?.maxIncomingRoads : undefined;
+}
+
+function getIncomingRoadSides(tile: Tile | null | undefined) {
+  if (!tile?.neighbors) {
+    return [];
+  }
+
+  return SIDE_NAMES.filter(
+    (side) => isRoadTile(tile.neighbors?.[side]) && isRoadConnectionAllowedByTerrain(tile, side),
+  );
+}
+
+/**
+ * Checks if a tile is a valid target for a road to connect to.
+ * @param tile The potential target tile
+ * @param fromSide The side of the target tile that the road is coming FROM (e.g. if we are at tile T and look at neighbor at side 'a', fromSide is 'd')
+ */
+export function isRoadConnectionTarget(tile: Tile | null | undefined, fromSide?: TileSide) {
+  if (!isRoadConnectionAllowedByTerrain(tile, fromSide)) {
+    return false;
+  }
+
+  if (!fromSide) {
+    return true;
+  }
+
+  const maxIncomingRoads = getMaxIncomingRoads(tile);
+  if (maxIncomingRoads === undefined) {
+    return true;
+  }
+
+  const incomingRoadSides = getIncomingRoadSides(tile);
+  const currentRoadIndex = incomingRoadSides.indexOf(fromSide);
+  if (currentRoadIndex >= 0) {
+    return currentRoadIndex < maxIncomingRoads;
+  }
+
+  return incomingRoadSides.length < maxIncomingRoads;
 }

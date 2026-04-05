@@ -4,6 +4,7 @@ import { terrainPositions } from '../../core/terrainRegistry';
 import { isTileWalkable } from '../game/navigation';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
 import {
+    isTileActive,
     isTileControlled,
     listActiveAdjacentAccessTiles,
 } from '../game/state/settlementSupportStore';
@@ -28,18 +29,55 @@ export interface BuildingDefinition {
     overlayOffset?: { x: number; y: number };
     providesWaterSource?: boolean;
     providesWarehouse?: boolean;
+    maxIncomingRoads?: number;
     requiredPopulation?: number; // minimum population to build
     jobSlots?: number;
     cycleMs?: number;
     consumes?: ResourceAmount[];
     produces?: ResourceAmount[];
     jobLabel?: string;
+    getJobResources?(tile: Tile, assignedWorkers: number): { consumes?: ResourceAmount[]; produces?: ResourceAmount[] };
     canPlace(tile: Tile, hero: Hero): boolean;
     requiredXp(distance: number): number;
     heroRate(hero: Hero, tile: Tile): number;
     requiredResources(distance: number): ResourceAmount[];
     onStart?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
     onComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
+}
+
+function cloneResource(resource: ResourceAmount): ResourceAmount {
+    return {
+        type: resource.type,
+        amount: resource.amount,
+    };
+}
+
+export function scaleJobResources(resources: ResourceAmount[] | undefined, multiplier: number): ResourceAmount[] {
+    if (!resources?.length || multiplier <= 0) {
+        return [];
+    }
+
+    return resources.map((resource) => ({
+        type: resource.type,
+        amount: resource.amount * multiplier,
+    }));
+}
+
+export function resolveBuildingJobResources(
+    building: Pick<BuildingDefinition, 'consumes' | 'produces' | 'getJobResources'>,
+    tile: Tile | null | undefined,
+    assignedWorkers: number,
+) {
+    const dynamic = tile ? building.getJobResources?.(tile, assignedWorkers) : null;
+
+    return {
+        consumes: dynamic?.consumes
+            ? dynamic.consumes.map(cloneResource)
+            : scaleJobResources(building.consumes, assignedWorkers),
+        produces: dynamic?.produces
+            ? dynamic.produces.map(cloneResource)
+            : scaleJobResources(building.produces, assignedWorkers),
+    };
 }
 
 function hasAdjacentNaturalWater(tile: Tile): boolean {
@@ -76,6 +114,40 @@ function resolveDockVariant(tile: Tile, preferredSide?: TileSide) {
     }
 
     return 'water_dock_a';
+}
+
+function countActiveConnectedTiles(tile: Tile, terrain: Tile['terrain']) {
+    let count = tile.discovered && tile.terrain === terrain && isTileActive(tile) ? 1 : 0;
+    const neighbors = tile.neighbors;
+    if (!neighbors || !terrain) {
+        return count;
+    }
+
+    for (const side of SIDE_NAMES) {
+        const neighbor = neighbors[side];
+        if (neighbor?.discovered && neighbor.terrain === terrain && isTileActive(neighbor)) {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
+function countActiveAdjacentTiles(tile: Tile, terrain: Tile['terrain']) {
+    let count = 0;
+    const neighbors = tile.neighbors;
+    if (!neighbors || !terrain) {
+        return count;
+    }
+
+    for (const side of SIDE_NAMES) {
+        const neighbor = neighbors[side];
+        if (neighbor?.discovered && neighbor.terrain === terrain && isTileActive(neighbor)) {
+            count += 1;
+        }
+    }
+
+    return count;
 }
 
 function revealTilesAround(tile: Tile, radius: number) {
@@ -155,6 +227,7 @@ const buildings: BuildingDefinition[] = [
         variantKeys: ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'],
         renderDecoration: 'watchtower',
         overlayAssetKey: 'building_watchtower_overlay',
+        maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (
                 (tile.terrain === 'plains' || tile.terrain === 'dirt' || tile.terrain === 'mountain') &&
@@ -230,6 +303,7 @@ const buildings: BuildingDefinition[] = [
         renderDecoration: 'depot',
         overlayAssetKey: 'building_depot_overlay',
         providesWarehouse: true,
+        maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
@@ -256,7 +330,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'dock',
         label: 'Dock',
-        summary: 'Creates a landing point from adjacent shore and unlocks fishing on the shoreline.',
+        summary: 'Creates a landing point from adjacent shore and lets fishermen bring in steady food.',
         categoryLabel: 'Harbor',
         buildTaskKey: 'buildDock',
         buildTaskLabel: 'Build Dock',
@@ -269,6 +343,16 @@ const buildings: BuildingDefinition[] = [
             'water_dock_e',
             'water_dock_f',
         ],
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        jobLabel: 'Fisher',
+        getJobResources(tile, assignedWorkers) {
+            const nearbyWaterTiles = countActiveAdjacentTiles(tile, 'water');
+            return {
+                produces: [{ type: 'food', amount: Math.max(1, nearbyWaterTiles) * assignedWorkers }],
+            };
+        },
         canPlace(tile, _hero) {
             return tile.terrain === 'water'
                 && tile.isBaseTile
@@ -323,7 +407,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'lumberCamp',
         label: 'Lumber Camp',
-        summary: 'Claims a forest tile as a permanent timber site staffed by settlers.',
+        summary: 'Claims a forest tile as a permanent timber site whose output scales with nearby woods.',
         categoryLabel: 'Industry',
         buildTaskKey: 'buildLumberCamp',
         buildTaskLabel: 'Build Lumber Camp',
@@ -334,8 +418,12 @@ const buildings: BuildingDefinition[] = [
         overlayAssetKey: 'building_lumber_camp_overlay',
         jobSlots: 1,
         cycleMs: 60_000,
-        produces: [{ type: 'wood', amount: 2 }],
         jobLabel: 'Timber crew',
+        getJobResources(tile, assignedWorkers) {
+            return {
+                produces: [{ type: 'wood', amount: countActiveConnectedTiles(tile, 'forest') * assignedWorkers }],
+            };
+        },
         canPlace(tile, _hero) {
             return tile.terrain === 'forest' && tile.isBaseTile;
         },
@@ -357,7 +445,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'granary',
         label: 'Granary',
-        summary: 'Secures a grain tile as a lasting grain site staffed by settlers.',
+        summary: 'Secures a grain tile as a grain store whose output scales with nearby fields.',
         categoryLabel: 'Agriculture',
         buildTaskKey: 'buildGranary',
         buildTaskLabel: 'Build Granary',
@@ -368,8 +456,12 @@ const buildings: BuildingDefinition[] = [
         overlayAssetKey: 'building_granary_overlay',
         jobSlots: 1,
         cycleMs: 60_000,
-        produces: [{ type: 'grain', amount: 2 }],
         jobLabel: 'Grain keeper',
+        getJobResources(tile, assignedWorkers) {
+            return {
+                produces: [{ type: 'grain', amount: countActiveConnectedTiles(tile, 'grain') * assignedWorkers }],
+            };
+        },
         canPlace(tile, _hero) {
             return tile.terrain === 'grain' && tile.isBaseTile;
         },
@@ -399,10 +491,11 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['plains_bakery', 'dirt_bakery'],
         overlayAssetKey: 'building_depot_overlay',
+        maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
         consumes: [{ type: 'grain', amount: 1 }],
-        produces: [{ type: 'food', amount: 2 }],
+        produces: [{ type: 'food', amount: 3 }],
         jobLabel: 'Baker',
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -436,6 +529,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskLabel: 'Build House',
         sortOrder: 37,
         variantKeys: ['plains_house', 'dirt_house'],
+        maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
@@ -464,13 +558,17 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'mine',
         label: 'Mine',
-        summary: 'Turns a mountain into a permanent ore extraction site.',
+        summary: 'Turns a mountain into a permanent ore extraction site staffed by miners.',
         categoryLabel: 'Industry',
         buildTaskKey: 'buildMine',
         buildTaskLabel: 'Build Mine',
         sortOrder: 40,
         requiredPopulation: 5,
         variantKeys: ['mountains_with_mine'],
+        jobSlots: 1,
+        cycleMs: 60_000,
+        produces: [{ type: 'ore', amount: 2 }],
+        jobLabel: 'Miner',
         canPlace(tile, _hero) {
             return tile.terrain === 'mountain' && tile.isBaseTile;
         },

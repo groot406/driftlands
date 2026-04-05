@@ -248,7 +248,6 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
     missionNumber: 2,
     buildings: ['dock', 'house'],
     tasks: [
-      'fishAtDock',
       'harvestWaterLilies',
       'placeWaterLilies',
       'plantTrees',
@@ -279,9 +278,6 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
   {
     missionNumber: 6,
     buildings: ['mine'],
-    tasks: [
-      'mineOre',
-    ],
     terrains: ['mountain'],
   },
   {

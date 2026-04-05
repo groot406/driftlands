@@ -8,7 +8,8 @@ import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
 import { loadTasks } from '../../store/taskStore.ts';
-import { handleHeroArrival } from './tasks.ts';
+import { getTaskDefinition } from './taskRegistry.ts';
+import { getAvailableTasks, handleHeroArrival } from './tasks.ts';
 import { loadWorld, tileIndex } from '../game/world.ts';
 
 function cloneHero(hero: Hero): Hero {
@@ -42,6 +43,50 @@ test.afterEach(() => {
   resetResourceState();
   resetGameRuntime();
   loadHeroes(originalHeroes.map(cloneHero));
+});
+
+test('inactive controlled tiles no longer offer a manual restore action', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  const availableTasks = getAvailableTasks(tileIndex['1,0']!, hero);
+  assert.equal(availableTasks.some((task) => task.key === 'restoreTile'), false);
 });
 
 test('adjacent dock deliveries are applied to the task before the town center warehouse', () => {
@@ -259,6 +304,11 @@ test('heroes can fetch irrigation water from active shore next to discovered ina
     task: 'irregateDirtTask',
     taskLocation: { q: 1, r: 0 },
   });
+});
+
+test('harvesting water lilies always yields exactly one lily resource', () => {
+  const def = getTaskDefinition('harvestWaterLilies');
+  assert.deepEqual(def?.totalRewardedResources?.(999), { type: 'water_lily', amount: 1 });
 });
 
 test('adjacent lily-path deliveries are applied to placement tasks before warehouse storage', () => {

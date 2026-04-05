@@ -14,7 +14,7 @@ import {
     recalculatePopulationLimits,
     setSupportMetrics,
 } from '../../../src/shared/game/state/populationStore';
-import { detachHeroFromCurrentTask, getTaskById, removeTask } from '../../../src/shared/game/state/taskStore';
+import { detachHeroFromCurrentTask, removeTask, taskStore } from '../../../src/shared/game/state/taskStore';
 import type { TileUpdatedMessage } from '../../../src/shared/protocol';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import { taskUsesAdjacentActiveAccess } from '../../../src/shared/tasks/taskAccess';
@@ -81,19 +81,28 @@ function isHeroEscapingInactiveTile(heroId: string) {
 export const supportSystem = {
     name: 'support',
     tick: (_ctx: TickContext) => {
+        for (const task of taskStore.tasks.slice()) {
+            if (task.type === 'restoreTile') {
+                removeTask(task);
+            }
+        }
+
+        for (const hero of heroes) {
+            if (hero.pendingTask?.taskType === 'restoreTile') {
+                hero.pendingTask = undefined;
+            }
+
+            if (hero.movement?.taskType === 'restoreTile') {
+                hero.movement = undefined;
+            }
+        }
+
         const previousPopulation = getPopulationSnapshot();
         const populationState = getPopulationState();
         const result = recalculateSettlementSupport(populationState.current, populationState.hungerMs);
 
         setSupportMetrics(result.snapshot);
         recalculatePopulationLimits();
-
-        for (const taskId of result.canceledReservationTaskIds) {
-            const task = getTaskById(taskId);
-            if (task) {
-                removeTask(task);
-            }
-        }
 
         for (const tileId of result.changedTileIds) {
             const tile = tileIndex[tileId];

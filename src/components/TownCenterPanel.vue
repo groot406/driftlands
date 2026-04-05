@@ -130,18 +130,99 @@
               v-for="site in jobSites"
               :key="site.tileId"
               class="tc-job-site"
+              :class="{ 'tc-job-site-clickable': site.hasDetail }"
+              :tabindex="site.hasDetail ? 0 : -1"
+              :role="site.hasDetail ? 'button' : undefined"
+              @click="openJobSiteDetail(site.tileId)"
+              @keydown.enter.prevent="openJobSiteDetail(site.tileId)"
+              @keydown.space.prevent="openJobSiteDetail(site.tileId)"
             >
               <div class="tc-job-site-top">
                 <div>
                   <div class="tc-job-site-name">{{ site.label }}</div>
                   <div class="tc-job-site-meta">{{ site.tileId }}</div>
                 </div>
-                <div class="tc-job-site-staff">{{ site.assignedWorkers }}/{{ site.slots }}</div>
+                <div class="tc-job-site-aside">
+                  <div class="tc-job-site-staff">{{ site.assignedWorkers }}/{{ site.slots }}</div>
+                  <div v-if="site.hasDetail" class="tc-job-site-open">Inspect</div>
+                </div>
               </div>
               <div class="tc-job-site-status" :class="site.statusClass">{{ site.statusText }}</div>
             </div>
           </div>
-          <p v-else class="tc-placeholder-text">Build a granary, bakery, or lumber camp to create settler jobs.</p>
+          <p v-else class="tc-placeholder-text">Build a dock, granary, bakery, lumber camp, or mine to create settler jobs.</p>
+        </div>
+      </div>
+
+      <div
+        v-if="selectedJobSiteDetail"
+        class="tc-detail-backdrop"
+        @click.stop="closeJobSiteDetail"
+      >
+        <div class="tc-detail-modal" @click.stop>
+          <div class="tc-detail-header">
+            <div>
+              <p class="tc-detail-kicker pixel-font">Production Site</p>
+              <h4 class="tc-detail-title">{{ selectedJobSiteDetail.label }}</h4>
+              <p class="tc-detail-summary">{{ selectedJobSiteDetail.summary }}</p>
+            </div>
+            <button class="tc-detail-close" @click.stop="closeJobSiteDetail" title="Close details">
+              &#x2715;
+            </button>
+          </div>
+
+          <div class="tc-detail-pill-row">
+            <span class="tc-detail-pill" :class="selectedJobSiteDetail.statusBadgeClass">{{ selectedJobSiteDetail.statusText }}</span>
+            <span class="tc-detail-pill">Crew {{ selectedJobSiteDetail.assignedWorkers }}/{{ selectedJobSiteDetail.slots }}</span>
+            <span class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
+          </div>
+
+          <div class="tc-detail-grid">
+            <section class="tc-detail-card">
+              <p class="tc-detail-card-label">Current Staffing</p>
+              <div class="tc-detail-card-value">{{ selectedJobSiteDetail.assignedWorkersLabel }}</div>
+              <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.currentThroughputLabel }}</p>
+            </section>
+            <section class="tc-detail-card">
+              <p class="tc-detail-card-label">Full Staffing</p>
+              <div class="tc-detail-card-value">{{ selectedJobSiteDetail.fullStaffingLabel }}</div>
+              <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.maxThroughputLabel }}</p>
+            </section>
+          </div>
+
+          <div class="tc-detail-section">
+            <div class="tc-detail-section-title">Production Flow</div>
+            <div class="tc-detail-flow-grid">
+              <section class="tc-detail-flow-card">
+                <p class="tc-detail-flow-title">Consumes</p>
+                <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
+                <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.inputRateLabel }}</p>
+              </section>
+              <section class="tc-detail-flow-card">
+                <p class="tc-detail-flow-title">Produces</p>
+                <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentOutputLabel }}</p>
+                <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.outputRateLabel }}</p>
+              </section>
+            </div>
+          </div>
+
+          <div v-if="selectedJobSiteDetail.shortages.length" class="tc-detail-section">
+            <div class="tc-detail-section-title">Current Bottleneck</div>
+            <div class="tc-detail-chip-row">
+              <span v-for="shortage in selectedJobSiteDetail.shortages" :key="shortage.type" class="tc-detail-chip">
+                {{ shortage.missingLabel }}
+              </span>
+            </div>
+          </div>
+
+          <div class="tc-detail-section">
+            <div class="tc-detail-section-title">How To Improve</div>
+            <ul class="tc-detail-advice-list">
+              <li v-for="tip in selectedJobSiteDetail.advice" :key="tip" class="tc-detail-advice-item">
+                {{ tip }}
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -149,13 +230,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onUnmounted } from 'vue';
-import { getBuildingDefinitionByKey } from '../shared/buildings/registry';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import type { ResourceAmount } from '../core/types/Resource.ts';
+import { getBuildingDefinitionByKey, resolveBuildingJobResources } from '../shared/buildings/registry';
+import {
+  formatResourceType,
+  getJobSiteAdvice,
+  getJobSiteStatusDescriptor,
+  getMissingInputResources,
+  getPerMinuteResources,
+} from '../shared/buildings/jobSiteDetails.ts';
+import { tileIndex } from '../shared/game/world.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
-import { resourceInventory, resourceVersion } from '../store/resourceStore';
+import { resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
-import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
+import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
   HUNGER_GRACE_MINUTES,
@@ -170,8 +260,49 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
+const selectedJobSiteId = ref<string | null>(null);
+
 function close() {
+  closeJobSiteDetail();
   emit('close');
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatCycleDuration(cycleMs: number | undefined) {
+  if (!cycleMs || cycleMs <= 0) return 'No cycle';
+  const totalSeconds = Math.max(1, Math.round(cycleMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s cycle`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (seconds === 0) return `${minutes}m cycle`;
+  return `${minutes}m ${seconds}s cycle`;
+}
+
+function formatResourceList(resources: ResourceAmount[], emptyText: string) {
+  if (!resources.length) {
+    return emptyText;
+  }
+
+  return resources
+    .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}`)
+    .join(' • ');
+}
+
+function formatRateList(resources: ResourceAmount[], emptyText: string) {
+  if (!resources.length) {
+    return emptyText;
+  }
+
+  return resources
+    .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}/min`)
+    .join(' • ');
+}
+
+function getStatusClassFromTone(tone: 'ok' | 'warn' | 'danger') {
+  return `tc-job-site-status-${tone}`;
 }
 
 // --- Colony Progress ---
@@ -286,43 +417,110 @@ const foodStatusText = computed(() => {
 
 // --- Jobs ---
 
+const totalFreeStorage = computed(() => {
+  void resourceVersion.value;
+  return Object.values(storageInventories).reduce((sum, storage) => {
+    const used = Object.values(storage.resources).reduce((resourceSum, amount) => resourceSum + (amount ?? 0), 0);
+    return sum + Math.max(0, storage.capacity - used);
+  }, 0);
+});
+
 const jobSites = computed(() => {
   return workforceState.sites.map((site) => {
     const building = getBuildingDefinitionByKey(site.buildingKey);
-
-    let statusText = 'Ready to work';
-    let statusClass = 'tc-job-site-status-ok';
-    switch (site.status) {
-      case 'offline':
-        statusText = 'Offline — reconnect and restore support';
-        statusClass = 'tc-job-site-status-danger';
-        break;
-      case 'unstaffed':
-        statusText = 'Unstaffed — waiting for an available settler';
-        statusClass = 'tc-job-site-status-warn';
-        break;
-      case 'missing_input':
-        statusText = 'Missing input — supply required resources';
-        statusClass = 'tc-job-site-status-warn';
-        break;
-      case 'storage_full':
-        statusText = 'Storage full — clear space in colony stores';
-        statusClass = 'tc-job-site-status-danger';
-        break;
-      case 'staffed':
-      default:
-        statusText = 'Staffed — production is running';
-        statusClass = 'tc-job-site-status-ok';
-        break;
-    }
+    const status = getJobSiteStatusDescriptor(site.status);
 
     return {
       ...site,
+      building,
       label: building?.label ?? site.buildingKey,
-      statusText,
-      statusClass,
+      summary: building?.summary ?? 'Settlers can staff this site to keep the colony moving.',
+      statusText: status.text,
+      statusClass: getStatusClassFromTone(status.tone),
+      statusBadgeClass: `tc-detail-pill-${status.tone}`,
+      hasDetail: !!building,
     };
   });
+});
+
+const selectedJobSiteDetail = computed(() => {
+  if (!selectedJobSiteId.value) {
+    return null;
+  }
+
+  const site = jobSites.value.find((entry) => entry.tileId === selectedJobSiteId.value);
+  const building = site?.building;
+  if (!site || !building) {
+    return null;
+  }
+
+  const tile = tileIndex[site.tileId] ?? null;
+  const { consumes: currentInputs, produces: currentOutputs } = resolveBuildingJobResources(building, tile, site.assignedWorkers);
+  const { consumes: fullInputs, produces: fullOutputs } = resolveBuildingJobResources(building, tile, site.slots);
+  const currentInputRates = getPerMinuteResources(currentInputs, 1, building.cycleMs);
+  const currentOutputRates = getPerMinuteResources(currentOutputs, 1, building.cycleMs);
+  const fullOutputRates = getPerMinuteResources(fullOutputs, 1, building.cycleMs);
+  const shortages = getMissingInputResources(currentInputs, 1, resourceInventory);
+  const advice = getJobSiteAdvice({
+    building,
+    site,
+    population: {
+      current: populationState.current,
+      max: populationState.max,
+      beds: populationState.beds,
+      hungerMs: populationState.hungerMs,
+      pressureState: populationState.pressureState,
+      inactiveTileCount: populationState.inactiveTileCount,
+    },
+    workforce: {
+      availableWorkers: workforceState.availableWorkers,
+      idleWorkers: workforceState.idleWorkers,
+    },
+    resourceInventory,
+    totalFreeStorage: totalFreeStorage.value,
+  });
+
+  return {
+    ...site,
+    cycleLabel: formatCycleDuration(building.cycleMs),
+    assignedWorkersLabel: site.assignedWorkers > 0
+      ? `${site.assignedWorkers} ${building.jobLabel ?? 'worker'}${site.assignedWorkers === 1 ? '' : 's'} on duty`
+      : 'No crew assigned',
+    fullStaffingLabel: `${site.slots} slot${site.slots === 1 ? '' : 's'} available`,
+    currentThroughputLabel: formatRateList(currentOutputRates, 'No output per minute while idle'),
+    maxThroughputLabel: formatRateList(fullOutputRates, 'No output defined'),
+    currentInputLabel: formatResourceList(currentInputs, 'No input required'),
+    currentOutputLabel: formatResourceList(currentOutputs, 'No output while idle'),
+    inputRateLabel: formatRateList(currentInputRates, 'Consumes nothing per minute'),
+    outputRateLabel: formatRateList(currentOutputRates, 'Produces nothing per minute'),
+    fullInputLabel: formatResourceList(fullInputs, 'No input required'),
+    fullOutputLabel: formatResourceList(fullOutputs, 'No output defined'),
+    shortages: shortages.map((shortage) => ({
+      ...shortage,
+      missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing`,
+    })),
+    advice,
+  };
+});
+
+function openJobSiteDetail(tileId: string) {
+  const site = jobSites.value.find((entry) => entry.tileId === tileId);
+  if (!site?.hasDetail) {
+    return;
+  }
+
+  selectedJobSiteId.value = tileId;
+  openWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
+}
+
+function closeJobSiteDetail() {
+  selectedJobSiteId.value = null;
+  closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
+}
+
+defineExpose({
+  openJobSiteDetail,
+  closeJobSiteDetail,
 });
 
 const jobsStatusClass = computed(() => {
@@ -340,7 +538,7 @@ const jobsStatusText = computed(() => {
     return 'No job buildings online yet';
   }
   if (populationState.hungerMs > 0) {
-    return 'Hungry settlers abandon their posts until food recovers';
+    return 'The colony is hungry, but staffed jobs keep running';
   }
   if (workforceState.availableWorkers <= 0) {
     return 'No housed settlers are available for work';
@@ -356,14 +554,27 @@ const jobsStatusText = computed(() => {
 let listenerActive = false;
 
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isWindowActive(WINDOW_IDS.TOWN_CENTER_PANEL)) {
-    e.preventDefault();
-    e.stopPropagation();
-    close();
+  if (e.key === 'Escape') {
+    if (selectedJobSiteId.value && isWindowActive(WINDOW_IDS.BUILDING_DETAIL_MODAL)) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeJobSiteDetail();
+      return;
+    }
+
+    if (isWindowActive(WINDOW_IDS.TOWN_CENTER_PANEL)) {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
   }
 }
 
 watch(() => props.visible, (isVisible) => {
+  if (!isVisible) {
+    closeJobSiteDetail();
+  }
+
   if (isVisible && !listenerActive) {
     window.addEventListener('keydown', handleKeydown);
     listenerActive = true;
@@ -373,11 +584,19 @@ watch(() => props.visible, (isVisible) => {
   }
 }, { immediate: true });
 
+watch(selectedJobSiteDetail, (detail) => {
+  if (!detail && selectedJobSiteId.value) {
+    closeJobSiteDetail();
+  }
+});
+
 onUnmounted(() => {
   if (listenerActive) {
     window.removeEventListener('keydown', handleKeydown);
     listenerActive = false;
   }
+
+  closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
 });
 </script>
 
@@ -636,11 +855,31 @@ onUnmounted(() => {
   border: 1px solid rgba(148, 163, 184, 0.08);
 }
 
+.tc-job-site-clickable {
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.tc-job-site-clickable:hover,
+.tc-job-site-clickable:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.26);
+  background: rgba(15, 23, 42, 0.68);
+  outline: none;
+}
+
 .tc-job-site-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.tc-job-site-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .tc-job-site-name {
@@ -659,6 +898,17 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 700;
   color: rgba(252, 211, 77, 0.9);
+}
+
+.tc-job-site-open {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.9);
 }
 
 .tc-job-site-status {
@@ -694,6 +944,217 @@ onUnmounted(() => {
   line-height: 1.4;
   color: rgba(191, 219, 254, 0.44);
   font-style: italic;
+}
+
+/* Detail modal */
+
+.tc-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+.tc-detail-modal {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(82vh, calc(100vh - 32px));
+  overflow-y: auto;
+  border-radius: 28px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.15), transparent 34%),
+    radial-gradient(circle at 78% 12%, rgba(251, 191, 36, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(5, 10, 19, 0.98), rgba(12, 18, 33, 0.94));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 34px 80px rgba(2, 6, 23, 0.48);
+}
+
+.tc-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tc-detail-kicker {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.82);
+}
+
+.tc-detail-title {
+  margin: 8px 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tc-detail-summary {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.tc-detail-close {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.42);
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.tc-detail-close:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.28);
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.tc-detail-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tc-detail-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.52);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.tc-detail-pill-ok {
+  color: rgba(134, 239, 172, 0.92);
+}
+
+.tc-detail-pill-warn {
+  color: rgba(253, 224, 71, 0.94);
+}
+
+.tc-detail-pill-danger {
+  color: rgba(252, 165, 165, 0.94);
+}
+
+.tc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.tc-detail-card,
+.tc-detail-flow-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.tc-detail-card-label,
+.tc-detail-flow-title,
+.tc-detail-section-title {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(191, 219, 254, 0.62);
+}
+
+.tc-detail-card-value {
+  margin-top: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tc-detail-card-copy,
+.tc-detail-flow-copy,
+.tc-detail-flow-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tc-detail-card-copy,
+.tc-detail-flow-copy {
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.tc-detail-flow-note {
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.tc-detail-section {
+  margin-top: 16px;
+}
+
+.tc-detail-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tc-detail-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tc-detail-chip {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(127, 29, 29, 0.28);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  font-size: 11px;
+  color: rgba(254, 202, 202, 0.92);
+}
+
+.tc-detail-advice-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tc-detail-advice-item {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+@media (max-width: 760px) {
+  .tc-detail-grid,
+  .tc-detail-flow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tc-detail-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+  }
 }
 
 /* Slide transition */

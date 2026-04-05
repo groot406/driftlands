@@ -24,7 +24,6 @@ import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWareh
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
-import { cancelRestoreTileReservation, reserveRestoreTile } from './settlementSupportStore';
 import { findNearestTaskAccessTile, taskUsesAdjacentAccess } from '../shared/tasks/taskAccess';
 
 const service = new PathService();
@@ -90,10 +89,6 @@ function makeId(state: TaskState) {
 
 // Remove a task instance from all indices
 export function removeTask(inst: TaskInstance) {
-    if (inst.type === 'restoreTile' && !inst.completedMs) {
-        cancelRestoreTileReservation(inst.tileId, inst.id);
-    }
-
     doRemoveTask(inst);
     // detach any heroes that still reference this task
     for (const hero of heroes) {
@@ -326,7 +321,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
-    if (type !== 'restoreTile' && !isStoryTaskUnlocked(type)) return null;
+    if (!isStoryTaskUnlocked(type)) return null;
     if (!def.canStart(tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
@@ -342,10 +337,6 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     if (tasksForTile[type]) return taskStore.taskIndex[tasksForTile[type]] || null;
     const nowMs = Date.now();
     const taskId = makeId(taskStore);
-
-    if (type === 'restoreTile' && !reserveRestoreTile(tile.id, taskId)) {
-        return null;
-    }
 
     const inst: TaskInstance = {
         id: taskId,

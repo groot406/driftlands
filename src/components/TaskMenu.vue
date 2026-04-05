@@ -220,7 +220,7 @@ const previewTaskHint = computed(() => {
 
   if (tile.activationState === 'inactive') {
     return tile.controlledBySettlementId
-      ? 'Inactive tiles need Restore Tile or more support before most work can begin.'
+      ? 'Inactive tiles come back online automatically once support rises again.'
       : 'This tile is outside live control. Reconnect it before working here.';
   }
 

@@ -5,9 +5,11 @@ import type { BaseMessage, ResourceWithdrawMessage } from '../../../src/shared/p
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
 import { loadWorld } from '../../../src/shared/game/world';
+import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState, getPopulationState } from '../../../src/shared/game/state/populationStore';
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
+import { jobSystem } from './jobSystem';
 import { populationSystem } from './populationSystem';
 
 function captureBroadcasts() {
@@ -34,11 +36,29 @@ function createTowncenterTile(): Tile {
   };
 }
 
+function createDockTile(): Tile {
+  return {
+    id: '0,1',
+    q: 0,
+    r: 1,
+    biome: 'lake',
+    terrain: 'water',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    supportBand: 'stable',
+    variant: 'water_dock_a',
+  };
+}
+
 test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
   resetPopulationState();
   resetSettlementSupportState();
+  resetWorkforceState();
   resetGameRuntime();
 });
 
@@ -114,4 +134,72 @@ test('starving settlers recover immediately once enough food reaches storage', (
     broadcasts.some((message) => message.type === 'population:update'),
     true,
   );
+});
+
+test('population growth requires enough reserve for the next larger colony meal', () => {
+  loadWorld([createTowncenterTile()]);
+  depositResourceToStorage('0,0', 'food', 4);
+  loadPopulationSnapshot({
+    current: 2,
+    max: 10,
+    beds: 10,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+
+  const start = Date.now();
+  populationSystem.init();
+
+  populationSystem.tick({
+    now: start + 60_000,
+    dt: 60_000,
+    tick: 1,
+    rng: {} as never,
+  });
+
+  assert.equal(getPopulationState().current, 2);
+  assert.equal(resourceInventory.food, 2);
+});
+
+test('a hungry colony settles at the population its staffed food jobs can sustain', () => {
+  loadWorld([createTowncenterTile(), createDockTile()]);
+  loadPopulationSnapshot({
+    current: 4,
+    max: 10,
+    beds: 10,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+
+  const start = Date.now();
+  populationSystem.init();
+  jobSystem.init();
+
+  for (let minute = 1; minute <= 7; minute++) {
+    const now = start + (minute * 60_000);
+    populationSystem.tick({
+      now,
+      dt: 60_000,
+      tick: minute,
+      rng: {} as never,
+    });
+    jobSystem.tick({
+      now,
+      dt: 60_000,
+      tick: minute,
+      rng: {} as never,
+    });
+  }
+
+  assert.equal(getPopulationState().current, 2);
+  assert.equal(getPopulationState().hungerMs, 0);
+  assert.equal(resourceInventory.food, 2);
 });

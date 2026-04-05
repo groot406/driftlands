@@ -33,3 +33,18 @@ test('roads should connect to docks', () => {
   assert.equal(isRoadConnectionTarget({ terrain: 'water', variant: 'water_dock_a' } as any), true);
   assert.equal(isRoadConnectionTarget({ terrain: 'water', variant: 'water_lily' } as any), false);
 });
+
+test('road-facing buildings only accept one incoming road', () => {
+  const roadTile = { terrain: 'plains', variant: 'road' } as any;
+  const buildingTile = {
+    terrain: 'plains',
+    variant: 'plains_house',
+    neighbors: {
+      a: roadTile,
+      c: roadTile,
+    },
+  } as any;
+
+  assert.equal(isRoadConnectionTarget(buildingTile, 'a'), true);
+  assert.equal(isRoadConnectionTarget(buildingTile, 'c'), false);
+});
