@@ -59,13 +59,13 @@ test('a fully housed starter town can sustain a 100-tile frontier push', () => {
 
   const result = recalculateSettlementSupport(10, 0);
 
-  assert.ok(result.snapshot.supportCapacity >= 100);
+  assert.ok(result.snapshot.supportCapacity >= 150);
 });
 
 test('inactive tiles automatically restore once support rises again', () => {
   loadWorld([
     createTowncenterTile(),
-    ...createFrontierTiles(61),
+    ...createFrontierTiles(85),
   ]);
 
   const strained = recalculateSettlementSupport(0, 0);

@@ -152,6 +152,10 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     label: 'Build Road',
     description: 'Lay safe lanes across open ground.',
   },
+  buildBridge: {
+    label: 'Build Bridge',
+    description: 'Span straight timber bridges over controlled water from active shore or bridgeheads.',
+  },
   dig: {
     label: 'Dig',
     description: 'Turn grass into rough dirt, revealing the ground beneath.',
@@ -250,6 +254,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
     tasks: [
       'harvestWaterLilies',
       'placeWaterLilies',
+      'buildBridge',
       'plantTrees',
       'removeTrunks',
     ],

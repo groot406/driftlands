@@ -7,11 +7,13 @@ import type { Tile, TileActivationState, TileSupportBand } from '../core/types/T
 // Mission 4 asks the first settlement to push to 100 discovered tiles before
 // watchtowers unlock, so a fully housed starter town needs enough headroom to
 // keep that frontier online instead of collapsing the moment it gets there.
-export const TC_FREE_ACTIVE_TILES = 60;
-export const SUPPORT_PER_SETTLER = 5;
-export const WATCHTOWER_SUPPORT_BONUS = 12;
+export const TC_FREE_ACTIVE_TILES = 84;
+export const SUPPORT_PER_SETTLER = 7;
+export const WATCHTOWER_SUPPORT_BONUS = 18;
 export const ACTIVE_TILE_COST = 1;
 export const FRAGILE_TILE_COUNT = 3;
+export const TOWN_CENTER_REACH_RADIUS = 9;
+export const WATCHTOWER_REACH_RADIUS = 6;
 
 export type PressureState = 'stable' | 'strained' | 'collapsing';
 
@@ -67,6 +69,9 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'water_dock_d',
     'water_dock_e',
     'water_dock_f',
+    'water_bridge_ad',
+    'water_bridge_be',
+    'water_bridge_cf',
 ]);
 
 let lastSnapshot: SettlementSupportSnapshot = {
@@ -124,7 +129,7 @@ function computeReachTileIdsFromTownCenters(
     const activatedWatchtowers = new Set<string>();
 
     for (const tc of townCenters) {
-        addTilesInRadius(tc.q, tc.r, 8, reachSet);
+        addTilesInRadius(tc.q, tc.r, TOWN_CENTER_REACH_RADIUS, reachSet);
     }
 
     let changed = true;
@@ -137,7 +142,7 @@ function computeReachTileIdsFromTownCenters(
             if (!canActivateWatchtower(watchtower)) continue;
 
             activatedWatchtowers.add(watchtower.id);
-            addTilesInRadius(watchtower.q, watchtower.r, 5, reachSet);
+            addTilesInRadius(watchtower.q, watchtower.r, WATCHTOWER_REACH_RADIUS, reachSet);
             changed = true;
         }
     }

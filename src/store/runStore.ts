@@ -2,6 +2,7 @@ import { computed, ref } from 'vue';
 import type { CompletedMissionSnapshot, RunSnapshot } from '../shared/goals/types.ts';
 import { getNewlyUnlockedStoryDescriptors, type StoryProgressionSnapshot } from '../shared/story/progression.ts';
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
+import { setWorldGenerationSeed } from '../core/worldVariation.ts';
 import { addNotification } from './notificationStore';
 import { syncHeroRoster } from './heroStore.ts';
 
@@ -69,6 +70,7 @@ export function loadRunState(run: RunSnapshot) {
   const next = cloneRunSnapshot(run);
   const shouldSyncHeroRoster = !previous || !sameHeroRoster(previous.progression.heroes.available, next.progression.heroes.available);
 
+  setWorldGenerationSeed(next.seed);
   runSnapshot.value = next;
   runLoaded.value = true;
   loadStoryProgression(next.progression);

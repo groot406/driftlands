@@ -252,7 +252,7 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'mountains_watchtower', { stagger: false, respectBiome: false });
             }
 
-            revealTilesAround(tile, 2);
+            revealTilesAround(tile, 3);
             onPopulationBuildingCompleted();
         },
     },

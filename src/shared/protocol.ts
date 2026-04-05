@@ -81,6 +81,11 @@ export interface WorldRequestMessage extends BaseMessage {
     type: 'world:request';
 }
 
+export interface WorldRestartMessage extends BaseMessage {
+    type: 'world:restart';
+    seed?: number;
+}
+
 export interface WorldSnapshotMessage extends BaseMessage {
     type: 'world:snapshot';
     tiles: Tile[];
@@ -256,6 +261,7 @@ export type ClientMessage =
     | CoopHeroReleaseMessage
     | CoopPingRequestMessage
     | WorldRequestMessage
+    | WorldRestartMessage
     | MoveRequestMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage

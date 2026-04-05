@@ -30,7 +30,7 @@ import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWar
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
 import { isStoryTaskUnlocked } from '../story/progressionState.ts';
-import { findNearestTaskAccessTile, isHeroAtTaskAccess, taskUsesAdjacentAccess } from './taskAccess';
+import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -319,7 +319,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
             hero,
             accessTile,
             pending.taskType,
-            taskUsesAdjacentAccess(pending.taskType) ? { q: targetTile.q, r: targetTile.r } : undefined,
+            getTaskAccessMode(pending.taskType, targetTile) !== 'tile' ? { q: targetTile.q, r: targetTile.r } : undefined,
         );
         break;
     }

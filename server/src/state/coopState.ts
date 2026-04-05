@@ -21,6 +21,15 @@ class CoopState {
   /** Timestamp (ms) of the last player-initiated action per claimed hero. */
   private readonly heroLastCommandAt = new Map<string, number>();
 
+  resetHeroClaims() {
+    for (const player of this.playersBySocket.values()) {
+      player.claimedHeroIds.clear();
+    }
+
+    this.heroClaims.clear();
+    this.heroLastCommandAt.clear();
+  }
+
   upsertPlayer(socket: Socket, name: string) {
     const existing = this.playersBySocket.get(socket.id);
 

@@ -1,6 +1,6 @@
-import { generateInitialWorld, tiles } from '../../src/shared/game/world';
-import { heroes } from "../../src/shared/game/state/heroStore";
-import { taskStore } from "../../src/shared/game/state/taskStore";
+import { startWorldGeneration, tiles } from '../../src/shared/game/world';
+import { heroes, loadHeroes } from "../../src/shared/game/state/heroStore";
+import { loadTasks, taskStore } from "../../src/shared/game/state/taskStore";
 import { depositResourceToStorage, listStorageSnapshots, resetResourceState, resourceInventory } from "../../src/shared/game/state/resourceStore";
 import { getWorkforceSnapshot, resetWorkforceState } from '../../src/shared/game/state/jobStore';
 import { getPopulationSnapshot, getPopulationState, initializePopulation, resetPopulationState } from "../../src/shared/game/state/populationStore";
@@ -16,8 +16,32 @@ import type { WorkforceSnapshot } from '../../src/store/jobStore';
 import { runState } from "./state/runState";
 import { frontierFindState } from "./state/frontierFindState";
 import { setStoryProgressionForMission } from '../../src/shared/story/progressionState';
+import { tickEngine } from './tick';
 
 const STARTING_FOOD = 12;
+const MAX_UINT32 = 0xffffffff;
+
+function normalizeSeed(seed: number | null | undefined) {
+  if (typeof seed !== 'number' || !Number.isFinite(seed)) {
+    return null;
+  }
+
+  const truncated = Math.trunc(seed);
+  return ((truncated % (MAX_UINT32 + 1)) + (MAX_UINT32 + 1)) % (MAX_UINT32 + 1);
+}
+
+function resolveConfiguredSeed() {
+  const rawSeed = process.env.SERVER_SEED;
+  if (!rawSeed?.trim()) {
+    return null;
+  }
+
+  return normalizeSeed(Number.parseInt(rawSeed, 10));
+}
+
+function createRandomSeed() {
+  return Math.floor(Math.random() * (MAX_UINT32 + 1));
+}
 
 function serializeTile(tile: Tile): Tile {
   return {
@@ -90,21 +114,32 @@ function serializeTask(task: TaskInstance): TaskInstance {
 // Simple in-memory world state. For now, generate a minimal world.
 // This can later be replaced with a richer generator and persistence layer.
 class WorldState {
-  init(): Promise<void> {
+  private activeSeed = 123456789;
+
+  init(seed?: number | null): Promise<void> {
+    const resolvedSeed = normalizeSeed(seed) ?? resolveConfiguredSeed() ?? createRandomSeed();
+    this.activeSeed = resolvedSeed;
     frontierFindState.reset();
     resetResourceState();
     resetWorkforceState();
     resetPopulationState();
     resetSettlementSupportState();
+    loadTasks([]);
+    loadHeroes([]);
     setStoryProgressionForMission(1);
-    generateInitialWorld(1);
+    tickEngine.setSeed(resolvedSeed);
+    startWorldGeneration(1, resolvedSeed);
     initializePopulation();
     depositResourceToStorage('0,0', 'food', STARTING_FOOD);
     const population = getPopulationState();
     const support = recalculateSettlementSupport(population.current, population.hungerMs);
     setSupportMetrics(support.snapshot);
-    runState.initialize(Number(process.env.SERVER_SEED ?? 123456789));
+    runState.initialize(resolvedSeed);
     return Promise.resolve();
+  }
+
+  getSeed() {
+    return this.activeSeed;
   }
 
   getSnapshot(): { tiles: Tile[], heroes: Hero[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot } {

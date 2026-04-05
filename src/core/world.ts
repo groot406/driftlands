@@ -1,5 +1,5 @@
 
-import {weightedTerrainChoice, resetTerrainWeightCache} from './terrain';
+import {resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { applyVariant } from './variants';
@@ -10,6 +10,8 @@ import type {TileUpdatedMessage} from "../shared/protocol.ts";
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import { axialDistanceFromOrigin } from '../shared/game/hex';
 import { emitGameplayEvent } from '../shared/gameplay/events';
+import { resolveWorldTile } from './worldGeneration';
+import { setWorldGenerationSeed, worldNoise01 } from './worldVariation';
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
 // World data containers
@@ -194,9 +196,7 @@ export function discoverTile(tile: Tile) {
         bumpWorldRenderVersion();
         return;
     }
-    const neighborTerrains = getNeighborTerrains(tile);
-    const biomeTerrains = getNeighborTerrains(tile, 2);
-    const generated = weightedTerrainChoice(neighborTerrains, biomeTerrains, tile.q, tile.r);
+    const generated = resolveWorldTile(tile.q, tile.r);
 
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
@@ -240,7 +240,7 @@ export function discoverTile(tile: Tile) {
             if (valid.length) {
                 const baseWeight = def.baseWeight;
                 const total = baseWeight + valid.reduce((a, b) => a + (b.weight ?? (def.baseWeight/variations.length)), 0);
-                let roll = Math.random() * total;
+                let roll = worldNoise01(tile.q, tile.r, 1701 + tile.terrain.length) * total;
                 if (roll > baseWeight) {
                     roll -= baseWeight;
                     for (const v of valid) {
@@ -351,7 +351,10 @@ function clearWorld() {
     bumpWorldRenderVersion();
 }
 
-export function startWorldGeneration(radius: number) {
+export function startWorldGeneration(radius: number, seed?: number) {
+    if (typeof seed === 'number' && Number.isFinite(seed)) {
+        setWorldGenerationSeed(seed);
+    }
     clearWorld();
     generateInitialWorld(radius);
 }

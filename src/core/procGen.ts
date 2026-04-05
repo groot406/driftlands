@@ -3,17 +3,13 @@
 // Provides deterministic lightweight hash + terrain selection + cached hex tile canvas.
 
 import { TERRAIN_DEFS, type TerrainKey, type TerrainVariationDef, type TerrainSide } from './terrainDefs';
-import { applyBiomeModifiers, detectBiome } from './biomes';
 import { getDecorativeSelectionForTerrain } from './tileVisuals';
-import { applyRegionalTerrainBias, noise01 } from './worldVariation';
+import { getWorldGenerationSeed, noise01 } from './worldVariation';
+import { resolveWorldTile } from './worldGeneration';
 
-// Precompute terrain keys once to avoid repeated Object.keys casts
-const TERRAIN_KEYS = Object.keys(TERRAIN_DEFS) as TerrainKey[];
-const DEFAULT_TERRAIN: TerrainKey = 'plains';
-
-function getFallbackTerrainKey(): TerrainKey {
-  return TERRAIN_KEYS[0] ?? DEFAULT_TERRAIN;
-}
+// Deterministic cache for selected terrain types to avoid recomputation in neighbor lookups
+const typeCache = new Map<string, TerrainKey>();
+function key(q: number, r: number): string { return `${getWorldGenerationSeed()}:${q}:${r}`; }
 
 // Axial hex neighbor deltas (pointy-top orientation consistent with game)
 const NEIGHBOR_DELTAS: Array<[number, number]> = [
@@ -22,87 +18,15 @@ const NEIGHBOR_DELTAS: Array<[number, number]> = [
 // Side order mapping to neighbor deltas (a..f)
 const SIDE_ORDER: TerrainSide[] = ['a','b','c','d','e','f'];
 
-// Deterministic cache for selected terrain types to avoid recomputation in neighbor lookups
-const typeCache = new Map<string, TerrainKey>();
-function key(q: number, r: number): string { return `${q}:${r}`; }
-
-// Deterministic terrain selection using TERRAIN_DEFS + adjacency + biome modifiers
+// Title/background tiles now use the same biome resolver as the game world.
 export function getTileType(q: number, r: number): TerrainKey {
   const k = key(q, r);
   const cached = typeCache.get(k);
   if (cached) return cached;
 
-  // Gather neighbor terrain types deterministically (will recursively populate cache)
-  const neighborTerrains: TerrainKey[] = [];
-  for (const [dq, dr] of NEIGHBOR_DELTAS) {
-    const nq = q + dq;
-    const nr = r + dr;
-    const nk = key(nq, nr);
-    const existing = typeCache.get(nk);
-    if (existing) {
-      neighborTerrains.push(existing);
-    } else {
-      // Use a cheap pre-roll based purely on noise for neighbors not yet computed to break symmetry
-      const roll = noise01(nq, nr, 1);
-      const len = TERRAIN_KEYS.length;
-      const idx = len > 0 ? Math.min(Math.floor(roll * len), len - 1) : -1;
-      const candidate: TerrainKey = (len > 0 && idx >= 0) ? (TERRAIN_KEYS[idx] ?? getFallbackTerrainKey()) : DEFAULT_TERRAIN;
-      neighborTerrains.push(candidate);
-    }
-  }
-
-  // Initialize weights from baseWeight, respecting minDistanceFromCenter
-  const dist = Math.sqrt(q*q + r*r);
-  const weights: Record<TerrainKey, number> = {} as Record<TerrainKey, number>;
-  TERRAIN_KEYS.forEach(t => {
-    const def = TERRAIN_DEFS[t];
-    const minDist = def.minDistanceFromCenter ?? 0;
-    const base = dist < minDist ? 0 : def.baseWeight;
-    // Add a tiny deterministic jitter to avoid ties
-    const jitter = (noise01(q, r, t.length) - 0.5) * 0.8;
-    weights[t] = Math.max(0, base + jitter);
-  });
-
-  // Apply adjacency deltas based on neighbor terrains
-  for (const nt of neighborTerrains) {
-    for (const t of TERRAIN_KEYS) {
-      const adj = TERRAIN_DEFS[t].adjacency?.[nt];
-      if (adj) weights[t] = Math.max(0, (weights[t] ?? 0) + adj);
-    }
-  }
-
-  // Detect biome and apply biome-specific modifiers
-  const biome = detectBiome(neighborTerrains) ?? 'plains';
-
-  const finalWeights = applyBiomeModifiers(biome, weights);
-  applyRegionalTerrainBias(finalWeights, q, r);
-
-  // Weighted pick using deterministic roll
-  let total = 0;
-  for (const t of TERRAIN_KEYS) total += finalWeights[t] || 0;
-  if (total <= 0) {
-    // Fallback: choose the highest base weight terrain
-    let best: TerrainKey = getFallbackTerrainKey();
-    for (const t of TERRAIN_KEYS) {
-      if (TERRAIN_DEFS[t].baseWeight > TERRAIN_DEFS[best].baseWeight) best = t;
-    }
-    typeCache.set(k, best);
-    return best;
-  }
-
-  const roll = noise01(q, r, 42) * total;
-  let acc = 0;
-  for (const t of TERRAIN_KEYS) {
-    acc += finalWeights[t] || 0;
-    if (roll <= acc) {
-      typeCache.set(k, t);
-      return t;
-    }
-  }
-  // Numerical edge fallback
-  let first: TerrainKey = getFallbackTerrainKey();
-  typeCache.set(k, first);
-  return first;
+  const generated = resolveWorldTile(q, r).terrain;
+  typeCache.set(k, generated);
+  return generated;
 }
 
 // Optional: color mapping for terrain using TERRAIN_DEFS

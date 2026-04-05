@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex} from '../core/world';
-import {requestHeroMovement, updateHeroFacing, updateHeroMovements} from '../core/heroService';
+import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
@@ -68,6 +68,7 @@ import {
   isPositionControlled,
   isTileActive,
 } from '../store/settlementSupportStore';
+import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -283,6 +284,15 @@ function updatePath(force = false, nowMs: number = Date.now()) {
     }
   }
 
+  if (!hoveredTile.value.discovered) {
+    const accessTile = findNearestTaskAccessTile('explore', hoveredTile.value, hero.q, hero.r) ?? hoveredTile.value;
+    const previewPath = (accessTile.q === hero.q && accessTile.r === hero.r)
+      ? []
+      : pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r);
+    setPathPreview(previewPath, hero, hoveredTile.value, nowMs);
+    return;
+  }
+
   setPathPreview(pathService.updatePath(hero, hoveredTile.value), hero, hoveredTile.value, nowMs);
 }
 
@@ -405,11 +415,20 @@ function handleClick(e: PointerEvent) {
       return;
     }
 
-    const path = pathService.updatePath(selHero, tile).slice();
+    const accessTile = findNearestTaskAccessTile('explore', tile, selHero.q, selHero.r) ?? tile;
+    const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
+      ? []
+      : pathService.findWalkablePath(selHero.q, selHero.r, accessTile.q, accessTile.r);
     setPathPreview(path, selHero, tile);
 
+    if (accessTile.q === selHero.q && accessTile.r === selHero.r) {
+      startTaskRequest(selHero.id, 'explore', { q: tile.q, r: tile.r });
+      clearPathPreview();
+      return;
+    }
+
     if (path.length) {
-      requestHeroMovement(selHero.id, path, tile, 'explore');
+      requestHeroMovement(selHero.id, path, accessTile, 'explore', tile);
       clearPathPreview();
       return;
     }

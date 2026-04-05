@@ -1,17 +1,21 @@
 import type { Hero } from '../../core/types/Hero';
 import type { TaskType } from '../../core/types/Task';
-import type { Tile } from '../../core/types/Tile';
+import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
+import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
+import { resolveWorldTile } from '../../core/worldGeneration.ts';
 import { axialDistanceCoords } from '../game/hex';
+import { listBridgeAccessTiles } from '../game/bridges.ts';
 import { isTileWalkable } from '../game/navigation';
 import {
     findNearestActiveAdjacentAccessTile,
     isTileActive,
     listActiveAdjacentAccessTiles,
 } from '../game/state/settlementSupportStore';
-import { tileIndex } from '../game/world';
+import { ensureTileExists, tileIndex } from '../game/world';
 
 const ADJACENT_ACTIVE_ACCESS_TASKS = new Set<string>([
     'buildDock',
+    'buildBridge',
 ]);
 
 const ADJACENT_WALKABLE_ACCESS_TASKS = new Set<string>([
@@ -31,12 +35,56 @@ export function taskUsesAdjacentAccess(taskType: TaskType | string | null | unde
     return taskUsesAdjacentActiveAccess(taskType) || taskUsesAdjacentWalkableAccess(taskType);
 }
 
+export type TaskAccessMode = 'tile' | 'adjacent_active' | 'adjacent_walkable';
+
+const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
+    a: [0, -1],
+    b: [1, -1],
+    c: [1, 0],
+    d: [0, 1],
+    e: [-1, 1],
+    f: [-1, 0],
+};
+
+function isHiddenTileWalkable(tile: Tile | null | undefined) {
+    if (!tile) {
+        return false;
+    }
+
+    if (tile.terrain) {
+        return isTileWalkable(tile);
+    }
+
+    const resolved = resolveWorldTile(tile.q, tile.r);
+    return !!TERRAIN_DEFS[resolved.terrain]?.walkable;
+}
+
+export function getTaskAccessMode(
+    taskType: TaskType | string | null | undefined,
+    tile: Tile | null | undefined,
+): TaskAccessMode {
+    if (taskUsesAdjacentActiveAccess(taskType)) {
+        return 'adjacent_active';
+    }
+
+    if (taskUsesAdjacentWalkableAccess(taskType)) {
+        return 'adjacent_walkable';
+    }
+
+    if (tile && !isHiddenTileWalkable(tile)) {
+        return 'adjacent_walkable';
+    }
+
+    return 'tile';
+}
+
 function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined) {
-    if (!tile?.neighbors) return [];
+    if (!tile) return [];
 
     const result: Tile[] = [];
-    for (const side of ['a', 'b', 'c', 'd', 'e', 'f'] as const) {
-        const neighbor = tile.neighbors[side];
+    for (const side of SIDE_NAMES) {
+        const [dq, dr] = SIDE_DELTAS[side];
+        const neighbor = tile.neighbors?.[side] ?? ensureTileExists(tile.q + dq, tile.r + dr);
         if (neighbor?.discovered && isTileWalkable(neighbor)) {
             result.push(neighbor);
         }
@@ -46,15 +94,25 @@ function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined) {
     return result;
 }
 
+function listBridgeAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
+    return listBridgeAccessTiles(tile).filter((candidate) => candidate.discovered && isTileActive(candidate));
+}
+
 export function listTaskAccessTiles(
     taskType: TaskType | string | null | undefined,
     tile: Tile | null | undefined,
 ) {
-    if (taskUsesAdjacentActiveAccess(taskType)) {
+    if (taskType === 'buildBridge') {
+        return listBridgeAdjacentActiveAccessTiles(tile);
+    }
+
+    const mode = getTaskAccessMode(taskType, tile);
+
+    if (mode === 'adjacent_active') {
         return listActiveAdjacentAccessTiles(tile);
     }
 
-    if (taskUsesAdjacentWalkableAccess(taskType)) {
+    if (mode === 'adjacent_walkable') {
         return listAdjacentWalkableAccessTiles(tile);
     }
 
@@ -69,11 +127,29 @@ export function findNearestTaskAccessTile(
 ) {
     if (!tile) return null;
 
-    if (taskUsesAdjacentActiveAccess(taskType)) {
+    if (taskType === 'buildBridge') {
+        const candidates = listBridgeAdjacentActiveAccessTiles(tile);
+        let best: Tile | null = null;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (const candidate of candidates) {
+            const distance = axialDistanceCoords(fromQ, fromR, candidate.q, candidate.r);
+            if (distance < bestDistance || (distance === bestDistance && candidate.id.localeCompare(best?.id ?? candidate.id) < 0)) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+
+        return best;
+    }
+
+    const mode = getTaskAccessMode(taskType, tile);
+
+    if (mode === 'adjacent_active') {
         return findNearestActiveAdjacentAccessTile(tile, fromQ, fromR);
     }
 
-    if (taskUsesAdjacentWalkableAccess(taskType)) {
+    if (mode === 'adjacent_walkable') {
         const candidates = listAdjacentWalkableAccessTiles(tile);
         let best: Tile | null = null;
         let bestDistance = Number.POSITIVE_INFINITY;
@@ -99,7 +175,9 @@ export function isHeroAtTaskAccess(
 ) {
     if (!hero || !tile) return false;
 
-    if (!taskUsesAdjacentAccess(taskType)) {
+    const mode = getTaskAccessMode(taskType, tile);
+
+    if (mode === 'tile') {
         return hero.q === tile.q && hero.r === tile.r;
     }
 
@@ -107,6 +185,6 @@ export function isHeroAtTaskAccess(
     return !!heroTile
         && heroTile.discovered
         && isTileWalkable(heroTile)
-        && (!taskUsesAdjacentActiveAccess(taskType) || isTileActive(heroTile))
+        && (mode !== 'adjacent_active' || isTileActive(heroTile))
         && axialDistanceCoords(hero.q, hero.r, tile.q, tile.r) === 1;
 }

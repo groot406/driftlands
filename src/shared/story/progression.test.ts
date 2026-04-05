@@ -28,6 +28,7 @@ test('mission 2 unlocks dock, house, and shore logistics', () => {
   assert.ok(!taskKeys.includes('fishAtDock'));
   assert.ok(taskKeys.includes('harvestWaterLilies'));
   assert.ok(taskKeys.includes('placeWaterLilies'));
+  assert.ok(taskKeys.includes('buildBridge'));
   assert.ok(taskKeys.includes('plantTrees'));
   assert.ok(progression.buildings.available.includes('dock'));
   assert.ok(progression.buildings.available.includes('house'));

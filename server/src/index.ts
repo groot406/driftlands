@@ -87,7 +87,6 @@ const { playerHandler } = initializeServerHandlers(io);
 
 // Register systems and start tick engine
 tickEngine.setTPS(Number(process.env.SERVER_TPS ?? 10));
-tickEngine.setSeed(Number(process.env.SERVER_SEED ?? 123456789));
 
 tickEngine.register(movementSystem);
 tickEngine.register(taskSystem);

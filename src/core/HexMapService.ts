@@ -61,6 +61,7 @@ import {
     getResourceTargetCenter,
 } from './gameFeel';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
+import { getBridgeConnectionSides, isBridgeTile } from '../shared/game/bridges';
 import { isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from '../shared/game/roads';
 import { getClimateProfile, hash32 } from './worldVariation';
 
@@ -477,6 +478,7 @@ export class HexMapService {
         this._pendingHeroImageLoads.clear();
         this._fogTileCanvas = null;
         this._proceduralRoadCache.clear();
+        this._proceduralBridgeCache.clear();
         this._tileColorVariantCache.clear();
         this._tileShaderCache.clear();
         this._tileShorelineCache.clear();
@@ -4434,6 +4436,11 @@ export class HexMapService {
         if (proceduralRoadCanvas) {
             ctx.drawImage(proceduralRoadCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
         }
+
+        const proceduralBridgeCanvas = this.getProceduralBridgeCanvas(state.tile);
+        if (proceduralBridgeCanvas) {
+            ctx.drawImage(proceduralBridgeCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
+        }
     }
 
     private drawTile(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
@@ -4582,9 +4589,36 @@ export class HexMapService {
             HexMapService.PROCEDURAL_ROAD_CACHE_MAX,
         );
     }
+
+    private getProceduralBridgeCacheKey(tile: Tile) {
+        if (!isBridgeTile(tile)) return null;
+        return `${tile.q},${tile.r}:${tile.variant ?? ''}`;
+    }
+
+    private getProceduralBridgeCanvas(tile: Tile) {
+        const cacheKey = this.getProceduralBridgeCacheKey(tile);
+        if (!cacheKey) return null;
+
+        const cached = this.getCachedCanvas(this._proceduralBridgeCache, cacheKey);
+        if (cached) return cached;
+
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        this.drawProceduralBridge(ctx, tile, this.HEX_SIZE, this.HEX_SIZE, 1);
+        return this.storeCachedCanvas(
+            this._proceduralBridgeCache,
+            cacheKey,
+            canvas,
+            HexMapService.PROCEDURAL_BRIDGE_CACHE_MAX,
+        );
+    }
     private _fogTileCanvas: HTMLCanvasElement | null = null;
     private _proceduralRoadCache = new Map<string, HTMLCanvasElement>();
+    private _proceduralBridgeCache = new Map<string, HTMLCanvasElement>();
     private static readonly PROCEDURAL_ROAD_CACHE_MAX = 768;
+    private static readonly PROCEDURAL_BRIDGE_CACHE_MAX = 512;
     private static readonly TILE_COLOR_VARIANT_VERSION = 7;
     private static readonly TILE_COLOR_VARIANT_CACHE_MAX = 2048;
     private static readonly TILE_SHADER_VERSION = 3;
@@ -5770,6 +5804,96 @@ export class HexMapService {
         }
 
         strokeBranchSet(2.4, `rgba(239, 209, 164, ${Math.min(1, opacity * 0.18)})`, { startInset: hubBlendInset + 1.2, endInset: 8.5, controlTaper: 0.12 });
+        ctx.restore();
+    }
+
+    private drawProceduralBridge(ctx: CanvasRenderingContext2D, tile: Tile, x: number, y: number, opacity: number) {
+        if (!isBridgeTile(tile)) {
+            return;
+        }
+
+        const connectionSides = getBridgeConnectionSides(tile);
+        if (!connectionSides) {
+            return;
+        }
+
+        const start = this.getRoadAnchorPoint(x, y, connectionSides[0]);
+        const end = this.getRoadAnchorPoint(x, y, connectionSides[1]);
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const distance = Math.hypot(dx, dy);
+        if (!distance) {
+            return;
+        }
+
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+        const perpX = -dirY;
+        const perpY = dirX;
+        const inset = 3.4;
+        const startX = start.x + (dirX * inset);
+        const startY = start.y + (dirY * inset);
+        const endX = end.x - (dirX * inset);
+        const endY = end.y - (dirY * inset);
+
+        ctx.save();
+        this.traceHexClipPath(ctx, x, y);
+        ctx.clip();
+        ctx.globalAlpha = 1;
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'round';
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.lineWidth = 17;
+        ctx.strokeStyle = `rgba(24, 14, 8, ${Math.min(1, opacity * 0.26)})`;
+        ctx.stroke();
+
+        const deckGradient = ctx.createLinearGradient(startX, startY, endX, endY);
+        deckGradient.addColorStop(0, `rgba(116, 82, 52, ${Math.min(1, opacity * 0.98)})`);
+        deckGradient.addColorStop(0.5, `rgba(166, 123, 80, ${Math.min(1, opacity * 0.98)})`);
+        deckGradient.addColorStop(1, `rgba(132, 96, 62, ${Math.min(1, opacity * 0.98)})`);
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.lineWidth = 12.5;
+        ctx.strokeStyle = deckGradient;
+        ctx.stroke();
+
+        for (const railOffset of [-4.2, 4.2] as const) {
+            ctx.beginPath();
+            ctx.moveTo(startX + (perpX * railOffset), startY + (perpY * railOffset));
+            ctx.lineTo(endX + (perpX * railOffset), endY + (perpY * railOffset));
+            ctx.lineWidth = 1.9;
+            ctx.strokeStyle = `rgba(82, 54, 31, ${Math.min(1, opacity * 0.72)})`;
+            ctx.stroke();
+        }
+
+        const plankSpacing = 9.5;
+        const plankHalfWidth = 4.6;
+        const plankCount = Math.max(3, Math.floor(distance / plankSpacing));
+        for (let i = 0; i <= plankCount; i++) {
+            const t = plankCount === 0 ? 0.5 : i / plankCount;
+            const px = startX + ((endX - startX) * t);
+            const py = startY + ((endY - startY) * t);
+
+            ctx.beginPath();
+            ctx.moveTo(px - (perpX * plankHalfWidth), py - (perpY * plankHalfWidth));
+            ctx.lineTo(px + (perpX * plankHalfWidth), py + (perpY * plankHalfWidth));
+            ctx.lineWidth = 1.45;
+            ctx.strokeStyle = `rgba(92, 61, 36, ${Math.min(1, opacity * 0.52)})`;
+            ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(startX - (perpX * 1.6), startY - (perpY * 1.6));
+        ctx.lineTo(endX - (perpX * 1.6), endY - (perpY * 1.6));
+        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = `rgba(236, 208, 168, ${Math.min(1, opacity * 0.28)})`;
+        ctx.stroke();
+
         ctx.restore();
     }
 

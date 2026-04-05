@@ -18,7 +18,6 @@ EXPOSE 3000
 
 # Environment defaults (can be overridden at runtime)
 ENV SERVER_TPS=10 \
-    SERVER_SEED=123456789 \
     NODE_ENV=production
 
 # Start the server

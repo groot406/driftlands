@@ -1,5 +1,5 @@
 <template>
-  <div class="fps-counter mt-10">
+  <div class="fps-counter mt-60">
     <div class="fps-header">
       <span>{{ fps }} FPS</span>
       <span class="quality-badge" :class="`quality-${renderDebugState.qualityLabel}`">

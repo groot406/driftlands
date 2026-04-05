@@ -1,18 +1,24 @@
 import {discoverTile} from '../../../core/world';
+import { resolveWorldTile } from '../../../core/worldGeneration';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
-import type {Tile, TileSide} from "../../../core/types/Tile";
+import { SIDE_NAMES, type Tile } from "../../../core/types/Tile";
+import { PathService } from '../../game/PathService';
 import { moveHeroWithRuntime } from '../../game/runtime';
-import { getDistanceToNearestTowncenter } from '../../game/worldQueries';
 import { isPositionControlled } from '../../game/state/settlementSupportStore';
+import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 
-const EXPLORE_CHAIN_DELAY_MS = 120;
-const EXPLORE_BASE_REQUIRED_XP = 250;
-const EXPLORE_REQUIRED_XP_PER_DISTANCE = 850;
-const EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED = 25;
+const EXPLORE_CHAIN_DELAY_MS = 60;
+const EXPLORE_BASE_REQUIRED_XP = 180;
+const EXPLORE_REQUIRED_XP_PER_DISTANCE = 600;
+const EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED = 15;
 const EXPLORE_MAX_REQUIRED_XP = 999999;
-const EXPLORE_SCOUTING_RATE = 30;
+const EXPLORE_SCOUTING_RATE = 24;
+const EXPLORE_WATER_SURVEY_RADIUS = 2;
+const EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES = 7;
+
+const explorePathService = new PathService();
 
 export function getExploreRequiredXp(distance: number) {
     const clampedDistance = Math.max(0, distance);
@@ -33,7 +39,7 @@ export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
 }
 
 export function getExploreRewardedXp(distance: number) {
-    return Math.max(1, distance / 4);
+    return Math.max(1, distance / 3);
 }
 
 // Explore task definition separated for modularity.
@@ -42,6 +48,7 @@ const exploreTask: TaskDefinition = {
     label: 'Explore',
     chainAdjacentSameTerrain: false,
     requiredXp(distance: number) {
+        return 1;
         return getExploreRequiredXp(distance);
     },
     heroRate(hero: Hero, _tile) {
@@ -52,7 +59,9 @@ const exploreTask: TaskDefinition = {
     },
 
     canStart(tile: Tile, _hero: Hero): boolean {
-        return !tile.discovered && isPositionControlled(tile.q, tile.r);
+        return !tile.discovered
+            && isPositionControlled(tile.q, tile.r)
+            && listTaskAccessTiles('explore', tile).length > 0;
     },
 
     onStart(_tile, _instance, _participants) {
@@ -68,6 +77,7 @@ const exploreTask: TaskDefinition = {
 
     onComplete(tile, _instance, participants) {
         discoverTile(tile);
+        revealNearbyWaterFromShore(tile);
 
         let timer = setTimeout(() => continueExploration(tile, participants), EXPLORE_CHAIN_DELAY_MS);
         for (const hero of participants) {
@@ -77,36 +87,85 @@ const exploreTask: TaskDefinition = {
 };
 
 function continueExploration(tile: Tile, participants: Hero[]) {
-    // find lowest distance neighboring tile that is not discovered and start moving there to chain
     for (const participant of participants) {
         if (!participant.delayedMovementTimer) {
             continue;
         }
         participant.delayedMovementTimer = undefined;
-        const nm = tile.neighbors;
-        let closestUndiscovered: Tile | null = null;
+        const nextUndiscovered = pickRandomControlledUndiscoveredNeighbor(tile, participant);
 
-        let sides: TileSide[] = ['a', 'b', 'c', 'd', 'e', 'f'];
-        // shuffle sides to add some randomness to exploration direction
-        sides = sides.sort(() => Math.random() - 0.5);
-        for (const side of sides) {
-            if (!nm) break;
-            const neighbor = nm[side];
+        if (nextUndiscovered) {
+            const accessTile = findNearestTaskAccessTile('explore', nextUndiscovered, participant.q, participant.r) ?? nextUndiscovered;
+            moveHeroWithRuntime(
+                participant,
+                accessTile,
+                'explore',
+                accessTile.id === nextUndiscovered.id ? undefined : { q: nextUndiscovered.q, r: nextUndiscovered.r },
+            );
+        }
+    }
+}
 
-            if (neighbor && !neighbor.discovered && isPositionControlled(neighbor.q, neighbor.r)) {
-                if (!closestUndiscovered) {
-                    closestUndiscovered = neighbor;
-                } else if (
-                    !neighbor.discovered &&
-                    getDistanceToNearestTowncenter(neighbor.q, neighbor.r) < getDistanceToNearestTowncenter(closestUndiscovered.q, closestUndiscovered.r)
-                ) {
-                    closestUndiscovered = neighbor;
-                }
+function pickRandomControlledUndiscoveredNeighbor(tile: Tile, hero: Hero): Tile | null {
+    const candidates = SIDE_NAMES
+        .map((side) => tile.neighbors?.[side] ?? null)
+        .filter((neighbor): neighbor is Tile => {
+            if (!neighbor || neighbor.discovered || !isPositionControlled(neighbor.q, neighbor.r)) {
+                return false;
             }
+
+            const accessTile = findNearestTaskAccessTile('explore', neighbor, hero.q, hero.r);
+            if (!accessTile) {
+                return false;
+            }
+
+            return accessTile.q === hero.q && accessTile.r === hero.r
+                || explorePathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
+        });
+
+    if (!candidates.length) {
+        return null;
+    }
+
+    return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+}
+
+function revealNearbyWaterFromShore(origin: Tile) {
+    if (origin.terrain !== 'water') {
+        return;
+    }
+
+    const queue: Tile[] = [origin];
+    const visited = new Set<string>([origin.id]);
+    let revealedCount = 0;
+
+    while (queue.length && revealedCount < EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES) {
+        const current = queue.shift()!;
+        const currentDistance = Math.max(Math.abs(current.q - origin.q), Math.abs(current.r - origin.r), Math.abs((current.q + current.r) - (origin.q + origin.r)));
+
+        if (currentDistance >= EXPLORE_WATER_SURVEY_RADIUS) {
+            continue;
         }
 
-        if (closestUndiscovered && !closestUndiscovered.discovered && isPositionControlled(closestUndiscovered.q, closestUndiscovered.r)) {
-            moveHeroWithRuntime(participant, closestUndiscovered, 'explore');
+        for (const side of SIDE_NAMES) {
+            const neighbor = current.neighbors?.[side] ?? null;
+            if (!neighbor || visited.has(neighbor.id)) {
+                continue;
+            }
+
+            visited.add(neighbor.id);
+            const resolvedTerrain = neighbor.terrain ?? resolveWorldTile(neighbor.q, neighbor.r).terrain;
+            if (resolvedTerrain !== 'water') {
+                continue;
+            }
+
+            discoverTile(neighbor);
+            revealedCount += 1;
+            if (revealedCount >= EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES) {
+                break;
+            }
+
+            queue.push(neighbor);
         }
     }
 }

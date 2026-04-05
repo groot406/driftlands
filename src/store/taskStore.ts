@@ -24,7 +24,7 @@ import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWareh
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
-import { findNearestTaskAccessTile, taskUsesAdjacentAccess } from '../shared/tasks/taskAccess';
+import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -717,7 +717,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
                 hero,
                 accessTile,
                 inst.type,
-                taskUsesAdjacentAccess(inst.type) ? { q: targetTile.q, r: targetTile.r } : undefined,
+                getTaskAccessMode(inst.type, targetTile) !== 'tile' ? { q: targetTile.q, r: targetTile.r } : undefined,
             );
             break; // only chain to one tile per hero
         }

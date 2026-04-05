@@ -31,6 +31,7 @@ test('roads should not connect to fenced edges', () => {
 
 test('roads should connect to docks', () => {
   assert.equal(isRoadConnectionTarget({ terrain: 'water', variant: 'water_dock_a' } as any), true);
+  assert.equal(isRoadConnectionTarget({ terrain: 'water', variant: 'water_bridge_ad' } as any), true);
   assert.equal(isRoadConnectionTarget({ terrain: 'water', variant: 'water_lily' } as any), false);
 });
 

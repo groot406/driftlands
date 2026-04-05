@@ -73,6 +73,7 @@ Helpful notes:
 - Vite proxies `/socket.io` requests to `http://localhost:3000` during development, including when the page is opened via your LAN IP
 - the client can also target a custom server with `VITE_SERVER_URL`
 - the server supports `HOST`, `PORT`, `FRONTEND_ORIGIN`, `SERVER_TPS`, and `SERVER_SEED`
+- omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run
 - `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost plus common LAN origins by default
 
 ## What You Can Do In-Game

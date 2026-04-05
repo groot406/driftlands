@@ -1,8 +1,8 @@
 import type { Server } from 'socket.io';
-import { serverMessageRouter, sendToSocket } from '../messages/messageRouter';
+import { broadcast, serverMessageRouter, sendToSocket } from '../messages/messageRouter';
 import { worldState } from '../worldState';
 import type { Socket } from 'socket.io';
-import type { CoopSnapshotMessage, PlayerJoinMessage, RunSnapshotMessage, WorldRequestMessage } from '../../../src/shared/protocol';
+import type { CoopSnapshotMessage, PlayerJoinMessage, RunSnapshotMessage, WorldRequestMessage, WorldRestartMessage, WorldSnapshotMessage } from '../../../src/shared/protocol';
 import { runState } from '../state/runState';
 import { coopState } from '../state/coopState';
 
@@ -12,12 +12,13 @@ export class ServerGameStateHandler {
   init(): void {
     worldState.init();
     serverMessageRouter.on('world:request', this.handleWorldRequest.bind(this));
+    serverMessageRouter.on('world:restart', this.handleWorldRestart.bind(this));
     serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
-  private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
+  private buildWorldSnapshotMessage(): WorldSnapshotMessage {
     const snapshot = worldState.getSnapshot();
-    sendToSocket(socket, ({
+    return {
       type: 'world:snapshot',
       tiles: snapshot.tiles,
       heroes: snapshot.heroes,
@@ -27,21 +28,44 @@ export class ServerGameStateHandler {
       population: snapshot.population,
       jobs: snapshot.jobs,
       timestamp: Date.now(),
-    } as any));
+    };
+  }
+
+  private buildRunSnapshotMessage(): RunSnapshotMessage | null {
     const run = runState.getSnapshot();
-    if (run) {
-      sendToSocket(socket, ({
-        type: 'run:snapshot',
-        run,
-        timestamp: Date.now(),
-      } as RunSnapshotMessage));
+    if (!run) {
+      return null;
     }
 
-    sendToSocket(socket, ({
+    return {
+      type: 'run:snapshot',
+      run,
+      timestamp: Date.now(),
+    };
+  }
+
+  private buildCoopSnapshotMessage(): CoopSnapshotMessage {
+    return {
       type: 'coop:snapshot',
       state: coopState.getSnapshot(),
       timestamp: Date.now(),
-    } as CoopSnapshotMessage));
+    };
+  }
+
+  private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
+    sendToSocket(socket, this.buildWorldSnapshotMessage());
+    const runSnapshot = this.buildRunSnapshotMessage();
+    if (runSnapshot) {
+      sendToSocket(socket, runSnapshot);
+    }
+    sendToSocket(socket, this.buildCoopSnapshotMessage());
+  }
+
+  private handleWorldRestart(_socket: Socket, message: WorldRestartMessage): void {
+    worldState.init(message.seed);
+    coopState.resetHeroClaims();
+    broadcast(this.buildWorldSnapshotMessage());
+    broadcast(this.buildCoopSnapshotMessage());
   }
 
   private handlePlayerJoinSendWorld(socket: Socket, _message: PlayerJoinMessage): void {

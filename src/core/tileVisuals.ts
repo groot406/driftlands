@@ -1,4 +1,4 @@
-import { getClimateProfile, getDecorativePatchNoise, noise01 } from './worldVariation';
+import { getClimateProfile, getDecorativePatchNoise, getWorldGenerationSeed, noise01 } from './worldVariation';
 import { TERRAIN_DEFS, type TerrainKey, type TerrainSide, type TerrainVariationDef } from './terrainDefs';
 import type { Tile } from './types/Tile';
 
@@ -47,7 +47,7 @@ function matchesConstraints(
 
 function getCacheKey(q: number, r: number, terrain: TerrainKey, getNeighborTerrain: NeighborResolver): string {
     const neighborSignature = SIDE_ORDER.map(side => getNeighborTerrain(side) ?? '_').join('.');
-    return `${q},${r}:${terrain}:${neighborSignature}`;
+    return `${getWorldGenerationSeed()}:${q},${r}:${terrain}:${neighborSignature}`;
 }
 
 function selectDecorativeVariant(

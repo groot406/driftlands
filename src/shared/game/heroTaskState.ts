@@ -1,7 +1,7 @@
 import { tileIndex } from '../../core/world';
 import type { Hero } from '../../core/types/Hero';
 import type { TaskInstance } from '../../core/types/Task';
-import { isHeroAtTaskAccess, taskUsesAdjacentAccess } from '../tasks/taskAccess';
+import { getTaskAccessMode, isHeroAtTaskAccess } from '../tasks/taskAccess';
 
 export function isHeroAtTaskLocation(
     hero: Hero,
@@ -11,7 +11,12 @@ export function isHeroAtTaskLocation(
     const tile = tileIndex[task.tileId];
     if (!tile) return false;
 
-    if (task.context?.restoreFromAdjacency || task.context?.adjacentActiveAccess || task.context?.adjacentWalkableAccess || taskUsesAdjacentAccess(task.type)) {
+    if (
+        task.context?.restoreFromAdjacency
+        || task.context?.adjacentActiveAccess
+        || task.context?.adjacentWalkableAccess
+        || getTaskAccessMode(task.type, tile) !== 'tile'
+    ) {
         return isHeroAtTaskAccess(hero, task.type, tile);
     }
 

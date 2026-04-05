@@ -4,13 +4,14 @@ import type {MoveRequestMessage, PathUpdateMessage} from '../../../src/shared/pr
 import {handleHeroArrival} from "../../../src/shared/tasks/tasks";
 import { getTile } from '../../../src/shared/game/world';
 import { getHero, heroes } from "../../../src/shared/game/state/heroStore";
-import { detachHeroFromCurrentTask, getTaskByTile, updateActiveTasks } from "../../../src/shared/game/state/taskStore";
+import { detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask, updateActiveTasks } from "../../../src/shared/game/state/taskStore";
 import { PathService } from "../../../src/shared/game/PathService";
 import type {TaskType} from "../../../src/shared/game/types/Task";
 import type {Hero} from "../../../src/shared/game/types/Hero";
 import { computePathTimings, isWalkablePosition } from '../../../src/shared/game/navigation';
 import { isAxialNeighbor } from '../../../src/shared/game/hex';
 import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
+import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { coopState } from '../state/coopState';
 
 export class ServerMovementHandler {
@@ -176,6 +177,19 @@ export class ServerMovementHandler {
 
         const logicalTaskTarget = taskLocation ?? target;
         const logicalTaskTile = getTile(logicalTaskTarget);
+
+        if (hero.q === target.q && hero.r === target.r) {
+            if (task && logicalTaskTile && isHeroAtTaskAccess(hero, task, logicalTaskTile)) {
+                const existing = getTaskByTile(logicalTaskTile.id, task);
+                if (!existing) {
+                    startTask(logicalTaskTile, task, hero);
+                } else {
+                    joinTask(existing.id, hero);
+                }
+                updateActiveTasks(heroes);
+            }
+            return;
+        }
 
         const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r);
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Tile } from '../core/types/Tile.ts';
 import { loadWorld } from '../core/world.ts';
+import { recalculateSettlementSupport, resetSettlementSupportState } from './settlementSupportStore.ts';
 import {
   computeReachTileIds,
   computeReachTileIdsForTC,
@@ -30,15 +31,17 @@ test('watchtowers chain their reach when each next tower is inside current reach
   ]);
 
   try {
+    recalculateSettlementSupport(0, 0);
     const globalReach = computeReachTileIds();
     const townCenterReach = computeReachTileIdsForTC(0, 0);
     const watchtowerReach = computeReachTileIdsForWatchtower(12, 0);
 
-    assert.equal(globalReach.has('17,0'), true);
-    assert.equal(townCenterReach.has('17,0'), true);
-    assert.equal(watchtowerReach.has('17,0'), true);
-    assert.equal(isTileWithinReach(17, 0), true);
+    assert.equal(globalReach.has('18,0'), true);
+    assert.equal(townCenterReach.has('18,0'), true);
+    assert.equal(watchtowerReach.has('18,0'), true);
+    assert.equal(isTileWithinReach(18, 0), true);
   } finally {
     loadWorld([]);
+    resetSettlementSupportState();
   }
 });

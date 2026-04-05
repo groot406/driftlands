@@ -1,5 +1,6 @@
 import './definitions/breakDirtRock';
 import './definitions/buildings';
+import './definitions/buildBridge';
 import './definitions/buildRoad';
 import './definitions/chopWood';
 import './definitions/clearRocks';

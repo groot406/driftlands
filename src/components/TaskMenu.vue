@@ -138,9 +138,7 @@ import { canControlHero, getHeroOwnerName } from '../store/playerStore';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
 import {
   findNearestTaskAccessTile,
-  taskUsesAdjacentAccess,
-  taskUsesAdjacentActiveAccess,
-  taskUsesAdjacentWalkableAccess,
+  getTaskAccessMode,
 } from '../shared/tasks/taskAccess';
 
 interface Props {
@@ -195,10 +193,12 @@ const previewTaskHint = computed(() => {
     return null;
   }
 
-  if (taskUsesAdjacentAccess(task.key)) {
+  const accessMode = getTaskAccessMode(task.key, tile);
+
+  if (accessMode !== 'tile') {
     const accessTile = hero ? findNearestTaskAccessTile(task.key, tile, hero.q, hero.r) : null;
     if (!accessTile) {
-      if (taskUsesAdjacentWalkableAccess(task.key)) {
+      if (accessMode === 'adjacent_walkable') {
         return tile.controlledBySettlementId
           ? 'This water tile needs a neighboring walkable step first. Approach from shore or extend a lily path to reach it.'
           : 'This shoreline is outside live control. Reconnect the border before extending lily paths here.';
@@ -209,7 +209,7 @@ const previewTaskHint = computed(() => {
         : 'This shoreline is outside live control. Reconnect the border before issuing shore work here.';
     }
 
-    if (taskUsesAdjacentWalkableAccess(task.key)) {
+    if (accessMode === 'adjacent_walkable') {
       return 'Water work is done from a neighboring walkable tile, so shore and lily paths can extend step by step over the shallows.';
     }
 
@@ -325,8 +325,21 @@ function selectTask(def: TaskDefinition) {
   if (!props.tile) return;
   const hero = getSelectedHero();
   if (!hero) return;
+  const accessMode = getTaskAccessMode(def.key, props.tile);
   const accessTile = findNearestTaskAccessTile(def.key, props.tile, hero.q, hero.r);
-  if (taskUsesAdjacentActiveAccess(def.key) && !accessTile) {
+  if (accessMode === 'adjacent_walkable' && !accessTile) {
+    addNotification({
+      type: 'run_state',
+      title: 'No shoreline access',
+      message: props.tile.controlledBySettlementId
+        ? 'Reach this tile from neighboring shore, bridge, or a lily path first.'
+        : 'Reconnect this shoreline before sending crews across the waterline.',
+      duration: 3200,
+    });
+    close();
+    return;
+  }
+  if (accessMode === 'adjacent_active' && !accessTile) {
     addNotification({
       type: 'run_state',
       title: props.tile.controlledBySettlementId ? 'Shoreline offline' : 'Border disconnected',
@@ -365,7 +378,7 @@ function selectTask(def: TaskDefinition) {
         path,
         accessTile ?? props.tile,
         def.key,
-        taskUsesAdjacentAccess(def.key) ? props.tile : undefined,
+        accessMode !== 'tile' ? props.tile : undefined,
       );
       emit('started', def.key, props.tile);
     }
