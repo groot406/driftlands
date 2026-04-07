@@ -13,16 +13,16 @@ const fishAtDockTask: TaskDefinition = {
             tile.variant.startsWith('water_dock_');
     },
 
-    requiredXp(distance: number) {
-        return Math.max(1500, 1400 * distance);
+    requiredXp(_distance: number) {
+        return 1500;
     },
 
     heroRate(hero: Hero) {
         return 12 * Math.max(1, hero.stats.spd) * 10;
     },
 
-    totalRewardedResources(distance: number) {
-        return { type: 'food', amount: Math.max(3, 3 * distance) };
+    totalRewardedResources(_distance: number) {
+        return { type: 'food', amount: 3 };
     },
 };
 

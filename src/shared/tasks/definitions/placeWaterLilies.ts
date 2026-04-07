@@ -18,8 +18,8 @@ const placeWaterLiliesTask: TaskDefinition = {
             && listTaskAccessTiles('placeWaterLilies', tile).length > 0;
     },
 
-    requiredXp(distance: number) {
-        return Math.max(800, 700 * distance);
+    requiredXp(_distance: number) {
+        return 800;
     },
 
     requiredResources(): ResourceAmount[] {

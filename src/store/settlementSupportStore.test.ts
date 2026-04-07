@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Tile } from '../core/types/Tile.ts';
-import { loadWorld } from '../core/world.ts';
+import { loadWorld, tileIndex } from '../core/world.ts';
 import { recalculateSettlementSupport, resetSettlementSupportState } from './settlementSupportStore.ts';
 
 function createTowncenterTile(): Tile {
@@ -79,4 +79,79 @@ test('inactive tiles automatically restore once support rises again', () => {
   assert.equal(recovered.snapshot.inactiveTileCount, 0);
   assert.deepEqual(recovered.newlyActiveTileIds, [restoredTileId]);
   assert.deepEqual(recovered.restoredTileIds, [restoredTileId]);
+});
+
+test('campfires temporarily keep nearby controlled frontier tiles online beyond base support capacity', () => {
+  const reserved = new Set(['8,0', '8,-1']);
+  const frontier: Tile[] = [];
+  const coords: Array<{ q: number; r: number; dist: number }> = [];
+
+  for (let q = -8; q <= 8; q++) {
+    for (let r = Math.max(-8, -q - 8); r <= Math.min(8, -q + 8); r++) {
+      if ((q === 0 && r === 0) || reserved.has(`${q},${r}`)) {
+        continue;
+      }
+
+      coords.push({
+        q,
+        r,
+        dist: Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)),
+      });
+    }
+  }
+
+  coords.sort((a, b) => {
+    if (a.dist !== b.dist) {
+      return a.dist - b.dist;
+    }
+
+    return `${a.q},${a.r}`.localeCompare(`${b.q},${b.r}`);
+  });
+
+  for (const coord of coords.slice(0, 83)) {
+    frontier.push({
+      id: `${coord.q},${coord.r}`,
+      q: coord.q,
+      r: coord.r,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    });
+  }
+
+  loadWorld([
+    createTowncenterTile(),
+    ...frontier,
+    {
+      id: '8,0',
+      q: 8,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'plains_campfire',
+    } satisfies Tile,
+    {
+      id: '8,-1',
+      q: 8,
+      r: -1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const result = recalculateSettlementSupport(0, 0);
+
+  assert.equal(result.snapshot.supportCapacity, 85);
+  assert.equal(result.snapshot.activeTileCount, 85);
+  assert.equal(tileIndex['8,-1']?.activationState, 'active');
 });

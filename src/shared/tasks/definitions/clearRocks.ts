@@ -13,8 +13,7 @@ const clearDirtRocksTask: TaskDefinition = {
     },
 
     requiredXp(_distance: number) {
-        // Fixed effort per forest tile for now
-        return 2000 * _distance;
+        return 2000;
     },
 
     heroRate(hero: Hero) {
@@ -22,8 +21,8 @@ const clearDirtRocksTask: TaskDefinition = {
         return 10 * hero.stats.atk * 2;
     },
 
-    totalRewardedResources(distance: number) {
-        return { type: 'stone', amount: 2 * distance };
+    totalRewardedResources(_distance: number) {
+        return { type: 'stone', amount: 2 };
     },
 
     onComplete(tile, _instance) {

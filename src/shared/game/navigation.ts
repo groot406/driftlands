@@ -18,10 +18,6 @@ export function isTileWalkable(tile: Tile | null | undefined): boolean {
   if (!tile?.terrain) return false;
 
   const variantDef = getVariantDef(tile);
-  if (tile.discovered && tile.activationState === 'inactive') {
-    return tile.variant === 'water_lily' && variantDef?.walkable === true;
-  }
-
   if (variantDef && typeof variantDef.walkable === 'boolean') {
     return variantDef.walkable;
   }

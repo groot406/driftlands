@@ -8,10 +8,12 @@ test('mission 1 starts with basic exploration heroes, tasks, and terrains', () =
 
   assert.deepEqual(progression.heroes.available, ['h1', 'h2']);
   assert.deepEqual(progression.heroes.newlyUnlocked, []);
-  assert.deepEqual(progression.buildings.available, []);
+  assert.deepEqual(progression.buildings.available, ['campfire']);
   assert.deepEqual(progression.terrains.available, ['plains', 'forest', 'dirt', 'water']);
   assert.ok(getAvailableStoryTaskKeys(progression).includes('explore'));
   assert.ok(getAvailableStoryTaskKeys(progression).includes('chopWood'));
+  assert.ok(getAvailableStoryTaskKeys(progression).includes('forage'));
+  assert.ok(getAvailableStoryTaskKeys(progression).includes('buildCampfire'));
   assert.ok(getAvailableStoryTaskKeys(progression).includes('buildRoad'));
   assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildDock'));
   assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildHouse'));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { BaseMessage } from '../../../src/shared/protocol';
 import type { Tile } from '../../../src/shared/game/types/Tile';
+import { onGameplayEvent } from '../../../src/shared/gameplay/events';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
 import { loadWorld } from '../../../src/shared/game/world';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
@@ -232,6 +233,31 @@ test('mine produces ore once staffed for a full cycle', () => {
 
   assert.equal(resourceInventory.ore, 2);
   assert.equal(getStorageResourceAmount('0,0', 'ore'), 2);
+});
+
+test('passive job output counts as a delivered resource event for mission objectives', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,-1', q: 1, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
+  ]);
+  loadPopulation(1, 1, 0);
+  jobSystem.init();
+
+  const deliveries: Array<{ resourceType: string; amount: number }> = [];
+  const unsubscribe = onGameplayEvent((event) => {
+    if (event.type === 'resource:delivered') {
+      deliveries.push({ resourceType: event.resourceType, amount: event.amount });
+    }
+  });
+
+  try {
+    tickAt(1_000);
+    tickAt(61_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.deepEqual(deliveries, [{ resourceType: 'ore', amount: 2 }]);
 });
 
 test('production skips the whole cycle when output storage is full', () => {

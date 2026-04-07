@@ -22,8 +22,8 @@ const digTask: TaskDefinition = {
     return tile.terrain === 'plains' && tile.isBaseTile && !BLOCKED_VARIANTS.has(tile.variant ?? '');
   },
 
-  requiredXp(distance: number) {
-    return Math.max(1800, 1500 * Math.max(1, distance));
+  requiredXp(_distance: number) {
+    return 1800;
   },
 
   heroRate(hero: Hero) {

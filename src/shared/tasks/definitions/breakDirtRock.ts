@@ -12,8 +12,7 @@ const breakDirtRockTask: TaskDefinition = {
     },
 
     requiredXp(_distance: number) {
-        // Fixed effort per forest tile for now
-        return 2000 * _distance;
+        return 2000;
     },
 
     heroRate(hero: Hero) {

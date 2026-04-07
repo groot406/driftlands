@@ -17,6 +17,7 @@ test('dig starts on plains', () => {
         r: 1,
         biome: null,
         terrain: 'plains',
+        isBaseTile: true,
         discovered: true,
         variant: null,
       } as any,
@@ -34,6 +35,7 @@ test('dig starts on plains', () => {
         r: 2,
         biome: null,
         terrain: 'dirt',
+        isBaseTile: true,
         discovered: true,
         variant: null,
       } as any,
@@ -54,6 +56,7 @@ test('dig converts plains into dirt', () => {
     r: -1,
     biome: null,
     terrain: 'plains',
+    isBaseTile: true,
     discovered: true,
     variant: 'plains_flower',
     variantSetMs: Date.now(),
@@ -62,6 +65,8 @@ test('dig converts plains into dirt', () => {
 
   terrainPositions.plains.add(tileId);
   terrainPositions.dirt.delete(tileId);
+  const originalRandom = Math.random;
+  Math.random = () => 1;
 
   try {
     definition?.onComplete?.(tile, {} as any, []);
@@ -73,6 +78,7 @@ test('dig converts plains into dirt', () => {
     assert.ok(terrainPositions.dirt.has(tileId));
     assert.ok(!terrainPositions.plains.has(tileId));
   } finally {
+    Math.random = originalRandom;
     terrainPositions.dirt.delete(tileId);
     terrainPositions.plains.delete(tileId);
   }

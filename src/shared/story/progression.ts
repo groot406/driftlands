@@ -4,6 +4,7 @@ import type { StoryHeroId } from './heroRoster.ts';
 import { getStoryHeroTemplate } from './heroRoster.ts';
 
 export type StoryBuildingKey =
+  | 'campfire'
   | 'well'
   | 'watchtower'
   | 'townCenter'
@@ -63,6 +64,11 @@ interface StoryMissionUnlockStep {
 }
 
 const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
+  campfire: {
+    label: 'Campfire',
+    description: 'Lights a temporary frontier hearth that keeps a nearby pocket of controlled land online.',
+    taskKey: 'buildCampfire',
+  },
   well: {
     label: 'Well',
     description: 'Brings water inland and supports the first true farmland.',
@@ -164,6 +170,10 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     label: 'Convert to grass',
     description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
+  forage: {
+    label: 'Forage',
+    description: 'Scrounge a little food from the nearby land when the colony needs an emergency meal.',
+  },
   tillLand: {
     label: 'Prepare Land',
     description: 'Turn plains and dirt into workable farm plots.',
@@ -237,6 +247,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
   {
     missionNumber: 1,
     heroes: ['h1', 'h2'],
+    buildings: ['campfire'],
     tasks: [
       'explore',
       'chopWood',
@@ -245,6 +256,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
       'buildRoad',
       'dig',
       'convertToGrass',
+      'forage',
     ],
     terrains: ['plains', 'forest', 'dirt', 'water'],
   },

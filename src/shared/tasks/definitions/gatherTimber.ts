@@ -11,16 +11,16 @@ const gatherTimberTask: TaskDefinition = {
         return tile.terrain === 'forest' && tile.variant === 'forest_lumber_camp';
     },
 
-    requiredXp(distance: number) {
-        return Math.max(2200, 1800 * distance);
+    requiredXp(_distance: number) {
+        return 2200;
     },
 
     heroRate(hero: Hero) {
         return 16 * Math.max(1, hero.stats.atk);
     },
 
-    totalRewardedResources(distance: number) {
-        return { type: 'wood', amount: Math.max(4, 4 * distance) };
+    totalRewardedResources(_distance: number) {
+        return { type: 'wood', amount: 4 };
     },
 
     getSoundOnStart(): TaskSoundConfig {

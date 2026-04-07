@@ -17,8 +17,7 @@ const chopWoodTask: TaskDefinition = {
     },
 
     requiredXp(_distance: number) {
-        // Fixed effort per forest tile for now
-        return 1200 * _distance;
+        return 1200;
     },
 
     heroRate(hero: Hero) {
@@ -27,7 +26,7 @@ const chopWoodTask: TaskDefinition = {
     },
 
     totalRewardedResources(_distance: number, tile: Tile) {
-        return { type: 'wood', amount: tile?.variant === 'young_forest' ? 1 : Math.ceil(4 * (_distance / 2 )) };
+        return { type: 'wood', amount: tile?.variant === 'young_forest' ? 1 : 2 };
     },
 
     getSoundOnStart() {

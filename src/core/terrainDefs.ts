@@ -126,6 +126,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         variations: [
             { key: 'road', weight: 0, moveCost: 0.35 },
             { key: 'plains_well', weight: 0, assetKey: 'plains' },
+            { key: 'plains_campfire', weight: 0, assetKey: 'plains', connectsToRoad: true, growth: { next: null, ageMs: 300000 } },
             { key: 'plains_watchtower', weight: 0, assetKey: 'plains', walkable: false, connectsToRoad: true },
             { key: 'plains_depot', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_bakery', weight: 0, assetKey: 'plains', connectsToRoad: true },
@@ -221,6 +222,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_tilled_hydrated', weight: 0},
             {key: 'dirt_tilled', weight: 0, growth: {next: 'dirt_tilled_draught', ageMs: 600000}},
             {key: 'dirt_well', weight: 0, assetKey: 'dirt'},
+            {key: 'dirt_campfire', weight: 0, assetKey: 'dirt', connectsToRoad: true, growth: {next: null, ageMs: 300000}},
             {key: 'dirt_watchtower', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_depot', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_bakery', weight: 0, assetKey: 'dirt', connectsToRoad: true},

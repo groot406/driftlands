@@ -13,16 +13,16 @@ const buildRoadTask: TaskDefinition = {
         return tile.terrain === 'plains' && tile.isBaseTile ;
     },
 
-    requiredXp(distance: number) {
-        return 1500 * Math.max(1, distance);
+    requiredXp(_distance: number) {
+        return 1500;
     },
 
     heroRate(hero: Hero) {
         return 10 * hero.stats.atk * 2;
     },
 
-    requiredResources(distance: number): ResourceAmount[] {
-        return [{ type: 'wood', amount: Math.max(2, distance) }];
+    requiredResources(_distance: number): ResourceAmount[] {
+        return [{ type: 'wood', amount: 2 }];
     },
 
     onComplete(tile) {

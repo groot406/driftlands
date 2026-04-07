@@ -12,8 +12,8 @@ const harvestGrainTask: TaskDefinition = {
         return tile.terrain === 'grain' && tile.isBaseTile;
     },
 
-    requiredXp(distance: number) {
-        return 1500 * distance;
+    requiredXp(_distance: number) {
+        return 1500;
     },
 
     heroRate(hero: Hero) {
@@ -21,8 +21,8 @@ const harvestGrainTask: TaskDefinition = {
         return 15 * hero.stats.atk;
     },
 
-    totalRewardedResources(distance: number) {
-        return { type: 'grain', amount: 3 * distance };
+    totalRewardedResources(_distance: number) {
+        return { type: 'grain', amount: 3 };
     },
 
     onComplete(tile, _instance) {

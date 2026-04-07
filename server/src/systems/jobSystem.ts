@@ -6,6 +6,7 @@ import {
 } from '../../../src/shared/buildings/registry';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
+import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import {
     broadcastWorkforceState,
     getWorkforceSnapshot,
@@ -262,6 +263,13 @@ function broadcastOutputDeposits(tile: Tile, outputs: ResourceAmount[]) {
                 amount: depositedAmount,
             },
         } satisfies ResourceDepositMessage);
+
+        emitGameplayEvent({
+            type: 'resource:delivered',
+            heroId: 'colony',
+            resourceType: transfer.resourceType,
+            amount: depositedAmount,
+        });
     }
 
     return true;

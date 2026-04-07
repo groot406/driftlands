@@ -5,6 +5,7 @@ import type {ResourceAmount} from "./Resource.ts";
 export interface TaskDefinition {
     key: TaskType;
     label: string;
+    allowInactiveTile?: boolean;
 
     // Whether a hero can start this task on the given tile
     canStart(tile: Tile, hero: Hero): boolean;

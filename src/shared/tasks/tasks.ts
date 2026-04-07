@@ -31,6 +31,7 @@ import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
 import { isStoryTaskUnlocked } from '../story/progressionState.ts';
 import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
+import { canStartTaskDefinition, canTaskUseTileState } from './taskAvailability.ts';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -82,6 +83,12 @@ function tryToFetchWater(hero: Hero, tile: Tile) {
 
 function tryDepositPayloadIntoTask(hero: Hero, task: ReturnType<typeof getTaskById> | undefined) {
     if (!task || !hero.carryingPayload || hero.carryingPayload.amount <= 0) {
+        return false;
+    }
+
+    const def = getTaskDefinition(task.type);
+    const taskTile = tileIndex[task.tileId];
+    if (!def || !taskTile || !canTaskUseTileState(def, taskTile)) {
         return false;
     }
 
@@ -233,6 +240,12 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             const tasksHere = getTasksAtTile(tile.id);
 
             for (const task of tasksHere) {
+                const def = getTaskDefinition(task.type);
+                const taskTile = tileIndex[task.tileId];
+                if (!def || !taskTile || !canTaskUseTileState(def, taskTile)) {
+                    continue;
+                }
+
                 const consumed = addResourcesToTask(task, hero.carryingPayload);
                 if (consumed > 0) {
                     hero.carryingPayload!.amount -= consumed;
@@ -267,6 +280,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     hero.pendingTask = undefined;
     if (selected) {
         const taskTile = pendingTaskTile ?? tile;
+        const def = getTaskDefinition(selected);
+        if (!canStartTaskDefinition(def, taskTile, hero)) {
+            return;
+        }
+
         const existing = getTaskByTile(taskTile.id, selected);
         if (!existing) {
             startTask(taskTile, selected, hero);
@@ -300,7 +318,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     const candidates: Tile[] = [];
     for (const ct of cluster) {
         if (getTaskByTile(ct.id, pending.taskType)) continue;
-        if (!def.canStart(ct, hero)) continue;
+        if (!canStartTaskDefinition(def, ct, hero)) continue;
         candidates.push(ct);
     }
     if (!candidates.length) return;
@@ -328,7 +346,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     let tasks = listTaskDefinitions().filter(def =>
         isStoryTaskUnlocked(def.key)
-        && def.canStart(tile, hero)
+        && canStartTaskDefinition(def, tile, hero)
         && canStartTaskWhileCarrying(hero, def, tile)
     );
     if(tasks.length > 0 && isTileWalkable(tile)) {

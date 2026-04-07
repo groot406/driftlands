@@ -56,15 +56,23 @@ function rerouteHeroToActiveSettlementTile(heroId: string) {
     moveHeroWithRuntime(hero, fallbackTile);
 }
 
-function isHeroEscapingInactiveTile(heroId: string) {
+function isDisconnectedTile(tileId: string | null | undefined) {
+    if (!tileId) {
+        return false;
+    }
+
+    const tile = tileIndex[tileId] ?? null;
+    return !!tile?.discovered && !tile.controlledBySettlementId;
+}
+
+function isHeroEscapingDisconnectedTile(heroId: string) {
     const hero = heroes.find((candidate) => candidate.id === heroId);
     if (!hero?.movement?.path.length) {
         return false;
     }
 
     for (const step of hero.movement.path) {
-        const tile = tileIndex[`${step.q},${step.r}`] ?? null;
-        if (tile?.discovered && !isTileActive(tile)) {
+        if (isDisconnectedTile(`${step.q},${step.r}`)) {
             return false;
         }
     }
@@ -75,7 +83,7 @@ function isHeroEscapingInactiveTile(heroId: string) {
     }
 
     const firstTile = tileIndex[`${firstStep.q},${firstStep.r}`] ?? null;
-    return !!firstTile?.discovered && isTileActive(firstTile);
+    return !!firstTile?.discovered && !!firstTile.controlledBySettlementId;
 }
 
 export const supportSystem = {
@@ -126,8 +134,8 @@ export const supportSystem = {
         const heroIdsToReroute = new Set<string>();
         for (const hero of heroes) {
             const currentTile = tileIndex[`${hero.q},${hero.r}`] ?? null;
-            if (currentTile?.discovered && !isTileActive(currentTile)) {
-                if (isHeroEscapingInactiveTile(hero.id)) {
+            if (currentTile?.discovered && !currentTile.controlledBySettlementId) {
+                if (isHeroEscapingDisconnectedTile(hero.id)) {
                     continue;
                 }
                 heroIdsToReroute.add(hero.id);
@@ -135,8 +143,7 @@ export const supportSystem = {
             }
 
             if (hero.movement?.path.some((step) => {
-                const tile = tileIndex[`${step.q},${step.r}`] ?? null;
-                return !!tile?.discovered && !isTileActive(tile);
+                return isDisconnectedTile(`${step.q},${step.r}`);
             })) {
                 heroIdsToReroute.add(hero.id);
                 continue;
@@ -146,7 +153,7 @@ export const supportSystem = {
                 const pendingTaskTile = tileIndex[hero.pendingTask.tileId] ?? null;
                 if (
                     pendingTaskTile?.discovered
-                    && !isTileActive(pendingTaskTile)
+                    && !pendingTaskTile.controlledBySettlementId
                     && !taskUsesAdjacentActiveAccess(hero.pendingTask.taskType)
                 ) {
                     heroIdsToReroute.add(hero.id);

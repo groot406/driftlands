@@ -24,7 +24,9 @@ import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWareh
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
+import { getTaskEconomyDistance } from '../shared/tasks/economy';
 import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
+import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/taskAvailability';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -305,8 +307,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
 export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, tile: Tile): boolean {
     if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) return true;
 
-    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const required = def.requiredResources?.(distance);
+    const required = def.requiredResources?.(getTaskEconomyDistance());
 
     if (required && required.length > 0) {
         return required.some(r => r.type === hero.carryingPayload!.type);
@@ -318,15 +319,16 @@ export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, tile:
 }
 
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
-    detachHeroFromCurrentTask(starter);
     const def = getTaskDefinition(type);
     if (!def) return null;
     if (!isStoryTaskUnlocked(type)) return null;
-    if (!def.canStart(tile, starter)) return null;
+    if (!canStartTaskDefinition(def, tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
-    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const requiredResources = def.requiredResources?.(distance);
+    detachHeroFromCurrentTask(starter);
+
+    const economyDistance = getTaskEconomyDistance();
+    const requiredResources = def.requiredResources?.(economyDistance);
     const collectedResources: ResourceAmount[] = [];
 
     if (!taskStore.tasksByTile[tile.id]) {
@@ -343,7 +345,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
         type,
         tileId: tile.id,
         progressXp: 0,
-        requiredXp: def.requiredXp(distance),
+        requiredXp: def.requiredXp(economyDistance),
         createdMs: nowMs,
         lastUpdateMs: nowMs,
         participants: {},
@@ -382,6 +384,9 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || inst.completedMs) return;
+    const def = getTaskDefinition(inst.type);
+    const tile = tileIndex[inst.tileId];
+    if (!canStartTaskDefinition(def, tile, hero)) return;
 
     if (hero.currentTaskId !== inst.id) {
         detachHeroFromCurrentTask(hero);
@@ -399,8 +404,7 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
     const tile = tileIndex[inst.tileId];
     if (!def || !tile) return;
 
-    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const requiredResources = def.requiredResources?.(distance);
+    const requiredResources = def.requiredResources?.(getTaskEconomyDistance());
 
     // add carrying to collected resources if applicable (only positive amounts)
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
@@ -456,7 +460,7 @@ export function resumeWaitingTasksForResource(resourceType: ResourceType, storag
 
         const def = getTaskDefinition(inst.type);
         const taskTile = tileIndex[inst.tileId];
-        if (!def || !taskTile) continue;
+        if (!def || !taskTile || !canTaskUseTileState(def, taskTile)) continue;
 
         const idleParticipants = Object.keys(inst.participants)
             .map((heroId) => heroes.find((candidate) => candidate.id === heroId))
@@ -503,6 +507,11 @@ export function updateActiveTasks(heroes: Hero[]) {
         if (!def) continue;
         const tile: Tile | undefined = tileIndex[inst.tileId];
         if (!tile) continue;
+        if (!canTaskUseTileState(def, tile)) {
+            inst.lastUpdateMs = nowMs;
+            continue;
+        }
+
         const participants: Hero[] = [];
         for (const heroId of Object.keys(inst.participants)) {
             const h = heroes.find(hh => hh.id === heroId);
@@ -590,8 +599,7 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedStats;
 
-    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const rewards = def.totalRewardedStats(distance);
+    const rewards = def.totalRewardedStats(getTaskEconomyDistance());
     for (const hero of participants) {
         rewardedStats[hero.id] = {}
         const contrib = instance.participants[hero.id] || 0;
@@ -620,14 +628,13 @@ function rewardResourcesToParticipants(instance: TaskInstance, participants: Her
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedResources;
-    const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
     for (const hero of participants) {
         rewardedResources[hero.id] = {};
 
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
 
-        const totalRewards = def.totalRewardedResources(distance, tile);
+        const totalRewards = def.totalRewardedResources(getTaskEconomyDistance(), tile);
         const reward = {
             type: totalRewards.type,
             amount: Math.ceil(totalRewards.amount * share),
@@ -696,7 +703,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         for (const ct of cluster) {
             if (ct.id === tile.id) continue; // skip original completed tile
             if (getTaskByTile(ct.id, inst.type)) continue; // already has this task type
-            if (!def.canStart(ct, hero)) continue; // hero cannot start here
+            if (!canStartTaskDefinition(def, ct, hero)) continue; // hero cannot start here
             candidates.push(ct);
         }
         if (!candidates.length) continue;

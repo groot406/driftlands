@@ -12,6 +12,7 @@ import { computePathTimings, isWalkablePosition } from '../../../src/shared/game
 import { isAxialNeighbor } from '../../../src/shared/game/hex';
 import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
+import { canStartTaskDefinition } from '../../../src/shared/tasks/taskAvailability';
 import { coopState } from '../state/coopState';
 
 export class ServerMovementHandler {
@@ -52,12 +53,15 @@ export class ServerMovementHandler {
         if (!tile) return false;
 
         const existing = getTaskByTile(tile.id, task);
+        const def = getTaskDefinition(task);
+        if (!canStartTaskDefinition(def, tile, hero)) {
+            return false;
+        }
+
         if (existing && !existing.completedMs) {
             return true;
         }
-
-        const def = getTaskDefinition(task);
-        return !!def?.canStart(tile, hero);
+        return true;
     }
 
     private handleMoveRequest(socket: Socket, message: MoveRequestMessage): void {

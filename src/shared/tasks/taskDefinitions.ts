@@ -7,6 +7,7 @@ import './definitions/clearRocks';
 import './definitions/convertToGrass';
 import './definitions/dig';
 import './definitions/explore';
+import './definitions/forage';
 import './definitions/harvestGrain';
 import './definitions/harvestWaterLilies';
 import './definitions/irregateDirt';

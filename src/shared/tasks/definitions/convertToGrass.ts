@@ -25,8 +25,8 @@ const convertToGrassTask: TaskDefinition = {
     );
   },
 
-  requiredXp(distance: number) {
-    return Math.max(1800, 1500 * Math.max(1, distance));
+  requiredXp(_distance: number) {
+    return 1800;
   },
 
   heroRate(hero: Hero) {

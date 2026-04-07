@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { Hero } from '../../core/types/Hero.ts';
+import { PathService } from '../game/PathService.ts';
 import type { Tile } from '../../core/types/Tile.ts';
 import { isTileWalkable } from '../game/navigation.ts';
 import { isHeroAtTaskLocation } from '../game/heroTaskState.ts';
@@ -247,9 +248,13 @@ test('water exploration uses adjacent walkable shore access instead of walking o
   ]);
 
   const waterTile = tileIndex['0,1']!;
+  const untouchedNeighborKey = '1,1';
+  assert.equal(tileIndex[untouchedNeighborKey], undefined);
+
   const accessTile = findNearestTaskAccessTile('explore', waterTile, 0, 0);
 
   assert.equal(accessTile?.id, '0,0');
+  assert.equal(tileIndex[untouchedNeighborKey], undefined);
 
   const hero = {
     q: 0,
@@ -265,4 +270,53 @@ test('water exploration uses adjacent walkable shore access instead of walking o
     }),
     true,
   );
+});
+
+test('offline land tiles remain walkable and can be used to explore farther tiles', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      isBaseTile: true,
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const offlineTile = tileIndex['1,0']!;
+  const frontierTile = tileIndex['2,0']!;
+  const accessTile = findNearestTaskAccessTile('explore', frontierTile, 0, 0);
+  const pathService = new PathService();
+
+  assert.equal(isTileWalkable(offlineTile), true);
+  assert.equal(accessTile?.id, frontierTile.id);
+  assert.deepEqual(pathService.findWalkablePath(0, 0, frontierTile.q, frontierTile.r), [{ q: 1, r: 0 }, { q: 2, r: 0 }]);
 });

@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex} from '../core/world';
 import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
@@ -64,7 +64,6 @@ import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOth
 import {populationVersion} from '../store/clientPopulationStore';
 import {
   computeControlledTileIds,
-  computeOwnedTileIdsForSettlement,
   isPositionControlled,
   isTileActive,
 } from '../store/settlementSupportStore';
@@ -98,8 +97,6 @@ const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id se
 const hoveredTask = ref<TaskDefinition | null>(null);
 const globalReachBoundary = ref<Array<{q: number; r: number}>>([]); // always-visible reach outline (all TCs)
 const globalReachTileIds = ref<Set<string>>(new Set());
-const hoveredReachBoundary = ref<Array<{q: number; r: number}>>([]); // hover-highlighted reach outline (specific TC)
-const hoveredReachTileIds = ref<Set<string>>(new Set());
 const showSupportOverlay = ref(false);
 let lastGlobalReachComputeMs = 0;
 
@@ -235,8 +232,6 @@ function animationLoop() {
       clusterTileIds: clusterTiles.value,
       globalReachBoundary: globalReachBoundary.value,
       globalReachTileIds: globalReachTileIds.value,
-      hoveredReachBoundary: hoveredReachBoundary.value,
-      hoveredReachTileIds: hoveredReachTileIds.value,
       showSupportOverlay: showSupportOverlay.value,
       hoveredTileInReach: hoveredTile.value
         ? (hoveredTile.value.discovered
@@ -308,7 +303,9 @@ function isInspectableJobSiteTile(tile: Tile) {
 function openJobSiteDetailFromTile(tile: Tile) {
   showTownCenterPanel.value = true;
   openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
-  townCenterPanel.value?.openJobSiteDetail(tile.id);
+  nextTick(() => {
+    townCenterPanel.value?.openStandaloneJobSiteDetail(tile.id);
+  });
 }
 
 function handleClick(e: PointerEvent) {
@@ -455,18 +452,6 @@ function handleClick(e: PointerEvent) {
     showTaskMenu.value = false;
     taskMenuTile.value = null;
     closeWindow(WINDOW_IDS.TASK_MENU);
-  }
-
-  if (tile.activationState === 'inactive') {
-    addNotification({
-      type: 'run_state',
-      title: tile.controlledBySettlementId ? 'Tile offline' : 'Border disconnected',
-      message: tile.controlledBySettlementId
-        ? 'This tile is inactive. Restore it from adjacent active ground or grow support to bring it back online.'
-        : 'This tile is outside live control. Reconnect it to an active town center or watchtower chain first.',
-      duration: 3200,
-    });
-    return;
   }
 
   const canReusePreviewPath = hasMatchingPathPreview(selHero, tile) &&
@@ -645,24 +630,6 @@ function recomputeGlobalReach(force = false) {
   globalReachBoundary.value = findBoundaryCoords(ids);
 }
 
-/** Compute the hover-highlighted reach outline for a TC or watchtower tile. */
-function computeHoveredReach(tile: Tile | null) {
-  hoveredReachBoundary.value = [];
-  hoveredReachTileIds.value.clear();
-
-  if (!tile) return;
-
-  const settlementId = tile.terrain === 'towncenter'
-    ? tile.id
-    : (tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null);
-
-  if (settlementId) {
-    const ids = computeOwnedTileIdsForSettlement(settlementId);
-    hoveredReachTileIds.value = ids;
-    hoveredReachBoundary.value = findBoundaryCoords(ids);
-  }
-}
-
 function shouldIgnoreShortcut(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
@@ -684,7 +651,6 @@ function handleSupportOverlayShortcut(event: KeyboardEvent) {
 
 watch(hoveredTile, (tile, previousTile) => {
   recomputeGlobalReach();
-  computeHoveredReach(tile);
 
   if (!tile) {
     clearPathPreview();
@@ -698,7 +664,6 @@ watch(hoveredTile, (tile, previousTile) => {
 
 watch(populationVersion, () => {
   recomputeGlobalReach(true);
-  computeHoveredReach(hoveredTile.value);
 });
 
 onMounted(async () => {

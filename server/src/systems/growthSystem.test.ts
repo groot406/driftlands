@@ -107,3 +107,37 @@ test('growthSystem advances fixed-duration tilled soil into draught state', () =
   assert.equal(tile.variantSetMs, undefined);
   assert.equal(tile.variantAgeMs, undefined);
 });
+
+test('growthSystem lets campfires burn out after their timed support window', () => {
+  loadWorld([
+    {
+      id: 'growth-campfire',
+      q: 3,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const tile = tileIndex['growth-campfire']!;
+  withCapturedBroadcasts();
+
+  applyVariant(tile, 'plains_campfire', { stagger: false, respectBiome: false });
+
+  assert.equal(tile.variant, 'plains_campfire');
+  assert.equal(tile.variantAgeMs, 300000);
+
+  growthSystem.tick({
+    now: tile.variantSetMs! + tile.variantAgeMs!,
+    dt: tile.variantAgeMs!,
+    tick: 1,
+    rng: {} as never,
+  });
+
+  assert.equal(tile.variant, null);
+  assert.equal(tile.variantSetMs, undefined);
+  assert.equal(tile.variantAgeMs, undefined);
+});

@@ -131,8 +131,6 @@ interface DrawOptions {
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
     globalReachBoundary?: Array<{q: number; r: number}>; // always-visible reach outline (all TCs, dimmed)
     globalReachTileIds?: Set<string>;
-    hoveredReachBoundary?: Array<{q: number; r: number}>; // hover-highlighted reach outline (specific TC)
-    hoveredReachTileIds?: Set<string>;
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
 }
@@ -421,9 +419,6 @@ export class HexMapService {
         smoothedFrameMs: 5.5,
     };
     private _backdropPaletteCache: BackdropPaletteCache | null = null;
-    private _hoveredReachAlpha = 0; // animated 0→0.7 for smooth TC hover transition
-    private _lastHoveredReachBoundary: Array<{q: number; r: number}> = [];
-    private _lastHoveredReachTileIds: Set<string> = new Set();
     private _storageIndicatorAlphaByTileId = new Map<string, number>();
     private _tileColorVariantCache = new Map<string, HTMLCanvasElement>();
     private _tileShaderCache = new Map<string, HTMLCanvasElement>();
@@ -667,7 +662,6 @@ export class HexMapService {
         const radiusTiles = getTilesInRadius(cq, cr, camera.radius);
         const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
         const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
-        const cameraMoving = isCameraMoving();
 
         const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
         const quality = this.getRenderQualityProfile();
@@ -688,7 +682,6 @@ export class HexMapService {
             visibleTiles,
             quality,
             stressTier,
-            cameraMoving,
         };
     }
 
@@ -891,7 +884,6 @@ export class HexMapService {
     }
 
     private renderSceneStage(frame: RenderFrameContext, opts: DrawOptions) {
-        const suppressWorldUi = frame.cameraMoving && frame.visibleTiles.length >= 180;
         frame.sceneCtx.clearRect(0, 0, frame.sceneCanvas.width, frame.sceneCanvas.height);
         this.drawTilesAndActors(
             frame.sceneCtx,
@@ -903,7 +895,7 @@ export class HexMapService {
             frame.movementNowMs,
             frame.visibleTiles,
             false,
-            suppressWorldUi,
+            false,
         );
     }
 
@@ -2408,26 +2400,10 @@ export class HexMapService {
         // Reach outline — rendered on top of tiles, particles, and highlights.
         // Draws smooth bezier curves through hex boundary corners.
         if (allowPersistentWorldUi) {
-            // Animate hovered reach alpha (smooth ease-in / ease-out)
-            const hasHovered = !!(opts.hoveredReachBoundary && opts.hoveredReachBoundary.length);
-            if (hasHovered) {
-                this._lastHoveredReachBoundary = opts.hoveredReachBoundary!;
-                this._lastHoveredReachTileIds = new Set(opts.hoveredReachTileIds);
-            }
-            const targetAlpha = hasHovered ? 0.9 : 0;
-            const lerpSpeed = hasHovered ? 0.06 : 0.1;
-            this._hoveredReachAlpha += (targetAlpha - this._hoveredReachAlpha) * lerpSpeed;
-            if (Math.abs(this._hoveredReachAlpha - targetAlpha) < 0.005) this._hoveredReachAlpha = targetAlpha;
-
             // Global reach (all TCs combined) — always visible
             if (opts.globalReachBoundary && opts.globalReachBoundary.length) {
                 const reachSet = opts.globalReachTileIds || new Set<string>();
                 this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false);
-            }
-
-            // Hovered TC reach — brighter overlay on top, smoothly faded
-            if (this._hoveredReachAlpha > 0.005 && this._lastHoveredReachBoundary.length) {
-                this.drawReachOutline(ctx, this._lastHoveredReachBoundary, this._lastHoveredReachTileIds, this._hoveredReachAlpha, true);
             }
         }
 
@@ -4215,107 +4191,6 @@ export class HexMapService {
             innerLand: [154, 205, 90] as GlowColor,
             sand: [221, 172, 113] as GlowColor,
         };
-    }
-
-    private buildTileShorelineCanvas(terrain: string, shorelineSignature: string): HTMLCanvasElement | null {
-        const cacheKey = `v${HexMapService.TILE_SHORELINE_VERSION}:${terrain}:${shorelineSignature}`;
-        const cached = this.getCachedCanvas(this._tileShorelineCache, cacheKey);
-        if (cached) {
-            return cached;
-        }
-
-        const geometry = this.getTileShaderGeometry(
-            { accentBucket: 0, accentVariant: 0, regionBucket: 0, regionVariant: 0 },
-            this.TILE_DRAW_SIZE,
-            this.TILE_DRAW_SIZE,
-        );
-        const canvas = this.createTileSizedCanvas();
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return null;
-        }
-
-        const vertices = [
-            { x: geometry.width * 0.5, y: 0 },
-            { x: geometry.width, y: geometry.height * 0.25 },
-            { x: geometry.width, y: geometry.height * 0.75 },
-            { x: geometry.width * 0.5, y: geometry.height },
-            { x: 0, y: geometry.height * 0.75 },
-            { x: 0, y: geometry.height * 0.25 },
-        ];
-        const centerX = geometry.width * 0.5;
-        const centerY = geometry.height * 0.5;
-        const palette = this.getTileShorelinePalette(terrain);
-        const outerLandDepth = geometry.width * 0.22;
-        const innerLandDepth = geometry.width * 0.15;
-        const sandDepth = geometry.width * 0.075;
-
-        ctx.save();
-        this.traceHexClipPath(ctx, this.HEX_SIZE, this.HEX_SIZE);
-        ctx.clip();
-
-        for (const side of SIDE_NAMES) {
-            if (shorelineSignature[TILE_SIDE_INDEX[side]] !== side) {
-                continue;
-            }
-
-            const sideIndex = TILE_SIDE_INDEX[side];
-            const edgeAlpha = SHORELINE_EDGE_ALPHA_BY_SIDE[side];
-            const start = vertices[(sideIndex + 5) % 6]!;
-            const end = vertices[sideIndex]!;
-            const midX = (start.x + end.x) * 0.5;
-            const midY = (start.y + end.y) * 0.5;
-            const inwardX = centerX - midX;
-            const inwardY = centerY - midY;
-            const inwardLength = Math.hypot(inwardX, inwardY) || 1;
-            const nx = inwardX / inwardLength;
-            const ny = inwardY / inwardLength;
-
-            const snapPoint = (x: number, y: number) => ({ x: Math.round(x), y: Math.round(y) });
-            const edgeStart = snapPoint(start.x, start.y);
-            const edgeEnd = snapPoint(end.x, end.y);
-            const outerLandStart = snapPoint(start.x + (nx * outerLandDepth), start.y + (ny * outerLandDepth));
-            const outerLandEnd = snapPoint(end.x + (nx * outerLandDepth), end.y + (ny * outerLandDepth));
-            const innerLandStart = snapPoint(start.x + (nx * innerLandDepth), start.y + (ny * innerLandDepth));
-            const innerLandEnd = snapPoint(end.x + (nx * innerLandDepth), end.y + (ny * innerLandDepth));
-            const sandStart = snapPoint(start.x + (nx * sandDepth), start.y + (ny * sandDepth));
-            const sandEnd = snapPoint(end.x + (nx * sandDepth), end.y + (ny * sandDepth));
-
-            ctx.fillStyle = this.toRgba(palette.outerLand, 0.46 * edgeAlpha);
-            ctx.beginPath();
-            ctx.moveTo(edgeStart.x, edgeStart.y);
-            ctx.lineTo(edgeEnd.x, edgeEnd.y);
-            ctx.lineTo(outerLandEnd.x, outerLandEnd.y);
-            ctx.lineTo(outerLandStart.x, outerLandStart.y);
-            ctx.closePath();
-            ctx.fill();
-
-            ctx.fillStyle = this.toRgba(palette.innerLand, 0.52 * edgeAlpha);
-            ctx.beginPath();
-            ctx.moveTo(edgeStart.x, edgeStart.y);
-            ctx.lineTo(edgeEnd.x, edgeEnd.y);
-            ctx.lineTo(innerLandEnd.x, innerLandEnd.y);
-            ctx.lineTo(innerLandStart.x, innerLandStart.y);
-            ctx.closePath();
-            ctx.fill();
-
-            ctx.fillStyle = this.toRgba(palette.sand, 0.88 * edgeAlpha);
-            ctx.beginPath();
-            ctx.moveTo(edgeStart.x, edgeStart.y);
-            ctx.lineTo(edgeEnd.x, edgeEnd.y);
-            ctx.lineTo(sandEnd.x, sandEnd.y);
-            ctx.lineTo(sandStart.x, sandStart.y);
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        ctx.restore();
-        return this.storeCachedCanvas(
-            this._tileShorelineCache,
-            cacheKey,
-            canvas,
-            HexMapService.TILE_SHORELINE_CACHE_MAX,
-        );
     }
 
     private buildTileShaderCanvas(tile: Tile, key: string): HTMLCanvasElement | null {

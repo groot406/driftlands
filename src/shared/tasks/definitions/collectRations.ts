@@ -11,16 +11,16 @@ const collectRationsTask: TaskDefinition = {
         return tile.terrain === 'grain' && tile.variant === 'grain_granary';
     },
 
-    requiredXp(distance: number) {
-        return Math.max(4500, 1700 * distance);
+    requiredXp(_distance: number) {
+        return 4500;
     },
 
     heroRate(hero: Hero) {
         return 14 * Math.max(10, hero.stats.spd);
     },
 
-    totalRewardedResources(distance: number) {
-        return { type: 'food', amount: Math.max(4, 4 * distance) };
+    totalRewardedResources(_distance: number) {
+        return { type: 'food', amount: 4 };
     },
 };
 

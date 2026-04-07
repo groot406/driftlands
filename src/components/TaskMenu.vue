@@ -135,7 +135,7 @@ import { populationState } from '../store/clientPopulationStore';
 import { currentPlayerId } from '../core/socket';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName } from '../store/playerStore';
-import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
+import { getTaskEconomyDistance } from '../shared/tasks/economy';
 import {
   findNearestTaskAccessTile,
   getTaskAccessMode,
@@ -271,7 +271,7 @@ function getBuildingMeta(def: TaskDefinition) {
 
 function getBuildingCosts(def: TaskDefinition): ResourceAmount[] {
   if (!props.tile || !getBuildingMeta(def)) return [];
-  return def.requiredResources?.(getDistanceToNearestTowncenter(props.tile.q, props.tile.r)) ?? [];
+  return def.requiredResources?.(getTaskEconomyDistance()) ?? [];
 }
 
 function getWarehouseAmount(type: ResourceType) {

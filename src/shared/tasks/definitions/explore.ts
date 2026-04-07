@@ -10,24 +10,16 @@ import { isPositionControlled } from '../../game/state/settlementSupportStore';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
-const EXPLORE_BASE_REQUIRED_XP = 180;
-const EXPLORE_REQUIRED_XP_PER_DISTANCE = 600;
-const EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED = 15;
-const EXPLORE_MAX_REQUIRED_XP = 999999;
+const EXPLORE_REQUIRED_XP = 795;
+const EXPLORE_REWARDED_XP = 1;
 const EXPLORE_SCOUTING_RATE = 24;
 const EXPLORE_WATER_SURVEY_RADIUS = 2;
 const EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES = 7;
 
 const explorePathService = new PathService();
 
-export function getExploreRequiredXp(distance: number) {
-    const clampedDistance = Math.max(0, distance);
-    return Math.min(
-        EXPLORE_MAX_REQUIRED_XP,
-        EXPLORE_BASE_REQUIRED_XP
-        + (clampedDistance * EXPLORE_REQUIRED_XP_PER_DISTANCE)
-        + (clampedDistance * clampedDistance * EXPLORE_REQUIRED_XP_PER_DISTANCE_SQUARED),
-    );
+export function getExploreRequiredXp(_distance: number) {
+    return EXPLORE_REQUIRED_XP;
 }
 
 export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
@@ -38,8 +30,8 @@ export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
     return Math.round(EXPLORE_SCOUTING_RATE * (Math.sqrt(experience) + (2 * speed))) * 2;
 }
 
-export function getExploreRewardedXp(distance: number) {
-    return Math.max(1, distance / 3);
+export function getExploreRewardedXp(_distance: number) {
+    return EXPLORE_REWARDED_XP;
 }
 
 // Explore task definition separated for modularity.
@@ -47,15 +39,14 @@ const exploreTask: TaskDefinition = {
     key: 'explore',
     label: 'Explore',
     chainAdjacentSameTerrain: false,
-    requiredXp(distance: number) {
-        return 1;
-        return getExploreRequiredXp(distance);
+    requiredXp(_distance: number) {
+        return getExploreRequiredXp(_distance);
     },
     heroRate(hero: Hero, _tile) {
         return getExploreHeroRate(hero);
     },
-    totalRewardedStats(distance: number) {
-        return {xp: getExploreRewardedXp(distance), hp: 0, atk: 0, spd: 0};
+    totalRewardedStats(_distance: number) {
+        return {xp: getExploreRewardedXp(_distance), hp: 0, atk: 0, spd: 0};
     },
 
     canStart(tile: Tile, _hero: Hero): boolean {

@@ -177,6 +177,39 @@ function promoteTileToTowncenter(tile: Tile) {
 
 const buildings: BuildingDefinition[] = [
     {
+        key: 'campfire',
+        label: 'Campfire',
+        summary: 'Lights a temporary frontier hearth that keeps nearby controlled tiles online for a few minutes.',
+        categoryLabel: 'Frontier',
+        buildTaskKey: 'buildCampfire',
+        buildTaskLabel: 'Build Campfire',
+        sortOrder: 12,
+        variantKeys: ['plains_campfire', 'dirt_campfire'],
+        overlayAssetKey: 'building_lumber_camp_overlay',
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 1200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 3 }];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_campfire', { stagger: false, respectBiome: false });
+                return;
+            }
+
+            if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_campfire', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
         key: 'well',
         label: 'Well',
         summary: 'Brings water inland and hydrates nearby farm plots.',
@@ -195,14 +228,14 @@ const buildings: BuildingDefinition[] = [
                 !hasAdjacentNaturalWater(tile)
             );
         },
-        requiredXp(distance: number) {
-            return Math.max(2600, 2200 * distance);
+        requiredXp(_distance: number) {
+            return 2600;
         },
         heroRate(hero: Hero) {
             return 18 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(6, 4 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 6 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'plains') {
@@ -234,14 +267,14 @@ const buildings: BuildingDefinition[] = [
                 tile.isBaseTile
             );
         },
-        requiredXp(distance: number) {
-            return Math.max(3000, 2400 * distance);
+        requiredXp(_distance: number) {
+            return 3000;
         },
         heroRate(hero: Hero) {
             return 18 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(5, 4 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 5 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'plains') {
@@ -272,17 +305,17 @@ const buildings: BuildingDefinition[] = [
                 tile.isBaseTile
             );
         },
-        requiredXp(distance: number) {
-            return Math.max(12000, 7000 * Math.max(1, distance));
+        requiredXp(_distance: number) {
+            return 12000;
         },
         heroRate(hero: Hero) {
             return 14 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
+        requiredResources(_distance: number) {
             return [
-                { type: 'wood', amount: Math.max(60, 12 * Math.max(1, distance)) },
-                { type: 'ore', amount: Math.max(24, 6 * Math.max(1, distance)) },
-                { type: 'food', amount: Math.max(18, 4 * Math.max(1, distance)) },
+                { type: 'wood', amount: 60 },
+                { type: 'ore', amount: 24 },
+                { type: 'food', amount: 18 },
             ];
         },
         onComplete(tile) {
@@ -307,14 +340,14 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return Math.max(3400, 2800 * distance);
+        requiredXp(_distance: number) {
+            return 3400;
         },
         heroRate(hero: Hero) {
             return 18 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(8, 6 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 8 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'plains') {
@@ -359,14 +392,14 @@ const buildings: BuildingDefinition[] = [
                 && isTileControlled(tile)
                 && listActiveAdjacentAccessTiles(tile).length > 0;
         },
-        requiredXp(distance: number) {
-            return Math.max(3000, 3000 * distance);
+        requiredXp(_distance: number) {
+            return 3000;
         },
         heroRate(hero: Hero) {
             return 20 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(5, 5 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 5 }];
         },
         onStart(tile, instance, participants) {
             const starter = participants[0];
@@ -427,14 +460,14 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return tile.terrain === 'forest' && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return Math.max(3200, 2600 * distance);
+        requiredXp(_distance: number) {
+            return 3200;
         },
         heroRate(hero: Hero) {
             return 18 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(6, 4 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 6 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'forest') {
@@ -465,14 +498,14 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return tile.terrain === 'grain' && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return Math.max(3200, 2500 * distance);
+        requiredXp(_distance: number) {
+            return 3200;
         },
         heroRate(hero: Hero) {
             return 16 * Math.max(1, hero.stats.spd);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: Math.max(7, 5 * distance) }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 7 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'grain') {
@@ -500,16 +533,16 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return Math.max(3000, 2200 * distance);
+        requiredXp(_distance: number) {
+            return 3000;
         },
         heroRate(hero: Hero) {
             return 16 * Math.max(1, hero.stats.spd);
         },
-        requiredResources(distance: number) {
+        requiredResources(_distance: number) {
             return [
-                { type: 'wood', amount: Math.max(6, 4 * distance) },
-                { type: 'stone', amount: Math.max(2, 2 * distance) },
+                { type: 'wood', amount: 6 },
+                { type: 'stone', amount: 2 },
             ];
         },
         onComplete(tile) {
@@ -533,16 +566,16 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return Math.max(2000, 1600 * distance);
+        requiredXp(_distance: number) {
+            return 2000;
         },
         heroRate(hero: Hero) {
             return 18 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
+        requiredResources(_distance: number) {
             return [
-                { type: 'wood', amount: Math.max(4, 3 * distance) },
-                { type: 'stone', amount: Math.max(2, 2 * distance) },
+                { type: 'wood', amount: 4 },
+                { type: 'stone', amount: 2 },
             ];
         },
         onComplete(tile) {
@@ -572,14 +605,14 @@ const buildings: BuildingDefinition[] = [
         canPlace(tile, _hero) {
             return tile.terrain === 'mountain' && tile.isBaseTile;
         },
-        requiredXp(distance: number) {
-            return 5000 * distance;
+        requiredXp(_distance: number) {
+            return 5000;
         },
         heroRate(hero: Hero) {
             return 20 * Math.max(1, hero.stats.atk);
         },
-        requiredResources(distance: number) {
-            return [{ type: 'wood', amount: 10 * distance }];
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 10 }];
         },
         onComplete(tile) {
             if (tile.terrain === 'mountain') {

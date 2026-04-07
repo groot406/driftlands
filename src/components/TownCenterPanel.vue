@@ -1,7 +1,7 @@
 <template>
   <transition name="tc-slide">
-    <div v-if="visible" class="tc-overlay" @pointerdown.stop.prevent @pointerup.stop>
-      <div class="tc-panel">
+    <div v-if="visible" class="tc-overlay" :class="{ 'tc-overlay-standalone': detailOnlyMode }" @pointerdown.stop.prevent @pointerup.stop>
+      <div v-if="!detailOnlyMode" class="tc-panel">
         <div class="tc-header">
           <div class="tc-header-copy">
             <p class="tc-kicker pixel-font">Settlement</p>
@@ -157,6 +157,7 @@
       <div
         v-if="selectedJobSiteDetail"
         class="tc-detail-backdrop"
+        :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
         @click.stop="closeJobSiteDetail"
       >
         <div class="tc-detail-modal" @click.stop>
@@ -261,10 +262,17 @@ const emit = defineEmits<{
 }>();
 
 const selectedJobSiteId = ref<string | null>(null);
+const detailOnlyMode = ref(false);
 
 function close() {
-  closeJobSiteDetail();
+  clearJobSiteDetailState();
   emit('close');
+}
+
+function clearJobSiteDetailState() {
+  selectedJobSiteId.value = null;
+  detailOnlyMode.value = false;
+  closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
 }
 
 function formatNumber(value: number) {
@@ -503,23 +511,32 @@ const selectedJobSiteDetail = computed(() => {
   };
 });
 
-function openJobSiteDetail(tileId: string) {
+function openJobSiteDetail(tileId: string, options?: { detailOnly?: boolean }) {
   const site = jobSites.value.find((entry) => entry.tileId === tileId);
   if (!site?.hasDetail) {
     return;
   }
 
+  detailOnlyMode.value = !!options?.detailOnly;
   selectedJobSiteId.value = tileId;
   openWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
 }
 
+function openStandaloneJobSiteDetail(tileId: string) {
+  openJobSiteDetail(tileId, { detailOnly: true });
+}
+
 function closeJobSiteDetail() {
-  selectedJobSiteId.value = null;
-  closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
+  const shouldClosePanel = detailOnlyMode.value;
+  clearJobSiteDetailState();
+  if (shouldClosePanel) {
+    emit('close');
+  }
 }
 
 defineExpose({
   openJobSiteDetail,
+  openStandaloneJobSiteDetail,
   closeJobSiteDetail,
 });
 
@@ -572,7 +589,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 watch(() => props.visible, (isVisible) => {
   if (!isVisible) {
-    closeJobSiteDetail();
+    clearJobSiteDetailState();
   }
 
   if (isVisible && !listenerActive) {
@@ -596,7 +613,7 @@ onUnmounted(() => {
     listenerActive = false;
   }
 
-  closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
+  clearJobSiteDetailState();
 });
 </script>
 
@@ -607,6 +624,18 @@ onUnmounted(() => {
   top: 50%;
   transform: translateY(-50%);
   z-index: 40;
+  pointer-events: auto;
+}
+
+.tc-overlay-standalone {
+  inset: 0;
+  top: 0;
+  left: 0;
+  transform: none;
+  pointer-events: none;
+}
+
+.tc-overlay-standalone > * {
   pointer-events: auto;
 }
 
@@ -958,6 +987,10 @@ onUnmounted(() => {
   padding: 16px;
   background: rgba(2, 6, 23, 0.58);
   backdrop-filter: blur(10px);
+}
+
+.tc-detail-backdrop-standalone {
+  background: rgba(2, 6, 23, 0.68);
 }
 
 .tc-detail-modal {

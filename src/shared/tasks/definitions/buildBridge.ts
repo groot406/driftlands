@@ -26,16 +26,16 @@ const buildBridgeTask: TaskDefinition = {
         return !!accessTile && !!resolveBridgeVariantFromAccessTile(tile, accessTile);
     },
 
-    requiredXp(distance: number) {
-        return Math.max(2400, 1800 * Math.max(1, distance));
+    requiredXp(_distance: number) {
+        return 2400;
     },
 
     heroRate(hero: Hero) {
         return 16 * Math.max(1, hero.stats.atk);
     },
 
-    requiredResources(distance: number): ResourceAmount[] {
-        return [{ type: 'wood', amount: Math.max(4, 2 + distance) }];
+    requiredResources(_distance: number): ResourceAmount[] {
+        return [{ type: 'wood', amount: 4 }];
     },
 
     onStart(tile, instance, participants) {

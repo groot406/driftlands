@@ -14,8 +14,7 @@ const removeTrunksTask: TaskDefinition = {
     },
 
     requiredXp(_distance: number) {
-        // Flat effort for now; slightly higher than chop to slow regrowth pacing.
-        return 1000 * _distance;
+        return 1000;
     },
     heroRate(hero: Hero) {
         // Use a mix of base + scaled by hero XP & ATK so experienced heroes replant faster.

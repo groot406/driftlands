@@ -14,8 +14,8 @@ const seedGrainTask: TaskDefinition = {
                (tile.variant === 'dirt_tilled_hydrated' || tile.variant === 'dirt_tilled');
     },
 
-    requiredXp(distance: number) {
-        return 1000 * distance;
+    requiredXp(_distance: number) {
+        return 1000;
     },
 
     requiredResources(): ResourceAmount[] {

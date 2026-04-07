@@ -11,14 +11,14 @@ const mineOreTask: TaskDefinition = {
     },
 
     requiredXp(_distance: number) {
-        return 5000 * _distance;
+        return 5000;
     },
     heroRate(hero: Hero) {
         return 10 * hero.stats.atk * 2;
     },
 
     totalRewardedResources(_distance: number) {
-        return { type: 'ore', amount: 4 *_distance };
+        return { type: 'ore', amount: 4 };
     },
 
     getSoundOnStart() {

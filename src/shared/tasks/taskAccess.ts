@@ -11,7 +11,7 @@ import {
     isTileActive,
     listActiveAdjacentAccessTiles,
 } from '../game/state/settlementSupportStore';
-import { ensureTileExists, tileIndex } from '../game/world';
+import { tileIndex } from '../game/world';
 
 const ADJACENT_ACTIVE_ACCESS_TASKS = new Set<string>([
     'buildDock',
@@ -84,7 +84,7 @@ function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined) {
     const result: Tile[] = [];
     for (const side of SIDE_NAMES) {
         const [dq, dr] = SIDE_DELTAS[side];
-        const neighbor = tile.neighbors?.[side] ?? ensureTileExists(tile.q + dq, tile.r + dr);
+        const neighbor = tile.neighbors?.[side] ?? tileIndex[`${tile.q + dq},${tile.r + dr}`] ?? null;
         if (neighbor?.discovered && isTileWalkable(neighbor)) {
             result.push(neighbor);
         }

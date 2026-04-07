@@ -18,9 +18,8 @@ const harvestWaterLiliesTask: TaskDefinition = {
             && listTaskAccessTiles('harvestWaterLilies', tile).length > 0;
     },
 
-    requiredXp(distance: number) {
-        // Harvesting from water should be moderate effort
-        return 1200 * distance;
+    requiredXp(_distance: number) {
+        return 1200;
     },
 
     heroRate(hero: Hero) {
