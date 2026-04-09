@@ -1,0 +1,54 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: driftlands-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - SERVER_TPS=10
+      - SERVER_SEED=123456789
+      - NODE_ENV=production
+      - FRONTEND_ORIGIN=http://localhost:5173
+    volumes:
+      # Mount source for development with hot-reload
+      - ./server:/app/server
+      - ./src/shared:/app/src/shared
+      # Exclude node_modules
+      - /app/node_modules
+    command: npm run start:server
+    restart: unless-stopped
+    networks:
+      - driftlands-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: driftlands-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+      - VITE_BACKEND_URL=http://backend:3000
+    volumes:
+      # Mount source for hot-reload
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tailwind.config.cjs:/app/tailwind.config.cjs
+      - ./postcss.config.cjs:/app/postcss.config.cjs
+      # Exclude node_modules
+      - /app/node_modules
+    command: npm run dev:client -- --host 0.0.0.0
+    restart: unless-stopped
+    networks:
+      - driftlands-network
+    depends_on:
+      - backend
+
+networks:
+  driftlands-network:
+    driver: bridge

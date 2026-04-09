@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: driftlands-app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - SERVER_TPS=10
+      - SERVER_SEED=123456789
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - driftlands-network
+
+networks:
+  driftlands-network:
+    driver: bridge
