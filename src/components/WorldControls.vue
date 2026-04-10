@@ -33,6 +33,7 @@
     <div class="world-action-row">
       <button class="mini-btn" @click="restartWorldStory()" title="Restart the world and story using the entered seed">Restart Story</button>
       <button class="mini-btn" @click="restartWorldStory(true)" title="Restart the world and story with a brand new random seed">Restart Random</button>
+      <button class="mini-btn" @click="restartLargeWorld()" title="Restart the world and story as a large 200-ring debug world">Large World (200)</button>
       <button class="mini-btn" @click="centerCamera()" title="Center camera on world">Center Camera</button>
     </div>
   </div>
@@ -47,6 +48,7 @@ import { runSnapshot } from '../store/runStore';
 
 const MAX_UINT32 = 0xffffffff;
 const DEBUG_SEED_STORAGE_KEY = 'driftlands-restart-seed-v1';
+const DEBUG_LARGE_WORLD_RADIUS = 200;
 
 const storySeed = computed(() => runSnapshot.value?.seed ?? null);
 const activeWorldSeed = ref(getWorldGenerationSeed());
@@ -126,12 +128,13 @@ function randomizeSeed() {
   setDraft(nextSeed);
 }
 
-function restartWorldStory(forceRandom: boolean = false) {
+function restartWorldStory(forceRandom: boolean = false, radius?: number) {
   const nextSeed = forceRandom ? null : resolveDraftSeed();
   centerCamera();
   sendMessage({
     type: 'world:restart',
     ...(nextSeed !== null ? { seed: nextSeed } : {}),
+    ...(typeof radius === 'number' ? { radius } : {}),
     timestamp: Date.now(),
   });
 
@@ -140,6 +143,10 @@ function restartWorldStory(forceRandom: boolean = false) {
   } else {
     persistSeedDraft(seedDraft.value);
   }
+}
+
+function restartLargeWorld() {
+  restartWorldStory(false, DEBUG_LARGE_WORLD_RADIUS);
 }
 
 watch(storySeed, (seed) => {

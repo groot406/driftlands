@@ -9,8 +9,18 @@ test('job site status descriptors stay user-facing and stable', () => {
     tone: 'ok',
   });
 
+  assert.deepEqual(getJobSiteStatusDescriptor('paused'), {
+    text: 'Paused — manually turned off',
+    tone: 'warn',
+  });
+
   assert.deepEqual(getJobSiteStatusDescriptor('storage_full'), {
     text: 'Storage full — clear space in colony stores',
+    tone: 'danger',
+  });
+
+  assert.deepEqual(getJobSiteStatusDescriptor('depleted'), {
+    text: 'Depleted — this vein has run dry',
     tone: 'danger',
   });
 });

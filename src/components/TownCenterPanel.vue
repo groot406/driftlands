@@ -1,7 +1,14 @@
 <template>
-  <transition name="tc-slide">
-    <div v-if="visible" class="tc-overlay" :class="{ 'tc-overlay-standalone': detailOnlyMode }" @pointerdown.stop.prevent @pointerup.stop>
-      <div v-if="!detailOnlyMode" class="tc-panel">
+  <transition name="smooth-modal" appear>
+    <div
+      v-if="visible"
+      class="tc-overlay smooth-modal-backdrop"
+      :class="{ 'tc-overlay-standalone': detailOnlyMode }"
+      @pointerdown.stop
+      @pointerup.stop
+      @click.self="close"
+    >
+      <div v-if="!detailOnlyMode" class="tc-panel smooth-modal-surface">
         <div class="tc-header">
           <div class="tc-header-copy">
             <p class="tc-kicker pixel-font">Settlement</p>
@@ -154,78 +161,93 @@
         </div>
       </div>
 
-      <div
-        v-if="selectedJobSiteDetail"
-        class="tc-detail-backdrop"
-        :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
-        @click.stop="closeJobSiteDetail"
-      >
-        <div class="tc-detail-modal" @click.stop>
-          <div class="tc-detail-header">
-            <div>
-              <p class="tc-detail-kicker pixel-font">Production Site</p>
-              <h4 class="tc-detail-title">{{ selectedJobSiteDetail.label }}</h4>
-              <p class="tc-detail-summary">{{ selectedJobSiteDetail.summary }}</p>
+      <transition name="smooth-modal" appear>
+        <div
+          v-if="selectedJobSiteDetail"
+          class="tc-detail-backdrop smooth-modal-backdrop"
+          :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
+          @click.self="closeJobSiteDetail"
+        >
+          <div class="tc-detail-modal smooth-modal-surface" @click.stop>
+            <div class="tc-detail-header">
+              <div>
+                <p class="tc-detail-kicker pixel-font">Production Site</p>
+                <h4 class="tc-detail-title">{{ selectedJobSiteDetail.label }}</h4>
+                <p class="tc-detail-summary">{{ selectedJobSiteDetail.summary }}</p>
+              </div>
+              <button class="tc-detail-close" @click.stop="closeJobSiteDetail" title="Close details">
+                &#x2715;
+              </button>
             </div>
-            <button class="tc-detail-close" @click.stop="closeJobSiteDetail" title="Close details">
-              &#x2715;
-            </button>
-          </div>
 
-          <div class="tc-detail-pill-row">
-            <span class="tc-detail-pill" :class="selectedJobSiteDetail.statusBadgeClass">{{ selectedJobSiteDetail.statusText }}</span>
-            <span class="tc-detail-pill">Crew {{ selectedJobSiteDetail.assignedWorkers }}/{{ selectedJobSiteDetail.slots }}</span>
-            <span class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
-          </div>
+            <div class="tc-detail-pill-row">
+              <span class="tc-detail-pill" :class="selectedJobSiteDetail.statusBadgeClass">{{ selectedJobSiteDetail.statusText }}</span>
+              <span class="tc-detail-pill">Crew {{ selectedJobSiteDetail.assignedWorkers }}/{{ selectedJobSiteDetail.slots }}</span>
+              <span class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
+            </div>
 
-          <div class="tc-detail-grid">
-            <section class="tc-detail-card">
-              <p class="tc-detail-card-label">Current Staffing</p>
-              <div class="tc-detail-card-value">{{ selectedJobSiteDetail.assignedWorkersLabel }}</div>
-              <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.currentThroughputLabel }}</p>
-            </section>
-            <section class="tc-detail-card">
-              <p class="tc-detail-card-label">Full Staffing</p>
-              <div class="tc-detail-card-value">{{ selectedJobSiteDetail.fullStaffingLabel }}</div>
-              <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.maxThroughputLabel }}</p>
-            </section>
-          </div>
+            <div class="tc-detail-action-row">
+              <button
+                class="tc-detail-toggle"
+                :class="{ 'tc-detail-toggle-off': !selectedJobSiteDetail.isEnabled }"
+                @click.stop="toggleJobSiteEnabled(selectedJobSiteDetail.tileId, !selectedJobSiteDetail.isEnabled)"
+              >
+                {{ selectedJobSiteDetail.isEnabled ? 'Turn Off Job Site' : 'Turn On Job Site' }}
+              </button>
+              <p class="tc-detail-action-copy">
+                {{ selectedJobSiteDetail.isEnabled ? 'Free this settler and stop production here.' : 'Let this site compete for settlers again.' }}
+              </p>
+            </div>
 
-          <div class="tc-detail-section">
-            <div class="tc-detail-section-title">Production Flow</div>
-            <div class="tc-detail-flow-grid">
-              <section class="tc-detail-flow-card">
-                <p class="tc-detail-flow-title">Consumes</p>
-                <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
-                <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.inputRateLabel }}</p>
+            <div class="tc-detail-grid">
+              <section class="tc-detail-card">
+                <p class="tc-detail-card-label">Current Staffing</p>
+                <div class="tc-detail-card-value">{{ selectedJobSiteDetail.assignedWorkersLabel }}</div>
+                <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.currentThroughputLabel }}</p>
               </section>
-              <section class="tc-detail-flow-card">
-                <p class="tc-detail-flow-title">Produces</p>
-                <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentOutputLabel }}</p>
-                <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.outputRateLabel }}</p>
+              <section class="tc-detail-card">
+                <p class="tc-detail-card-label">Full Staffing</p>
+                <div class="tc-detail-card-value">{{ selectedJobSiteDetail.fullStaffingLabel }}</div>
+                <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.maxThroughputLabel }}</p>
               </section>
             </div>
-          </div>
 
-          <div v-if="selectedJobSiteDetail.shortages.length" class="tc-detail-section">
-            <div class="tc-detail-section-title">Current Bottleneck</div>
-            <div class="tc-detail-chip-row">
-              <span v-for="shortage in selectedJobSiteDetail.shortages" :key="shortage.type" class="tc-detail-chip">
-                {{ shortage.missingLabel }}
-              </span>
+            <div class="tc-detail-section">
+              <div class="tc-detail-section-title">Production Flow</div>
+              <div class="tc-detail-flow-grid">
+                <section class="tc-detail-flow-card">
+                  <p class="tc-detail-flow-title">Consumes</p>
+                  <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
+                  <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.inputRateLabel }}</p>
+                </section>
+                <section class="tc-detail-flow-card">
+                  <p class="tc-detail-flow-title">Produces</p>
+                  <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentOutputLabel }}</p>
+                  <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.outputRateLabel }}</p>
+                </section>
+              </div>
             </div>
-          </div>
 
-          <div class="tc-detail-section">
-            <div class="tc-detail-section-title">How To Improve</div>
-            <ul class="tc-detail-advice-list">
-              <li v-for="tip in selectedJobSiteDetail.advice" :key="tip" class="tc-detail-advice-item">
-                {{ tip }}
-              </li>
-            </ul>
+            <div v-if="selectedJobSiteDetail.shortages.length" class="tc-detail-section">
+              <div class="tc-detail-section-title">Current Bottleneck</div>
+              <div class="tc-detail-chip-row">
+                <span v-for="shortage in selectedJobSiteDetail.shortages" :key="shortage.type" class="tc-detail-chip">
+                  {{ shortage.missingLabel }}
+                </span>
+              </div>
+            </div>
+
+            <div class="tc-detail-section">
+              <div class="tc-detail-section-title">How To Improve</div>
+              <ul class="tc-detail-advice-list">
+                <li v-for="tip in selectedJobSiteDetail.advice" :key="tip" class="tc-detail-advice-item">
+                  {{ tip }}
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
-      </div>
+      </transition>
     </div>
   </transition>
 </template>
@@ -246,6 +268,7 @@ import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
 import { resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
+import { sendMessage } from '../core/socket';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
@@ -273,6 +296,15 @@ function clearJobSiteDetailState() {
   selectedJobSiteId.value = null;
   detailOnlyMode.value = false;
   closeWindow(WINDOW_IDS.BUILDING_DETAIL_MODAL);
+}
+
+function toggleJobSiteEnabled(tileId: string, enabled: boolean) {
+  sendMessage({
+    type: 'jobs:set_site_enabled',
+    tileId,
+    enabled,
+    timestamp: Date.now(),
+  });
 }
 
 function formatNumber(value: number) {
@@ -487,9 +519,11 @@ const selectedJobSiteDetail = computed(() => {
     resourceInventory,
     totalFreeStorage: totalFreeStorage.value,
   });
+  const isEnabled = tile?.jobSiteEnabled !== false;
 
   return {
     ...site,
+    isEnabled,
     cycleLabel: formatCycleDuration(building.cycleMs),
     assignedWorkersLabel: site.assignedWorkers > 0
       ? `${site.assignedWorkers} ${building.jobLabel ?? 'worker'}${site.assignedWorkers === 1 ? '' : 's'} on duty`
@@ -620,18 +654,20 @@ onUnmounted(() => {
 <style scoped>
 .tc-overlay {
   position: fixed;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  inset: 0;
   z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(8px);
   pointer-events: auto;
 }
 
 .tc-overlay-standalone {
-  inset: 0;
-  top: 0;
-  left: 0;
-  transform: none;
+  background: transparent;
+  backdrop-filter: none;
   pointer-events: none;
 }
 
@@ -640,10 +676,11 @@ onUnmounted(() => {
 }
 
 .tc-panel {
-  width: 280px;
-  padding: 18px;
+  position: relative;
+  width: min(460px, calc(100vw - 32px));
+  padding: 20px;
   border-radius: 28px;
-  max-height: min(70vh, calc(100vh - 32px));
+  max-height: min(82vh, calc(100vh - 32px));
   overflow-x: hidden;
   overflow-y: auto;
   background:
@@ -985,12 +1022,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(2, 6, 23, 0.58);
-  backdrop-filter: blur(10px);
+  background: rgba(2, 6, 23, 0.44);
+  backdrop-filter: blur(6px);
 }
 
 .tc-detail-backdrop-standalone {
   background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(10px);
 }
 
 .tc-detail-modal {
@@ -1060,6 +1098,45 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 16px;
+}
+
+.tc-detail-action-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tc-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 250, 252, 0.16);
+  background: rgba(37, 99, 235, 0.2);
+  color: #eff6ff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s, background .15s;
+}
+
+.tc-detail-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.36);
+  background: rgba(37, 99, 235, 0.28);
+}
+
+.tc-detail-toggle-off {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fef3c7;
+}
+
+.tc-detail-action-copy {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.82rem;
 }
 
 .tc-detail-pill {
@@ -1183,30 +1260,12 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
+  .tc-panel,
   .tc-detail-modal {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
     padding: 18px;
   }
-}
-
-/* Slide transition */
-
-.tc-slide-enter-active,
-.tc-slide-leave-active {
-  transition: transform 0.22s ease, opacity 0.22s ease;
-}
-
-.tc-slide-enter-from,
-.tc-slide-leave-to {
-  transform: translateX(-20px) translateY(-50%);
-  opacity: 0;
-}
-
-.tc-slide-enter-to,
-.tc-slide-leave-from {
-  transform: translateX(0) translateY(-50%);
-  opacity: 1;
 }
 
 /* Pulse animation for danger state */

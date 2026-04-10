@@ -1,6 +1,6 @@
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 
-export type JobSiteStatus = 'staffed' | 'unstaffed' | 'offline' | 'missing_input' | 'storage_full';
+export type JobSiteStatus = 'staffed' | 'unstaffed' | 'offline' | 'paused' | 'missing_input' | 'storage_full' | 'depleted';
 
 export interface JobSiteSnapshot {
     tileId: string;

@@ -84,6 +84,13 @@ export interface WorldRequestMessage extends BaseMessage {
 export interface WorldRestartMessage extends BaseMessage {
     type: 'world:restart';
     seed?: number;
+    radius?: number;
+}
+
+export interface SetJobSiteEnabledMessage extends BaseMessage {
+    type: 'jobs:set_site_enabled';
+    tileId: string;
+    enabled: boolean;
 }
 
 export interface WorldSnapshotMessage extends BaseMessage {
@@ -95,6 +102,32 @@ export interface WorldSnapshotMessage extends BaseMessage {
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
+}
+
+export interface WorldSnapshotStartMessage extends BaseMessage {
+    type: 'world:snapshot_start';
+    snapshotId: string;
+    totalTiles: number;
+    totalChunks: number;
+    heroes: Hero[];
+    tasks: TaskInstance[];
+    resources: Partial<Record<ResourceType, number>>;
+    storages: StorageSnapshot[];
+    population: PopulationSnapshot;
+    jobs: WorkforceSnapshot;
+}
+
+export interface WorldSnapshotChunkMessage extends BaseMessage {
+    type: 'world:snapshot_chunk';
+    snapshotId: string;
+    chunkIndex: number;
+    totalChunks: number;
+    tiles: Tile[];
+}
+
+export interface WorldSnapshotCompleteMessage extends BaseMessage {
+    type: 'world:snapshot_complete';
+    snapshotId: string;
 }
 
 export interface TileUpdatedMessage extends BaseMessage {
@@ -167,22 +200,6 @@ export interface ResourceWithdrawMessage {
     heroId: string;
     storageTileId: string;
     resource: ResourceAmount;
-}
-
-export interface FrontierFindMessage extends BaseMessage {
-    type: 'frontier:find';
-    q: number;
-    r: number;
-    terrain: string | null;
-    label: string;
-    title: string;
-    description: string;
-    resourceRewards: ResourceAmount[];
-    storageDeposits?: Array<{
-        storageTileId: string;
-        resource: ResourceAmount;
-    }>;
-    bonusScore?: number;
 }
 
 export interface TaskCreatedMessage {
@@ -262,6 +279,7 @@ export type ClientMessage =
     | CoopPingRequestMessage
     | WorldRequestMessage
     | WorldRestartMessage
+    | SetJobSiteEnabledMessage
     | MoveRequestMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
@@ -275,6 +293,9 @@ export type ServerMessage =
     | CoopSnapshotMessage
     | CoopPingMessage
     | WorldSnapshotMessage
+    | WorldSnapshotStartMessage
+    | WorldSnapshotChunkMessage
+    | WorldSnapshotCompleteMessage
     | WorldWelcomeMessage
     | TileUpdatedMessage
     | PathUpdateMessage
@@ -284,7 +305,6 @@ export type ServerMessage =
     | TaskCompletedMessage
     | ResourceDepositMessage
     | ResourceWithdrawMessage
-    | FrontierFindMessage
     | HeroPayloadUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage

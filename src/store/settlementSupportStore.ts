@@ -2,7 +2,7 @@ import { terrainPositions, variantPositions } from '../core/terrainRegistry';
 import { tileIndex } from '../core/world';
 import { axialDistanceCoords } from '../shared/game/hex';
 import { isTileWalkable } from '../shared/game/navigation';
-import type { Tile, TileActivationState, TileSupportBand } from '../core/types/Tile';
+import { SIDE_NAMES, type Tile, type TileActivationState, type TileSupportBand } from '../core/types/Tile';
 
 // Mission 4 asks the first settlement to push to 100 discovered tiles before
 // watchtowers unlock, so a fully housed starter town needs enough headroom to
@@ -52,6 +52,16 @@ interface SupportSelectionResult {
 const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'] as const;
 const CAMPFIRE_VARIANT_KEYS = ['plains_campfire', 'dirt_campfire'] as const;
 const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house'] as const;
+const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
+    'road',
+    'road_ad',
+    'road_be',
+    'road_ce',
+    'road_cf',
+    'water_bridge_ad',
+    'water_bridge_be',
+    'water_bridge_cf',
+]);
 
 const BUILDING_VARIANT_KEYS = new Set<string>([
     'plains_well',
@@ -176,10 +186,14 @@ function isWatchtowerTile(tile: Tile | null | undefined) {
     return WATCHTOWER_VARIANT_KEYS.includes(tile.variant as (typeof WATCHTOWER_VARIANT_KEYS)[number]);
 }
 
+function isInfrastructureTile(tile: Tile | null | undefined) {
+    return !!tile?.variant && INFRASTRUCTURE_VARIANT_KEYS.has(tile.variant);
+}
+
 function isBuildingPriorityTile(tile: Tile | null | undefined) {
     if (!tile?.variant) return false;
     if (isWatchtowerTile(tile)) return false;
-    return BUILDING_VARIANT_KEYS.has(tile.variant);
+    return BUILDING_VARIANT_KEYS.has(tile.variant) || isInfrastructureTile(tile);
 }
 
 function compareTileIds(a: string, b: string) {
@@ -252,6 +266,92 @@ function computeCampfireSupportedTileIds(
     }
 
     return supportedTileIds;
+}
+
+function computeInfrastructureSupportedTileAssignments(
+    activeTileIds: Set<string>,
+    ownerByTileId: Map<string, string | null>,
+    controlledByTileId: Map<string, string | null>,
+) {
+    const supportedByTileId = new Map<string, string>();
+    const projectedActiveTileIds = new Set(activeTileIds);
+    const projectedInfrastructureTileIds = new Set<string>();
+    const queue: Array<{ settlementId: string; tileId: string }> = [];
+
+    for (const tileId of activeTileIds) {
+        const tile = tileIndex[tileId];
+        const settlementId = controlledByTileId.get(tileId) ?? ownerByTileId.get(tileId) ?? null;
+        if (!tile || !settlementId || !isInfrastructureTile(tile)) {
+            continue;
+        }
+
+        projectedInfrastructureTileIds.add(tileId);
+        queue.push({ settlementId, tileId });
+    }
+
+    queue.sort((a, b) => {
+        if (a.settlementId !== b.settlementId) {
+            return a.settlementId.localeCompare(b.settlementId);
+        }
+
+        return compareTileIds(a.tileId, b.tileId);
+    });
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current) {
+            continue;
+        }
+
+        const tile = tileIndex[current.tileId];
+        if (!tile?.neighbors) {
+            continue;
+        }
+
+        for (const side of SIDE_NAMES) {
+            const neighbor = tile.neighbors[side];
+            if (!neighbor?.discovered || !neighbor.terrain || neighbor.terrain === 'towncenter') {
+                continue;
+            }
+
+            const existingSettlementId = supportedByTileId.get(neighbor.id)
+                ?? controlledByTileId.get(neighbor.id)
+                ?? ownerByTileId.get(neighbor.id)
+                ?? null;
+
+            if (existingSettlementId && existingSettlementId !== current.settlementId) {
+                continue;
+            }
+
+            if (!supportedByTileId.has(neighbor.id)) {
+                supportedByTileId.set(neighbor.id, existingSettlementId ?? current.settlementId);
+            }
+
+            const wasProjectedActive = projectedActiveTileIds.has(neighbor.id);
+            projectedActiveTileIds.add(neighbor.id);
+
+            if (!isInfrastructureTile(neighbor) || projectedInfrastructureTileIds.has(neighbor.id)) {
+                continue;
+            }
+
+            projectedInfrastructureTileIds.add(neighbor.id);
+            if (!wasProjectedActive) {
+                queue.push({
+                    settlementId: current.settlementId,
+                    tileId: neighbor.id,
+                });
+                queue.sort((a, b) => {
+                    if (a.settlementId !== b.settlementId) {
+                        return a.settlementId.localeCompare(b.settlementId);
+                    }
+
+                    return compareTileIds(a.tileId, b.tileId);
+                });
+            }
+        }
+    }
+
+    return supportedByTileId;
 }
 
 function selectActiveTiles(
@@ -520,6 +620,28 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
         activeNonTowncenterIds.add(tileId);
     }
 
+    const infrastructureSupportedTileAssignments = computeInfrastructureSupportedTileAssignments(
+        activeNonTowncenterIds,
+        ownerByTileId,
+        controlledByTileId,
+    );
+    const extraInfrastructureActiveTileIds = new Set<string>();
+
+    for (const [tileId, settlementId] of infrastructureSupportedTileAssignments.entries()) {
+        if (!activeNonTowncenterIds.has(tileId)) {
+            extraInfrastructureActiveTileIds.add(tileId);
+        }
+        activeNonTowncenterIds.add(tileId);
+
+        if (!ownerByTileId.get(tileId)) {
+            ownerByTileId.set(tileId, settlementId);
+        }
+
+        if (!controlledByTileId.get(tileId)) {
+            controlledByTileId.set(tileId, settlementId);
+        }
+    }
+
     const activeBySettlementId = new Map<string, Tile[]>();
     for (const tileId of baseSelection.activeNonTowncenterIds) {
         const tile = tileIndex[tileId];
@@ -600,7 +722,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
     }
 
     lastSnapshot = buildSupportSnapshot(
-        baseSelection.supportCapacity + extraCampfireActiveTileIds.size,
+        baseSelection.supportCapacity + extraCampfireActiveTileIds.size + extraInfrastructureActiveTileIds.size,
         activeNonTowncenterIds,
         ownerByTileId,
         controlledByTileId,

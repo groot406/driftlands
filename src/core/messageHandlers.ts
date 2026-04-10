@@ -7,17 +7,9 @@ import { resourceMessageHandler } from './handlers/resourceMessageHandler';
 import { heroMessageHandler } from './handlers/heroMessageHandler';
 import { runHandler } from './handlers/runHandler';
 import { coopHandler } from './handlers/coopHandler';
-import { frontierFindHandler } from './handlers/frontierFindHandler';
-
-let handlersInitialized = false;
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
-  if (handlersInitialized) {
-    return;
-  }
-
-  handlersInitialized = true;
   playerMessageHandler.init();
   chatMessageHandler.init();
   worldHandler.init();
@@ -27,5 +19,4 @@ export function initializeClientHandlers(): void {
   heroMessageHandler.init();
   runHandler.init();
   coopHandler.init();
-  frontierFindHandler.init();
 }

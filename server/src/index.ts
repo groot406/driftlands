@@ -18,7 +18,6 @@ import { supportSystem } from './systems/supportSystem';
 import { jobSystem } from './systems/jobSystem';
 import { coopSystem } from './systems/coopSystem';
 import { runState } from './state/runState';
-import { frontierFindState } from './state/frontierFindState';
 
 const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
   .split(',')
@@ -75,7 +74,6 @@ configureGameRuntime({
   }
 });
 configureGameplayEventRuntime((event) => {
-  frontierFindState.recordEvent(event);
   runState.recordEvent(event);
 });
 

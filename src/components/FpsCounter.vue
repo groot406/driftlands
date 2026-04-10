@@ -19,16 +19,20 @@
       <strong>{{ renderDebugState.discoveredVisibleCount }}/{{ renderDebugState.visibleTileCount }}</strong>
     </div>
     <div class="fps-row">
-      <span>Terrain Buffer</span>
+      <span>Terrain Cache</span>
       <strong>{{ terrainBufferStatus }}</strong>
     </div>
     <div class="fps-row">
-      <span>Buffer Shift</span>
-      <strong>{{ renderDebugState.staticTerrainShiftPx }}/{{ renderDebugState.staticTerrainThresholdPx }}px</strong>
+      <span>Chunk Rebuilds</span>
+      <strong>{{ renderDebugState.terrainChunkRebuilds }}</strong>
     </div>
     <div class="fps-row">
       <span>Terrain Rebuilds</span>
       <strong>{{ renderDebugState.staticTerrainRebuilds }}</strong>
+    </div>
+    <div class="fps-row">
+      <span>Chunks</span>
+      <strong>{{ renderDebugState.visibleChunkCount }}/{{ renderDebugState.dirtyChunkCount }}</strong>
     </div>
     <div class="fps-row">
       <span>Motion Blur</span>
@@ -37,6 +41,10 @@
     <div class="fps-row">
       <span>World Ver</span>
       <strong>{{ renderDebugState.worldRenderVersion }}</strong>
+    </div>
+    <div class="fps-row">
+      <span>Passes</span>
+      <strong>{{ passTimingSummary }}</strong>
     </div>
     <div class="feature-grid">
       <button
@@ -70,6 +78,9 @@ let lastTime = performance.now();
 let animationId: number | null = null;
 
 const terrainBufferStatus = computed(() => {
+  if (renderDebugState.visibleChunkCount > 0) {
+    return `chunked:${renderDebugState.visibleChunkCount}`;
+  }
   if (renderDebugState.staticTerrainReused) return 'reuse';
   if (renderDebugState.staticTerrainReason === 'shift') return 'shift';
   if (renderDebugState.staticTerrainReason === 'patch') return 'patch';
@@ -80,7 +91,9 @@ const features = computed(() => ([
   { key: 'backdropGlows', label: 'backdrop', on: renderDebugState.backdropGlowsEnabled },
   { key: 'motionBlur', label: 'blur', on: renderDebugState.motionBlurEnabled },
   { key: 'bloom', label: 'bloom', on: renderDebugState.bloomEnabled },
+  { key: 'clouds', label: 'clouds', on: renderDebugState.cloudsEnabled },
   { key: 'particles', label: 'particles', on: renderDebugState.particlesEnabled },
+  { key: 'birds', label: 'birds', on: renderDebugState.birdsEnabled },
   { key: 'edgeVignette', label: 'vignette', on: renderDebugState.edgeVignetteEnabled },
   { key: 'reachGlow', label: 'reach', on: renderDebugState.reachGlowEnabled },
   { key: 'heroAuras', label: 'auras', on: renderDebugState.heroAurasEnabled },
@@ -90,6 +103,14 @@ const features = computed(() => ([
   ...feature,
   mode: renderFeatureOverrideStore[feature.key],
 }))));
+
+const passTimingSummary = computed(() => {
+  const entries = Object.entries(renderDebugState.passTimingsMs)
+    .filter(([, duration]) => duration > 0)
+    .map(([name, duration]) => `${name.replace('Pass', '')}:${duration.toFixed(1)}`);
+
+  return entries.length ? entries.join(' ') : 'n/a';
+});
 
 function toggleFeature(feature: RenderFeatureKey) {
   cycleRenderFeatureOverride(feature);

@@ -8,6 +8,7 @@ import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
 import { loadTasks, startTask } from '../../store/taskStore.ts';
+import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
 import { getTaskDefinition } from './taskRegistry.ts';
 import { getAvailableTasks, handleHeroArrival } from './tasks.ts';
 import { loadWorld, tileIndex } from '../game/world.ts';
@@ -42,6 +43,7 @@ test.afterEach(() => {
   loadTasks([]);
   resetResourceState();
   resetGameRuntime();
+  loadStoryProgression(null);
   loadHeroes(originalHeroes.map(cloneHero));
 });
 
@@ -201,6 +203,79 @@ test('adjacent dock deliveries are applied to the task before the town center wa
   assert.deepEqual(dockTask.collectedResources, [{ type: 'wood', amount: 5 }]);
   assert.equal(dockTask.active, true);
   assert.equal(getStorageResourceAmount('0,0', 'wood'), 0);
+});
+
+test('dock builds face the access tile where the hero starts construction', () => {
+  setStoryProgressionForMission(2);
+
+  loadWorld([
+    {
+      id: '-1,0',
+      q: -1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([
+    {
+      id: 'h1',
+      name: 'Santa',
+      avatar: 'santa',
+      q: 0,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      movement: {
+        path: [{ q: 0, r: 0 }],
+        origin: { q: -1, r: 0 },
+        target: { q: 0, r: 0 },
+        startMs: 0,
+        stepDurations: [100],
+        cumulative: [100],
+      },
+      carryingPayload: { type: 'wood', amount: 5 },
+    } satisfies Hero,
+  ]);
+
+  const hero = heroes[0]!;
+  const dockTile = tileIndex['0,1']!;
+  const task = startTask(dockTile, 'buildDock', hero);
+
+  assert.ok(task);
+  assert.equal(task?.context?.approachSide, 'a');
+
+  getTaskDefinition('buildDock')?.onComplete?.(dockTile, task!, [hero]);
+  assert.equal(dockTile.variant, 'water_dock_a');
 });
 
 test('fetch return for dock tasks preserves the water tile as logical task location', () => {

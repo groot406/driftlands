@@ -41,6 +41,11 @@ export function getJobSiteStatusDescriptor(status: JobSiteStatus): JobSiteStatus
                 text: 'Offline — reconnect and restore support',
                 tone: 'danger',
             };
+        case 'paused':
+            return {
+                text: 'Paused — manually turned off',
+                tone: 'warn',
+            };
         case 'unstaffed':
             return {
                 text: 'Unstaffed — waiting for an available settler',
@@ -54,6 +59,11 @@ export function getJobSiteStatusDescriptor(status: JobSiteStatus): JobSiteStatus
         case 'storage_full':
             return {
                 text: 'Storage full — clear space in colony stores',
+                tone: 'danger',
+            };
+        case 'depleted':
+            return {
+                text: 'Depleted — this vein has run dry',
                 tone: 'danger',
             };
         case 'staffed':
@@ -139,6 +149,10 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
             }
             pushAdvice(advice, 'If this district sits too far from the current hearth, extend reach with watchtowers or found a new town center.');
             break;
+        case 'paused':
+            pushAdvice(advice, 'Turn this site back on when you want it competing for settlers again.');
+            pushAdvice(advice, 'Paused sites free their workers immediately, which is useful when food or hauling needs the labor more.');
+            break;
         case 'unstaffed':
             if (population.current >= population.max) {
                 pushAdvice(advice, 'You are at town-center capacity, so another town center is needed before the colony can field more workers.');
@@ -174,6 +188,10 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
             } else if (buildingProducesFood) {
                 pushAdvice(advice, 'Food still needs empty storage, even if settlers will eat it soon, so keep some buffer space available.');
             }
+            break;
+        case 'depleted':
+            pushAdvice(advice, 'This mountain cluster has been exhausted, so move mining crews to a fresh range.');
+            pushAdvice(advice, 'Multiple mines on the same cluster share the same hidden reserve, so splitting crews does not create extra ore.');
             break;
         case 'staffed':
         default:

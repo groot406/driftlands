@@ -1,90 +1,92 @@
 <template>
-  <div v-if="isOpen" class="player-modal-backdrop" @click="close">
-    <div class="player-modal-panel" @click.stop>
-      <div class="player-modal-header">
-        <div>
-          <p class="player-modal-eyebrow">Party</p>
-          <h2 class="player-modal-title">Connected Players</h2>
-        </div>
-        <button class="player-modal-close" @click="close" title="Close">
-          ✕
-        </button>
-      </div>
-
-      <div class="player-modal-body">
-        <!-- Left: Player List -->
-        <div class="player-section">
-          <div class="player-list">
-            <div v-for="player in players" :key="player.id" class="player-row">
-              <div class="player-main">
-                <span class="player-name">
-                  {{ player.name }}
-                  <span v-if="isCurrentPlayer(player.id)" class="player-you">(you)</span>
-                </span>
-                <span class="player-status" :class="{ 'player-status-ready': player.ready }">
-                  {{ player.ready ? 'Ready' : 'Preparing' }}
-                </span>
-              </div>
-              <div class="player-meta">
-                <span>{{ player.claimedHeroIds.length }} heroes claimed</span>
-              </div>
-            </div>
-
-            <div v-if="players.length === 0" class="player-empty">
-              Waiting for the first traveler to join.
-            </div>
+  <Transition name="smooth-modal" appear>
+    <div v-if="isOpen" class="player-modal-backdrop smooth-modal-backdrop" @click.self="close">
+      <div class="player-modal-panel smooth-modal-surface" @click.stop>
+        <div class="player-modal-header">
+          <div>
+            <p class="player-modal-eyebrow">Party</p>
+            <h2 class="player-modal-title">Connected Players</h2>
           </div>
-
-          <!-- Ready Toggle -->
-          <button
-            class="ready-toggle"
-            :class="{ 'ready-toggle-active': isReady }"
-            @click="toggleReady"
-          >
-            {{ isReady ? 'Unready' : 'Ready Up' }}
+          <button class="player-modal-close" @click="close" title="Close">
+            ✕
           </button>
         </div>
 
-        <!-- Right: Chat -->
-        <div class="chat-section">
-          <div class="chat-messages" ref="chatMessagesEl">
-            <div
-              v-for="msg in messages"
-              :key="msg.id"
-              class="chat-bubble"
-              :class="{ 'chat-bubble-own': isOwnMessage(msg.playerId) }"
+        <div class="player-modal-body">
+          <!-- Left: Player List -->
+          <div class="player-section">
+            <div class="player-list">
+              <div v-for="player in players" :key="player.id" class="player-row">
+                <div class="player-main">
+                  <span class="player-name">
+                    {{ player.name }}
+                    <span v-if="isCurrentPlayer(player.id)" class="player-you">(you)</span>
+                  </span>
+                  <span class="player-status" :class="{ 'player-status-ready': player.ready }">
+                    {{ player.ready ? 'Ready' : 'Preparing' }}
+                  </span>
+                </div>
+                <div class="player-meta">
+                  <span>{{ player.claimedHeroIds.length }} heroes claimed</span>
+                </div>
+              </div>
+
+              <div v-if="players.length === 0" class="player-empty">
+                Waiting for the first traveler to join.
+              </div>
+            </div>
+
+            <!-- Ready Toggle -->
+            <button
+              class="ready-toggle"
+              :class="{ 'ready-toggle-active': isReady }"
+              @click="toggleReady"
             >
-              <span v-if="!isOwnMessage(msg.playerId)" class="chat-sender">{{ msg.playerName }}</span>
-              <span class="chat-text">{{ msg.message }}</span>
-              <span class="chat-time">{{ formatTime(msg.timestamp) }}</span>
-            </div>
-            <div v-if="messages.length === 0" class="chat-empty">
-              No messages yet. Say hello!
-            </div>
+              {{ isReady ? 'Unready' : 'Ready Up' }}
+            </button>
           </div>
 
-          <form class="chat-input-row" @submit.prevent="sendChat">
-            <input
-              ref="chatInputEl"
-              v-model="newMessage"
-              class="chat-input"
-              type="text"
-              placeholder="Type a message..."
-              maxlength="200"
-              autocomplete="off"
-            />
-            <button
-              class="chat-send"
-              type="submit"
-              :disabled="!newMessage.trim()"
-            >
-              Send
-            </button>
-          </form>
+          <!-- Right: Chat -->
+          <div class="chat-section">
+            <div class="chat-messages" ref="chatMessagesEl">
+              <div
+                v-for="msg in messages"
+                :key="msg.id"
+                class="chat-bubble"
+                :class="{ 'chat-bubble-own': isOwnMessage(msg.playerId) }"
+              >
+                <span v-if="!isOwnMessage(msg.playerId)" class="chat-sender">{{ msg.playerName }}</span>
+                <span class="chat-text">{{ msg.message }}</span>
+                <span class="chat-time">{{ formatTime(msg.timestamp) }}</span>
+              </div>
+              <div v-if="messages.length === 0" class="chat-empty">
+                No messages yet. Say hello!
+              </div>
+            </div>
+
+            <form class="chat-input-row" @submit.prevent="sendChat">
+              <input
+                ref="chatInputEl"
+                v-model="newMessage"
+                class="chat-input"
+                type="text"
+                placeholder="Type a message..."
+                maxlength="200"
+                autocomplete="off"
+              />
+              <button
+                class="chat-send"
+                type="submit"
+                :disabled="!newMessage.trim()"
+              >
+                Send
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Hero } from '../../src/core/types/Hero.ts';
 import type { TaskInstance } from '../../src/core/types/Task.ts';
+import { hexDistance, tiles } from '../../src/shared/game/world.ts';
 import { getWorldGenerationSeed } from '../../src/core/worldVariation.ts';
 import { heroes, loadHeroes } from '../../src/shared/game/state/heroStore.ts';
 import { loadTasks, taskStore } from '../../src/shared/game/state/taskStore.ts';
@@ -92,4 +93,16 @@ test('worldState.init rolls a random seed when no seed is provided', async () =>
       process.env.SERVER_SEED = originalEnvSeed;
     }
   }
+});
+
+test('worldState.init respects the requested world radius', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42, 3);
+
+  const discoveredTiles = tiles.filter((tile) => tile.discovered);
+  const discoveredRings = discoveredTiles.map((tile) => hexDistance(tile.q, tile.r));
+
+  assert.equal(Math.max(...discoveredRings), 3);
+  assert.equal(discoveredTiles.length, 37);
 });

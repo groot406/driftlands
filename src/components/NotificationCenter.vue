@@ -1,11 +1,11 @@
 <template>
-  <Transition name="notification-centre">
+  <Transition name="smooth-modal" appear>
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 text-white backdrop-blur-sm"
+      class="smooth-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 text-white backdrop-blur-sm"
       @click.self="closeNotificationCenter"
     >
-      <section class="flex h-[min(88vh,44rem)] w-[min(94vw,40rem)] flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/94 shadow-2xl">
+      <section class="smooth-modal-surface flex h-[min(88vh,44rem)] w-[min(94vw,40rem)] flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/94 shadow-2xl">
         <header class="border-b border-slate-800 px-6 py-5">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
@@ -167,15 +167,3 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
-
-<style scoped>
-.notification-centre-enter-active,
-.notification-centre-leave-active {
-  transition: opacity 0.22s ease;
-}
-
-.notification-centre-enter-from,
-.notification-centre-leave-to {
-  opacity: 0;
-}
-</style>

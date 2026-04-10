@@ -5,6 +5,8 @@ export type RenderFeatureKey =
     | 'motionBlur'
     | 'bloom'
     | 'particles'
+    | 'birds'
+    | 'clouds'
     | 'edgeVignette'
     | 'reachGlow'
     | 'heroAuras'
@@ -18,6 +20,8 @@ export const renderFeatureOverrideStore = reactive<Record<RenderFeatureKey, Rend
     motionBlur: 'auto',
     bloom: 'auto',
     particles: 'auto',
+    birds: 'auto',
+    clouds: 'auto',
     edgeVignette: 'auto',
     reachGlow: 'auto',
     heroAuras: 'auto',

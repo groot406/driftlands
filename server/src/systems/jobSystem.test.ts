@@ -10,6 +10,7 @@ import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/g
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getStorageResourceAmount, depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
+import { resetMineReserveState } from '../state/mineReserveState';
 import { jobSystem } from './jobSystem';
 
 function captureBroadcasts() {
@@ -36,6 +37,7 @@ function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'te
     controlledBySettlementId: overrides.controlledBySettlementId ?? '0,0',
     ownerSettlementId: overrides.ownerSettlementId ?? '0,0',
     supportBand: overrides.supportBand ?? 'stable',
+    jobSiteEnabled: overrides.jobSiteEnabled ?? null,
   };
 }
 
@@ -79,6 +81,7 @@ test.afterEach(() => {
   resetPopulationState();
   resetSettlementSupportState();
   resetWorkforceState();
+  resetMineReserveState();
   resetGameRuntime();
 });
 
@@ -231,8 +234,8 @@ test('mine produces ore once staffed for a full cycle', () => {
   tickAt(1_000);
   tickAt(61_000);
 
-  assert.equal(resourceInventory.ore, 2);
-  assert.equal(getStorageResourceAmount('0,0', 'ore'), 2);
+  assert.equal(resourceInventory.ore, 1);
+  assert.equal(getStorageResourceAmount('0,0', 'ore'), 1);
 });
 
 test('passive job output counts as a delivered resource event for mission objectives', () => {
@@ -257,7 +260,7 @@ test('passive job output counts as a delivered resource event for mission object
     unsubscribe();
   }
 
-  assert.deepEqual(deliveries, [{ resourceType: 'ore', amount: 2 }]);
+  assert.deepEqual(deliveries, [{ resourceType: 'ore', amount: 1 }]);
 });
 
 test('production skips the whole cycle when output storage is full', () => {
@@ -266,7 +269,7 @@ test('production skips the whole cycle when output storage is full', () => {
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
   ]);
   loadPopulation(1, 1, 0);
-  depositResourceToStorage('0,0', 'stone', 239);
+  depositResourceToStorage('0,0', 'stone', 238);
   depositResourceToStorage('0,0', 'grain', 1);
   jobSystem.init();
 
@@ -276,4 +279,58 @@ test('production skips the whole cycle when output storage is full', () => {
   assert.equal(resourceInventory.food, 0);
   assert.equal(resourceInventory.grain, 1);
   assert.equal(getWorkforceSnapshot().sites[0]?.status, 'storage_full');
+});
+
+test('manually paused job sites free their workers', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', jobSiteEnabled: false }),
+  ]);
+  loadPopulation(1, 1, 0);
+  jobSystem.init();
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.assignedWorkers, 0);
+  assert.equal(snapshot.idleWorkers, 1);
+  assert.equal(snapshot.sites[0]?.status, 'paused');
+});
+
+test('workers are freed from sites that cannot unload their output', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
+  ]);
+  loadPopulation(1, 1, 0);
+  depositResourceToStorage('0,0', 'stone', 238);
+  depositResourceToStorage('0,0', 'grain', 1);
+  jobSystem.init();
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.assignedWorkers, 0);
+  assert.equal(snapshot.idleWorkers, 1);
+  assert.equal(snapshot.sites[0]?.status, 'storage_full');
+});
+
+test('mines share a finite reserve across the whole mountain cluster', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,-1', q: 1, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
+  ]);
+  loadPopulation(2, 2, 0);
+  jobSystem.init();
+
+  tickAt(1_000);
+  for (let cycle = 1; cycle <= 5; cycle++) {
+    tickAt(1_000 + (cycle * 60_000));
+  }
+
+  assert.equal(resourceInventory.ore, 20);
+  assert.equal(getStorageResourceAmount('0,0', 'ore'), 20);
+
+  tickAt(362_000);
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(resourceInventory.ore, 20);
+  assert.ok(snapshot.sites.every((site) => site.status === 'depleted'));
 });

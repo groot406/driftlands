@@ -4,11 +4,13 @@ import {isPaused} from '../store/uiStore';
 import {isKeyboardBlocked} from './windowManager';
 import { axialDistance } from '../shared/game/hex';
 import {isHitStopActive} from './gameFeel';
+import { DEFAULT_RENDER_CONFIG } from './render/RenderConfig';
+import { HexProjection } from './render/math/HexProjection';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
-export const HEX_SIZE = 34;
-export const HEX_SPACE = 2;
+export const HEX_SIZE = DEFAULT_RENDER_CONFIG.hexSize;
+export const HEX_SPACE = DEFAULT_RENDER_CONFIG.hexSpace;
 export const MOVE_SPEED = 50;                   // axial units per second base
 
 // Interaction constants
@@ -17,9 +19,8 @@ const VELOCITY_SAMPLE_WINDOW_MS = 120;        // window for throw velocity sampl
 const FRICTION = 8;                             // exponential friction factor
 const MAX_THROW_SPEED = 100;                  // axial units per second cap
 
-const SQRT3 = Math.sqrt(3);
-export const HEX_X_FACTOR = (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3; // simplified reused factor
-export const HEX_Y_FACTOR = HEX_SIZE * 3 / 2;
+export const HEX_X_FACTOR = DEFAULT_RENDER_CONFIG.hexXFactor;
+export const HEX_Y_FACTOR = DEFAULT_RENDER_CONFIG.hexYFactor;
 
 export interface CameraState {
     q: number;
@@ -79,24 +80,11 @@ export interface CameraShakeOptions {
 const activeCameraShakes: ActiveCameraShake[] = [];
 
 export function axialToPixel(q: number, r: number) {
-    const x = HEX_X_FACTOR * (q + r / 2);
-    const y = HEX_Y_FACTOR * r;
-    return {x, y};
+    return HexProjection.axialToWorld(q, r, DEFAULT_RENDER_CONFIG);
 }
 
 export function pixelToAxial(x: number, y: number) {
-    const r = y / HEX_Y_FACTOR;
-    const q = (x / HEX_X_FACTOR) - r / 2;
-    // Axial rounding via cube conversion
-    const s = -q - r;
-    let rq = Math.round(q);
-    let rr = Math.round(r);
-    let rs = Math.round(s);
-    const dq = Math.abs(rq - q);
-    const dr = Math.abs(rr - r);
-    const ds = Math.abs(rs - s);
-    if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs; // else s adjusts implicitly
-    return {q: rq, r: rr};
+    return HexProjection.worldToAxial(x, y, DEFAULT_RENDER_CONFIG);
 }
 
 // Hex distance between two axial coordinates

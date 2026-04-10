@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex} from '../core/world';
 import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
@@ -303,9 +303,7 @@ function isInspectableJobSiteTile(tile: Tile) {
 function openJobSiteDetailFromTile(tile: Tile) {
   showTownCenterPanel.value = true;
   openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
-  nextTick(() => {
-    townCenterPanel.value?.openStandaloneJobSiteDetail(tile.id);
-  });
+  townCenterPanel.value?.openStandaloneJobSiteDetail(tile.id);
 }
 
 function handleClick(e: PointerEvent) {

@@ -14,6 +14,7 @@ import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
 import type { TaskDefinition, TaskInstance, TaskType } from '../../core/types/Task';
 import type { TileUpdatedMessage } from '../protocol.ts';
 import { broadcastGameMessage as broadcast } from '../game/runtime';
+import { getMineOrePerCycle } from './mine.ts';
 
 export interface BuildingDefinition {
     key: string;
@@ -114,6 +115,48 @@ function resolveDockVariant(tile: Tile, preferredSide?: TileSide) {
     }
 
     return 'water_dock_a';
+}
+
+function findNeighborSideByCoords(tile: Tile, q: number, r: number): TileSide | null {
+    const neighbors = tile.neighbors;
+    if (!neighbors) return null;
+
+    for (const side of SIDE_NAMES) {
+        const neighbor = neighbors[side];
+        if (neighbor && neighbor.q === q && neighbor.r === r) {
+            return side;
+        }
+    }
+
+    return null;
+}
+
+function resolveDockApproachSide(tile: Tile, hero: Hero): TileSide | null {
+    const currentSide = findNeighborSideByCoords(tile, hero.q, hero.r);
+    if (currentSide) {
+        return currentSide;
+    }
+
+    const movement = hero.movement;
+    if (!movement) {
+        return null;
+    }
+
+    const path = movement.path;
+    const destination = path.length > 0 ? path[path.length - 1] : movement.target;
+    if (destination) {
+        const destinationSide = findNeighborSideByCoords(tile, destination.q, destination.r);
+        if (destinationSide) {
+            return destinationSide;
+        }
+    }
+
+    const previousCoord = path.length >= 2 ? path[path.length - 2] : movement.origin;
+    if (!previousCoord) {
+        return null;
+    }
+
+    return findNeighborSideByCoords(tile, previousCoord.q, previousCoord.r);
 }
 
 function countActiveConnectedTiles(tile: Tile, terrain: Tile['terrain']) {
@@ -410,21 +453,9 @@ const buildings: BuildingDefinition[] = [
                 adjacentActiveAccess: true,
             };
 
-            const movement = starter.movement;
-            const neighbors = tile.neighbors;
-            if (!movement || !neighbors) return;
-
-            const path = movement.path;
-            const previousCoord = path && path.length >= 2 ? path[path.length - 2] : movement.origin;
-            if (!previousCoord) return;
-
-            for (const side of SIDE_NAMES) {
-                const neighbor = neighbors[side];
-                if (neighbor && neighbor.q === previousCoord.q && neighbor.r === previousCoord.r) {
-                    instance.context = instance.context || {};
-                    instance.context.approachSide = side;
-                    return;
-                }
+            const approachSide = resolveDockApproachSide(tile, starter);
+            if (approachSide) {
+                instance.context.approachSide = approachSide;
             }
         },
         onComplete(tile, instance) {
@@ -600,8 +631,12 @@ const buildings: BuildingDefinition[] = [
         variantKeys: ['mountains_with_mine'],
         jobSlots: 1,
         cycleMs: 60_000,
-        produces: [{ type: 'ore', amount: 2 }],
         jobLabel: 'Miner',
+        getJobResources(tile, assignedWorkers) {
+            return {
+                produces: [{ type: 'ore', amount: getMineOrePerCycle(tile, assignedWorkers) }],
+            };
+        },
         canPlace(tile, _hero) {
             return tile.terrain === 'mountain' && tile.isBaseTile;
         },

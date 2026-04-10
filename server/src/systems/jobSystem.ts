@@ -4,6 +4,7 @@ import {
     resolveBuildingJobResources,
     type BuildingDefinition,
 } from '../../../src/shared/buildings/registry';
+import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
@@ -27,6 +28,7 @@ import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { tileIndex } from '../../../src/shared/game/world';
 import type { ResourceDepositMessage, ResourceWithdrawMessage } from '../../../src/shared/protocol';
+import { extractMineOre, getExtractableMineOre, getMineClusterReserve } from '../state/mineReserveState';
 
 interface RuntimeSiteState {
     nextCycleMs: number;
@@ -39,6 +41,8 @@ interface ResolvedJobSite {
     slots: number;
     assignedWorkers: number;
 }
+
+type SiteOperationalBlock = Extract<JobSiteStatus, 'missing_input' | 'storage_full' | 'depleted'>;
 
 const siteRuntime = new Map<string, RuntimeSiteState>();
 
@@ -98,7 +102,13 @@ function assignWorkersEvenly(sites: ResolvedJobSite[], availableWorkers: number)
     let remainingWorkers = availableWorkers;
 
     while (remainingWorkers > 0) {
-        const candidates = assignableSites.filter((site) => site.assignedWorkers < site.slots);
+        const candidates = assignableSites.filter((site) => {
+            if (site.assignedWorkers >= site.slots) {
+                return false;
+            }
+
+            return canAssignWorkersToSite(site, site.assignedWorkers + 1);
+        });
         if (!candidates.length) {
             break;
         }
@@ -118,8 +128,32 @@ function assignWorkersEvenly(sites: ResolvedJobSite[], availableWorkers: number)
     }
 }
 
-function resolveJobResources(site: ResolvedJobSite) {
-    return resolveBuildingJobResources(site.building, site.tile, site.assignedWorkers);
+function capSiteOutputs(site: ResolvedJobSite, outputs: ResourceAmount[]) {
+    if (site.building.key !== 'mine') {
+        return outputs;
+    }
+
+    return outputs
+        .map((resource) => {
+            if (resource.type !== 'ore') {
+                return resource;
+            }
+
+            return {
+                ...resource,
+                amount: getExtractableMineOre(site.tile, resource.amount),
+            };
+        })
+        .filter((resource) => resource.amount > 0);
+}
+
+function resolveJobResources(site: ResolvedJobSite, assignedWorkers: number = site.assignedWorkers) {
+    const resolved = resolveBuildingJobResources(site.building, site.tile, assignedWorkers);
+
+    return {
+        consumes: resolved.consumes,
+        produces: capSiteOutputs(site, resolved.produces),
+    };
 }
 
 function hasMissingInputs(resources: ResourceAmount[]) {
@@ -160,22 +194,57 @@ function hasStorageCapacity(tile: Tile, inputs: ResourceAmount[], outputs: Resou
     return planNearestStorageDeposits(tile.q, tile.r, outputs, freedCapacityByTileId).remaining.length === 0;
 }
 
-function resolveSiteStatus(site: ResolvedJobSite): JobSiteStatus {
-    if (!isOnlineJobSite(site.tile)) {
-        return 'offline';
+function getSiteOperationalBlock(site: ResolvedJobSite, assignedWorkers: number): SiteOperationalBlock | null {
+    if (assignedWorkers <= 0) {
+        return null;
     }
 
-    if (site.assignedWorkers <= 0) {
-        return 'unstaffed';
+    if (site.building.key === 'mine' && getMineClusterReserve(site.tile).totalRemaining <= 0) {
+        return 'depleted';
     }
 
-    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site);
+    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
     if (hasMissingInputs(scaledInputs)) {
         return 'missing_input';
     }
 
     if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
         return 'storage_full';
+    }
+
+    return null;
+}
+
+function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: number) {
+    if (!isOnlineJobSite(site.tile) || !isJobSiteEnabled(site.tile)) {
+        return false;
+    }
+
+    const blocked = getSiteOperationalBlock(site, assignedWorkers);
+    return blocked !== 'storage_full' && blocked !== 'depleted';
+}
+
+function resolveSiteStatus(site: ResolvedJobSite): JobSiteStatus {
+    if (!isOnlineJobSite(site.tile)) {
+        return 'offline';
+    }
+
+    if (!isJobSiteEnabled(site.tile)) {
+        return 'paused';
+    }
+
+    if (site.assignedWorkers <= 0) {
+        const previewBlock = getSiteOperationalBlock(site, Math.min(1, site.slots));
+        if (previewBlock === 'storage_full' || previewBlock === 'depleted') {
+            return previewBlock;
+        }
+
+        return 'unstaffed';
+    }
+
+    const operationalBlock = getSiteOperationalBlock(site, site.assignedWorkers);
+    if (operationalBlock) {
+        return operationalBlock;
     }
 
     return 'staffed';
@@ -245,13 +314,15 @@ function broadcastInputWithdrawals(resources: ResourceAmount[]) {
 function broadcastOutputDeposits(tile: Tile, outputs: ResourceAmount[]) {
     const plan = planNearestStorageDeposits(tile.q, tile.r, outputs);
     if (plan.remaining.length > 0) {
-        return false;
+        return null;
     }
+
+    const depositedOutputs: ResourceAmount[] = [];
 
     for (const transfer of plan.transfers) {
         const depositedAmount = depositResourceToStorage(transfer.storageTileId, transfer.resourceType, transfer.amount);
         if (depositedAmount <= 0) {
-            return false;
+            return null;
         }
 
         broadcast({
@@ -270,23 +341,34 @@ function broadcastOutputDeposits(tile: Tile, outputs: ResourceAmount[]) {
             resourceType: transfer.resourceType,
             amount: depositedAmount,
         });
+
+        depositedOutputs.push({
+            type: transfer.resourceType,
+            amount: depositedAmount,
+        });
     }
 
-    return true;
+    return depositedOutputs;
 }
 
 function attemptSiteCycle(site: ResolvedJobSite) {
+    if (getSiteOperationalBlock(site, site.assignedWorkers)) {
+        return;
+    }
+
     const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site);
-    if (hasMissingInputs(scaledInputs)) {
-        return;
-    }
-
-    if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
-        return;
-    }
-
     broadcastInputWithdrawals(scaledInputs);
-    broadcastOutputDeposits(site.tile, scaledOutputs);
+    const depositedOutputs = broadcastOutputDeposits(site.tile, scaledOutputs);
+    if (!depositedOutputs) {
+        return;
+    }
+
+    if (site.building.key === 'mine') {
+        const depositedOre = depositedOutputs.reduce((sum, resource) => {
+            return resource.type === 'ore' ? sum + resource.amount : sum;
+        }, 0);
+        extractMineOre(site.tile, depositedOre);
+    }
 }
 
 function pruneRuntimeState(siteIds: Set<string>) {
@@ -301,6 +383,20 @@ function recomputeSnapshot() {
     const sites = listResolvedJobSites();
     assignWorkersEvenly(sites, getAvailableWorkers());
     return createSnapshot(sites, getAvailableWorkers());
+}
+
+export function resetJobSiteRuntime(tileId: string) {
+    siteRuntime.delete(tileId);
+}
+
+export function refreshWorkforceState() {
+    const previousSnapshot = getWorkforceSnapshot();
+    const nextSnapshot = recomputeSnapshot();
+    setWorkforceSnapshot(nextSnapshot);
+
+    if (!snapshotsEqual(previousSnapshot, nextSnapshot)) {
+        broadcastWorkforceState();
+    }
 }
 
 export const jobSystem = {

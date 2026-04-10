@@ -14,12 +14,14 @@ import type { StorageSnapshot } from '../../src/shared/game/storage';
 import type { PopulationSnapshot } from '../../src/store/populationStore';
 import type { WorkforceSnapshot } from '../../src/store/jobStore';
 import { runState } from "./state/runState";
-import { frontierFindState } from "./state/frontierFindState";
+import { resetMineReserveState } from './state/mineReserveState';
 import { setStoryProgressionForMission } from '../../src/shared/story/progressionState';
 import { tickEngine } from './tick';
 
 const STARTING_FOOD = 12;
 const MAX_UINT32 = 0xffffffff;
+const DEFAULT_WORLD_DISCOVER_RADIUS = 1;
+const MAX_WORLD_DISCOVER_RADIUS = 200;
 
 function normalizeSeed(seed: number | null | undefined) {
   if (typeof seed !== 'number' || !Number.isFinite(seed)) {
@@ -43,6 +45,14 @@ function createRandomSeed() {
   return Math.floor(Math.random() * (MAX_UINT32 + 1));
 }
 
+function normalizeWorldRadius(radius: number | null | undefined) {
+  if (typeof radius !== 'number' || !Number.isFinite(radius)) {
+    return DEFAULT_WORLD_DISCOVER_RADIUS;
+  }
+
+  return Math.min(MAX_WORLD_DISCOVER_RADIUS, Math.max(DEFAULT_WORLD_DISCOVER_RADIUS, Math.trunc(radius)));
+}
+
 function serializeTile(tile: Tile): Tile {
   return {
     id: tile.id,
@@ -60,6 +70,7 @@ function serializeTile(tile: Tile): Tile {
     controlledBySettlementId: tile.controlledBySettlementId ?? null,
     activationState: tile.activationState ?? null,
     supportBand: tile.supportBand ?? null,
+    jobSiteEnabled: tile.jobSiteEnabled ?? null,
   };
 }
 
@@ -116,19 +127,20 @@ function serializeTask(task: TaskInstance): TaskInstance {
 class WorldState {
   private activeSeed = 123456789;
 
-  init(seed?: number | null): Promise<void> {
+  init(seed?: number | null, radius?: number | null): Promise<void> {
     const resolvedSeed = normalizeSeed(seed) ?? resolveConfiguredSeed() ?? createRandomSeed();
+    const worldRadius = normalizeWorldRadius(radius);
     this.activeSeed = resolvedSeed;
-    frontierFindState.reset();
     resetResourceState();
     resetWorkforceState();
     resetPopulationState();
     resetSettlementSupportState();
+    resetMineReserveState();
     loadTasks([]);
     loadHeroes([]);
     setStoryProgressionForMission(1);
     tickEngine.setSeed(resolvedSeed);
-    startWorldGeneration(1, resolvedSeed);
+    startWorldGeneration(worldRadius, resolvedSeed);
     initializePopulation();
     depositResourceToStorage('0,0', 'food', STARTING_FOOD);
     const population = getPopulationState();

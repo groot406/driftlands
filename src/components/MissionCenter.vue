@@ -1,11 +1,11 @@
 <template>
-  <Transition name="mission-centre">
+  <Transition name="smooth-modal" appear>
     <div
       v-if="isOpen && run"
-      class="fixed inset-0 z-50 overflow-y-auto bg-black/55 p-2 text-white backdrop-blur-sm sm:p-4"
+      class="smooth-modal-backdrop fixed inset-0 z-50 overflow-y-auto bg-black/55 p-2 text-white backdrop-blur-sm sm:p-4"
       @click.self="closeMissionCenter"
     >
-      <section class="mx-auto flex h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/94 shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-[min(94vw,72rem)]">
+      <section class="smooth-modal-surface mx-auto flex h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-700/80 bg-slate-900/94 shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-[min(94vw,72rem)]">
         <header class="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/96 px-4 py-4 backdrop-blur-sm sm:px-6 sm:py-5">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
@@ -475,15 +475,3 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
-
-<style scoped>
-.mission-centre-enter-active,
-.mission-centre-leave-active {
-  transition: opacity 0.22s ease;
-}
-
-.mission-centre-enter-from,
-.mission-centre-leave-to {
-  opacity: 0;
-}
-</style>

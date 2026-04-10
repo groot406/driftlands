@@ -54,6 +54,8 @@ export function sendMessage(message: ClientMessage): void {
 initializeClientHandlers();
 
 socket.on('connect', () => {
+  initializeClientHandlers();
+
   const playerId = socket.id ?? `player-${Date.now()}`;
   const playerName = getStoredPlayerName();
 

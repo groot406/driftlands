@@ -31,4 +31,5 @@ export interface Tile {
     controlledBySettlementId?: string | null;
     activationState?: TileActivationState | null;
     supportBand?: TileSupportBand | null;
+    jobSiteEnabled?: boolean | null;
 }
