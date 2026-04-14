@@ -1,144 +1,192 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createStoryProgression, getAvailableStoryTaskKeys, getNewlyUnlockedStoryDescriptors } from './progression.ts';
+import {
+  createEmptyProgressionMetrics,
+  evaluateProgression,
+  getAvailableStoryTaskKeys,
+  getNewlyUnlockedStoryDescriptors,
+  type ProgressionMetrics,
+} from './progression.ts';
 
-test('mission 1 starts with basic exploration heroes, tasks, and terrains', () => {
-  const progression = createStoryProgression(1);
+function metrics(overrides: Partial<ProgressionMetrics> = {}): ProgressionMetrics {
+  return {
+    ...createEmptyProgressionMetrics(),
+    discoveredTerrains: overrides.discoveredTerrains ?? [],
+    resourceStock: overrides.resourceStock ?? {},
+    buildingCounts: overrides.buildingCounts ?? {},
+    operationalBuildingCounts: overrides.operationalBuildingCounts ?? {},
+    population: overrides.population ?? 0,
+    beds: overrides.beds ?? 0,
+    frontierDistance: overrides.frontierDistance ?? 0,
+    unlockedHeroIds: overrides.unlockedHeroIds ?? [],
+  };
+}
 
-  assert.deepEqual(progression.heroes.available, ['h1', 'h2']);
-  assert.deepEqual(progression.heroes.newlyUnlocked, []);
-  assert.deepEqual(progression.buildings.available, ['campfire']);
-  assert.deepEqual(progression.terrains.available, ['plains', 'forest', 'dirt', 'water']);
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('explore'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('chopWood'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('hunt'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('campfireRations'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('buildCampfire'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('buildRoad'));
-  assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildDock'));
-  assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildHouse'));
-  assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildMine'));
+test('landfall starts unlocked with the first crew, shelter, and frontier basics', () => {
+  const progression = evaluateProgression(metrics());
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.deepEqual(progression.unlockedNodeKeys, ['landfall']);
+  assert.deepEqual(progression.unlocked.heroes, ['h1', 'h2']);
+  assert.ok(progression.unlocked.buildings.includes('campfire'));
+  assert.ok(progression.unlocked.buildings.includes('house'));
+  assert.deepEqual(progression.unlocked.terrains, ['plains', 'forest', 'dirt', 'water']);
+  assert.ok(taskKeys.includes('explore'));
+  assert.ok(taskKeys.includes('buildHouse'));
+  assert.ok(taskKeys.includes('dig'));
+  assert.ok(!taskKeys.includes('buildDock'));
 });
 
-test('mission 2 unlocks dock, house, and shore logistics', () => {
-  const progression = createStoryProgression(2);
+test('shoreline and farming unlock from discovered water, housing, and population growth', () => {
+  const landfall = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest'],
+    frontierDistance: 2,
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+    },
+  }), landfall.unlockedNodeKeys);
+
   const taskKeys = getAvailableStoryTaskKeys(progression);
   const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
 
+  assert.ok(progression.unlockedNodeKeys.includes('shoreline'));
+  assert.ok(progression.unlockedNodeKeys.includes('farming'));
   assert.ok(taskKeys.includes('buildDock'));
-  assert.ok(taskKeys.includes('buildHouse'));
-  assert.ok(taskKeys.includes('fishAtDock'));
-  assert.ok(taskKeys.includes('harvestWaterLilies'));
-  assert.ok(taskKeys.includes('placeWaterLilies'));
-  assert.ok(taskKeys.includes('buildBridge'));
-  assert.ok(taskKeys.includes('plantTrees'));
-  assert.ok(progression.buildings.available.includes('dock'));
-  assert.ok(progression.buildings.available.includes('house'));
-  assert.ok(progression.terrains.available.includes('water'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'dock'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'house'));
-});
-
-test('mission 3 unlocks farming tasks and grain terrain', () => {
-  const progression = createStoryProgression(3);
-  const taskKeys = getAvailableStoryTaskKeys(progression);
-
   assert.ok(taskKeys.includes('tillLand'));
   assert.ok(taskKeys.includes('seedGrain'));
-  assert.ok(taskKeys.includes('harvestGrain'));
-  assert.ok(progression.terrains.available.includes('grain'));
+  assert.ok(newUnlocks.some((unlock) => unlock.kind === 'building' && unlock.key === 'dock'));
 });
 
-test('mission 4 unlocks third hero, well, and irrigation', () => {
-  const progression = createStoryProgression(4);
-  const taskKeys = getAvailableStoryTaskKeys(progression);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
+test('food economy chain unlocks irrigation, stores, and baking from real colony metrics', () => {
+  const base = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest', 'dirt', 'grain'],
+    frontierDistance: 4,
+    population: 3,
+    beds: 4,
+    resourceStock: {
+      grain: 10,
+      stone: 2,
+    },
+    buildingCounts: {
+      house: 1,
+      granary: 1,
+    },
+    operationalBuildingCounts: {
+      granary: 1,
+    },
+  }), base.unlockedNodeKeys);
 
-  assert.ok(progression.heroes.available.includes('h3'));
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.ok(progression.unlockedNodeKeys.includes('irrigation'));
+  assert.ok(progression.unlockedNodeKeys.includes('stores'));
+  assert.ok(progression.unlockedNodeKeys.includes('baking'));
+  assert.ok(progression.unlocked.heroes.includes('h3'));
+  assert.ok(progression.unlocked.buildings.includes('well'));
+  assert.ok(progression.unlocked.buildings.includes('granary'));
+  assert.ok(progression.unlocked.buildings.includes('bakery'));
   assert.ok(taskKeys.includes('buildWell'));
-  assert.ok(taskKeys.includes('irregateDirtTask'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'hero' && u.key === 'h3'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'well'));
-});
-
-test('mission 5 unlocks watchtower, granary, and bakery', () => {
-  const progression = createStoryProgression(5);
-  const taskKeys = getAvailableStoryTaskKeys(progression);
-
-  assert.ok(taskKeys.includes('buildWatchtower'));
-  assert.ok(taskKeys.includes('buildGranary'));
   assert.ok(taskKeys.includes('buildBakery'));
-  assert.ok(taskKeys.includes('buildDock'));
-  assert.ok(progression.buildings.available.includes('watchtower'));
-  assert.ok(progression.buildings.available.includes('granary'));
-  assert.ok(progression.buildings.available.includes('bakery'));
 });
 
-test('mission 6 unlocks mine and mountain terrain', () => {
-  const progression = createStoryProgression(6);
-  const taskKeys = getAvailableStoryTaskKeys(progression);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
+test('frontier and logistics milestones unlock mining, depots, and the fourth hero', () => {
+  const previous = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest', 'mountain'],
+    frontierDistance: 6,
+    population: 4,
+    beds: 4,
+    buildingCounts: {
+      house: 1,
+      watchtower: 1,
+      supplyDepot: 1,
+    },
+  }), previous.unlockedNodeKeys);
 
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.ok(progression.unlockedNodeKeys.includes('security'));
+  assert.ok(progression.unlockedNodeKeys.includes('mountain_frontier'));
+  assert.ok(progression.unlockedNodeKeys.includes('logistics'));
+  assert.ok(progression.unlockedNodeKeys.includes('timber_industry'));
+  assert.ok(progression.unlocked.heroes.includes('h4'));
+  assert.ok(progression.unlocked.buildings.includes('watchtower'));
+  assert.ok(progression.unlocked.buildings.includes('mine'));
+  assert.ok(progression.unlocked.buildings.includes('supplyDepot'));
+  assert.ok(progression.unlocked.buildings.includes('lumberCamp'));
   assert.ok(taskKeys.includes('buildMine'));
-  assert.ok(!taskKeys.includes('mineOre'));
-  assert.ok(progression.buildings.available.includes('mine'));
-  assert.ok(progression.terrains.available.includes('mountain'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'mine'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'terrain' && u.key === 'mountain'));
-});
-
-test('mission 7 unlocks fourth hero, supply depot, and lumber camp', () => {
-  const progression = createStoryProgression(7);
-  const taskKeys = getAvailableStoryTaskKeys(progression);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
-
-  assert.ok(progression.heroes.available.includes('h4'));
   assert.ok(taskKeys.includes('buildSupplyDepot'));
-  assert.ok(taskKeys.includes('buildLumberCamp'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'hero' && u.key === 'h4'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'supplyDepot'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'lumberCamp'));
 });
 
-test('mission 8 unlocks harsh terrains without new buildings or tasks', () => {
-  const progression = createStoryProgression(8);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
+test('masonry, expansion, and deep frontier unlock upgrades and late terrain bands', () => {
+  const previous = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest', 'mountain', 'snow', 'dessert'],
+    frontierDistance: 10,
+    population: 7,
+    beds: 8,
+    resourceStock: {
+      stone: 8,
+      ore: 12,
+    },
+    buildingCounts: {
+      house: 2,
+      watchtower: 1,
+      supplyDepot: 1,
+      townCenter: 1,
+    },
+  }), previous.unlockedNodeKeys);
 
-  assert.ok(progression.terrains.available.includes('snow'));
-  assert.ok(progression.terrains.available.includes('dessert'));
-  assert.equal(progression.buildings.newlyUnlocked.length, 0);
-  assert.equal(progression.tasks.newlyUnlocked.length, 0);
-  assert.ok(newUnlocks.some((u) => u.kind === 'terrain' && u.key === 'snow'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'terrain' && u.key === 'dessert'));
-});
-
-test('mission 9 unlocks town center', () => {
-  const progression = createStoryProgression(9);
   const taskKeys = getAvailableStoryTaskKeys(progression);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
 
-  assert.ok(taskKeys.includes('buildTownCenter'));
-  assert.ok(progression.buildings.available.includes('townCenter'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'building' && u.key === 'townCenter'));
+  assert.ok(progression.unlockedNodeKeys.includes('masonry'));
+  assert.ok(progression.unlockedNodeKeys.includes('harsh_frontier'));
+  assert.ok(progression.unlockedNodeKeys.includes('expansion'));
+  assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
+  assert.ok(progression.unlocked.upgrades.includes('stone_house_upgrade'));
+  assert.ok(progression.unlocked.upgrades.includes('warehouse_upgrade'));
+  assert.ok(progression.unlocked.upgrades.includes('sawmill_upgrade'));
+  assert.ok(progression.unlocked.upgrades.includes('reinforced_mine_upgrade'));
+  assert.ok(progression.unlocked.terrains.includes('snow'));
+  assert.ok(progression.unlocked.terrains.includes('dessert'));
+  assert.ok(progression.unlocked.terrains.includes('vulcano'));
+  assert.ok(taskKeys.includes('upgradeHouseToStone'));
+  assert.ok(taskKeys.includes('upgradeMineToReinforced'));
 });
 
-test('mission 10 unlocks volcano terrain as the final frontier', () => {
-  const progression = createStoryProgression(10);
-  const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
+test('previously unlocked milestones stay unlocked after metrics dip on reload', () => {
+  const richProgression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest', 'mountain'],
+    frontierDistance: 6,
+    population: 4,
+    beds: 4,
+    resourceStock: {
+      grain: 10,
+      stone: 8,
+    },
+    buildingCounts: {
+      house: 1,
+      watchtower: 1,
+      granary: 1,
+      supplyDepot: 1,
+    },
+    operationalBuildingCounts: {
+      granary: 1,
+    },
+  }));
 
-  assert.ok(progression.terrains.available.includes('vulcano'));
-  assert.ok(newUnlocks.some((u) => u.kind === 'terrain' && u.key === 'vulcano'));
-  // Everything should be available by mission 10
-  assert.deepEqual(progression.heroes.available, ['h1', 'h2', 'h3', 'h4']);
-});
+  const reloaded = evaluateProgression(metrics({
+    discoveredTerrains: ['water'],
+    frontierDistance: 2,
+    population: 1,
+    beds: 2,
+  }), richProgression.unlockedNodeKeys);
 
-test('missions beyond 10 have the full roster with no new unlocks', () => {
-  const progression = createStoryProgression(15);
-
-  assert.deepEqual(progression.heroes.available, ['h1', 'h2', 'h3', 'h4']);
-  assert.deepEqual(progression.heroes.newlyUnlocked, []);
-  assert.deepEqual(progression.buildings.newlyUnlocked, []);
-  assert.deepEqual(progression.tasks.newlyUnlocked, []);
-  assert.deepEqual(progression.terrains.newlyUnlocked, []);
+  assert.deepEqual(reloaded.unlockedNodeKeys, richProgression.unlockedNodeKeys);
+  assert.deepEqual(reloaded.recentlyUnlockedNodeKeys, []);
 });

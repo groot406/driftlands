@@ -1,7 +1,11 @@
 import type { ResourceType } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
 import type { ObjectiveBlueprint, ObjectiveReward, RunBlueprint, RunMutatorKey } from './types.ts';
-import { createStoryProgression, getAvailableStoryTaskKeys, type StoryProgressionSnapshot } from '../story/progression.ts';
+import {
+  createInitialProgressionSnapshot,
+  getAvailableStoryTaskKeys,
+  type ProgressionSnapshot,
+} from '../story/progression.ts';
 import { createStoryBeat } from '../story/storyMode.ts';
 
 export interface RunGenerationMetrics {
@@ -165,22 +169,22 @@ function taskObjective(
   };
 }
 
-function hasUnlockedTask(progression: StoryProgressionSnapshot, taskKey: TaskType) {
+function hasUnlockedTask(progression: ProgressionSnapshot, taskKey: TaskType) {
   return getAvailableStoryTaskKeys(progression).includes(taskKey);
 }
 
-function canDeliverFood(progression: StoryProgressionSnapshot) {
+function canDeliverFood(progression: ProgressionSnapshot) {
   return (
     hasUnlockedTask(progression, 'buildBakery')
     || hasUnlockedTask(progression, 'buildDock')
   );
 }
 
-function canDeliverOre(progression: StoryProgressionSnapshot) {
+function canDeliverOre(progression: ProgressionSnapshot) {
   return hasUnlockedTask(progression, 'buildMine');
 }
 
-function getAvailableMutators(progression: StoryProgressionSnapshot): RunMutatorKey[] {
+function getAvailableMutators(progression: ProgressionSnapshot): RunMutatorKey[] {
   const mutators: RunMutatorKey[] = ['open_frontier', 'timber_rush'];
 
   if (canDeliverFood(progression) && hasUnlockedTask(progression, 'buildGranary')) {
@@ -202,7 +206,7 @@ function getAvailableMutators(progression: StoryProgressionSnapshot): RunMutator
   return mutators;
 }
 
-function createScoutingTaskObjective(progression: StoryProgressionSnapshot, missionScale: number) {
+function createScoutingTaskObjective(progression: ProgressionSnapshot, missionScale: number) {
   if (hasUnlockedTask(progression, 'buildWatchtower')) {
     return taskObjective(
       'signal-post',
@@ -226,7 +230,7 @@ function createScoutingTaskObjective(progression: StoryProgressionSnapshot, miss
   );
 }
 
-function createTimberTaskObjective(progression: StoryProgressionSnapshot) {
+function createTimberTaskObjective(progression: ProgressionSnapshot) {
   if (hasUnlockedTask(progression, 'buildLumberCamp')) {
     return taskObjective(
       'timber-yard',
@@ -250,7 +254,7 @@ function createTimberTaskObjective(progression: StoryProgressionSnapshot) {
   );
 }
 
-function createHarborOrWaterObjective(progression: StoryProgressionSnapshot, missionScale: number) {
+function createHarborOrWaterObjective(progression: ProgressionSnapshot, missionScale: number) {
   if (hasUnlockedTask(progression, 'buildDock')) {
     return taskObjective(
       'harbor',
@@ -290,7 +294,7 @@ function createHarborOrWaterObjective(progression: StoryProgressionSnapshot, mis
   return createScoutingTaskObjective(progression, missionScale);
 }
 
-function createFoodTaskObjective(progression: StoryProgressionSnapshot) {
+function createFoodTaskObjective(progression: ProgressionSnapshot) {
   if (hasUnlockedTask(progression, 'buildGranary')) {
     return taskObjective(
       'granary',
@@ -651,12 +655,13 @@ function getTutorialMutator(missionNumber: number): RunMutatorKey {
 
 function generateProceduralMission(
   rng: () => number,
-  progression: StoryProgressionSnapshot,
+  chapterNumber: number,
+  progression: ProgressionSnapshot,
   metrics: RunGenerationMetrics,
 ): { mutatorKey: RunMutatorKey; objectives: ObjectiveBlueprint[] } {
   const mutatorKeys = getAvailableMutators(progression);
   const selectedMutator = mutatorKeys[Math.floor(rng() * mutatorKeys.length)] ?? 'open_frontier';
-  const missionScale = Math.max(0, progression.missionNumber - 1);
+  const missionScale = Math.max(0, chapterNumber - 1);
   const surveyTarget = rollBetween(rng, 18, 24) + (missionScale * 25);
   const woodTarget = rollBetween(rng, 18, 28) + (missionScale * 4);
   const foodTarget = rollBetween(rng, 10, 18) + (missionScale * 3);
@@ -796,7 +801,7 @@ function generateProceduralMission(
       break;
   }
 
-  return { mutatorKey: selectedMutator, objectives: injectSupportObjectives(objectives, progression.missionNumber, metrics) };
+  return { mutatorKey: selectedMutator, objectives: injectSupportObjectives(objectives, chapterNumber, metrics) };
 }
 
 // ---------------------------------------------------------------------------
@@ -809,42 +814,41 @@ export function generateFoundingExpedition(seed: number): RunBlueprint {
     population: 1,
     activeTiles: 0,
     inactiveTiles: 0,
-  });
+  }, createInitialProgressionSnapshot());
 }
 
 export function generateFoundingExpeditionMission(
   seed: number,
-  missionNumber: number,
+  chapterNumber: number,
   metrics: RunGenerationMetrics,
+  progression: ProgressionSnapshot = createInitialProgressionSnapshot(),
 ): RunBlueprint {
-  const progression = createStoryProgression(missionNumber);
-
   let selectedMutator: RunMutatorKey;
   let objectives: ObjectiveBlueprint[];
 
-  if (missionNumber <= 10) {
+  if (chapterNumber <= 10) {
     // Hand-crafted tutorial missions
-    selectedMutator = getTutorialMutator(missionNumber);
+    selectedMutator = getTutorialMutator(chapterNumber);
     objectives = injectSupportObjectives(
-      getTutorialMissionObjectives(missionNumber, metrics.frontierDistance),
-      missionNumber,
+      getTutorialMissionObjectives(chapterNumber, metrics.frontierDistance),
+      chapterNumber,
       metrics,
     );
   } else {
     // Procedural missions using mutator system
     const rng = createSeededRandom(seed ^ 0x9e3779b9);
-    for (let i = 1; i < missionNumber; i++) {
+    for (let i = 1; i < chapterNumber; i++) {
       rng();
       rng();
       rng();
     }
-    const result = generateProceduralMission(rng, progression, metrics);
+    const result = generateProceduralMission(rng, chapterNumber, progression, metrics);
     selectedMutator = result.mutatorKey;
     objectives = result.objectives;
   }
 
-  const story = createStoryBeat(
-    missionNumber,
+  const chapter = createStoryBeat(
+    chapterNumber,
     metrics.frontierDistance,
     {
       key: selectedMutator,
@@ -861,8 +865,7 @@ export function generateFoundingExpeditionMission(
       name: MUTATORS[selectedMutator].name,
       description: MUTATORS[selectedMutator].description,
     },
-    story,
-    progression,
+    chapter,
     objectives,
   };
 }

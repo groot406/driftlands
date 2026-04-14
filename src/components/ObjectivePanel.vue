@@ -8,12 +8,12 @@
         <div class="min-w-0">
           <p class="pixel-font text-[10px] uppercase tracking-[0.2em] text-amber-300/80">{{ run.modeLabel }}</p>
           <div class="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-slate-300">
-            <span class="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-amber-100">{{ run.story.actLabel }}</span>
-            <span class="rounded-full border border-slate-700/80 bg-slate-900/70 px-2 py-1">{{ run.story.chapterLabel }}</span>
-            <span class="rounded-full border border-slate-700/80 bg-slate-900/70 px-2 py-1">Mission {{ run.missionNumber }}</span>
+            <span class="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-amber-100">{{ run.chapter.actLabel }}</span>
+            <span class="rounded-full border border-slate-700/80 bg-slate-900/70 px-2 py-1">{{ run.chapter.chapterLabel }}</span>
+            <span class="rounded-full border border-slate-700/80 bg-slate-900/70 px-2 py-1">Chapter {{ run.chapterNumber }}</span>
           </div>
-          <h2 class="mt-3 text-base font-semibold text-white">{{ run.story.title }}</h2>
-          <p class="mt-2 text-[11px] leading-relaxed text-slate-300">{{ run.story.kicker }}</p>
+          <h2 class="mt-3 text-base font-semibold text-white">{{ run.chapter.title }}</h2>
+          <p class="mt-2 text-[11px] leading-relaxed text-slate-300">{{ run.chapter.kicker }}</p>
         </div>
         <div class="shrink-0 rounded-xl border px-3 py-2 text-right" :class="statusPanelClass">
           <p class="text-[10px] uppercase tracking-[0.16em] text-slate-300">{{ statusLabel }}</p>
@@ -21,9 +21,9 @@
         </div>
       </div>
 
-      <div class="mt-3 rounded-xl border border-slate-800/90 bg-slate-900/65 px-3 py-3">
-        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Command Note</p>
-        <p class="mt-2 text-[11px] leading-relaxed text-slate-300">{{ run.story.guidance }}</p>
+        <div class="mt-3 rounded-xl border border-slate-800/90 bg-slate-900/65 px-3 py-3">
+        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Path Forward</p>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-300">{{ run.summary }}</p>
       </div>
 
       <div class="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-slate-300">
@@ -45,7 +45,7 @@
     <div class="max-h-[24rem] space-y-2 overflow-y-auto px-4 py-3">
       <article class="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-3">
         <p class="text-[10px] uppercase tracking-[0.16em] text-amber-200/80">Stakes</p>
-        <p class="mt-2 text-[11px] leading-relaxed text-slate-200">{{ run.story.stakes }}</p>
+        <p class="mt-2 text-[11px] leading-relaxed text-slate-200">{{ run.chapter.stakes }}</p>
       </article>
 
       <article

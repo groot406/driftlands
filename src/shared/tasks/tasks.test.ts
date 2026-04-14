@@ -311,8 +311,12 @@ test('deferred chop wood chaining skips young forest targets', () => {
   handleHeroArrival(hero, tileIndex['0,0']!);
 
   assert.equal(chainedTask, 'chopWood');
-  assert.equal(chainedTarget?.q, 1);
-  assert.equal(chainedTarget?.r, 0);
+  const target = chainedTarget as { q: number; r: number } | null;
+  if (!target) {
+    assert.fail('Expected chained movement target to be set.');
+  }
+  assert.equal(target.q, 1);
+  assert.equal(target.r, 0);
 });
 
 test('dismantle is available on inactive constructed tiles so blocked buildings can be cleared', () => {

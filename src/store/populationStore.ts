@@ -1,10 +1,9 @@
-import { terrainPositions } from '../core/terrainRegistry';
+import { terrainPositions, variantPositions } from '../core/terrainRegistry';
 import { tileIndex } from '../core/world';
 import { axialDistanceCoords } from '../shared/game/hex';
 import type { Tile } from '../core/types/Tile';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import {
-    countActiveHouseTiles,
     type PressureState,
     type SettlementSupportCounts,
     computeControlledTileIds,
@@ -18,7 +17,7 @@ import {
 /** Base population provided by each town center. */
 export const TC_BASE_POPULATION = 10;
 
-/** Additional population provided by each house within a town center's reach. */
+/** Additional population provided by each starter house within a town center's reach. */
 export const HOUSE_POPULATION_BONUS = 2;
 
 /** Food consumed per settler per minute. */
@@ -32,7 +31,14 @@ export const MIN_POPULATION = 1;
 
 // --- House variant keys (must match terrainDefs) ---
 
-export const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house'] as const;
+export const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'] as const;
+
+const HOUSE_BED_CAPACITY_BY_VARIANT: Record<(typeof HOUSE_VARIANT_KEYS)[number], number> = {
+    plains_house: 2,
+    dirt_house: 2,
+    plains_stone_house: 4,
+    dirt_stone_house: 4,
+};
 
 // --- State ---
 
@@ -153,7 +159,19 @@ export function isTileWithinReach(q: number, r: number): boolean {
 export function recalculatePopulationLimits(): { max: number; beds: number } {
     const tcCount = terrainPositions.towncenter.size;
     const maxPop = tcCount * TC_BASE_POPULATION;
-    const beds = countActiveHouseTiles() * HOUSE_POPULATION_BONUS;
+    const controlledTileIds = computeControlledTileIds();
+    let beds = 0;
+    for (const variantKey of HOUSE_VARIANT_KEYS) {
+        const positions = variantPositions[variantKey];
+        if (!positions) continue;
+        for (const tileId of positions) {
+            const tile = tileIndex[tileId];
+            if (!tile || !controlledTileIds.has(tile.id)) {
+                continue;
+            }
+            beds += HOUSE_BED_CAPACITY_BY_VARIANT[variantKey];
+        }
+    }
 
     state.max = maxPop;
     state.beds = beds;

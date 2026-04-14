@@ -1,9 +1,10 @@
 import type { TerrainKey } from '../../core/terrainDefs.ts';
+import type { ResourceType } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
 import type { StoryHeroId } from './heroRoster.ts';
 import { getStoryHeroTemplate } from './heroRoster.ts';
 
-export type StoryBuildingKey =
+export type BuildingKey =
   | 'campfire'
   | 'well'
   | 'watchtower'
@@ -16,54 +17,140 @@ export type StoryBuildingKey =
   | 'mine'
   | 'house';
 
-type StoryTaskKey = TaskType;
-type StoryTerrainKey = TerrainKey;
+export type UpgradeKey =
+  | 'stone_house_upgrade'
+  | 'warehouse_upgrade'
+  | 'sawmill_upgrade'
+  | 'reinforced_mine_upgrade';
 
-export interface StoryProgressionGroup<T extends string> {
-  available: T[];
-  newlyUnlocked: T[];
+export type ProgressionNodeKey =
+  | 'landfall'
+  | 'shoreline'
+  | 'farming'
+  | 'irrigation'
+  | 'stores'
+  | 'baking'
+  | 'security'
+  | 'mountain_frontier'
+  | 'logistics'
+  | 'timber_industry'
+  | 'masonry'
+  | 'harsh_frontier'
+  | 'expansion'
+  | 'deep_frontier';
+
+export type ProgressionLane =
+  | 'Settlement'
+  | 'Food'
+  | 'Logistics'
+  | 'Industry'
+  | 'Frontier'
+  | 'Upgrades';
+
+export type ProgressionUnlockKind = 'hero' | 'building' | 'task' | 'terrain' | 'upgrade';
+
+export interface ProgressionUnlockRef {
+  kind: ProgressionUnlockKind;
+  key: string;
 }
 
-export interface StoryProgressionSnapshot {
-  missionNumber: number;
-  heroes: StoryProgressionGroup<StoryHeroId>;
-  buildings: StoryProgressionGroup<StoryBuildingKey>;
-  tasks: StoryProgressionGroup<StoryTaskKey>;
-  terrains: StoryProgressionGroup<StoryTerrainKey>;
+export interface StoryHookDefinition {
+  introBeatKey?: string;
+  unlockBeatKey?: string;
+  completionBeatKey?: string;
 }
 
-export interface StoryUnlockDescriptor {
-  kind: 'hero' | 'building' | 'task' | 'terrain';
+export type RequirementDefinition =
+  | { kind: 'population_at_least'; amount: number }
+  | { kind: 'beds_at_least'; amount: number }
+  | { kind: 'frontier_distance_at_least'; amount: number }
+  | { kind: 'resource_stock_at_least'; resourceType: ResourceType; amount: number }
+  | { kind: 'building_count_at_least'; buildingKey: BuildingKey; amount: number }
+  | { kind: 'building_operational_at_least'; buildingKey: BuildingKey; amount: number }
+  | { kind: 'terrain_discovered'; terrainKey: TerrainKey };
+
+export interface RequirementProgress {
+  kind: RequirementDefinition['kind'];
+  label: string;
+  current: number;
+  target: number;
+  satisfied: boolean;
+  currentLabel: string;
+}
+
+export interface ProgressionNodeDefinition {
+  key: ProgressionNodeKey;
+  label: string;
+  category: ProgressionLane;
+  description: string;
+  requirements: RequirementDefinition[];
+  unlocks: ProgressionUnlockRef[];
+  sortOrder: number;
+  startsUnlocked?: boolean;
+  storyHooks?: StoryHookDefinition;
+}
+
+export interface ProgressionNodeSnapshot {
+  key: ProgressionNodeKey;
+  label: string;
+  category: ProgressionLane;
+  description: string;
+  unlocked: boolean;
+  recentlyUnlocked: boolean;
+  requirements: RequirementProgress[];
+  unlocks: ProgressionUnlockDescriptor[];
+}
+
+export interface ProgressionUnlockDescriptor {
+  kind: ProgressionUnlockKind;
   key: string;
   label: string;
   description: string;
 }
 
-interface StoryBuildingMeta {
-  label: string;
-  description: string;
-  taskKey: TaskType;
+export interface ProgressionUnlockedContent {
+  heroes: StoryHeroId[];
+  buildings: BuildingKey[];
+  tasks: TaskType[];
+  terrains: TerrainKey[];
+  upgrades: UpgradeKey[];
 }
 
-interface StoryTaskMeta {
-  label: string;
-  description: string;
+export interface ProgressionCategorySnapshot<T extends string> {
+  available: T[];
+  newlyUnlocked: T[];
 }
 
-interface StoryTerrainMeta {
-  label: string;
-  description: string;
+export interface ProgressionSnapshot {
+  unlockedNodeKeys: ProgressionNodeKey[];
+  recentlyUnlockedNodeKeys: ProgressionNodeKey[];
+  availableUnlocks: ProgressionUnlockDescriptor[];
+  nextRecommendedNodeKeys: ProgressionNodeKey[];
+  unlocked: ProgressionUnlockedContent;
+  heroes: ProgressionCategorySnapshot<StoryHeroId>;
+  buildings: ProgressionCategorySnapshot<BuildingKey>;
+  tasks: ProgressionCategorySnapshot<TaskType>;
+  terrains: ProgressionCategorySnapshot<TerrainKey>;
+  upgrades: ProgressionCategorySnapshot<UpgradeKey>;
+  nodes: ProgressionNodeSnapshot[];
 }
 
-interface StoryMissionUnlockStep {
-  missionNumber: number;
-  heroes?: StoryHeroId[];
-  buildings?: StoryBuildingKey[];
-  tasks?: StoryTaskKey[];
-  terrains?: StoryTerrainKey[];
+export interface ProgressionMetrics {
+  population: number;
+  beds: number;
+  frontierDistance: number;
+  resourceStock: Partial<Record<ResourceType, number>>;
+  buildingCounts: Partial<Record<BuildingKey, number>>;
+  operationalBuildingCounts: Partial<Record<BuildingKey, number>>;
+  discoveredTerrains: TerrainKey[];
+  unlockedHeroIds: StoryHeroId[];
 }
 
-const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
+export type StoryBuildingKey = BuildingKey;
+export type StoryProgressionSnapshot = ProgressionSnapshot;
+export type StoryUnlockDescriptor = ProgressionUnlockDescriptor;
+
+const BUILDING_META: Record<BuildingKey, { label: string; description: string; taskKey: TaskType }> = {
   campfire: {
     label: 'Campfire',
     description: 'Lights a temporary frontier hearth that keeps a nearby pocket of controlled land online.',
@@ -121,7 +208,7 @@ const STORY_BUILDINGS: Record<StoryBuildingKey, StoryBuildingMeta> = {
   },
 };
 
-const STORY_TASKS: Record<string, StoryTaskMeta> = {
+const TASK_META: Record<string, { label: string; description: string }> = {
   explore: {
     label: 'Explore',
     description: 'Scout the unknown and push the frontier outward.',
@@ -167,16 +254,12 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     description: 'Turn grass into rough dirt, revealing the ground beneath.',
   },
   convertToGrass: {
-    label: 'Convert to grass',
+    label: 'Convert To Grass',
     description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
-  hunt: {
-    label: 'Hunt',
-    description: 'Track forest game for a little emergency food when stores run thin.',
-  },
-  campfireRations: {
-    label: 'Cook Rations',
-    description: 'Burn spare timber at a campfire to turn it into a meager emergency meal.',
+  forage: {
+    label: 'Forage',
+    description: 'Scrounge a little food from the nearby land when the colony needs an emergency meal.',
   },
   tillLand: {
     label: 'Prepare Land',
@@ -204,7 +287,7 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
   },
 };
 
-const STORY_TERRAINS: Record<StoryTerrainKey, StoryTerrainMeta> = {
+const TERRAIN_META: Record<TerrainKey, { label: string; description: string }> = {
   towncenter: {
     label: 'Town Center',
     description: 'Settlement heartland already held by the colony.',
@@ -247,187 +330,651 @@ const STORY_TERRAINS: Record<StoryTerrainKey, StoryTerrainMeta> = {
   },
 };
 
-const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
+const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; taskKey: TaskType }> = {
+  stone_house_upgrade: {
+    label: 'Stone House',
+    description: 'Rebuilds a basic house into sturdier stone housing with more beds.',
+    taskKey: 'upgradeHouseToStone',
+  },
+  warehouse_upgrade: {
+    label: 'Warehouse',
+    description: 'Turns a frontier depot into a full-capacity warehouse.',
+    taskKey: 'upgradeDepotToWarehouse',
+  },
+  sawmill_upgrade: {
+    label: 'Sawmill',
+    description: 'Mechanizes the lumber camp and boosts timber output.',
+    taskKey: 'upgradeLumberCampToSawmill',
+  },
+  reinforced_mine_upgrade: {
+    label: 'Reinforced Mine',
+    description: 'Stabilizes the mine head and improves ore output.',
+    taskKey: 'upgradeMineToReinforced',
+  },
+};
+
+const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
   {
-    missionNumber: 1,
-    heroes: ['h1', 'h2'],
-    buildings: ['campfire'],
-    tasks: [
-      'explore',
-      'chopWood',
-      'clearRocks',
-      'breakDirtRock',
-      'buildRoad',
-      'dig',
-      'convertToGrass',
-      'hunt',
-      'campfireRations',
+    key: 'landfall',
+    label: 'Landfall',
+    category: 'Settlement',
+    description: 'Establish the first camp and basic frontier work.',
+    requirements: [],
+    startsUnlocked: true,
+    sortOrder: 10,
+    unlocks: [
+      { kind: 'hero', key: 'h1' },
+      { kind: 'hero', key: 'h2' },
+      { kind: 'building', key: 'campfire' },
+      { kind: 'building', key: 'house' },
+      { kind: 'task', key: 'explore' },
+      { kind: 'task', key: 'chopWood' },
+      { kind: 'task', key: 'clearRocks' },
+      { kind: 'task', key: 'buildRoad' },
+      { kind: 'task', key: 'dig' },
+      { kind: 'task', key: 'convertToGrass' },
+      { kind: 'task', key: 'forage' },
+      { kind: 'task', key: 'breakDirtRock' },
+      { kind: 'terrain', key: 'plains' },
+      { kind: 'terrain', key: 'forest' },
+      { kind: 'terrain', key: 'dirt' },
+      { kind: 'terrain', key: 'water' },
     ],
-    terrains: ['plains', 'forest', 'dirt', 'water'],
+    storyHooks: {
+      introBeatKey: 'landfall-intro',
+      unlockBeatKey: 'landfall-unlocked',
+    },
   },
   {
-    missionNumber: 2,
-    buildings: ['dock', 'house'],
-    tasks: [
-      'fishAtDock',
-      'harvestWaterLilies',
-      'placeWaterLilies',
-      'buildBridge',
-      'plantTrees',
-      'removeTrunks',
+    key: 'shoreline',
+    label: 'Shoreline Works',
+    category: 'Frontier',
+    description: 'Open the shoreline and begin working across shallow water.',
+    requirements: [
+      { kind: 'terrain_discovered', terrainKey: 'water' },
+      { kind: 'frontier_distance_at_least', amount: 2 },
+    ],
+    sortOrder: 20,
+    unlocks: [
+      { kind: 'building', key: 'dock' },
+      { kind: 'task', key: 'harvestWaterLilies' },
+      { kind: 'task', key: 'placeWaterLilies' },
+      { kind: 'task', key: 'buildBridge' },
+      { kind: 'task', key: 'plantTrees' },
+      { kind: 'task', key: 'removeTrunks' },
+    ],
+    storyHooks: {
+      unlockBeatKey: 'shoreline-unlocked',
+    },
+  },
+  {
+    key: 'farming',
+    label: 'Working Fields',
+    category: 'Food',
+    description: 'Turn the first houses into a farming settlement.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
+      { kind: 'population_at_least', amount: 2 },
+    ],
+    sortOrder: 30,
+    unlocks: [
+      { kind: 'task', key: 'tillLand' },
+      { kind: 'task', key: 'seedGrain' },
+      { kind: 'task', key: 'harvestGrain' },
     ],
   },
   {
-    missionNumber: 3,
-    tasks: [
-      'tillLand',
-      'seedGrain',
-      'harvestGrain',
+    key: 'irrigation',
+    label: 'Irrigation',
+    category: 'Food',
+    description: 'Carry water inland and expand the colony workforce.',
+    requirements: [
+      { kind: 'resource_stock_at_least', resourceType: 'grain', amount: 6 },
+      { kind: 'population_at_least', amount: 3 },
     ],
-    terrains: ['grain'],
-  },
-  {
-    missionNumber: 4,
-    heroes: ['h3'],
-    buildings: ['well'],
-    tasks: [
-      'irregateDirtTask',
+    sortOrder: 40,
+    unlocks: [
+      { kind: 'hero', key: 'h3' },
+      { kind: 'building', key: 'well' },
+      { kind: 'task', key: 'irregateDirtTask' },
     ],
   },
   {
-    missionNumber: 5,
-    buildings: ['watchtower', 'granary', 'bakery'],
+    key: 'stores',
+    label: 'Stores',
+    category: 'Food',
+    description: 'Secure a grain economy and preserve the harvest.',
+    requirements: [
+      { kind: 'resource_stock_at_least', resourceType: 'grain', amount: 10 },
+      { kind: 'population_at_least', amount: 3 },
+    ],
+    sortOrder: 50,
+    unlocks: [
+      { kind: 'building', key: 'granary' },
+    ],
   },
   {
-    missionNumber: 6,
-    buildings: ['mine'],
-    terrains: ['mountain'],
+    key: 'baking',
+    label: 'Baking',
+    category: 'Food',
+    description: 'Turn stored grain into dependable food.',
+    requirements: [
+      { kind: 'building_operational_at_least', buildingKey: 'granary', amount: 1 },
+      { kind: 'resource_stock_at_least', resourceType: 'stone', amount: 2 },
+      { kind: 'population_at_least', amount: 3 },
+    ],
+    sortOrder: 60,
+    unlocks: [
+      { kind: 'building', key: 'bakery' },
+    ],
   },
   {
-    missionNumber: 7,
-    heroes: ['h4'],
-    buildings: ['supplyDepot', 'lumberCamp'],
+    key: 'security',
+    label: 'Perimeter Security',
+    category: 'Settlement',
+    description: 'Raise proper lookout posts around the settlement.',
+    requirements: [
+      { kind: 'population_at_least', amount: 3 },
+      { kind: 'frontier_distance_at_least', amount: 4 },
+    ],
+    sortOrder: 70,
+    unlocks: [
+      { kind: 'building', key: 'watchtower' },
+    ],
   },
   {
-    missionNumber: 8,
-    terrains: ['snow', 'dessert'],
+    key: 'mountain_frontier',
+    label: 'Mountain Frontier',
+    category: 'Frontier',
+    description: 'Push into the ridges and begin mining.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'watchtower', amount: 1 },
+      { kind: 'frontier_distance_at_least', amount: 6 },
+    ],
+    sortOrder: 80,
+    unlocks: [
+      { kind: 'terrain', key: 'mountain' },
+      { kind: 'building', key: 'mine' },
+    ],
   },
   {
-    missionNumber: 9,
-    buildings: ['townCenter'],
+    key: 'logistics',
+    label: 'Logistics',
+    category: 'Logistics',
+    description: 'Stage supplies away from the town center and bring in more crew.',
+    requirements: [
+      { kind: 'population_at_least', amount: 4 },
+      { kind: 'frontier_distance_at_least', amount: 5 },
+    ],
+    sortOrder: 90,
+    unlocks: [
+      { kind: 'hero', key: 'h4' },
+      { kind: 'building', key: 'supplyDepot' },
+    ],
   },
   {
-    missionNumber: 10,
-    terrains: ['vulcano'],
+    key: 'timber_industry',
+    label: 'Timber Industry',
+    category: 'Industry',
+    description: 'Convert raw forests into a stable timber line.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
+      { kind: 'terrain_discovered', terrainKey: 'forest' },
+    ],
+    sortOrder: 100,
+    unlocks: [
+      { kind: 'building', key: 'lumberCamp' },
+    ],
+  },
+  {
+    key: 'masonry',
+    label: 'Masonry',
+    category: 'Upgrades',
+    description: 'Stonework unlocks more permanent housing and storage.',
+    requirements: [
+      { kind: 'resource_stock_at_least', resourceType: 'stone', amount: 8 },
+      { kind: 'population_at_least', amount: 4 },
+    ],
+    sortOrder: 110,
+    unlocks: [
+      { kind: 'upgrade', key: 'stone_house_upgrade' },
+      { kind: 'upgrade', key: 'warehouse_upgrade' },
+    ],
+  },
+  {
+    key: 'harsh_frontier',
+    label: 'Harsh Frontier',
+    category: 'Frontier',
+    description: 'Extend the colony into harsher outer bands.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
+      { kind: 'frontier_distance_at_least', amount: 8 },
+    ],
+    sortOrder: 120,
+    unlocks: [
+      { kind: 'terrain', key: 'snow' },
+      { kind: 'terrain', key: 'dessert' },
+    ],
+  },
+  {
+    key: 'expansion',
+    label: 'Expansion',
+    category: 'Settlement',
+    description: 'Establish a second settlement anchor deeper in the frontier.',
+    requirements: [
+      { kind: 'population_at_least', amount: 7 },
+      { kind: 'resource_stock_at_least', resourceType: 'ore', amount: 12 },
+      { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
+    ],
+    sortOrder: 130,
+    unlocks: [
+      { kind: 'building', key: 'townCenter' },
+    ],
+  },
+  {
+    key: 'deep_frontier',
+    label: 'Deep Frontier',
+    category: 'Upgrades',
+    description: 'Late frontier industry and extreme terrain come into view.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'townCenter', amount: 1 },
+      { kind: 'frontier_distance_at_least', amount: 10 },
+    ],
+    sortOrder: 140,
+    unlocks: [
+      { kind: 'terrain', key: 'vulcano' },
+      { kind: 'upgrade', key: 'sawmill_upgrade' },
+      { kind: 'upgrade', key: 'reinforced_mine_upgrade' },
+    ],
   },
 ] as const;
+
+const NODE_BY_KEY = new Map(NODE_DEFINITIONS.map((node) => [node.key, node]));
+const CONTENT_TO_NODE = new Map<string, ProgressionNodeKey>();
+
+for (const node of NODE_DEFINITIONS) {
+  for (const unlock of node.unlocks) {
+    CONTENT_TO_NODE.set(`${unlock.kind}:${unlock.key}`, node.key);
+  }
+}
 
 function unique<T extends string>(values: T[]) {
   return Array.from(new Set(values));
 }
 
-function cloneGroup<T extends string>(group: StoryProgressionGroup<T>): StoryProgressionGroup<T> {
+function makeUnlockKey(kind: ProgressionUnlockKind, key: string) {
+  return `${kind}:${key}`;
+}
+
+function makeProgressionUnlockDescriptor(unlock: ProgressionUnlockRef): ProgressionUnlockDescriptor {
+  switch (unlock.kind) {
+    case 'hero': {
+      const hero = getStoryHeroTemplate(unlock.key);
+      return {
+        kind: 'hero',
+        key: unlock.key,
+        label: hero?.name ?? unlock.key,
+        description: hero?.role ?? 'New hero available.',
+      };
+    }
+    case 'building': {
+      const building = BUILDING_META[unlock.key as BuildingKey];
+      return {
+        kind: 'building',
+        key: unlock.key,
+        label: building?.label ?? unlock.key,
+        description: building?.description ?? 'New building available.',
+      };
+    }
+    case 'task': {
+      const task = TASK_META[unlock.key];
+      return {
+        kind: 'task',
+        key: unlock.key,
+        label: task?.label ?? unlock.key,
+        description: task?.description ?? 'New action available.',
+      };
+    }
+    case 'terrain': {
+      const terrain = TERRAIN_META[unlock.key as TerrainKey];
+      return {
+        kind: 'terrain',
+        key: unlock.key,
+        label: terrain?.label ?? unlock.key,
+        description: terrain?.description ?? 'New frontier terrain available.',
+      };
+    }
+    case 'upgrade': {
+      const upgrade = UPGRADE_META[unlock.key as UpgradeKey];
+      return {
+        kind: 'upgrade',
+        key: unlock.key,
+        label: upgrade?.label ?? unlock.key,
+        description: upgrade?.description ?? 'New upgrade available.',
+      };
+    }
+    default:
+      return {
+        kind: unlock.kind,
+        key: unlock.key,
+        label: unlock.key,
+        description: '',
+      };
+  }
+}
+
+function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDefinition) {
+  switch (requirement.kind) {
+    case 'population_at_least':
+      return metrics.population;
+    case 'beds_at_least':
+      return metrics.beds;
+    case 'frontier_distance_at_least':
+      return metrics.frontierDistance;
+    case 'resource_stock_at_least':
+      return metrics.resourceStock[requirement.resourceType] ?? 0;
+    case 'building_count_at_least':
+      return metrics.buildingCounts[requirement.buildingKey] ?? 0;
+    case 'building_operational_at_least':
+      return metrics.operationalBuildingCounts[requirement.buildingKey] ?? 0;
+    case 'terrain_discovered':
+      return metrics.discoveredTerrains.includes(requirement.terrainKey) ? 1 : 0;
+    default:
+      return 0;
+  }
+}
+
+function getRequirementLabel(requirement: RequirementDefinition) {
+  switch (requirement.kind) {
+    case 'population_at_least':
+      return `Population ${requirement.amount}`;
+    case 'beds_at_least':
+      return `Beds ${requirement.amount}`;
+    case 'frontier_distance_at_least':
+      return `Frontier ring ${requirement.amount}`;
+    case 'resource_stock_at_least':
+      return `${requirement.resourceType} stock ${requirement.amount}`;
+    case 'building_count_at_least':
+      return `${BUILDING_META[requirement.buildingKey].label} x${requirement.amount}`;
+    case 'building_operational_at_least':
+      return `Operational ${BUILDING_META[requirement.buildingKey].label} x${requirement.amount}`;
+    case 'terrain_discovered':
+      return `Discover ${TERRAIN_META[requirement.terrainKey]?.label ?? requirement.terrainKey}`;
+    default:
+      return 'Requirement';
+  }
+}
+
+function buildRequirementProgress(metrics: ProgressionMetrics, requirement: RequirementDefinition): RequirementProgress {
+  const current = getMetricValue(metrics, requirement);
+  const target = requirement.kind === 'terrain_discovered' ? 1 : requirement.amount;
+
   return {
-    available: group.available.slice(),
-    newlyUnlocked: group.newlyUnlocked.slice(),
+    kind: requirement.kind,
+    label: getRequirementLabel(requirement),
+    current,
+    target,
+    satisfied: current >= target,
+    currentLabel: requirement.kind === 'terrain_discovered'
+      ? (current >= 1 ? 'Discovered' : 'Undiscovered')
+      : `${current}/${target}`,
   };
 }
 
-export function cloneStoryProgression(progression: StoryProgressionSnapshot): StoryProgressionSnapshot {
-  return {
-    missionNumber: progression.missionNumber,
-    heroes: cloneGroup(progression.heroes),
-    buildings: cloneGroup(progression.buildings),
-    tasks: cloneGroup(progression.tasks),
-    terrains: cloneGroup(progression.terrains),
-  };
+function nodeRequirementsSatisfied(metrics: ProgressionMetrics, node: ProgressionNodeDefinition) {
+  return node.requirements.every((requirement) => getMetricValue(metrics, requirement) >= (requirement.kind === 'terrain_discovered' ? 1 : requirement.amount));
 }
 
-export function createStoryProgression(missionNumber: number): StoryProgressionSnapshot {
-  const clampedMission = Math.max(1, missionNumber);
-  const heroes: StoryHeroId[] = [];
-  const buildings: StoryBuildingKey[] = [];
-  const tasks: StoryTaskKey[] = [];
-  const terrains: StoryTerrainKey[] = [];
-  const newUnlocks = STORY_UNLOCK_STEPS.find((step) => step.missionNumber === clampedMission);
+function flattenUnlockedDescriptors(nodeKeys: ProgressionNodeKey[]) {
+  const seen = new Set<string>();
+  const descriptors: ProgressionUnlockDescriptor[] = [];
 
-  for (const step of STORY_UNLOCK_STEPS) {
-    if (step.missionNumber > clampedMission) {
-      break;
-    }
+  for (const nodeKey of nodeKeys) {
+    const node = NODE_BY_KEY.get(nodeKey);
+    if (!node) continue;
 
-    if (step.heroes) {
-      heroes.push(...step.heroes);
-    }
-    if (step.buildings) {
-      buildings.push(...step.buildings);
-    }
-    if (step.tasks) {
-      tasks.push(...step.tasks);
-    }
-    if (step.terrains) {
-      terrains.push(...step.terrains);
+    for (const unlock of node.unlocks) {
+      const descriptor = makeProgressionUnlockDescriptor(unlock);
+      const seenKey = makeUnlockKey(descriptor.kind, descriptor.key);
+      if (seen.has(seenKey)) {
+        continue;
+      }
+
+      seen.add(seenKey);
+      descriptors.push(descriptor);
     }
   }
 
+  return descriptors;
+}
+
+function buildUnlockedContent(descriptors: ProgressionUnlockDescriptor[]): ProgressionUnlockedContent {
   return {
-    missionNumber: clampedMission,
-    heroes: {
-      available: unique(heroes),
-      newlyUnlocked: clampedMission === 1 ? [] : unique(newUnlocks?.heroes?.slice() ?? []),
-    },
-    buildings: {
-      available: unique(buildings),
-      newlyUnlocked: clampedMission === 1 ? [] : unique(newUnlocks?.buildings?.slice() ?? []),
-    },
-    tasks: {
-      available: unique(tasks),
-      newlyUnlocked: clampedMission === 1 ? [] : unique(newUnlocks?.tasks?.slice() ?? []),
-    },
-    terrains: {
-      available: unique(terrains),
-      newlyUnlocked: clampedMission === 1 ? [] : unique(newUnlocks?.terrains?.slice() ?? []),
-    },
+    heroes: unique(
+      descriptors
+        .filter((descriptor): descriptor is ProgressionUnlockDescriptor & { key: StoryHeroId } => descriptor.kind === 'hero')
+        .map((descriptor) => descriptor.key),
+    ),
+    buildings: unique(
+      descriptors
+        .filter((descriptor): descriptor is ProgressionUnlockDescriptor & { key: BuildingKey } => descriptor.kind === 'building')
+        .map((descriptor) => descriptor.key),
+    ),
+    tasks: unique(
+      descriptors
+        .filter((descriptor): descriptor is ProgressionUnlockDescriptor & { key: TaskType } => descriptor.kind === 'task')
+        .map((descriptor) => descriptor.key),
+    ),
+    terrains: unique(
+      descriptors
+        .filter((descriptor): descriptor is ProgressionUnlockDescriptor & { key: TerrainKey } => descriptor.kind === 'terrain')
+        .map((descriptor) => descriptor.key),
+    ),
+    upgrades: unique(
+      descriptors
+        .filter((descriptor): descriptor is ProgressionUnlockDescriptor & { key: UpgradeKey } => descriptor.kind === 'upgrade')
+        .map((descriptor) => descriptor.key),
+    ),
   };
 }
 
+export function createEmptyProgressionMetrics(): ProgressionMetrics {
+  return {
+    population: 0,
+    beds: 0,
+    frontierDistance: 0,
+    resourceStock: {},
+    buildingCounts: {},
+    operationalBuildingCounts: {},
+    discoveredTerrains: [],
+    unlockedHeroIds: [],
+  };
+}
+
+export function listProgressionNodeDefinitions() {
+  return NODE_DEFINITIONS.slice();
+}
+
+export function getProgressionNodeDefinition(nodeKey: ProgressionNodeKey) {
+  return NODE_BY_KEY.get(nodeKey) ?? null;
+}
+
+export function evaluateProgression(
+  metrics: ProgressionMetrics,
+  previouslyUnlockedNodeKeys: ProgressionNodeKey[] = [],
+): ProgressionSnapshot {
+  const unlocked = new Set<ProgressionNodeKey>(previouslyUnlockedNodeKeys);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const node of NODE_DEFINITIONS) {
+      if (unlocked.has(node.key)) {
+        continue;
+      }
+
+      if (node.startsUnlocked || nodeRequirementsSatisfied(metrics, node)) {
+        unlocked.add(node.key);
+        changed = true;
+      }
+    }
+  }
+
+  const unlockedNodeKeys = NODE_DEFINITIONS
+    .filter((node) => unlocked.has(node.key))
+    .map((node) => node.key);
+  const recentlyUnlockedNodeKeys = unlockedNodeKeys.filter((nodeKey) => !previouslyUnlockedNodeKeys.includes(nodeKey));
+  const availableUnlocks = flattenUnlockedDescriptors(unlockedNodeKeys);
+  const recentUnlocks = flattenUnlockedDescriptors(recentlyUnlockedNodeKeys);
+  const unlockedContent = buildUnlockedContent(availableUnlocks);
+  const newlyUnlockedContent = buildUnlockedContent(recentUnlocks);
+  const nodes = NODE_DEFINITIONS.map((node) => ({
+    key: node.key,
+    label: node.label,
+    category: node.category,
+    description: node.description,
+    unlocked: unlocked.has(node.key),
+    recentlyUnlocked: recentlyUnlockedNodeKeys.includes(node.key),
+    requirements: node.requirements.map((requirement) => buildRequirementProgress(metrics, requirement)),
+    unlocks: node.unlocks.map((unlock) => makeProgressionUnlockDescriptor(unlock)),
+  }));
+  const nextRecommendedNodeKeys = nodes
+    .filter((node) => !node.unlocked)
+    .sort((a, b) => {
+      const unmetA = a.requirements.filter((requirement) => !requirement.satisfied).length;
+      const unmetB = b.requirements.filter((requirement) => !requirement.satisfied).length;
+      if (unmetA !== unmetB) {
+        return unmetA - unmetB;
+      }
+
+      const defA = NODE_BY_KEY.get(a.key);
+      const defB = NODE_BY_KEY.get(b.key);
+      return (defA?.sortOrder ?? 0) - (defB?.sortOrder ?? 0);
+    })
+    .slice(0, 3)
+    .map((node) => node.key);
+
+  return {
+    unlockedNodeKeys,
+    recentlyUnlockedNodeKeys,
+    availableUnlocks,
+    nextRecommendedNodeKeys,
+    unlocked: unlockedContent,
+    heroes: {
+      available: unlockedContent.heroes,
+      newlyUnlocked: newlyUnlockedContent.heroes,
+    },
+    buildings: {
+      available: unlockedContent.buildings,
+      newlyUnlocked: newlyUnlockedContent.buildings,
+    },
+    tasks: {
+      available: unlockedContent.tasks,
+      newlyUnlocked: newlyUnlockedContent.tasks,
+    },
+    terrains: {
+      available: unlockedContent.terrains,
+      newlyUnlocked: newlyUnlockedContent.terrains,
+    },
+    upgrades: {
+      available: unlockedContent.upgrades,
+      newlyUnlocked: newlyUnlockedContent.upgrades,
+    },
+    nodes,
+  };
+}
+
+export function cloneStoryProgression(progression: ProgressionSnapshot): ProgressionSnapshot {
+  return {
+    unlockedNodeKeys: progression.unlockedNodeKeys.slice(),
+    recentlyUnlockedNodeKeys: progression.recentlyUnlockedNodeKeys.slice(),
+    availableUnlocks: progression.availableUnlocks.map((unlock) => ({ ...unlock })),
+    nextRecommendedNodeKeys: progression.nextRecommendedNodeKeys.slice(),
+    unlocked: {
+      heroes: progression.unlocked.heroes.slice(),
+      buildings: progression.unlocked.buildings.slice(),
+      tasks: progression.unlocked.tasks.slice(),
+      terrains: progression.unlocked.terrains.slice(),
+      upgrades: progression.unlocked.upgrades.slice(),
+    },
+    heroes: {
+      available: progression.heroes.available.slice(),
+      newlyUnlocked: progression.heroes.newlyUnlocked.slice(),
+    },
+    buildings: {
+      available: progression.buildings.available.slice(),
+      newlyUnlocked: progression.buildings.newlyUnlocked.slice(),
+    },
+    tasks: {
+      available: progression.tasks.available.slice(),
+      newlyUnlocked: progression.tasks.newlyUnlocked.slice(),
+    },
+    terrains: {
+      available: progression.terrains.available.slice(),
+      newlyUnlocked: progression.terrains.newlyUnlocked.slice(),
+    },
+    upgrades: {
+      available: progression.upgrades.available.slice(),
+      newlyUnlocked: progression.upgrades.newlyUnlocked.slice(),
+    },
+    nodes: progression.nodes.map((node) => ({
+      ...node,
+      requirements: node.requirements.map((requirement) => ({ ...requirement })),
+      unlocks: node.unlocks.map((unlock) => ({ ...unlock })),
+    })),
+  };
+}
+
+export function createStoryProgression(_missionNumber: number = 1): ProgressionSnapshot {
+  return evaluateProgression(createEmptyProgressionMetrics());
+}
+
+export function createInitialProgressionSnapshot() {
+  return createStoryProgression(1);
+}
+
 export function getInitialStoryHeroIds() {
-  return createStoryProgression(1).heroes.available;
+  return createInitialProgressionSnapshot().unlocked.heroes.slice();
 }
 
-export function getStoryBuildingTaskKey(buildingKey: StoryBuildingKey) {
-  return STORY_BUILDINGS[buildingKey].taskKey;
+export function getStoryBuildingTaskKey(buildingKey: BuildingKey) {
+  return BUILDING_META[buildingKey].taskKey;
 }
 
-export function getAvailableStoryTaskKeys(progression: StoryProgressionSnapshot) {
+export function getStoryUpgradeTaskKey(upgradeKey: UpgradeKey) {
+  return UPGRADE_META[upgradeKey].taskKey;
+}
+
+export function getAvailableStoryTaskKeys(progression: ProgressionSnapshot) {
   return unique([
-    ...progression.tasks.available,
-    ...progression.buildings.available.map((buildingKey) => getStoryBuildingTaskKey(buildingKey)),
+    ...progression.unlocked.tasks,
+    ...progression.unlocked.buildings.map((buildingKey) => getStoryBuildingTaskKey(buildingKey)),
+    ...progression.unlocked.upgrades.map((upgradeKey) => getStoryUpgradeTaskKey(upgradeKey)),
   ]);
 }
 
-export function isStoryTaskUnlocked(progression: StoryProgressionSnapshot, taskKey: TaskType) {
+export function isStoryTaskUnlocked(progression: ProgressionSnapshot, taskKey: TaskType) {
   return getAvailableStoryTaskKeys(progression).includes(taskKey);
 }
 
-export function isStoryTerrainUnlocked(progression: StoryProgressionSnapshot, terrainKey: TerrainKey) {
-  return terrainKey === 'towncenter' || progression.terrains.available.includes(terrainKey);
+export function isStoryTerrainUnlocked(progression: ProgressionSnapshot, terrainKey: TerrainKey) {
+  return terrainKey === 'towncenter' || progression.unlocked.terrains.includes(terrainKey);
 }
 
-export function isStoryBuildingUnlocked(progression: StoryProgressionSnapshot, buildingKey: StoryBuildingKey) {
-  return progression.buildings.available.includes(buildingKey);
+export function isStoryBuildingUnlocked(progression: ProgressionSnapshot, buildingKey: BuildingKey) {
+  return progression.unlocked.buildings.includes(buildingKey);
 }
 
-export function countNewStoryUnlocks(progression: StoryProgressionSnapshot) {
-  return (
-    progression.heroes.newlyUnlocked.length
-    + progression.buildings.newlyUnlocked.length
-    + progression.tasks.newlyUnlocked.length
-    + progression.terrains.newlyUnlocked.length
-  );
+export function isStoryUpgradeUnlocked(progression: ProgressionSnapshot, upgradeKey: UpgradeKey) {
+  return progression.unlocked.upgrades.includes(upgradeKey);
 }
 
-export function getStoryHeroDescriptor(heroId: StoryHeroId): StoryUnlockDescriptor | null {
+export function countNewStoryUnlocks(progression: ProgressionSnapshot) {
+  return progression.recentlyUnlockedNodeKeys.length;
+}
+
+export function getStoryHeroDescriptor(heroId: StoryHeroId): ProgressionUnlockDescriptor | null {
   const hero = getStoryHeroTemplate(heroId);
   if (!hero) {
     return null;
@@ -441,8 +988,8 @@ export function getStoryHeroDescriptor(heroId: StoryHeroId): StoryUnlockDescript
   };
 }
 
-export function getStoryBuildingDescriptor(buildingKey: StoryBuildingKey): StoryUnlockDescriptor {
-  const building = STORY_BUILDINGS[buildingKey];
+export function getStoryBuildingDescriptor(buildingKey: BuildingKey): ProgressionUnlockDescriptor {
+  const building = BUILDING_META[buildingKey];
   return {
     kind: 'building',
     key: buildingKey,
@@ -451,8 +998,8 @@ export function getStoryBuildingDescriptor(buildingKey: StoryBuildingKey): Story
   };
 }
 
-export function getStoryTaskDescriptor(taskKey: StoryTaskKey): StoryUnlockDescriptor | null {
-  const task = STORY_TASKS[taskKey];
+export function getStoryTaskDescriptor(taskKey: TaskType): ProgressionUnlockDescriptor | null {
+  const task = TASK_META[taskKey];
   if (!task) {
     return null;
   }
@@ -465,8 +1012,8 @@ export function getStoryTaskDescriptor(taskKey: StoryTaskKey): StoryUnlockDescri
   };
 }
 
-export function getStoryTerrainDescriptor(terrainKey: StoryTerrainKey): StoryUnlockDescriptor {
-  const terrain = STORY_TERRAINS[terrainKey];
+export function getStoryTerrainDescriptor(terrainKey: TerrainKey): ProgressionUnlockDescriptor {
+  const terrain = TERRAIN_META[terrainKey];
   return {
     kind: 'terrain',
     key: terrainKey,
@@ -475,43 +1022,61 @@ export function getStoryTerrainDescriptor(terrainKey: StoryTerrainKey): StoryUnl
   };
 }
 
-export function getNewlyUnlockedStoryDescriptors(progression: StoryProgressionSnapshot): StoryUnlockDescriptor[] {
-  const descriptors: StoryUnlockDescriptor[] = [];
+export function getStoryUpgradeDescriptor(upgradeKey: UpgradeKey): ProgressionUnlockDescriptor {
+  const upgrade = UPGRADE_META[upgradeKey];
+  return {
+    kind: 'upgrade',
+    key: upgradeKey,
+    label: upgrade.label,
+    description: upgrade.description,
+  };
+}
 
-  for (const heroId of progression.heroes.newlyUnlocked) {
-    const descriptor = getStoryHeroDescriptor(heroId);
-    if (descriptor) {
-      descriptors.push(descriptor);
+export function getNewlyUnlockedStoryDescriptors(progression: ProgressionSnapshot): ProgressionUnlockDescriptor[] {
+  const descriptors: ProgressionUnlockDescriptor[] = [];
+
+  for (const nodeKey of progression.recentlyUnlockedNodeKeys) {
+    const node = NODE_BY_KEY.get(nodeKey);
+    if (!node) {
+      continue;
     }
-  }
 
-  for (const buildingKey of progression.buildings.newlyUnlocked) {
-    descriptors.push(getStoryBuildingDescriptor(buildingKey));
-  }
-
-  for (const taskKey of progression.tasks.newlyUnlocked) {
-    const descriptor = getStoryTaskDescriptor(taskKey);
-    if (descriptor) {
-      descriptors.push(descriptor);
+    for (const unlock of node.unlocks) {
+      descriptors.push(makeProgressionUnlockDescriptor(unlock));
     }
-  }
-
-  for (const terrainKey of progression.terrains.newlyUnlocked) {
-    descriptors.push(getStoryTerrainDescriptor(terrainKey));
   }
 
   return descriptors;
 }
 
-export function getStoryProgressionCategoryDescriptors(progression: StoryProgressionSnapshot) {
+export function getStoryProgressionCategoryDescriptors(progression: ProgressionSnapshot) {
   return {
-    heroes: progression.heroes.available
+    heroes: progression.unlocked.heroes
       .map((heroId) => getStoryHeroDescriptor(heroId))
-      .filter((descriptor): descriptor is StoryUnlockDescriptor => !!descriptor),
-    buildings: progression.buildings.available.map((buildingKey) => getStoryBuildingDescriptor(buildingKey)),
-    tasks: progression.tasks.available
+      .filter((descriptor): descriptor is ProgressionUnlockDescriptor => !!descriptor),
+    buildings: progression.unlocked.buildings.map((buildingKey) => getStoryBuildingDescriptor(buildingKey)),
+    tasks: progression.unlocked.tasks
       .map((taskKey) => getStoryTaskDescriptor(taskKey))
-      .filter((descriptor): descriptor is StoryUnlockDescriptor => !!descriptor),
-    terrains: progression.terrains.available.map((terrainKey) => getStoryTerrainDescriptor(terrainKey)),
+      .filter((descriptor): descriptor is ProgressionUnlockDescriptor => !!descriptor),
+    terrains: progression.unlocked.terrains.map((terrainKey) => getStoryTerrainDescriptor(terrainKey)),
+    upgrades: progression.unlocked.upgrades.map((upgradeKey) => getStoryUpgradeDescriptor(upgradeKey)),
   };
+}
+
+export function getUnlockingNodeForContent(kind: ProgressionUnlockKind, key: string) {
+  const nodeKey = CONTENT_TO_NODE.get(makeUnlockKey(kind, key));
+  return nodeKey ? NODE_BY_KEY.get(nodeKey) ?? null : null;
+}
+
+export function getUnlockingNodeSnapshotForContent(
+  progression: ProgressionSnapshot,
+  kind: ProgressionUnlockKind,
+  key: string,
+) {
+  const nodeKey = CONTENT_TO_NODE.get(makeUnlockKey(kind, key));
+  if (!nodeKey) {
+    return null;
+  }
+
+  return progression.nodes.find((node) => node.key === nodeKey) ?? null;
 }

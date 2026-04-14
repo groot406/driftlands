@@ -1,6 +1,6 @@
 import type { ResourceType } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
-import type { StoryProgressionSnapshot } from '../story/progression.ts';
+import type { ProgressionSnapshot } from '../story/progression.ts';
 
 export type RunMode = 'story_mode';
 export type RunStatus = 'active';
@@ -36,6 +36,26 @@ export interface RunStoryBeat {
   nextHint: string;
 }
 
+export interface DialogueSpeakerSnapshot {
+  id: string;
+  name: string;
+  avatar?: string | null;
+}
+
+export interface DialogueEntrySnapshot {
+  id: string;
+  chapterNumber: number;
+  kind: 'chapter_intro' | 'chapter_complete' | 'unlock' | 'advice' | 'chapter_catchup';
+  speaker: DialogueSpeakerSnapshot;
+  text: string;
+  createdAt: number;
+}
+
+export interface DialogueLogSnapshot {
+  activeEntryId: string | null;
+  entries: DialogueEntrySnapshot[];
+}
+
 export interface ObjectiveReward {
   label: string;
   scoreBonus?: number;
@@ -58,16 +78,18 @@ export interface ObjectiveSnapshot extends ObjectiveBlueprint {
   completed: boolean;
 }
 
-export interface CompletedMissionSnapshot {
-  missionNumber: number;
+export interface CompletedChapterSnapshot {
+  chapterNumber: number;
   completedAt: number;
   score: number;
   totalScore: number;
   summary: string;
   mutator: RunMutatorSnapshot;
-  story: RunStoryBeat;
+  chapter: RunStoryBeat;
   objectives: ObjectiveSnapshot[];
 }
+
+export type CompletedMissionSnapshot = CompletedChapterSnapshot;
 
 export interface RunMutatorSnapshot {
   key: RunMutatorKey;
@@ -79,8 +101,7 @@ export interface RunBlueprint {
   mode: RunMode;
   modeLabel: string;
   mutator: RunMutatorSnapshot;
-  story: RunStoryBeat;
-  progression: StoryProgressionSnapshot;
+  chapter: RunStoryBeat;
   objectives: ObjectiveBlueprint[];
 }
 
@@ -88,21 +109,23 @@ export interface RunSnapshot {
   mode: RunMode;
   modeLabel: string;
   seed: number;
-  missionNumber: number;
-  missionsCompleted: number;
+  chapterNumber: number;
+  chaptersCompleted: number;
   status: RunStatus;
   startedAt: number;
   endedAt?: number;
   score: number;
-  missionScore: number;
+  chapterScore: number;
   discoveredTiles: number;
   activeTiles: number;
   inactiveTiles: number;
   restoredTiles: number;
   summary: string;
   mutator: RunMutatorSnapshot;
-  story: RunStoryBeat;
-  progression: StoryProgressionSnapshot;
+  chapter: RunStoryBeat;
+  progression: ProgressionSnapshot;
   objectives: ObjectiveSnapshot[];
-  lastCompletedMission?: CompletedMissionSnapshot;
+  dialogue: DialogueLogSnapshot;
+  chapterArchive: CompletedChapterSnapshot[];
+  lastCompletedChapter?: CompletedChapterSnapshot;
 }

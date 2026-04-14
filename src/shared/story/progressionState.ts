@@ -2,35 +2,42 @@ import type { TerrainKey } from '../../core/terrainDefs.ts';
 import type { TaskType } from '../../core/types/Task.ts';
 import {
   cloneStoryProgression,
-  createStoryProgression,
+  createInitialProgressionSnapshot,
   getAvailableStoryTaskKeys,
   getInitialStoryHeroIds,
   isStoryTaskUnlocked as isStoryTaskUnlockedForProgression,
   isStoryTerrainUnlocked as isStoryTerrainUnlockedForProgression,
-  type StoryProgressionSnapshot,
+  isStoryUpgradeUnlocked as isStoryUpgradeUnlockedForProgression,
+  type ProgressionSnapshot,
+  type UpgradeKey,
 } from './progression.ts';
 
-let activeStoryProgression = createStoryProgression(1);
+let activeStoryProgression = createInitialProgressionSnapshot();
 
 export function getStoryProgressionState() {
   return cloneStoryProgression(activeStoryProgression);
 }
 
-export function loadStoryProgression(progression: StoryProgressionSnapshot | null | undefined) {
+export function loadStoryProgression(progression: ProgressionSnapshot | null | undefined) {
   activeStoryProgression = progression
     ? cloneStoryProgression(progression)
-    : createStoryProgression(1);
+    : createInitialProgressionSnapshot();
 
   return getStoryProgressionState();
 }
 
-export function setStoryProgressionForMission(missionNumber: number) {
-  activeStoryProgression = createStoryProgression(missionNumber);
+export function resetStoryProgression() {
+  activeStoryProgression = createInitialProgressionSnapshot();
   return getStoryProgressionState();
+}
+
+// Backward-compatible alias while older callers are migrated.
+export function setStoryProgressionForMission(_missionNumber: number) {
+  return resetStoryProgression();
 }
 
 export function getUnlockedStoryHeroIds() {
-  return activeStoryProgression.heroes.available.slice();
+  return activeStoryProgression.unlocked.heroes.slice();
 }
 
 export function getInitialUnlockedStoryHeroIds() {
@@ -47,4 +54,8 @@ export function isStoryTaskUnlocked(taskKey: TaskType) {
 
 export function isStoryTerrainUnlocked(terrainKey: TerrainKey) {
   return isStoryTerrainUnlockedForProgression(activeStoryProgression, terrainKey);
+}
+
+export function isStoryUpgradeUnlocked(upgradeKey: UpgradeKey) {
+  return isStoryUpgradeUnlockedForProgression(activeStoryProgression, upgradeKey);
 }

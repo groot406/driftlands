@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { generateFoundingExpeditionMission, type RunGenerationMetrics } from './generator.ts';
+import { createEmptyProgressionMetrics, evaluateProgression, type ProgressionSnapshot } from '../story/progression.ts';
 
 function metrics(frontierDistance: number, overrides: Partial<RunGenerationMetrics> = {}): RunGenerationMetrics {
   return {
@@ -12,19 +13,55 @@ function metrics(frontierDistance: number, overrides: Partial<RunGenerationMetri
   };
 }
 
-function collectMutators(missionNumber: number, currentFrontierDistance: number, seedCount: number = 256) {
+function lateProgression(): ProgressionSnapshot {
+  return evaluateProgression({
+    ...createEmptyProgressionMetrics(),
+    frontierDistance: 10,
+    population: 7,
+    beds: 8,
+    discoveredTerrains: ['water', 'forest', 'mountain', 'snow', 'dessert'],
+    resourceStock: {
+      grain: 10,
+      stone: 8,
+      ore: 12,
+    },
+    buildingCounts: {
+      house: 2,
+      watchtower: 1,
+      granary: 1,
+      supplyDepot: 1,
+      townCenter: 1,
+    },
+    operationalBuildingCounts: {
+      granary: 1,
+    },
+  });
+}
+
+function collectMutators(
+  missionNumber: number,
+  currentFrontierDistance: number,
+  progression?: ProgressionSnapshot,
+  seedCount: number = 256,
+) {
   const seen = new Set<string>();
 
   for (let seed = 1; seed <= seedCount; seed++) {
-    seen.add(generateFoundingExpeditionMission(seed, missionNumber, metrics(currentFrontierDistance)).mutator.key);
+    seen.add(generateFoundingExpeditionMission(seed, missionNumber, metrics(currentFrontierDistance), progression).mutator.key);
   }
 
   return seen;
 }
 
-function findMissionByMutator(mutatorKey: string, missionNumber: number, currentFrontierDistance: number, seedCount: number = 512) {
+function findMissionByMutator(
+  mutatorKey: string,
+  missionNumber: number,
+  currentFrontierDistance: number,
+  progression?: ProgressionSnapshot,
+  seedCount: number = 512,
+) {
   for (let seed = 1; seed <= seedCount; seed++) {
-    const blueprint = generateFoundingExpeditionMission(seed, missionNumber, metrics(currentFrontierDistance));
+    const blueprint = generateFoundingExpeditionMission(seed, missionNumber, metrics(currentFrontierDistance), progression);
     if (blueprint.mutator.key === mutatorKey) {
       return blueprint;
     }
@@ -117,13 +154,13 @@ test('tutorial missions have 3-4 objectives each', () => {
 // --- Procedural missions (11+) use mutator-based generation ---
 
 test('procedural mission 11 can roll roadworks charters', () => {
-  const seen = collectMutators(11, 12);
+  const seen = collectMutators(11, 12, lateProgression());
 
   assert.ok(seen.has('roadworks_drive'));
 });
 
 test('procedural mission 11 can roll new-hearth charters with town-center and road objectives', () => {
-  const blueprint = findMissionByMutator('new_hearths', 11, 12);
+  const blueprint = findMissionByMutator('new_hearths', 11, 12, lateProgression());
 
   assert.ok(blueprint);
   assert.equal(blueprint?.mutator.key, 'new_hearths');
@@ -132,7 +169,7 @@ test('procedural mission 11 can roll new-hearth charters with town-center and ro
 });
 
 test('procedural roadworks charters require both roads and a supply depot', () => {
-  const blueprint = findMissionByMutator('roadworks_drive', 11, 12);
+  const blueprint = findMissionByMutator('roadworks_drive', 11, 12, lateProgression());
 
   assert.ok(blueprint);
   assert.equal(blueprint?.mutator.key, 'roadworks_drive');

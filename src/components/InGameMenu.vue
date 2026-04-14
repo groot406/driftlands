@@ -23,8 +23,8 @@
                   <span class="menu-action-copy">Return straight to the frontier with no extra menus in the way.</span>
                 </button>
                 <button class="menu-action" @click="openMissionCenterFromMenu">
-                  <span class="menu-action-title">Mission Centre</span>
-                  <span class="menu-action-copy">Review objectives, campaign pressure, and the current frontier charter.</span>
+                  <span class="menu-action-title">Chronicle</span>
+                  <span class="menu-action-copy">Review chapter guidance, roadmap milestones, and the colony archive.</span>
                 </button>
                 <button class="menu-action" @click="openNotificationCenterFromMenu">
                   <span class="menu-action-title">Notification Log</span>

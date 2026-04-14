@@ -12,6 +12,9 @@ const BLOCKED_DIRT_VARIANTS = new Set([
   'dirt_well',
   'dirt_watchtower',
   'dirt_depot',
+  'dirt_warehouse',
+  'dirt_house',
+  'dirt_stone_house',
 ]);
 
 const convertToGrassTask: TaskDefinition = {

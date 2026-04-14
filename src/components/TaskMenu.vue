@@ -4,12 +4,12 @@
       <div ref="panelEl" class="task-panel pointer-events-auto">
         <div class="task-header">
           <div class="task-header-copy">
-            <p class="task-kicker pixel-font">{{ buildingTasks.length ? 'Frontier Orders' : 'Field Actions' }}</p>
+            <p class="task-kicker pixel-font">{{ constructionTasks.length ? 'Frontier Orders' : 'Field Actions' }}</p>
             <h3 class="task-hero-title">{{ previewTask?.label ?? 'Choose an order' }}</h3>
             <p class="task-header-summary">
               {{
                 previewTask
-                  ? getBuildingMeta(previewTask)?.summary
+                  ? getConstructionSummary(previewTask)
                   : 'Choose what your hero should do on this tile.'
               }}
             </p>
@@ -22,21 +22,22 @@
           </button>
         </div>
 
-        <div v-if="buildingTasks.length" class="task-section task-section-build">
+        <div v-if="constructionTasks.length" class="task-section task-section-build">
           <div class="task-section-row">
             <div class="task-section-title">Construction</div>
             <div class="task-section-caption">
-              {{ buildingTasks.length }} {{ buildingTasks.length === 1 ? 'option' : 'options' }}
+              {{ constructionTasks.length }} {{ constructionTasks.length === 1 ? 'option' : 'options' }}
             </div>
           </div>
           <transition-group name="fade-task" tag="div" class="task-build-grid">
             <button
-              v-for="t in buildingTasks"
+              v-for="t in constructionTasks"
               :key="t.key"
               class="task-choice"
               :class="{
                 'task-choice-active': previewTask?.key === t.key,
-                'task-choice-blocked': taskHasMissingCosts(t),
+                'task-choice-blocked': taskHasMissingCosts(t) || !isPopulationMet(t),
+                'task-choice-locked': isTaskLocked(t),
               }"
               @click="selectTask(t)"
               @mouseover="hoverTask(t)"
@@ -49,7 +50,7 @@
               <span class="task-choice-title">{{ t.label }}</span>
               <span
                 class="task-choice-state"
-                :class="taskHasMissingCosts(t) ? 'task-choice-state-blocked' : 'task-choice-state-ready'"
+                :class="isTaskLocked(t) || taskHasMissingCosts(t) || !isPopulationMet(t) ? 'task-choice-state-blocked' : 'task-choice-state-ready'"
               >
                 {{ getBuildStateLabel(t) }}
               </span>
@@ -59,17 +60,20 @@
           <div
             v-if="previewTask"
             class="task-detail"
-            :class="{ 'task-detail-blocked': taskHasMissingCosts(previewTask) }"
+            :class="{ 'task-detail-blocked': isTaskLocked(previewTask) || taskHasMissingCosts(previewTask) || !isPopulationMet(previewTask) }"
           >
             <div class="task-detail-top">
-              <span class="task-badge">{{ getBuildingMeta(previewTask)?.categoryLabel }}</span>
+              <span class="task-badge">{{ getBuildCategoryLabel(previewTask) }}</span>
               <span
                 class="task-detail-state"
-                :class="taskHasMissingCosts(previewTask) ? 'task-detail-state-blocked' : 'task-detail-state-ready'"
+                :class="isTaskLocked(previewTask) || taskHasMissingCosts(previewTask) || !isPopulationMet(previewTask) ? 'task-detail-state-blocked' : 'task-detail-state-ready'"
               >
                 {{ getBuildStateLabel(previewTask) }}
               </span>
             </div>
+            <p v-if="getTaskLockHint(previewTask)" class="task-lock-hint">
+              {{ getTaskLockHint(previewTask) }}
+            </p>
             <div class="task-costs">
               <span
                 v-for="resource in getBuildingCosts(previewTask)"
@@ -102,6 +106,7 @@
               v-for="t in actionTasks"
               :key="t.key"
               class="task-action-pill"
+              :class="{ 'task-action-pill-locked': isTaskLocked(t) }"
               @click="selectTask(t)"
               @mouseover="hoverTask(t)"
               @mouseleave="unHoverTask(t)"
@@ -110,6 +115,7 @@
               :title="t.label"
             >
               <span class="task-action-label">{{ t.label }}</span>
+              <span v-if="isTaskLocked(t)" class="task-action-state">Locked</span>
             </button>
           </transition-group>
         </div>
@@ -130,6 +136,7 @@ import { getSelectedHero } from '../store/uiStore';
 import type { TaskDefinition } from '../core/types/Task.ts';
 import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
 import { getBuildingDefinitionByTaskKey } from '../shared/buildings/registry';
+import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
 import { resourceInventory } from '../store/resourceStore';
 import { populationState } from '../store/clientPopulationStore';
 import { currentPlayerId } from '../core/socket';
@@ -140,6 +147,11 @@ import {
   findNearestTaskAccessTile,
   getTaskAccessMode,
 } from '../shared/tasks/taskAccess';
+import { listTaskDefinitions } from '../shared/tasks/taskRegistry';
+import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
+import { getTaskUnlockStatus } from '../shared/tasks/taskUnlocks.ts';
+import { canStartTaskWhileCarrying } from '../store/taskStore.ts';
+import { isTileWalkable } from '../shared/game/navigation';
 
 interface Props {
   tile: Tile | null;
@@ -172,17 +184,56 @@ const resourceLabels: Record<ResourceType, string> = {
   water_lily: 'Water Lilies',
 };
 
-const sortedTasks = computed(() => props.availableTasks ?? []);
+const sortedTasks = computed(() => {
+  const tile = props.tile;
+  const hero = getSelectedHero();
+
+  if (!tile || !hero) {
+    return props.availableTasks ?? [];
+  }
+
+  const availableByKey = new Map((props.availableTasks ?? []).map((task) => [task.key, task]));
+  const tasks = listTaskDefinitions().filter((task) =>
+    canStartTaskDefinition(task, tile, hero)
+    && canStartTaskWhileCarrying(hero, task, tile),
+  ).map((task) => availableByKey.get(task.key) ?? task);
+
+  if (tasks.length > 0 && isTileWalkable(tile) && !tasks.some((task) => task.key === 'walk')) {
+    const walkTask = availableByKey.get('walk');
+    if (walkTask) {
+      tasks.push(walkTask);
+    }
+  }
+
+  return tasks.sort((a, b) => {
+    if (a.key === 'walk') return 1;
+    if (b.key === 'walk') return -1;
+
+    const aBuilding = getBuildingMeta(a) ?? getUpgradeMeta(a);
+    const bBuilding = getBuildingMeta(b) ?? getUpgradeMeta(b);
+
+    if (aBuilding && bBuilding) {
+      return aBuilding.sortOrder - bBuilding.sortOrder || a.label.localeCompare(b.label);
+    }
+
+    if (aBuilding) return -1;
+    if (bBuilding) return 1;
+
+    return a.label.localeCompare(b.label);
+  });
+});
 const buildingTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task)));
-const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task)));
+const upgradeTasks = computed(() => sortedTasks.value.filter((task) => !!getUpgradeMeta(task)));
+const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
+const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
 const previewTask = computed(() => {
   const hovered = hoveredTask.value;
 
-  if (hovered && buildingTasks.value.some((task) => task.key === hovered.key)) {
+  if (hovered && constructionTasks.value.some((task) => task.key === hovered.key)) {
     return hovered;
   }
 
-  return buildingTasks.value[0] ?? null;
+  return constructionTasks.value[0] ?? null;
 });
 const previewTaskHint = computed(() => {
   const task = previewTask.value;
@@ -269,8 +320,30 @@ function getBuildingMeta(def: TaskDefinition) {
   return getBuildingDefinitionByTaskKey(def.key);
 }
 
+function getUpgradeMeta(def: TaskDefinition) {
+  return getUpgradeDefinitionByTaskKey(def.key);
+}
+
+function getConstructionSummary(def: TaskDefinition) {
+  const building = getBuildingMeta(def);
+  if (building) {
+    return building.summary;
+  }
+
+  return getUpgradeMeta(def)?.summary ?? 'Choose what your hero should do on this tile.';
+}
+
+function getBuildCategoryLabel(def: TaskDefinition) {
+  const building = getBuildingMeta(def);
+  if (building) {
+    return building.categoryLabel;
+  }
+
+  return getUpgradeMeta(def) ? 'Upgrade' : 'Construction';
+}
+
 function getBuildingCosts(def: TaskDefinition): ResourceAmount[] {
-  if (!props.tile || !getBuildingMeta(def)) return [];
+  if (!props.tile || (!getBuildingMeta(def) && !getUpgradeMeta(def))) return [];
   return def.requiredResources?.(getTaskEconomyDistance()) ?? [];
 }
 
@@ -297,6 +370,16 @@ function isPopulationMet(def: TaskDefinition): boolean {
 }
 
 function getBuildStateLabel(def: TaskDefinition) {
+  const unlockStatus = getTaskUnlockStatus(def.key);
+  if (!unlockStatus.unlocked) {
+    return unlockStatus.lockingNode ? `Locked by ${unlockStatus.lockingNode.label}` : 'Locked';
+  }
+
+  if (!isPopulationMet(def)) {
+    const requirement = getPopulationRequirement(def);
+    return requirement ? `Need ${requirement} settlers` : 'Need settlers';
+  }
+
   const costs = getBuildingCosts(def);
   const missing = costs.filter(isCostMissing);
 
@@ -313,6 +396,24 @@ function getBuildStateLabel(def: TaskDefinition) {
   return `Need ${missing.length} resources`;
 }
 
+function isTaskLocked(def: TaskDefinition) {
+  return !getTaskUnlockStatus(def.key).unlocked;
+}
+
+function getTaskLockHint(def: TaskDefinition) {
+  const unlockStatus = getTaskUnlockStatus(def.key);
+  if (unlockStatus.unlocked || !unlockStatus.lockingNode) {
+    return null;
+  }
+
+  const unmetRequirement = unlockStatus.lockingNode.requirements.find((requirement) => !requirement.satisfied);
+  if (!unmetRequirement) {
+    return `${unlockStatus.lockingNode.label} has not been reached yet.`;
+  }
+
+  return `${unlockStatus.lockingNode.label}: ${unmetRequirement.label} (${unmetRequirement.currentLabel}).`;
+}
+
 function resourceLabel(type: ResourceType) {
   return resourceLabels[type] ?? type;
 }
@@ -323,6 +424,7 @@ function close() {
 
 function selectTask(def: TaskDefinition) {
   if (!props.tile) return;
+  if (isTaskLocked(def)) return;
   const hero = getSelectedHero();
   if (!hero) return;
   const accessMode = getTaskAccessMode(def.key, props.tile);
@@ -723,6 +825,13 @@ onUnmounted(() => {
     linear-gradient(135deg, rgba(239, 68, 68, 0.08), transparent 60%);
 }
 
+.task-choice-locked {
+  border-color: rgba(251, 191, 36, 0.18);
+  background:
+    linear-gradient(180deg, rgba(52, 35, 18, 0.6), rgba(15, 23, 42, 0.86)),
+    linear-gradient(135deg, rgba(245, 158, 11, 0.08), transparent 60%);
+}
+
 .task-choice-kicker {
   display: block;
   font-size: 8px;
@@ -810,6 +919,12 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+.task-lock-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(253, 230, 138, 0.9);
+}
+
 .task-cost-chip {
   display: flex;
   align-items: center;
@@ -834,6 +949,7 @@ onUnmounted(() => {
 .task-action-pill {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -843,6 +959,13 @@ onUnmounted(() => {
   color: #e2e8f0;
   cursor: pointer;
   transition: transform .15s, border-color .15s, background .15s;
+}
+
+.task-action-pill-locked {
+  border-color: rgba(245, 195, 92, 0.16);
+  background:
+    linear-gradient(180deg, rgba(52, 35, 18, 0.62), rgba(15, 23, 42, 0.88)),
+    linear-gradient(135deg, rgba(245, 158, 11, 0.08), transparent 60%);
 }
 
 .task-action-pill:hover {
@@ -856,6 +979,13 @@ onUnmounted(() => {
 .task-action-label {
   font-size: 13px;
   font-weight: 600;
+}
+
+.task-action-state {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(253, 230, 138, 0.92);
 }
 
 .fade-task-enter-active,

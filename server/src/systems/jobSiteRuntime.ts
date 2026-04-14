@@ -3,6 +3,7 @@ import {
     resolveBuildingJobResources,
     type BuildingDefinition,
 } from '../../../src/shared/buildings/registry';
+import { getBuildingOutputMultiplier } from '../../../src/shared/buildings/state.ts';
 import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
@@ -91,10 +92,14 @@ function capSiteOutputs(site: ResolvedJobSite, outputs: ResourceAmount[]) {
 
 export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: number = 1) {
     const resolved = resolveBuildingJobResources(site.building, site.tile, assignedWorkers);
+    const outputMultiplier = getBuildingOutputMultiplier(site.tile);
 
     return {
         consumes: resolved.consumes,
-        produces: capSiteOutputs(site, resolved.produces),
+        produces: capSiteOutputs(site, resolved.produces.map((resource) => ({
+            ...resource,
+            amount: Math.max(0, Math.round(resource.amount * outputMultiplier * 100) / 100),
+        }))),
     };
 }
 

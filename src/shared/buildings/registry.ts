@@ -374,7 +374,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskLabel: 'Build Supply Depot',
         sortOrder: 20,
         requiredPopulation: 3,
-        variantKeys: ['plains_depot', 'dirt_depot'],
+        variantKeys: ['plains_depot', 'dirt_depot', 'plains_warehouse', 'dirt_warehouse'],
         renderDecoration: 'depot',
         overlayAssetKey: 'building_depot_overlay',
         providesWarehouse: true,
@@ -476,7 +476,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskLabel: 'Build Lumber Camp',
         sortOrder: 30,
         requiredPopulation: 3,
-        variantKeys: ['forest_lumber_camp'],
+        variantKeys: ['forest_lumber_camp', 'forest_sawmill'],
         renderDecoration: 'lumberCamp',
         overlayAssetKey: 'building_lumber_camp_overlay',
         jobSlots: 1,
@@ -591,7 +591,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildHouse',
         buildTaskLabel: 'Build House',
         sortOrder: 37,
-        variantKeys: ['plains_house', 'dirt_house'],
+        variantKeys: ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'],
         maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -605,7 +605,6 @@ const buildings: BuildingDefinition[] = [
         requiredResources(_distance: number) {
             return [
                 { type: 'wood', amount: 4 },
-                { type: 'stone', amount: 2 },
             ];
         },
         onComplete(tile) {
@@ -627,7 +626,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskLabel: 'Build Mine',
         sortOrder: 40,
         requiredPopulation: 5,
-        variantKeys: ['mountains_with_mine'],
+        variantKeys: ['mountains_with_mine', 'mountains_reinforced_mine'],
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Miner',

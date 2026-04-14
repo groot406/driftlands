@@ -10,7 +10,9 @@ const BLOCKED_VARIANTS = new Set([
   'plains_well',
   'plains_watchtower',
   'plains_depot',
+  'plains_warehouse',
   'plains_house',
+  'plains_stone_house',
 ]);
 
 const digTask: TaskDefinition = {

@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import type { Hero } from '../core/types/Hero.ts';
 import { getWorldGenerationSeed, setWorldGenerationSeed } from '../core/worldVariation.ts';
 import type {
-  CompletedMissionSnapshot,
+  DialogueLogSnapshot,
   ObjectiveSnapshot,
   RunMutatorSnapshot,
   RunSnapshot,
   RunStoryBeat,
 } from '../shared/goals/types.ts';
-import { createStoryProgression } from '../shared/story/progression.ts';
+import { createInitialProgressionSnapshot } from '../shared/story/progression.ts';
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
 import { heroes, loadHeroes } from './heroStore.ts';
 import { loadRunState, missionOverlay, runLoaded, runSnapshot, runVersion } from './runStore.ts';
@@ -38,7 +38,7 @@ function cloneHero(hero: Hero): Hero {
   };
 }
 
-function createStoryBeat(): RunStoryBeat {
+function createChapter(): RunStoryBeat {
   return {
     chapterId: 'chapter-1',
     chapterLabel: 'Chapter 1',
@@ -77,26 +77,48 @@ function createObjective(id: string): ObjectiveSnapshot {
   };
 }
 
+function createDialogue(): DialogueLogSnapshot {
+  return {
+    activeEntryId: 'entry-1',
+    entries: [
+      {
+        id: 'entry-1',
+        chapterNumber: 1,
+        kind: 'chapter_intro',
+        speaker: {
+          id: 'advisor',
+          name: 'Chronicle',
+          avatar: null,
+        },
+        text: 'Set up camp and map the first safe ground.',
+        createdAt: 1,
+      },
+    ],
+  };
+}
+
 function createRun(seed: number): RunSnapshot {
   return {
     mode: 'story_mode',
     modeLabel: 'Story Mode',
     seed,
-    missionNumber: 1,
-    missionsCompleted: 0,
+    chapterNumber: 1,
+    chaptersCompleted: 0,
     status: 'active',
     startedAt: 1,
     score: 0,
-    missionScore: 0,
+    chapterScore: 0,
     discoveredTiles: 1,
     activeTiles: 1,
     inactiveTiles: 0,
     restoredTiles: 0,
     summary: 'Found the first camp.',
     mutator: createMutator(),
-    story: createStoryBeat(),
-    progression: createStoryProgression(1),
+    chapter: createChapter(),
+    progression: createInitialProgressionSnapshot(),
     objectives: [createObjective('objective-1')],
+    dialogue: createDialogue(),
+    chapterArchive: [],
   };
 }
 
@@ -116,10 +138,11 @@ test('loadRunState syncs world generation seed to the active run seed', () => {
 
     assert.equal(getWorldGenerationSeed(), run.seed >>> 0);
     assert.equal(runSnapshot.value?.seed, run.seed);
+    assert.equal(runSnapshot.value?.chapterNumber, 1);
   } finally {
     setWorldGenerationSeed(originalSeed);
     loadHeroes(originalHeroes);
-    missionOverlay.value = originalMissionOverlay as { type: 'completed'; mission: CompletedMissionSnapshot; nextRun: RunSnapshot | null } | null;
+    missionOverlay.value = originalMissionOverlay;
     runVersion.value = originalRunVersion;
 
     if (originalRun) {

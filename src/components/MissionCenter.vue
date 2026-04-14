@@ -2,370 +2,330 @@
   <Transition name="smooth-modal" appear>
     <div
       v-if="isOpen && run"
-      class="smooth-modal-backdrop mission-log-backdrop fixed inset-0 z-50 overflow-y-auto p-2 text-white backdrop-blur-sm sm:p-4"
+      class="chronicle-backdrop fixed inset-0 z-50 overflow-y-auto p-3 text-white backdrop-blur-sm sm:p-5"
       @click.self="closeMissionCenter"
     >
-      <section class="smooth-modal-surface mission-log-shell mx-auto flex h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-[min(94vw,72rem)]">
-        <div class="mission-log-shell__glow mission-log-shell__glow--amber" />
-        <div class="mission-log-shell__glow mission-log-shell__glow--moss" />
-        <div class="mission-log-shell__grain" />
-
-        <header class="mission-log-header sticky top-0 z-10 border-b px-4 py-4 backdrop-blur-xl sm:px-6 sm:py-5">
-          <div class="flex items-start justify-between gap-4">
+      <section class="chronicle-shell mx-auto flex min-h-[calc(100dvh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border sm:min-h-0 sm:max-h-[calc(100dvh-3rem)]">
+        <header class="chronicle-header border-b px-4 py-4 sm:px-6 sm:py-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="min-w-0">
-              <p class="pixel-font text-[10px] uppercase tracking-[0.24em] text-amber-200/90">{{ run.modeLabel }}</p>
-              <div class="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] sm:mt-3">
-                <span class="mission-log-chip mission-log-chip--amber px-2.5 py-1 sm:px-3">{{ run.story.actLabel }}</span>
-                <span class="mission-log-chip px-2.5 py-1 sm:px-3">{{ run.story.chapterLabel }}</span>
+              <p class="pixel-font text-[10px] uppercase tracking-[0.24em] text-amber-200/90">Chronicle</p>
+              <div class="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-slate-200/80">
+                <span class="chronicle-chip chronicle-chip--warm">{{ run.chapter.actLabel }}</span>
+                <span class="chronicle-chip">{{ run.chapter.chapterLabel }}</span>
+                <span class="chronicle-chip">Chapter {{ run.chapterNumber }}</span>
               </div>
-              <h2 class="mission-log-title mt-3 text-lg font-semibold text-white sm:text-2xl">Mission {{ run.missionNumber }} · {{ run.story.title }}</h2>
-              <p class="mt-2 max-w-2xl text-xs leading-relaxed text-slate-200/80 sm:text-sm">{{ run.story.kicker }}</p>
+              <h2 class="mt-3 text-xl font-semibold text-white sm:text-3xl">{{ run.chapter.title }}</h2>
+              <p class="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">{{ run.chapter.kicker }}</p>
             </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="chronicle-stat">
+                <p class="chronicle-stat__label">Primary</p>
+                <p class="chronicle-stat__value">{{ completedRequired }}/{{ totalRequired || 0 }}</p>
+              </div>
+              <div class="chronicle-stat">
+                <p class="chronicle-stat__label">Score</p>
+                <p class="chronicle-stat__value">{{ run.score }}</p>
+              </div>
+              <div class="chronicle-stat">
+                <p class="chronicle-stat__label">Chapter</p>
+                <p class="chronicle-stat__value">{{ run.chapterScore }}</p>
+              </div>
+              <button class="chronicle-close" @click="closeMissionCenter">Close</button>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <div class="chronicle-panel">
+              <p class="chronicle-panel__label">Mutator</p>
+              <p class="chronicle-panel__value">{{ run.mutator.name }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ run.mutator.description }}</p>
+            </div>
+            <div class="chronicle-panel">
+              <p class="chronicle-panel__label">Active / Owned</p>
+              <p class="chronicle-panel__value">{{ activeOwnedLabel }}</p>
+              <p class="mt-1 text-xs text-slate-400">Support {{ supportCapacity }}</p>
+            </div>
+            <div class="chronicle-panel">
+              <p class="chronicle-panel__label">Inactive</p>
+              <p class="chronicle-panel__value">{{ inactiveTileCount }}</p>
+              <p class="mt-1 text-xs text-slate-400">Restored {{ run.restoredTiles }}</p>
+            </div>
+            <div class="chronicle-panel" :class="pressureClass">
+              <p class="chronicle-panel__label">Pressure</p>
+              <p class="chronicle-panel__value">{{ pressureLabel }}</p>
+              <p class="mt-1 text-xs text-slate-400">Population {{ populationState.current }}/{{ populationState.max }}</p>
+            </div>
+            <div class="chronicle-panel chronicle-panel--accent">
+              <p class="chronicle-panel__label">Path Forward</p>
+              <p class="chronicle-panel__value">{{ nextNode?.label ?? 'Keep expanding' }}</p>
+              <p class="mt-1 text-xs text-slate-300">{{ summaryText }}</p>
+            </div>
+          </div>
+
+          <nav class="mt-4 flex flex-wrap gap-2">
             <button
-              class="mission-log-close rounded-xl border px-3 py-2 text-xs transition-colors sm:text-sm"
-              @click="closeMissionCenter"
-            >
-              Close
-            </button>
-          </div>
-
-          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-            <div class="mission-stat mission-stat--amber rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-amber-100/70">Primary Goals</p>
-              <p class="mt-2 font-mono text-xl font-semibold text-white sm:text-2xl">{{ primaryGoalProgress }}</p>
-            </div>
-            <div class="mission-stat mission-stat--ocean rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-cyan-100/70">Total Score</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">{{ run.score }}</p>
-            </div>
-            <div class="mission-stat mission-stat--fern rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-100/70">Mission Score</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">{{ run.missionScore }}</p>
-            </div>
-            <div class="mission-stat mission-stat--ember rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-rose-100/70">Mutator</p>
-              <p class="mt-2 text-sm font-semibold text-white sm:text-lg">{{ run.mutator.name }}</p>
-            </div>
-          </div>
-
-          <div class="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:grid-cols-4 sm:gap-3">
-            <div class="mission-stat rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/65">Active / Owned</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">{{ activeOwnedLabel }}</p>
-            </div>
-            <div class="mission-stat rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/65">Support Capacity</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">{{ supportCapacity }}</p>
-            </div>
-            <div class="mission-stat rounded-[1.4rem] border px-3 py-3 sm:px-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/65">Inactive Tiles</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">{{ inactiveTileCount }}</p>
-            </div>
-            <div class="mission-stat rounded-[1.4rem] border px-3 py-3 sm:px-4" :class="pressureClass">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-100/70">Pressure State</p>
-              <p class="mt-2 text-sm font-semibold text-white sm:text-lg">{{ pressureLabel }}</p>
-            </div>
-          </div>
-
-          <div class="mt-3 flex gap-2 overflow-x-auto pb-1 sm:hidden">
-            <button
-              v-for="tab in mobileTabs"
+              v-for="tab in tabs"
               :key="tab.key"
-              class="mission-log-tab shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] transition-colors"
-              :class="mobileTab === tab.key ? 'mission-log-tab--active' : ''"
-              @click="mobileTab = tab.key"
+              class="chronicle-tab"
+              :class="{ 'chronicle-tab--active': activeTab === tab.key }"
+              @click="activeTab = tab.key"
             >
               {{ tab.label }}
             </button>
-          </div>
+          </nav>
         </header>
 
-        <div class="min-h-0 flex-1 overflow-hidden sm:hidden">
-          <div v-if="mobileTab === 'goals'" class="h-full overflow-y-auto px-4 py-4">
-            <div class="flex items-center justify-between gap-3">
-              <h3 class="text-base font-semibold text-white">Current Charter</h3>
-              <span class="mission-log-chip px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]">
-                {{ completedRequired }}/{{ totalRequired }} primary
-              </span>
-            </div>
+        <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          <section v-if="activeTab === 'story'" class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <article class="chronicle-card">
+              <p class="chronicle-card__kicker">Story</p>
+              <h3 class="mt-2 text-lg font-semibold text-white">{{ run.chapter.title }}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-slate-300">{{ run.chapter.briefing }}</p>
 
-            <div class="mt-3 space-y-2.5">
-              <article
-                v-for="objective in run.objectives"
-                :key="objective.id"
-                class="mission-objective-card rounded-[1.4rem] border px-3 py-3"
-                :class="objective.completed ? 'mission-objective-card--completed' : 'mission-objective-card--active'"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span
-                        class="h-2.5 w-2.5 shrink-0 rounded-full"
-                        :class="objective.completed ? 'bg-emerald-400' : 'bg-amber-300'"
-                      />
-                      <h4 class="text-sm font-semibold text-white">{{ objective.title }}</h4>
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-slate-300">{{ objective.description }}</p>
-                  </div>
-                  <span
-                    class="shrink-0 rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
-                    :class="objective.required ? 'bg-slate-800 text-slate-200' : 'bg-amber-400/15 text-amber-200'"
-                  >
-                    {{ objective.required ? 'Primary' : 'Bonus' }}
-                  </span>
+              <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <div class="chronicle-subcard">
+                  <p class="chronicle-subcard__label">Why It Matters</p>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ run.chapter.stakes }}</p>
                 </div>
-
-                <div class="mission-progress-track mt-3 h-2.5 overflow-hidden rounded-full">
-                  <div
-                    class="mission-progress-fill h-full rounded-full transition-all duration-500"
-                    :class="objective.completed ? 'mission-progress-fill--completed' : 'mission-progress-fill--active'"
-                    :style="{ width: `${objectiveProgressWidth(objective)}%` }"
-                  />
-                </div>
-
-                <div class="mt-2 flex items-center justify-between gap-3 text-[11px] text-slate-300/70">
-                  <span>{{ objective.progress }}/{{ objective.target }}</span>
-                  <span v-if="objective.reward?.scoreBonus">{{ formatBonus(objective.reward.scoreBonus) }}</span>
-                </div>
-              </article>
-            </div>
-          </div>
-
-          <div v-else-if="mobileTab === 'briefing'" class="h-full overflow-y-auto px-4 py-4">
-            <div class="mission-panel mission-panel--briefing rounded-[1.6rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-amber-100/75">Story Briefing</p>
-              <h3 class="mt-2 text-base font-semibold text-white">{{ run.story.title }}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-slate-100/80">{{ run.story.briefing }}</p>
-
-              <div class="mission-panel mission-panel--subtle mt-4 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Why This Charter Matters</p>
-                <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.story.stakes }}</p>
-              </div>
-
-              <div class="mission-panel mission-panel--subtle mt-3 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Field Guidance</p>
-                <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.story.guidance }}</p>
-              </div>
-            </div>
-
-            <div class="mission-panel mission-panel--subtle mt-4 rounded-[1.4rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Current Mutator</p>
-              <h3 class="mt-2 text-base font-semibold text-white">{{ run.mutator.name }}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.mutator.description }}</p>
-            </div>
-
-            <div class="mission-panel mission-panel--subtle mt-4 rounded-[1.4rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Campaign Notes</p>
-              <ul class="mt-3 space-y-2 text-sm text-slate-100/72">
-                <li>Press <span class="rounded bg-slate-900/80 px-2 py-1 text-xs text-white">M</span> to reopen this log at any time.</li>
-                <li>Press <span class="rounded bg-slate-900/80 px-2 py-1 text-xs text-white">V</span> to inspect stable, fragile, inactive, and uncontrolled territory.</li>
-                <li>Primary objectives carry the colony forward. Bonus goals add score, but only primary goals advance the campaign.</li>
-                <li>{{ run.story.nextHint }}</li>
-              </ul>
-            </div>
-          </div>
-
-          <div v-else class="h-full overflow-y-auto px-4 py-4">
-            <div class="mission-panel mission-panel--subtle rounded-[1.4rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Campaign Unlocks</p>
-
-              <div class="mt-3 space-y-3">
-                <div v-for="section in unlockSections" :key="section.title">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold text-white">{{ section.title }}</p>
-                    <span class="mission-log-chip px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
-                      {{ section.entries.length }}
-                    </span>
-                  </div>
-
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <span
-                      v-for="entry in section.entries"
-                      :key="entry.key"
-                      class="mission-log-chip px-3 py-1 text-xs"
-                      :title="entry.description"
-                    >
-                      {{ entry.label }}
-                    </span>
-                  </div>
+                <div class="chronicle-subcard">
+                  <p class="chronicle-subcard__label">Advisor Note</p>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ run.chapter.guidance }}</p>
                 </div>
               </div>
 
-              <div v-if="newUnlocks.length" class="mission-panel mission-panel--unlock mt-4 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-100/80">New For Mission {{ run.missionNumber }}</p>
-                <div class="mt-3 grid gap-2">
+              <div v-if="newUnlocks.length" class="mt-4">
+                <p class="chronicle-card__kicker">Fresh Milestones</p>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
                   <article
                     v-for="unlock in newUnlocks"
                     :key="`${unlock.kind}:${unlock.key}`"
-                    class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3"
+                    class="chronicle-subcard"
                   >
-                    <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-100/80">{{ unlockKindLabel(unlock.kind) }}</p>
+                    <p class="chronicle-subcard__label">{{ unlockKindLabel(unlock.kind) }}</p>
                     <p class="mt-1 text-sm font-semibold text-white">{{ unlock.label }}</p>
-                    <p class="mt-1 text-xs leading-relaxed text-slate-100/72">{{ unlock.description }}</p>
+                    <p class="mt-1 text-xs leading-relaxed text-slate-300">{{ unlock.description }}</p>
                   </article>
                 </div>
               </div>
-            </div>
+            </article>
 
-            <div v-if="run.lastCompletedMission" class="mission-panel mission-panel--unlock mt-4 rounded-[1.4rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Last Mission</p>
-              <h3 class="mt-2 text-base font-semibold text-white">{{ run.lastCompletedMission.story.completionTitle }}</h3>
-              <p class="mt-2 text-sm text-slate-100/72">{{ run.lastCompletedMission.story.completionText }}</p>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <div class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Mission Score</p>
-                  <p class="mt-1 text-lg font-semibold text-white">{{ run.lastCompletedMission.score }}</p>
+            <article class="chronicle-card">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="chronicle-card__kicker">Conversation</p>
+                  <h3 class="mt-2 text-lg font-semibold text-white">Recent dialogue</h3>
                 </div>
-                <div class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Total Score</p>
-                  <p class="mt-1 text-lg font-semibold text-white">{{ run.lastCompletedMission.totalScore }}</p>
-                </div>
+                <span class="chronicle-chip">{{ dialogueEntries.length }} entries</span>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <div class="hidden min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto sm:grid lg:grid-cols-[1.08fr_0.92fr]">
-          <div class="min-h-0 overflow-visible border-b border-white/8 px-6 py-5 lg:overflow-y-auto lg:border-b-0 lg:border-r">
-            <div class="flex items-center justify-between gap-3">
-              <h3 class="text-lg font-semibold text-white">Current Charter</h3>
-              <span class="mission-log-chip px-3 py-1 text-[10px] uppercase tracking-[0.16em]">
-                Completed {{ completedRequired }}/{{ totalRequired }} primary
-              </span>
-            </div>
-
-            <div class="mt-4 space-y-3">
-              <article
-                v-for="objective in run.objectives"
-                :key="objective.id"
-                class="mission-objective-card rounded-[1.55rem] border px-4 py-4"
-                :class="objective.completed ? 'mission-objective-card--completed' : 'mission-objective-card--active'"
-              >
-                <div class="flex items-start justify-between gap-4">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span
-                        class="h-2.5 w-2.5 shrink-0 rounded-full"
-                        :class="objective.completed ? 'bg-emerald-400' : 'bg-amber-300'"
-                      />
-                      <h4 class="text-sm font-semibold text-white">{{ objective.title }}</h4>
+              <div class="mt-4 space-y-3">
+                <article
+                  v-for="entry in dialogueEntries"
+                  :key="entry.id"
+                  class="chronicle-dialogue"
+                  :class="{ 'chronicle-dialogue--active': entry.id === run.dialogue.activeEntryId }"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ entry.speaker.name }}</p>
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                        {{ entry.kind.replaceAll('_', ' ') }}
+                      </p>
                     </div>
-                    <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ objective.description }}</p>
+                    <span class="chronicle-chip">Chapter {{ entry.chapterNumber }}</span>
                   </div>
-                  <span
-                    class="shrink-0 rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
-                    :class="objective.required ? 'bg-slate-800 text-slate-200' : 'bg-amber-400/15 text-amber-200'"
+                  <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ entry.text }}</p>
+                </article>
+              </div>
+            </article>
+          </section>
+
+          <section v-else-if="activeTab === 'roadmap'" class="space-y-4">
+            <article class="chronicle-card">
+              <p class="chronicle-card__kicker">Recommended Next</p>
+              <h3 class="mt-2 text-lg font-semibold text-white">{{ nextNode?.label ?? 'Keep building momentum' }}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ nextNode?.description ?? summaryText }}</p>
+              <div v-if="nextNode" class="mt-4 flex flex-wrap gap-2">
+                <span
+                  v-for="requirement in nextNode.requirements"
+                  :key="`${nextNode.key}:${requirement.label}`"
+                  class="chronicle-chip"
+                  :class="requirement.satisfied ? 'chronicle-chip--good' : 'chronicle-chip--blocked'"
+                >
+                  {{ requirement.label }} · {{ requirement.currentLabel }}
+                </span>
+              </div>
+            </article>
+
+            <div class="grid gap-4 xl:grid-cols-2">
+              <article
+                v-for="section in roadmapSections"
+                :key="section.lane"
+                class="chronicle-card"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="chronicle-card__kicker">Roadmap Lane</p>
+                    <h3 class="mt-2 text-lg font-semibold text-white">{{ section.lane }}</h3>
+                  </div>
+                  <span class="chronicle-chip">{{ section.nodes.filter((node) => node.unlocked).length }}/{{ section.nodes.length }}</span>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                  <article
+                    v-for="node in section.nodes"
+                    :key="node.key"
+                    class="chronicle-roadmap-node"
+                    :class="{
+                      'chronicle-roadmap-node--done': node.unlocked,
+                      'chronicle-roadmap-node--next': node.key === nextNode?.key,
+                    }"
                   >
-                    {{ objective.required ? 'Primary' : 'Bonus' }}
-                  </span>
-                </div>
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold text-white">{{ node.label }}</p>
+                        <p class="mt-1 text-xs leading-relaxed text-slate-300">{{ node.description }}</p>
+                      </div>
+                      <span class="chronicle-chip" :class="node.unlocked ? 'chronicle-chip--good' : 'chronicle-chip--blocked'">
+                        {{ node.unlocked ? 'Unlocked' : 'Locked' }}
+                      </span>
+                    </div>
 
-                <div class="mission-progress-track mt-4 h-2.5 overflow-hidden rounded-full">
-                  <div
-                    class="mission-progress-fill h-full rounded-full transition-all duration-500"
-                    :class="objective.completed ? 'mission-progress-fill--completed' : 'mission-progress-fill--active'"
-                    :style="{ width: `${objectiveProgressWidth(objective)}%` }"
-                  />
-                </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <span
+                        v-for="unlock in node.unlocks"
+                        :key="`${node.key}:${unlock.kind}:${unlock.key}`"
+                        class="chronicle-chip"
+                      >
+                        {{ unlock.label }}
+                      </span>
+                    </div>
 
-                <div class="mt-3 flex items-center justify-between gap-3 text-xs text-slate-300/70">
-                  <span>{{ objective.progress }}/{{ objective.target }}</span>
-                  <span v-if="objective.reward?.scoreBonus">{{ formatBonus(objective.reward.scoreBonus) }}</span>
+                    <div v-if="node.requirements.length" class="mt-3 space-y-2">
+                      <div
+                        v-for="requirement in node.requirements"
+                        :key="`${node.key}:${requirement.label}`"
+                        class="chronicle-requirement"
+                      >
+                        <div class="flex items-center justify-between gap-3 text-xs">
+                          <span>{{ requirement.label }}</span>
+                          <span>{{ requirement.currentLabel }}</span>
+                        </div>
+                        <div class="chronicle-progress">
+                          <div
+                            class="chronicle-progress__fill"
+                            :class="requirement.satisfied ? 'chronicle-progress__fill--done' : ''"
+                            :style="{ width: `${requirementProgressWidth(requirement.current, requirement.target)}%` }"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </article>
                 </div>
               </article>
             </div>
-          </div>
+          </section>
 
-          <div class="min-h-0 overflow-visible px-6 py-5 lg:overflow-y-auto">
-            <div class="mission-panel mission-panel--briefing rounded-[1.7rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-amber-100/75">Story Briefing</p>
-              <h3 class="mt-2 text-lg font-semibold text-white">{{ run.story.title }}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-slate-100/82">{{ run.story.briefing }}</p>
-
-              <div class="mission-panel mission-panel--subtle mt-4 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Why This Charter Matters</p>
-                <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.story.stakes }}</p>
+          <section v-else-if="activeTab === 'objectives'" class="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+            <article class="chronicle-card">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="chronicle-card__kicker">Objectives</p>
+                  <h3 class="mt-2 text-lg font-semibold text-white">Current charter goals</h3>
+                </div>
+                <span class="chronicle-chip">{{ completedRequired }}/{{ totalRequired || 0 }} primary</span>
               </div>
 
-              <div class="mission-panel mission-panel--subtle mt-3 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Field Guidance</p>
-                <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.story.guidance }}</p>
-              </div>
-            </div>
-
-            <div class="mission-panel mission-panel--subtle mt-4 rounded-[1.5rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Current Mutator</p>
-              <h3 class="mt-2 text-lg font-semibold text-white">{{ run.mutator.name }}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-slate-100/72">{{ run.mutator.description }}</p>
-            </div>
-
-            <div class="mission-panel mission-panel--subtle mt-4 rounded-[1.5rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Campaign Unlocks</p>
-
-              <div class="mt-3 space-y-3">
-                <div v-for="section in unlockSections" :key="section.title">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold text-white">{{ section.title }}</p>
-                    <span class="mission-log-chip px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
-                      {{ section.entries.length }}
+              <div class="mt-4 space-y-3">
+                <article
+                  v-for="objective in run.objectives"
+                  :key="objective.id"
+                  class="chronicle-objective"
+                  :class="{ 'chronicle-objective--done': objective.completed }"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-white">{{ objective.title }}</p>
+                      <p class="mt-1 text-sm leading-relaxed text-slate-300">{{ objective.description }}</p>
+                    </div>
+                    <span class="chronicle-chip" :class="objective.required ? '' : 'chronicle-chip--warm'">
+                      {{ objective.required ? 'Primary' : 'Bonus' }}
                     </span>
                   </div>
-
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <span
-                      v-for="entry in section.entries"
-                      :key="entry.key"
-                      class="mission-log-chip px-3 py-1 text-xs"
-                      :title="entry.description"
-                    >
-                      {{ entry.label }}
-                    </span>
+                  <div class="mt-3 chronicle-progress">
+                    <div
+                      class="chronicle-progress__fill"
+                      :class="{ 'chronicle-progress__fill--done': objective.completed }"
+                      :style="{ width: `${requirementProgressWidth(objective.progress, objective.target)}%` }"
+                    />
                   </div>
-                </div>
+                  <div class="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                    <span>{{ objective.progress }}/{{ objective.target }}</span>
+                    <span v-if="objective.reward?.scoreBonus">{{ formatBonus(objective.reward.scoreBonus) }}</span>
+                  </div>
+                </article>
               </div>
+            </article>
 
-              <div v-if="newUnlocks.length" class="mission-panel mission-panel--unlock mt-4 rounded-xl border px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-100/80">New For Mission {{ run.missionNumber }}</p>
-                <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                  <article
-                    v-for="unlock in newUnlocks"
-                    :key="`${unlock.kind}:${unlock.key}`"
-                    class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3"
-                  >
-                    <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-100/80">{{ unlockKindLabel(unlock.kind) }}</p>
-                    <p class="mt-1 text-sm font-semibold text-white">{{ unlock.label }}</p>
-                    <p class="mt-1 text-xs leading-relaxed text-slate-100/72">{{ unlock.description }}</p>
-                  </article>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="run.lastCompletedMission" class="mission-panel mission-panel--unlock mt-4 rounded-[1.5rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Last Mission</p>
-              <h3 class="mt-2 text-lg font-semibold text-white">{{ run.lastCompletedMission.story.completionTitle }}</h3>
-              <p class="mt-2 text-sm text-slate-100/72">{{ run.lastCompletedMission.story.completionText }}</p>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <div class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Mission Score</p>
-                  <p class="mt-1 text-xl font-semibold text-white">{{ run.lastCompletedMission.score }}</p>
-                </div>
-                <div class="mission-panel mission-panel--subtle rounded-xl border px-3 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.16em] text-slate-200/60">Total Score</p>
-                  <p class="mt-1 text-xl font-semibold text-white">{{ run.lastCompletedMission.totalScore }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="mission-panel mission-panel--subtle mt-4 rounded-[1.5rem] border px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-200/60">Campaign Notes</p>
-              <ul class="mt-3 space-y-2 text-sm text-slate-100/72">
-                <li>Press <span class="rounded bg-slate-900/80 px-2 py-1 text-xs text-white">M</span> to reopen this log at any time.</li>
-                <li>Press <span class="rounded bg-slate-900/80 px-2 py-1 text-xs text-white">V</span> to inspect stable, fragile, inactive, and uncontrolled territory.</li>
-                <li>Primary objectives carry the colony forward. Bonus goals add score, but only primary goals advance the campaign.</li>
-                <li>{{ run.story.nextHint }}</li>
+            <article class="chronicle-card">
+              <p class="chronicle-card__kicker">Advice</p>
+              <h3 class="mt-2 text-lg font-semibold text-white">What keeps the colony moving</h3>
+              <ul class="mt-4 space-y-3 text-sm leading-relaxed text-slate-300">
+                <li>Story chapters guide the pace, but unlocks now come from population, buildings, staffed production, resources, and frontier reach.</li>
+                <li>Open the roadmap to see every milestone lane and the exact blocker holding the next one shut.</li>
+                <li>Upgrades appear directly on eligible buildings, so stronger housing, storage, and industry come from improving what you already built.</li>
+                <li>{{ run.chapter.nextHint }}</li>
               </ul>
-            </div>
-          </div>
+            </article>
+          </section>
+
+          <section v-else class="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+            <article class="chronicle-card">
+              <p class="chronicle-card__kicker">Archive</p>
+              <h3 class="mt-2 text-lg font-semibold text-white">Completed chapters</h3>
+              <div class="mt-4 space-y-3">
+                <article
+                  v-for="chapter in archivedChapters"
+                  :key="`chapter:${chapter.chapterNumber}`"
+                  class="chronicle-subcard"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-white">Chapter {{ chapter.chapterNumber }}</p>
+                      <p class="text-xs text-slate-400">{{ chapter.chapter.title }}</p>
+                    </div>
+                    <span class="chronicle-chip chronicle-chip--good">{{ chapter.score }} pts</span>
+                  </div>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ chapter.summary }}</p>
+                </article>
+                <p v-if="!archivedChapters.length" class="text-sm text-slate-400">No completed chapters archived yet.</p>
+              </div>
+            </article>
+
+            <article class="chronicle-card">
+              <p class="chronicle-card__kicker">Log</p>
+              <h3 class="mt-2 text-lg font-semibold text-white">Dialogue history</h3>
+              <div class="mt-4 space-y-3">
+                <article
+                  v-for="entry in archiveDialogueEntries"
+                  :key="`archive:${entry.id}`"
+                  class="chronicle-dialogue"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ entry.speaker.name }}</p>
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                        Chapter {{ entry.chapterNumber }} · {{ entry.kind.replaceAll('_', ' ') }}
+                      </p>
+                    </div>
+                  </div>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ entry.text }}</p>
+                </article>
+              </div>
+            </article>
+          </section>
         </div>
       </section>
     </div>
@@ -374,42 +334,48 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { closeWindow, isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
+import { closeWindow, isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import { runSnapshot } from '../store/runStore.ts';
-import { getNewlyUnlockedStoryDescriptors, getStoryProgressionCategoryDescriptors } from '../shared/story/progression.ts';
 import { populationState } from '../store/clientPopulationStore';
+import { getNewlyUnlockedStoryDescriptors } from '../shared/story/progression.ts';
 
-const isOpen = computed(() => isWindowOpen(WINDOW_IDS.MISSION_CENTER));
+const activeTab = ref<'story' | 'roadmap' | 'objectives' | 'archive'>('story');
+
+const tabs = [
+  { key: 'story', label: 'Story' },
+  { key: 'roadmap', label: 'Roadmap' },
+  { key: 'objectives', label: 'Objectives' },
+  { key: 'archive', label: 'Archive' },
+] as const;
+
+const isOpen = computed(() => isWindowActive(WINDOW_IDS.MISSION_CENTER));
 const run = computed(() => runSnapshot.value);
 const requiredObjectives = computed(() => run.value?.objectives.filter((objective) => objective.required) ?? []);
 const totalRequired = computed(() => requiredObjectives.value.length);
 const completedRequired = computed(() => requiredObjectives.value.filter((objective) => objective.completed).length);
-const unlockSections = computed(() => {
-  if (!run.value) {
-    return [];
-  }
-
-  const descriptors = getStoryProgressionCategoryDescriptors(run.value.progression);
-  return [
-    { title: 'Heroes', entries: descriptors.heroes },
-    { title: 'Buildings', entries: descriptors.buildings },
-    { title: 'Tasks', entries: descriptors.tasks },
-    { title: 'Terrains', entries: descriptors.terrains },
-  ];
-});
-const newUnlocks = computed(() => run.value ? getNewlyUnlockedStoryDescriptors(run.value.progression) : []);
-const primaryGoalProgress = computed(() => run.value ? `${completedRequired.value}/${totalRequired.value || 0}` : '--');
-const mobileTab = ref<'goals' | 'briefing' | 'unlocks'>('goals');
-const mobileTabs: Array<{ key: typeof mobileTab.value; label: string }> = [
-  { key: 'goals', label: 'Goals' },
-  { key: 'briefing', label: 'Briefing' },
-  { key: 'unlocks', label: 'Unlocks' },
-];
-const activeTileCount = computed(() => run.value?.activeTiles ?? populationState.activeTileCount);
-const inactiveTileCount = computed(() => run.value?.inactiveTiles ?? populationState.inactiveTileCount);
-const ownedTileCount = computed(() => activeTileCount.value + inactiveTileCount.value);
-const activeOwnedLabel = computed(() => `${activeTileCount.value}/${ownedTileCount.value || 0}`);
+const activeOwnedLabel = computed(() => `${run.value?.activeTiles ?? populationState.activeTileCount} / ${ownedTileCount.value}`);
 const supportCapacity = computed(() => populationState.supportCapacity);
+const inactiveTileCount = computed(() => run.value?.inactiveTiles ?? populationState.inactiveTileCount);
+const ownedTileCount = computed(() => (run.value?.activeTiles ?? populationState.activeTileCount) + inactiveTileCount.value);
+const newUnlocks = computed(() => run.value ? getNewlyUnlockedStoryDescriptors(run.value.progression) : []);
+const nextNode = computed(() => {
+  const nextNodeKey = run.value?.progression.nextRecommendedNodeKeys[0];
+  return nextNodeKey
+    ? (run.value?.progression.nodes.find((node) => node.key === nextNodeKey) ?? null)
+    : null;
+});
+const summaryText = computed(() => run.value?.summary ?? 'Keep pushing the frontier.');
+const roadmapSections = computed(() => {
+  const lanes = ['Settlement', 'Food', 'Logistics', 'Industry', 'Frontier', 'Upgrades'] as const;
+  const nodes = run.value?.progression.nodes ?? [];
+  return lanes.map((lane) => ({
+    lane,
+    nodes: nodes.filter((node) => node.category === lane),
+  })).filter((section) => section.nodes.length > 0);
+});
+const dialogueEntries = computed(() => (run.value?.dialogue.entries ?? []).slice().reverse().slice(0, 6));
+const archivedChapters = computed(() => (run.value?.chapterArchive ?? []).slice().reverse());
+const archiveDialogueEntries = computed(() => (run.value?.dialogue.entries ?? []).slice().reverse());
 const pressureLabel = computed(() => {
   switch (populationState.pressureState) {
     case 'collapsing':
@@ -424,24 +390,26 @@ const pressureLabel = computed(() => {
 const pressureClass = computed(() => {
   switch (populationState.pressureState) {
     case 'collapsing':
-      return 'border-rose-500/30 bg-rose-500/10';
+      return 'chronicle-panel--danger';
     case 'strained':
-      return 'border-amber-400/30 bg-amber-400/10';
+      return 'chronicle-panel--warning';
     case 'stable':
     default:
-      return 'border-emerald-500/25 bg-emerald-500/10';
+      return 'chronicle-panel--good';
   }
 });
 
 function closeMissionCenter() {
-  mobileTab.value = 'goals';
+  activeTab.value = 'story';
   closeWindow(WINDOW_IDS.MISSION_CENTER);
 }
 
-function objectiveProgressWidth(objective: NonNullable<typeof run.value>['objectives'][number]) {
-  if (objective.target <= 0) return 100;
-  if (objective.progress <= 0) return 0;
-  return Math.max(4, Math.min(100, (objective.progress / objective.target) * 100));
+function requirementProgressWidth(current: number, target: number) {
+  if (target <= 0) {
+    return 100;
+  }
+
+  return Math.max(6, Math.min(100, (current / target) * 100));
 }
 
 function formatBonus(scoreBonus: number) {
@@ -455,9 +423,11 @@ function unlockKindLabel(kind: string) {
     case 'building':
       return 'Building';
     case 'task':
-      return 'Task';
+      return 'Action';
     case 'terrain':
       return 'Terrain';
+    case 'upgrade':
+      return 'Upgrade';
     default:
       return kind;
   }
@@ -481,203 +451,153 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mission-log-backdrop {
+.chronicle-backdrop {
   background:
-    radial-gradient(circle at 18% 16%, rgba(245, 158, 11, 0.12), transparent 24%),
-    radial-gradient(circle at 78% 82%, rgba(34, 197, 94, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.72), rgba(3, 7, 18, 0.88));
+    radial-gradient(circle at 18% 18%, rgba(245, 158, 11, 0.12), transparent 24%),
+    radial-gradient(circle at 80% 82%, rgba(74, 222, 128, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.76), rgba(2, 6, 23, 0.92));
 }
 
-.mission-log-shell {
-  position: relative;
+.chronicle-shell {
   border-color: rgba(245, 195, 92, 0.18);
   background:
-    linear-gradient(180deg, rgba(7, 18, 22, 0.94), rgba(5, 14, 19, 0.97)),
-    radial-gradient(circle at top left, rgba(255, 196, 84, 0.12), transparent 28%);
+    linear-gradient(180deg, rgba(7, 18, 22, 0.96), rgba(5, 14, 19, 0.98)),
+    radial-gradient(circle at top left, rgba(255, 196, 84, 0.1), transparent 28%);
   box-shadow:
-    0 30px 90px rgba(1, 5, 10, 0.62),
+    0 32px 100px rgba(1, 5, 10, 0.65),
     inset 0 1px 0 rgba(255, 240, 194, 0.08);
 }
 
-.mission-log-shell__glow,
-.mission-log-shell__grain {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-}
-
-.mission-log-shell__glow--amber {
-  background: radial-gradient(circle at 22% 28%, rgba(250, 204, 21, 0.13), transparent 34%);
-}
-
-.mission-log-shell__glow--moss {
-  background: radial-gradient(circle at 72% 58%, rgba(74, 222, 128, 0.1), transparent 38%);
-}
-
-.mission-log-shell__grain {
-  opacity: 0.16;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 100% 26px, 26px 100%;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 92%);
-}
-
-.mission-log-header {
-  position: relative;
+.chronicle-header {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.2));
   border-color: rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(11, 24, 30, 0.9), rgba(8, 18, 25, 0.86)),
-    radial-gradient(circle at top left, rgba(250, 204, 21, 0.08), transparent 26%);
 }
 
-.mission-log-title {
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+.chronicle-chip {
+  @apply inline-flex items-center rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-200;
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.7);
 }
 
-.mission-log-close {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(11, 22, 30, 0.74);
-  color: rgba(241, 245, 249, 0.92);
-}
-
-.mission-log-close:hover {
-  background: rgba(23, 37, 45, 0.9);
-  border-color: rgba(251, 191, 36, 0.34);
-}
-
-.mission-log-chip {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 21, 28, 0.74);
-  color: rgba(226, 232, 240, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.mission-log-chip--amber {
+.chronicle-chip--warm {
   border-color: rgba(245, 195, 92, 0.26);
-  background: rgba(104, 72, 18, 0.28);
-  color: rgba(254, 243, 199, 0.98);
+  background: rgba(245, 158, 11, 0.12);
+  color: rgb(253 230 138 / 0.95);
 }
 
-.mission-log-tab {
-  border-color: rgba(255, 255, 255, 0.09);
-  background: rgba(8, 18, 25, 0.72);
-  color: rgba(203, 213, 225, 0.78);
+.chronicle-chip--good {
+  border-color: rgba(74, 222, 128, 0.28);
+  background: rgba(34, 197, 94, 0.12);
+  color: rgb(187 247 208 / 0.95);
 }
 
-.mission-log-tab--active {
-  border-color: rgba(245, 195, 92, 0.32);
-  background: linear-gradient(180deg, rgba(110, 77, 20, 0.56), rgba(66, 49, 19, 0.42));
-  color: rgba(255, 247, 214, 0.98);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+.chronicle-chip--blocked {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.58);
+  color: rgb(203 213 225 / 0.92);
 }
 
-.mission-stat,
-.mission-panel,
-.mission-objective-card {
-  position: relative;
-  overflow: hidden;
-  border-color: rgba(255, 255, 255, 0.08);
+.chronicle-stat,
+.chronicle-panel,
+.chronicle-card,
+.chronicle-subcard,
+.chronicle-dialogue,
+.chronicle-roadmap-node,
+.chronicle-objective {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.48);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.mission-stat::before,
-.mission-panel::before,
-.mission-objective-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 45%);
+.chronicle-stat {
+  @apply min-w-[6.5rem] rounded-2xl px-4 py-3;
 }
 
-.mission-stat {
+.chronicle-stat__label,
+.chronicle-panel__label,
+.chronicle-card__kicker,
+.chronicle-subcard__label {
+  @apply text-[10px] uppercase tracking-[0.18em] text-slate-400;
+}
+
+.chronicle-stat__value,
+.chronicle-panel__value {
+  @apply mt-2 text-lg font-semibold text-white;
+}
+
+.chronicle-panel,
+.chronicle-card,
+.chronicle-subcard,
+.chronicle-dialogue,
+.chronicle-roadmap-node,
+.chronicle-objective {
+  @apply rounded-[1.4rem] px-4 py-4;
+}
+
+.chronicle-panel--accent {
   background:
-    linear-gradient(180deg, rgba(10, 20, 26, 0.88), rgba(7, 15, 20, 0.92)),
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.05), transparent 34%);
+    linear-gradient(180deg, rgba(245, 158, 11, 0.1), rgba(15, 23, 42, 0.5)),
+    rgba(15, 23, 42, 0.48);
 }
 
-.mission-stat--amber {
-  background:
-    linear-gradient(180deg, rgba(57, 44, 14, 0.7), rgba(19, 24, 22, 0.94)),
-    radial-gradient(circle at top left, rgba(250, 204, 21, 0.16), transparent 34%);
+.chronicle-panel--good {
+  background: rgba(34, 197, 94, 0.1);
 }
 
-.mission-stat--ocean {
-  background:
-    linear-gradient(180deg, rgba(12, 45, 63, 0.58), rgba(10, 20, 26, 0.93)),
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 34%);
+.chronicle-panel--warning {
+  background: rgba(245, 158, 11, 0.1);
 }
 
-.mission-stat--fern {
-  background:
-    linear-gradient(180deg, rgba(16, 62, 39, 0.56), rgba(10, 20, 26, 0.93)),
-    radial-gradient(circle at top left, rgba(74, 222, 128, 0.14), transparent 34%);
+.chronicle-panel--danger {
+  background: rgba(244, 63, 94, 0.12);
 }
 
-.mission-stat--ember {
-  background:
-    linear-gradient(180deg, rgba(71, 27, 31, 0.58), rgba(10, 20, 26, 0.93)),
-    radial-gradient(circle at top left, rgba(251, 113, 133, 0.14), transparent 34%);
+.chronicle-close {
+  @apply rounded-xl border px-3 py-2 text-sm text-slate-100 transition-colors;
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.82);
 }
 
-.mission-panel--briefing {
-  background:
-    linear-gradient(180deg, rgba(68, 52, 18, 0.46), rgba(15, 24, 28, 0.93)),
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.18), transparent 34%);
+.chronicle-close:hover,
+.chronicle-tab:hover {
+  background: rgba(30, 41, 59, 0.88);
 }
 
-.mission-panel--subtle {
-  background:
-    linear-gradient(180deg, rgba(10, 20, 26, 0.84), rgba(7, 15, 20, 0.92)),
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 34%);
+.chronicle-tab {
+  @apply rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-300 transition-colors;
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.56);
 }
 
-.mission-panel--unlock {
-  background:
-    linear-gradient(180deg, rgba(14, 54, 41, 0.56), rgba(8, 18, 24, 0.92)),
-    radial-gradient(circle at top left, rgba(52, 211, 153, 0.16), transparent 34%);
+.chronicle-tab--active {
+  border-color: rgba(245, 195, 92, 0.28);
+  background: rgba(245, 158, 11, 0.16);
+  color: rgb(254 243 199 / 0.98);
 }
 
-.mission-objective-card--active {
-  background:
-    linear-gradient(180deg, rgba(10, 20, 26, 0.86), rgba(8, 18, 23, 0.94)),
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.08), transparent 34%);
+.chronicle-dialogue--active,
+.chronicle-roadmap-node--next {
+  border-color: rgba(245, 195, 92, 0.24);
+  background: rgba(245, 158, 11, 0.1);
 }
 
-.mission-objective-card--completed {
-  background:
-    linear-gradient(180deg, rgba(13, 54, 39, 0.58), rgba(8, 18, 23, 0.94)),
-    radial-gradient(circle at top left, rgba(74, 222, 128, 0.16), transparent 34%);
-  border-color: rgba(52, 211, 153, 0.24);
+.chronicle-roadmap-node--done,
+.chronicle-objective--done {
+  border-color: rgba(74, 222, 128, 0.2);
+  background: rgba(34, 197, 94, 0.08);
 }
 
-.mission-progress-track {
-  background:
-    linear-gradient(180deg, rgba(7, 15, 20, 0.95), rgba(11, 24, 30, 0.82));
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.42);
+.chronicle-progress {
+  @apply mt-2 h-2 overflow-hidden rounded-full;
+  background: rgba(51, 65, 85, 0.88);
 }
 
-.mission-progress-fill {
-  position: relative;
+.chronicle-progress__fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.85), rgba(251, 191, 36, 0.95));
 }
 
-.mission-progress-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.22;
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 12%, transparent 12% 24%, rgba(255, 255, 255, 0.4) 24% 36%, transparent 36% 48%);
-  background-size: 28px 100%;
-}
-
-.mission-progress-fill--active {
-  background: linear-gradient(90deg, rgba(250, 204, 21, 0.95), rgba(253, 186, 116, 0.98));
-  box-shadow: 0 0 18px rgba(245, 158, 11, 0.26);
-}
-
-.mission-progress-fill--completed {
-  background: linear-gradient(90deg, rgba(52, 211, 153, 0.98), rgba(110, 231, 183, 0.98));
-  box-shadow: 0 0 18px rgba(16, 185, 129, 0.28);
+.chronicle-progress__fill--done {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.85), rgba(74, 222, 128, 0.95));
 }
 </style>

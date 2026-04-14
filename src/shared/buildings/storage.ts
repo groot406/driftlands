@@ -6,7 +6,8 @@ import type { StorageKind } from '../game/storage.ts';
 import { isTileWalkable } from '../game/navigation';
 import { tileIndex } from '../game/world';
 import { depositResourceToStorage, getStorageFreeCapacity, getStorageResourceAmount } from '../../store/resourceStore';
-import { getBuildingDefinitionForTile, listBuildingDefinitions } from './registry';
+import { listBuildingDefinitions } from './registry';
+import { getStorageKindForBuildingTile } from './state.ts';
 import { isTileActive } from '../game/state/settlementSupportStore';
 
 export function getStorageKindForTile(tile: Tile | null | undefined): StorageKind | null {
@@ -18,12 +19,7 @@ export function getStorageKindForTile(tile: Tile | null | undefined): StorageKin
         return 'towncenter';
     }
 
-    const building = getBuildingDefinitionForTile(tile);
-    if (!building?.providesWarehouse) {
-        return null;
-    }
-
-    return building.key === 'supplyDepot' ? 'depot' : 'warehouse';
+    return getStorageKindForBuildingTile(tile);
 }
 
 export function isWarehouseBuildingTile(tile: Tile | null | undefined) {

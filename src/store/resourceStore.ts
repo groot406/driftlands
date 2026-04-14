@@ -1,6 +1,6 @@
 import type {Tile} from "../core/types/Tile.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
-import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
+import { getStorageKindForBuildingTile } from '../shared/buildings/state.ts';
 import { getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
 import { tileIndex } from '../core/world.ts';
 import { reactive, ref } from 'vue';
@@ -50,12 +50,7 @@ function resolveStorageKind(tile: Tile | null | undefined): StorageKind | null {
         return 'towncenter';
     }
 
-    const building = getBuildingDefinitionForTile(tile);
-    if (!building?.providesWarehouse) {
-        return null;
-    }
-
-    return building.key === 'supplyDepot' ? 'depot' : 'warehouse';
+    return getStorageKindForBuildingTile(tile);
 }
 
 function clearReactiveRecord<T>(record: Record<string, T>) {

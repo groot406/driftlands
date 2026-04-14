@@ -21,6 +21,9 @@
     <MusicPlayer />
     <OnlinePlayersIndicator />
   </div>
+  <div class="fixed bottom-4 left-4 z-30">
+    <ChronicleBar />
+  </div>
   <PlayerModal />
   <SettlerModal />
   <NotificationOverlay />
@@ -36,6 +39,7 @@ import ResourceBar from './ResourceBar.vue';
 import MissionCenterButton from './MissionCenterButton.vue';
 import NotificationCenterButton from './NotificationCenterButton.vue';
 import MissionCenter from './MissionCenter.vue';
+import ChronicleBar from './ChronicleBar.vue';
 import NotificationCenter from './NotificationCenter.vue';
 import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';

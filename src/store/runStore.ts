@@ -1,18 +1,26 @@
 import { computed, ref } from 'vue';
-import type { CompletedMissionSnapshot, RunSnapshot } from '../shared/goals/types.ts';
-import { getNewlyUnlockedStoryDescriptors, type StoryProgressionSnapshot } from '../shared/story/progression.ts';
+import type {
+  CompletedChapterSnapshot,
+  DialogueLogSnapshot,
+  RunSnapshot,
+} from '../shared/goals/types.ts';
+import {
+  cloneStoryProgression,
+  getNewlyUnlockedStoryDescriptors,
+  type ProgressionSnapshot,
+} from '../shared/story/progression.ts';
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
 import { setWorldGenerationSeed } from '../core/worldVariation.ts';
 import { addNotification } from './notificationStore';
 import { syncHeroRoster } from './heroStore.ts';
 
-interface MissionCompletionOverlayState {
+interface ChapterCompletionOverlayState {
   type: 'completed';
-  mission: CompletedMissionSnapshot;
+  chapter: CompletedChapterSnapshot;
   nextRun: RunSnapshot | null;
 }
 
-export type MissionOverlayState = MissionCompletionOverlayState;
+export type MissionOverlayState = ChapterCompletionOverlayState;
 
 export const runSnapshot = ref<RunSnapshot | null>(null);
 export const runLoaded = ref(false);
@@ -23,34 +31,26 @@ function sameHeroRoster(a: string[], b: string[]) {
   return a.length === b.length && a.every((heroId, index) => heroId === b[index]);
 }
 
-function cloneProgression(progression: StoryProgressionSnapshot): StoryProgressionSnapshot {
+function cloneProgression(progression: ProgressionSnapshot): ProgressionSnapshot {
+  return cloneStoryProgression(progression);
+}
+
+function cloneDialogue(dialogue: DialogueLogSnapshot): DialogueLogSnapshot {
   return {
-    missionNumber: progression.missionNumber,
-    heroes: {
-      available: progression.heroes.available.slice(),
-      newlyUnlocked: progression.heroes.newlyUnlocked.slice(),
-    },
-    buildings: {
-      available: progression.buildings.available.slice(),
-      newlyUnlocked: progression.buildings.newlyUnlocked.slice(),
-    },
-    tasks: {
-      available: progression.tasks.available.slice(),
-      newlyUnlocked: progression.tasks.newlyUnlocked.slice(),
-    },
-    terrains: {
-      available: progression.terrains.available.slice(),
-      newlyUnlocked: progression.terrains.newlyUnlocked.slice(),
-    },
+    activeEntryId: dialogue.activeEntryId,
+    entries: dialogue.entries.map((entry) => ({
+      ...entry,
+      speaker: { ...entry.speaker },
+    })),
   };
 }
 
-function cloneCompletedMission(mission: CompletedMissionSnapshot): CompletedMissionSnapshot {
+function cloneCompletedChapter(chapter: CompletedChapterSnapshot): CompletedChapterSnapshot {
   return {
-    ...mission,
-    mutator: { ...mission.mutator },
-    story: { ...mission.story },
-    objectives: mission.objectives.map((objective) => ({ ...objective })),
+    ...chapter,
+    mutator: { ...chapter.mutator },
+    chapter: { ...chapter.chapter },
+    objectives: chapter.objectives.map((objective) => ({ ...objective })),
   };
 }
 
@@ -58,27 +58,30 @@ function cloneRunSnapshot(run: RunSnapshot): RunSnapshot {
   return {
     ...run,
     mutator: { ...run.mutator },
-    story: { ...run.story },
+    chapter: { ...run.chapter },
     progression: cloneProgression(run.progression),
     objectives: run.objectives.map((objective) => ({ ...objective })),
-    lastCompletedMission: run.lastCompletedMission ? cloneCompletedMission(run.lastCompletedMission) : undefined,
+    dialogue: cloneDialogue(run.dialogue),
+    chapterArchive: run.chapterArchive.map(cloneCompletedChapter),
+    lastCompletedChapter: run.lastCompletedChapter ? cloneCompletedChapter(run.lastCompletedChapter) : undefined,
   };
 }
 
 export function loadRunState(run: RunSnapshot) {
   const previous = runSnapshot.value ? cloneRunSnapshot(runSnapshot.value) : null;
   const next = cloneRunSnapshot(run);
-  const shouldSyncHeroRoster = !previous || !sameHeroRoster(previous.progression.heroes.available, next.progression.heroes.available);
+  const shouldSyncHeroRoster = !previous
+    || !sameHeroRoster(previous.progression.unlocked.heroes, next.progression.unlocked.heroes);
 
   setWorldGenerationSeed(next.seed);
   runSnapshot.value = next;
   runLoaded.value = true;
   loadStoryProgression(next.progression);
   if (shouldSyncHeroRoster) {
-    syncHeroRoster(next.progression.heroes.available);
+    syncHeroRoster(next.progression.unlocked.heroes);
   }
 
-  if (previous && previous.missionNumber === next.missionNumber) {
+  if (previous && previous.chapterNumber === next.chapterNumber) {
     const previousObjectives = new Map(previous.objectives.map((objective) => [objective.id, objective]));
 
     for (const objective of next.objectives) {
@@ -99,23 +102,23 @@ export function loadRunState(run: RunSnapshot) {
   }
 
   if (previous) {
-    const previousCompletedMissionNumber = previous.lastCompletedMission?.missionNumber ?? null;
-    const nextCompletedMissionNumber = next.lastCompletedMission?.missionNumber ?? null;
+    const previousCompletedChapterNumber = previous.lastCompletedChapter?.chapterNumber ?? null;
+    const nextCompletedChapterNumber = next.lastCompletedChapter?.chapterNumber ?? null;
 
     if (
-      next.lastCompletedMission &&
-      nextCompletedMissionNumber !== previousCompletedMissionNumber
+      next.lastCompletedChapter
+      && nextCompletedChapterNumber !== previousCompletedChapterNumber
     ) {
       missionOverlay.value = {
         type: 'completed',
-        mission: cloneCompletedMission(next.lastCompletedMission),
+        chapter: cloneCompletedChapter(next.lastCompletedChapter),
         nextRun: cloneRunSnapshot(next),
       };
 
       addNotification({
         type: 'run_state',
-        title: `Mission ${next.lastCompletedMission.missionNumber} complete`,
-        message: `Mission ${next.missionNumber} is now available in Mission Centre.`,
+        title: `Chapter ${next.lastCompletedChapter.chapterNumber} complete`,
+        message: `Chapter ${next.chapterNumber} is ready in the Chronicle.`,
         duration: 7000,
       });
 
@@ -126,7 +129,7 @@ export function loadRunState(run: RunSnapshot) {
 
         addNotification({
           type: 'run_state',
-          title: 'New story unlocks',
+          title: 'New milestones',
           message: `${preview}${suffix}.`,
           duration: 7000,
         });
@@ -144,7 +147,6 @@ export function dismissMissionOverlay() {
 
 export const showMissionOverlay = computed(() => !!missionOverlay.value);
 
-// Backward-compatible aliases for older overlay modules during HMR / cached loads.
 export function dismissRunOutcome() {
   dismissMissionOverlay();
 }

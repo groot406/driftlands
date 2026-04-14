@@ -10,53 +10,53 @@
           <div class="flex items-center justify-between gap-3">
             <div class="flex flex-wrap items-center gap-2">
               <p class="pixel-font text-[10px] uppercase tracking-[0.2em] text-emerald-300">
-                Mission Complete
+                Chapter Complete
               </p>
               <span
                 class="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
               >
-                {{ completedMission?.story.chapterLabel }}
+                {{ completedChapter?.chapter.chapterLabel }}
               </span>
             </div>
             <span
               class="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
             >
-              {{ completedMission?.story.actLabel }}
+              {{ completedChapter?.chapter.actLabel }}
             </span>
           </div>
 
-          <div v-if="completedMission">
-            <p class="text-[11px] uppercase tracking-[0.16em] text-emerald-200/80">{{ completedMission.story.completionTitle }}</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Mission {{ completedMission.missionNumber }} Fulfilled</h2>
-            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ completedMission.story.completionText }}</p>
+          <div v-if="completedChapter">
+            <p class="text-[11px] uppercase tracking-[0.16em] text-emerald-200/80">{{ completedChapter.chapter.completionTitle }}</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Chapter {{ completedChapter.chapterNumber }} Archived</h2>
+            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ completedChapter.chapter.completionText }}</p>
           </div>
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Mission Score</p>
-              <p class="mt-2 text-2xl font-semibold text-white">{{ missionScore }}</p>
+              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Chapter Score</p>
+              <p class="mt-2 text-2xl font-semibold text-white">{{ chapterScore }}</p>
             </div>
             <div class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
               <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Total Score</p>
               <p class="mt-2 text-2xl font-semibold text-white">{{ totalScore }}</p>
             </div>
             <div class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Next Mission</p>
+              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Next Chapter</p>
               <p class="mt-2 text-2xl font-semibold text-white">
-                {{ `#${nextMissionNumber}` }}
+                {{ `#${nextChapterNumber}` }}
               </p>
             </div>
           </div>
 
           <div v-if="nextRun" class="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 px-4 py-4">
-            <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-200/80">Next Charter</p>
-            <h3 class="mt-2 text-lg font-semibold text-white">Mission {{ nextRun.missionNumber }} · {{ nextRun.story.title }}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ nextRun.story.briefing }}</p>
+            <p class="text-[10px] uppercase tracking-[0.16em] text-emerald-200/80">Next Chapter</p>
+            <h3 class="mt-2 text-lg font-semibold text-white">Chapter {{ nextRun.chapterNumber }} · {{ nextRun.chapter.title }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ nextRun.chapter.briefing }}</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <span class="rounded-full border border-slate-800 bg-slate-950/65 px-3 py-1 text-xs text-slate-200">{{ nextRun.mutator.name }}</span>
               <span class="rounded-full border border-slate-800 bg-slate-950/65 px-3 py-1 text-xs text-slate-200">{{ nextRun.objectives.length }} objectives</span>
             </div>
-            <p class="mt-3 text-xs leading-relaxed text-emerald-100/80">{{ nextRun.story.nextHint }}</p>
+            <p class="mt-3 text-xs leading-relaxed text-emerald-100/80">{{ nextRun.chapter.nextHint }}</p>
           </div>
 
           <div v-if="nextUnlocks.length" class="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 px-4 py-4">
@@ -74,9 +74,9 @@
             </div>
           </div>
 
-          <div v-if="completedMission" class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-4">
+          <div v-if="completedChapter" class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-4">
             <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Why It Mattered</p>
-            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ completedMission.story.stakes }}</p>
+            <p class="mt-2 text-sm leading-relaxed text-slate-300">{{ completedChapter.chapter.stakes }}</p>
           </div>
 
           <div class="space-y-2">
@@ -102,7 +102,7 @@
         </div>
 
         <div class="flex flex-wrap gap-3 border-t border-slate-800 bg-slate-900/95 px-6 py-4 backdrop-blur-sm">
-          <button class="primary-btn" @click="openMissionCenter">Open Mission Centre</button>
+          <button class="primary-btn" @click="openMissionCenter">Open Chronicle</button>
           <button class="secondary-btn" @click="dismissMissionOverlay">Continue Expedition</button>
         </div>
       </section>
@@ -119,15 +119,15 @@ import { getNewlyUnlockedStoryDescriptors } from '../shared/story/progression.ts
 const visible = showMissionOverlay;
 const overlay = missionOverlay;
 
-const completedMission = computed(() => overlay.value?.mission ?? null);
+const completedChapter = computed(() => overlay.value?.chapter ?? null);
 const nextRun = computed(() => overlay.value?.nextRun ?? null);
 
-const missionScore = computed(() => overlay.value?.mission.score ?? 0);
-const totalScore = computed(() => overlay.value?.mission.totalScore ?? 0);
+const chapterScore = computed(() => overlay.value?.chapter.score ?? 0);
+const totalScore = computed(() => overlay.value?.chapter.totalScore ?? 0);
 
-const nextMissionNumber = computed(() => nextRun.value?.missionNumber ?? '--');
+const nextChapterNumber = computed(() => nextRun.value?.chapterNumber ?? '--');
 const nextUnlocks = computed(() => nextRun.value ? getNewlyUnlockedStoryDescriptors(nextRun.value.progression) : []);
-const objectiveList = computed(() => overlay.value?.mission.objectives ?? []);
+const objectiveList = computed(() => overlay.value?.chapter.objectives ?? []);
 
 function unlockKindLabel(kind: string) {
   switch (kind) {

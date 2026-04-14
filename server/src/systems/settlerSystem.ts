@@ -373,6 +373,12 @@ export function syncSettlerPopulation(now: number) {
 
 function buildHomeSlots() {
     const slots: Array<{ key: string; homeTileId: string; accessTileId: string; settlementId: string | null }> = [];
+    const houseCapacityByVariant: Partial<Record<string, number>> = {
+        plains_house: 2,
+        dirt_house: 2,
+        plains_stone_house: 4,
+        dirt_stone_house: 4,
+    };
 
     const houses = Object.values(tileIndex)
         .filter((tile): tile is Tile => {
@@ -390,7 +396,8 @@ function buildHomeSlots() {
             continue;
         }
 
-        for (let slotIndex = 0; slotIndex < 2; slotIndex++) {
+        const houseCapacity = Math.max(0, houseCapacityByVariant[house.variant ?? ''] ?? 2);
+        for (let slotIndex = 0; slotIndex < houseCapacity; slotIndex++) {
             slots.push({
                 key: `${house.id}:${slotIndex}`,
                 homeTileId: house.id,

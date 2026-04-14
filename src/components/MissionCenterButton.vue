@@ -2,14 +2,14 @@
   <button
     v-if="run"
     class="mission-btn pointer-events-auto"
-    :title="`Mission ${run.missionNumber} — ${statusSummary}`"
+    :title="`Chronicle · Chapter ${run.chapterNumber} — ${statusSummary}`"
     @click="openMissionCenter"
   >
     <!-- Flag icon -->
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
       <path fill-rule="evenodd" d="M3 2.25a.75.75 0 01.75.75v.54l1.838-.46a9.75 9.75 0 016.725.738l.108.054a8.25 8.25 0 005.58.652l.71-.178a.75.75 0 01.947.727v7.653a.75.75 0 01-.53.72l-.964.24a9.75 9.75 0 01-6.591-.77l-.108-.054a8.25 8.25 0 00-5.693-.625L3 13.07v8.68a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75z" clip-rule="evenodd" />
     </svg>
-    <!-- Progress badge -->
+    <span class="mission-badge">C{{ run.chapterNumber }}</span>
     <span class="mission-badge">{{ completedRequired }}/{{ totalRequired }}</span>
   </button>
 </template>

@@ -17,7 +17,7 @@ import type { PopulationSnapshot } from '../../src/store/populationStore';
 import type { WorkforceSnapshot } from '../../src/store/jobStore';
 import { runState } from "./state/runState";
 import { resetMineReserveState } from './state/mineReserveState';
-import { setStoryProgressionForMission } from '../../src/shared/story/progressionState';
+import { resetStoryProgression } from '../../src/shared/story/progressionState';
 import { tickEngine } from './tick';
 import { syncSettlerPopulation } from './systems/settlerSystem';
 
@@ -177,7 +177,7 @@ class WorldState {
     loadTasks([]);
     loadHeroes([]);
     loadSettlers([]);
-    setStoryProgressionForMission(1);
+    resetStoryProgression();
     tickEngine.setSeed(resolvedSeed);
     startWorldGeneration(worldRadius, resolvedSeed);
     initializePopulation();
