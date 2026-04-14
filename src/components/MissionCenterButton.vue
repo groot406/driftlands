@@ -53,11 +53,20 @@ onUnmounted(() => {
 
 <style scoped>
 .mission-btn {
-  @apply relative flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2.5 py-2 text-amber-200/80 shadow-lg backdrop-blur-sm transition-all hover:border-amber-300/50 hover:text-amber-200 cursor-pointer;
-  background: rgba(2, 6, 23, 0.82);
+  @apply relative flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-amber-200/90 shadow-lg backdrop-blur-sm transition-all hover:text-amber-100 cursor-pointer;
+  border-color: rgba(245, 195, 92, 0.22);
+  background:
+    linear-gradient(180deg, rgba(74, 52, 18, 0.58), rgba(8, 20, 28, 0.9)),
+    radial-gradient(circle at top left, rgba(250, 204, 21, 0.16), transparent 36%);
+  box-shadow:
+    0 16px 26px rgba(2, 6, 23, 0.26),
+    inset 0 1px 0 rgba(255, 244, 214, 0.08);
 }
 .mission-btn:hover {
-  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(245, 195, 92, 0.42);
+  background:
+    linear-gradient(180deg, rgba(98, 68, 20, 0.7), rgba(10, 22, 30, 0.96)),
+    radial-gradient(circle at top left, rgba(250, 204, 21, 0.24), transparent 36%);
 }
 
 .mission-badge {
