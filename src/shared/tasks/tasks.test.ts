@@ -400,7 +400,7 @@ test('dismantle restores constructed tiles back to their base terrain', () => {
   assert.equal(tile.isBaseTile, true);
 });
 
-test('road and bridge tasks require town center, road, or bridge anchors before they can start', () => {
+test('road, bridge, and tunnel tasks require town center, road, bridge, or tunnel anchors before they can start', () => {
   loadWorld([
     {
       id: '0,0',
@@ -528,6 +528,71 @@ test('road and bridge tasks require town center, road, or bridge anchors before 
       ownerSettlementId: '0,0',
       variant: null,
     } satisfies Tile,
+    {
+      id: '0,3',
+      q: 0,
+      r: 3,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'mountain_tunnel_ad',
+    } satisfies Tile,
+    {
+      id: '1,1',
+      q: 1,
+      r: 1,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'road',
+    } satisfies Tile,
+    {
+      id: '0,2',
+      q: 0,
+      r: 2,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,2',
+      q: 1,
+      r: 2,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '6,2',
+      q: 6,
+      r: 2,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
   ]);
 
   const hero: Hero = {
@@ -542,6 +607,7 @@ test('road and bridge tasks require town center, road, or bridge anchors before 
 
   const buildRoad = getTaskDefinition('buildRoad');
   const buildBridge = getTaskDefinition('buildBridge');
+  const buildTunnel = getTaskDefinition('buildTunnel');
 
   assert.equal(buildRoad?.canStart(tileIndex['1,0']!, hero), true);
   assert.equal(buildRoad?.canStart(tileIndex['2,0']!, hero), true);
@@ -550,6 +616,9 @@ test('road and bridge tasks require town center, road, or bridge anchors before 
   assert.equal(buildBridge?.canStart(tileIndex['0,1']!, hero), true);
   assert.equal(buildBridge?.canStart(tileIndex['2,1']!, hero), true);
   assert.equal(buildBridge?.canStart(tileIndex['6,1']!, hero), false);
+  assert.equal(buildTunnel?.canStart(tileIndex['0,2']!, hero), true);
+  assert.equal(buildTunnel?.canStart(tileIndex['1,2']!, hero), true);
+  assert.equal(buildTunnel?.canStart(tileIndex['6,2']!, hero), false);
 });
 
 test('dock tasks only start on water tiles that touch active land', () => {

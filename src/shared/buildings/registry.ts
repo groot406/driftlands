@@ -175,6 +175,14 @@ function countActiveConnectedTiles(tile: Tile, terrain: Tile['terrain']) {
     return count;
 }
 
+function getQuarryStonePerCycle(tile: Tile, assignedWorkers: number) {
+    if (assignedWorkers <= 0) {
+        return 0;
+    }
+
+    return Math.min(4, Math.max(1, countActiveConnectedTiles(tile, 'mountain'))) * assignedWorkers;
+}
+
 function countActiveAdjacentTiles(tile: Tile, terrain: Tile['terrain']) {
     let count = 0;
     const neighbors = tile.neighbors;
@@ -615,6 +623,42 @@ const buildings: BuildingDefinition[] = [
             }
 
             onPopulationBuildingCompleted();
+        },
+    },
+    {
+        key: 'quarry',
+        label: 'Quarry',
+        summary: 'Cuts steady stone from a mountain cluster and turns finite salvage into a real industry.',
+        categoryLabel: 'Industry',
+        buildTaskKey: 'buildQuarry',
+        buildTaskLabel: 'Build Quarry',
+        sortOrder: 39,
+        requiredPopulation: 4,
+        variantKeys: ['mountains_with_quarry'],
+        jobSlots: 1,
+        cycleMs: 60_000,
+        jobLabel: 'Stone crew',
+        getJobResources(tile, assignedWorkers) {
+            return {
+                produces: [{ type: 'stone', amount: getQuarryStonePerCycle(tile, assignedWorkers) }],
+            };
+        },
+        canPlace(tile, _hero) {
+            return tile.terrain === 'mountain' && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 4400;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 8 }];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'mountain') {
+                applyVariant(tile, 'mountains_with_quarry', { stagger: false, respectBiome: true });
+            }
         },
     },
     {

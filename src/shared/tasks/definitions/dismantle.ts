@@ -5,7 +5,7 @@ import type { TaskDefinition } from '../../../core/types/Task';
 import type { Tile } from '../../../core/types/Tile';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../../store/populationStore';
 import { getBuildingDefinitionForTile } from '../../buildings/registry';
-import { isBridgeTile } from '../../game/bridges.ts';
+import { isBridgeTile, isTunnelTile } from '../../game/bridges.ts';
 import { isRoadTile } from '../../game/roads.ts';
 
 function isDismantlableConstruction(tile: Tile | null | undefined) {
@@ -13,7 +13,7 @@ function isDismantlableConstruction(tile: Tile | null | undefined) {
         return false;
     }
 
-    return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile);
+    return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
 }
 
 const dismantleTask: TaskDefinition = {

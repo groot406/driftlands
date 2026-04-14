@@ -53,7 +53,12 @@ import {
     getHeroImpactOffset,
 } from './gameFeel';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
-import { getBridgeConnectionSides, isBridgeTile } from '../shared/game/bridges';
+import {
+    getBridgeConnectionSides,
+    getTunnelConnectionSides,
+    isBridgeTile,
+    isTunnelTile,
+} from '../shared/game/bridges';
 import { isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from '../shared/game/roads';
 import { hash32 } from './worldVariation';
 import { DEFAULT_RENDER_CONFIG, getRenderDebugLabelForQuality, getResolvedRenderQualityProfile } from './render/RenderConfig';
@@ -4435,7 +4440,7 @@ export class HexMapService {
     }
 
     private getProceduralBridgeCacheKey(tile: Tile) {
-        if (!isBridgeTile(tile)) return null;
+        if (!isBridgeTile(tile) && !isTunnelTile(tile)) return null;
         return `${tile.q},${tile.r}:${tile.variant ?? ''}`;
     }
 
@@ -5163,16 +5168,24 @@ export class HexMapService {
     private getLegacyRoadFallbackConnections(variant: string | null | undefined): TileSide[] | null {
         switch (variant) {
             case 'road_ad':
+            case 'stone_road_ad':
                 return ['a', 'd'];
             case 'road_be':
+            case 'stone_road_be':
                 return ['b', 'e'];
             case 'road_ce':
+            case 'stone_road_ce':
                 return ['c', 'e'];
             case 'road_cf':
+            case 'stone_road_cf':
                 return ['c', 'f'];
             default:
                 return null;
         }
+    }
+
+    private isStoneRoadTile(tile: Tile) {
+        return typeof tile.variant === 'string' && tile.variant.startsWith('stone_road');
     }
 
     private getRoadConnectionSides(tile: Tile): TileSide[] {
@@ -5502,14 +5515,28 @@ export class HexMapService {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        strokeBranchSet(15, `rgba(58, 38, 24, ${Math.min(1, opacity * 0.34)})`, { startInset: hubBlendInset * 0.85 });
-        strokeBranchSet(12.5, `rgba(103, 72, 45, ${Math.min(1, opacity * 0.74)})`, { startInset: hubBlendInset });
+        const isStoneRoad = this.isStoneRoadTile(tile);
+        const roadShadowColor = isStoneRoad
+            ? `rgba(34, 40, 48, ${Math.min(1, opacity * 0.34)})`
+            : `rgba(58, 38, 24, ${Math.min(1, opacity * 0.34)})`;
+        const roadUnderbedColor = isStoneRoad
+            ? `rgba(86, 96, 108, ${Math.min(1, opacity * 0.74)})`
+            : `rgba(103, 72, 45, ${Math.min(1, opacity * 0.74)})`;
+
+        strokeBranchSet(15, roadShadowColor, { startInset: hubBlendInset * 0.85 });
+        strokeBranchSet(12.5, roadUnderbedColor, { startInset: hubBlendInset });
 
         for (const branch of branches) {
             const roadbedGradient = ctx.createLinearGradient(branch.start.x, branch.start.y, branch.end.x, branch.end.y);
-            roadbedGradient.addColorStop(0, `rgba(132, 96, 60, ${Math.min(1, opacity * 0.94)})`);
-            roadbedGradient.addColorStop(0.45, `rgba(171, 131, 84, ${Math.min(1, opacity * 0.98)})`);
-            roadbedGradient.addColorStop(1, `rgba(194, 156, 109, ${Math.min(1, opacity * 0.94)})`);
+            if (isStoneRoad) {
+                roadbedGradient.addColorStop(0, `rgba(122, 132, 142, ${Math.min(1, opacity * 0.94)})`);
+                roadbedGradient.addColorStop(0.45, `rgba(166, 174, 182, ${Math.min(1, opacity * 0.98)})`);
+                roadbedGradient.addColorStop(1, `rgba(138, 146, 154, ${Math.min(1, opacity * 0.94)})`);
+            } else {
+                roadbedGradient.addColorStop(0, `rgba(132, 96, 60, ${Math.min(1, opacity * 0.94)})`);
+                roadbedGradient.addColorStop(0.45, `rgba(171, 131, 84, ${Math.min(1, opacity * 0.98)})`);
+                roadbedGradient.addColorStop(1, `rgba(194, 156, 109, ${Math.min(1, opacity * 0.94)})`);
+            }
 
             ctx.beginPath();
             this.traceRoadBranchPath(ctx, branch, { startInset: hubBlendInset });
@@ -5523,7 +5550,9 @@ export class HexMapService {
             ctx.beginPath();
             this.traceRoadBranchPath(ctx, branch, { lateralOffset: highlightOffset, startInset: hubBlendInset + 0.4, endInset: 4.8, controlTaper: 0.18 });
             ctx.lineWidth = 1.45;
-            ctx.strokeStyle = `rgba(240, 215, 174, ${Math.min(1, opacity * 0.34)})`;
+            ctx.strokeStyle = isStoneRoad
+                ? `rgba(236, 240, 245, ${Math.min(1, opacity * 0.28)})`
+                : `rgba(240, 215, 174, ${Math.min(1, opacity * 0.34)})`;
             ctx.stroke();
         }
 
@@ -5536,10 +5565,17 @@ export class HexMapService {
         ctx.save();
         ctx.scale(1, hubBlendRadiusY / hubBlendRadiusX);
         const hubBlend = ctx.createRadialGradient(0, 0, 0, 0, 0, hubBlendRadiusX);
-        hubBlend.addColorStop(0, `rgba(198, 156, 104, ${Math.min(1, opacity * 0.3)})`);
-        hubBlend.addColorStop(0.36, `rgba(171, 131, 84, ${Math.min(1, opacity * 0.2)})`);
-        hubBlend.addColorStop(0.72, `rgba(112, 79, 49, ${Math.min(1, opacity * 0.08)})`);
-        hubBlend.addColorStop(1, 'rgba(112, 79, 49, 0)');
+        if (isStoneRoad) {
+            hubBlend.addColorStop(0, `rgba(180, 188, 194, ${Math.min(1, opacity * 0.24)})`);
+            hubBlend.addColorStop(0.36, `rgba(150, 158, 168, ${Math.min(1, opacity * 0.16)})`);
+            hubBlend.addColorStop(0.72, `rgba(88, 98, 108, ${Math.min(1, opacity * 0.08)})`);
+            hubBlend.addColorStop(1, 'rgba(88, 98, 108, 0)');
+        } else {
+            hubBlend.addColorStop(0, `rgba(198, 156, 104, ${Math.min(1, opacity * 0.3)})`);
+            hubBlend.addColorStop(0.36, `rgba(171, 131, 84, ${Math.min(1, opacity * 0.2)})`);
+            hubBlend.addColorStop(0.72, `rgba(112, 79, 49, ${Math.min(1, opacity * 0.08)})`);
+            hubBlend.addColorStop(1, 'rgba(112, 79, 49, 0)');
+        }
         ctx.fillStyle = hubBlend;
         ctx.beginPath();
         ctx.arc(0, 0, hubBlendRadiusX, 0, Math.PI * 2);
@@ -5550,9 +5586,15 @@ export class HexMapService {
         ctx.translate(-0.6, -0.4);
         ctx.scale(1, Math.max(0.68, hubRadiusY / Math.max(1, hubRadiusX)));
         const hubCore = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(2.8, hubRadiusX - 0.6));
-        hubCore.addColorStop(0, `rgba(226, 192, 138, ${Math.min(1, opacity * 0.16)})`);
-        hubCore.addColorStop(0.55, `rgba(189, 147, 94, ${Math.min(1, opacity * 0.08)})`);
-        hubCore.addColorStop(1, 'rgba(189, 147, 94, 0)');
+        if (isStoneRoad) {
+            hubCore.addColorStop(0, `rgba(240, 244, 248, ${Math.min(1, opacity * 0.12)})`);
+            hubCore.addColorStop(0.55, `rgba(168, 176, 184, ${Math.min(1, opacity * 0.07)})`);
+            hubCore.addColorStop(1, 'rgba(168, 176, 184, 0)');
+        } else {
+            hubCore.addColorStop(0, `rgba(226, 192, 138, ${Math.min(1, opacity * 0.16)})`);
+            hubCore.addColorStop(0.55, `rgba(189, 147, 94, ${Math.min(1, opacity * 0.08)})`);
+            hubCore.addColorStop(1, 'rgba(189, 147, 94, 0)');
+        }
         ctx.fillStyle = hubCore;
         ctx.beginPath();
         ctx.arc(0, 0, Math.max(2.8, hubRadiusX - 0.6), 0, Math.PI * 2);
@@ -5564,26 +5606,38 @@ export class HexMapService {
             ctx.beginPath();
             this.traceRoadBranchPath(ctx, branch, { lateralOffset: -1.55, startInset: hubBlendInset + 0.9, endInset: 7.4, controlTaper: 0.16 });
             ctx.lineWidth = 1.35;
-            ctx.strokeStyle = `rgba(102, 71, 44, ${Math.min(1, opacity * 0.25)})`;
+            ctx.strokeStyle = isStoneRoad
+                ? `rgba(92, 102, 114, ${Math.min(1, opacity * 0.24)})`
+                : `rgba(102, 71, 44, ${Math.min(1, opacity * 0.25)})`;
             ctx.stroke();
 
             ctx.beginPath();
             this.traceRoadBranchPath(ctx, branch, { lateralOffset: 1.55, startInset: hubBlendInset + 0.9, endInset: 7.4, controlTaper: 0.16 });
             ctx.lineWidth = 1.35;
-            ctx.strokeStyle = `rgba(110, 78, 48, ${Math.min(1, opacity * 0.18)})`;
+            ctx.strokeStyle = isStoneRoad
+                ? `rgba(104, 116, 126, ${Math.min(1, opacity * 0.18)})`
+                : `rgba(110, 78, 48, ${Math.min(1, opacity * 0.18)})`;
             ctx.stroke();
         }
 
-        strokeBranchSet(2.4, `rgba(239, 209, 164, ${Math.min(1, opacity * 0.18)})`, { startInset: hubBlendInset + 1.2, endInset: 8.5, controlTaper: 0.12 });
+        strokeBranchSet(
+            2.4,
+            isStoneRoad
+                ? `rgba(250, 252, 255, ${Math.min(1, opacity * 0.16)})`
+                : `rgba(239, 209, 164, ${Math.min(1, opacity * 0.18)})`,
+            { startInset: hubBlendInset + 1.2, endInset: 8.5, controlTaper: 0.12 },
+        );
         ctx.restore();
     }
 
     private drawProceduralBridge(ctx: CanvasRenderingContext2D, tile: Tile, x: number, y: number, opacity: number) {
-        if (!isBridgeTile(tile)) {
+        const isBridge = isBridgeTile(tile);
+        const isTunnel = isTunnelTile(tile);
+        if (!isBridge && !isTunnel) {
             return;
         }
 
-        const connectionSides = getBridgeConnectionSides(tile);
+        const connectionSides = isBridge ? getBridgeConnectionSides(tile) : getTunnelConnectionSides(tile);
         if (!connectionSides) {
             return;
         }
@@ -5613,6 +5667,62 @@ export class HexMapService {
         ctx.globalAlpha = 1;
         ctx.lineCap = 'butt';
         ctx.lineJoin = 'round';
+
+        if (isTunnel) {
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.lineWidth = 19;
+            ctx.strokeStyle = `rgba(8, 10, 14, ${Math.min(1, opacity * 0.52)})`;
+            ctx.stroke();
+
+            const tunnelGradient = ctx.createLinearGradient(startX, startY, endX, endY);
+            tunnelGradient.addColorStop(0, `rgba(72, 64, 58, ${Math.min(1, opacity * 0.96)})`);
+            tunnelGradient.addColorStop(0.5, `rgba(104, 96, 88, ${Math.min(1, opacity * 0.96)})`);
+            tunnelGradient.addColorStop(1, `rgba(76, 69, 63, ${Math.min(1, opacity * 0.96)})`);
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.lineWidth = 12.2;
+            ctx.strokeStyle = tunnelGradient;
+            ctx.stroke();
+
+            for (const railOffset of [-3.7, 3.7] as const) {
+                ctx.beginPath();
+                ctx.moveTo(startX + (perpX * railOffset), startY + (perpY * railOffset));
+                ctx.lineTo(endX + (perpX * railOffset), endY + (perpY * railOffset));
+                ctx.lineWidth = 1.9;
+                ctx.strokeStyle = `rgba(54, 48, 44, ${Math.min(1, opacity * 0.74)})`;
+                ctx.stroke();
+            }
+
+            const braceSpacing = 10.5;
+            const braceHalfWidth = 4.9;
+            const braceCount = Math.max(3, Math.floor(distance / braceSpacing));
+            for (let i = 0; i <= braceCount; i++) {
+                const t = braceCount === 0 ? 0.5 : i / braceCount;
+                const px = startX + ((endX - startX) * t);
+                const py = startY + ((endY - startY) * t);
+
+                ctx.beginPath();
+                ctx.moveTo(px - (perpX * braceHalfWidth), py - (perpY * braceHalfWidth));
+                ctx.lineTo(px + (perpX * braceHalfWidth), py + (perpY * braceHalfWidth));
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = `rgba(138, 118, 90, ${Math.min(1, opacity * 0.4)})`;
+                ctx.stroke();
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(startX - (perpX * 1.8), startY - (perpY * 1.8));
+            ctx.lineTo(endX - (perpX * 1.8), endY - (perpY * 1.8));
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(220, 212, 198, ${Math.min(1, opacity * 0.18)})`;
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        }
 
         ctx.beginPath();
         ctx.moveTo(startX, startY);

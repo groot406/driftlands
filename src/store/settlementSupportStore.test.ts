@@ -282,3 +282,57 @@ test('bridges keep adjacent shore tiles active beyond town-center reach', () => 
   assert.equal(tileIndex['10,0']?.activationState, 'active');
   assert.equal(tileIndex['10,0']?.controlledBySettlementId, '0,0');
 });
+
+test('tunnels keep adjacent mountain tiles active beyond town-center reach', () => {
+  const reserved = new Set(['9,0', '10,0']);
+  const frontier: Tile[] = [];
+  const coords = createSortedFrontierCoords(reserved);
+
+  for (const coord of coords.slice(0, 83)) {
+    frontier.push({
+      id: `${coord.q},${coord.r}`,
+      q: coord.q,
+      r: coord.r,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    });
+  }
+
+  loadWorld([
+    createTowncenterTile(),
+    ...frontier,
+    {
+      id: '9,0',
+      q: 9,
+      r: 0,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'mountain_tunnel_cf',
+    } satisfies Tile,
+    {
+      id: '10,0',
+      q: 10,
+      r: 0,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const result = recalculateSettlementSupport(0, 0);
+
+  assert.equal(result.snapshot.supportCapacity, 85);
+  assert.equal(result.snapshot.activeTileCount, 85);
+  assert.equal(tileIndex['10,0']?.activationState, 'active');
+  assert.equal(tileIndex['10,0']?.controlledBySettlementId, '0,0');
+});

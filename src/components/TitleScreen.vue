@@ -8,101 +8,87 @@
     </div>
 
     <div class="relative z-10 flex min-h-screen items-start px-5 py-5 lg:items-center lg:px-10 lg:py-8">
-      <div class="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.12fr_0.88fr]">
+      <div class="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.08fr_0.92fr]">
         <section class="story-panel story-hero-panel">
           <div class="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-slate-200/90">
-            <span class="story-badge story-badge-primary">Story Campaign</span>
+            <span class="story-badge story-badge-primary">Colony Story</span>
             <span class="story-badge">Persistent Colony</span>
             <span class="story-badge">Seed {{ activeSeed }}</span>
           </div>
 
           <p class="mt-5 text-sm uppercase tracking-[0.32em] text-amber-200/80">Driftlands</p>
           <h1 class="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Lead the first colony through a wind-carved frontier.
+            Grow a colony through houses, job sites, and new resource chains.
           </h1>
           <p class="mt-5 max-w-2xl text-sm leading-7 text-slate-200/78 sm:text-base">
-            Story Mode turns each charter into a chapter. Secure landfall, raise a real settlement, and push the frontier far
-            enough that the crews behind you can follow your light.
+            Gather raw materials, build the next specialist structure, house more settlers, and let each new production line unlock the next layer of the frontier.
           </p>
 
           <div class="mt-6 flex flex-wrap items-center gap-4">
             <button class="story-btn-primary" @click="joinGame">{{ primaryActionLabel }}</button>
             <p class="max-w-md text-xs leading-5 text-slate-300/80">
-              {{ currentRun ? 'The server is already holding your current charter. Jump back in when you are ready.' : 'Your first charter opens on the shoreline, with objectives generated from the live world seed.' }}
+              {{ currentRun ? 'Your colony state is already live. Step back in and continue the next production chain.' : 'You begin with just enough tools to survive. Real growth starts once the first houses and job sites begin feeding each other.' }}
             </p>
           </div>
 
-          <div class="mt-8 grid gap-3 sm:grid-cols-3">
-            <article
-              v-for="feature in storyModeFeatures"
-              :key="feature.label"
-              class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
-            >
-              <p class="pixel-font text-[10px] uppercase tracking-[0.16em] text-amber-200/80">{{ feature.label }}</p>
-              <p class="mt-3 text-sm leading-6 text-slate-200/78">{{ feature.description }}</p>
-            </article>
-          </div>
-
-          <div class="mt-8">
+          <div class="mt-10">
             <div class="flex items-center justify-between gap-3">
-              <p class="pixel-font text-[10px] uppercase tracking-[0.2em] text-amber-200/80">Campaign Arc</p>
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-300/80">Three acts, endless frontier</p>
+              <p class="pixel-font text-[10px] uppercase tracking-[0.2em] text-amber-200/80">Colony Loop</p>
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-300/80">One chain unlocks the next</p>
             </div>
 
-            <div class="mt-4 grid gap-3">
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
               <article
-                v-for="act in storyModeActs"
-                :key="act.label"
+                v-for="step in loopSteps"
+                :key="step.label"
                 class="rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-4"
               >
                 <div class="flex flex-wrap items-center gap-3">
-                  <span class="story-badge story-badge-primary">{{ act.label }}</span>
-                  <h2 class="text-lg font-semibold text-white">{{ act.title }}</h2>
+                  <span class="story-badge story-badge-primary">{{ step.label }}</span>
+                  <h2 class="text-lg font-semibold text-white">{{ step.title }}</h2>
                 </div>
-                <p class="mt-3 text-sm leading-6 text-slate-300">{{ act.description }}</p>
+                <p class="mt-3 text-sm leading-6 text-slate-300">{{ step.description }}</p>
               </article>
             </div>
-          </div>
 
-          <p class="mt-8 text-xs uppercase tracking-[0.16em] text-slate-300/75">
-            Scroll for the full campaign brief. The launch action stays near the top on shorter screens.
-          </p>
+            <p class="mt-4 max-w-2xl text-xs leading-5 text-slate-300/78">
+              Story beats now sit on top of this loop instead of locking it. The crew reacts to what the colony achieves, but the economy itself decides what comes next.
+            </p>
+          </div>
         </section>
 
         <aside class="flex flex-col gap-4">
           <section class="story-panel">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-amber-200/80">
-                  {{ currentRun ? 'Current Charter' : 'Opening Charter' }}
-                </p>
+                <p class="pixel-font text-[10px] uppercase tracking-[0.18em] text-amber-200/80">Current Story</p>
                 <h2 class="mt-3 text-2xl font-semibold text-white">{{ previewStory.title }}</h2>
               </div>
               <div class="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em]">
-                <span class="story-badge story-badge-primary">{{ previewStory.actLabel }}</span>
-                <span class="story-badge">{{ previewStory.chapterLabel }}</span>
+                <span class="story-badge story-badge-primary">{{ previewStory.chapterLabel }}</span>
+                <span class="story-badge">{{ previewStory.actLabel }}</span>
               </div>
             </div>
 
             <p class="mt-4 text-sm leading-7 text-slate-200/78">{{ previewStory.kicker }}</p>
 
             <div class="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4">
-              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Briefing</p>
+              <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Scene</p>
               <p class="mt-2 text-sm leading-6 text-slate-200/78">{{ previewStory.briefing }}</p>
             </div>
 
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
               <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Current Mutator</p>
-                <p class="mt-2 text-base font-semibold text-white">{{ activeMutator }}</p>
+                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Next Unlock</p>
+                <p class="mt-2 text-base font-semibold text-white">{{ nextMilestoneLabel }}</p>
+                <p class="mt-2 text-xs leading-5 text-slate-300/75">{{ nextMilestoneDescription }}</p>
               </div>
               <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Objectives</p>
-                <p class="mt-2 text-base font-semibold text-white">{{ objectivePreview }}</p>
+                <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Colony Pressure</p>
+                <p class="mt-2 text-base font-semibold text-white">{{ colonyPressure }}</p>
+                <p class="mt-2 text-xs leading-5 text-slate-300/75">{{ previewStory.guidance }}</p>
               </div>
             </div>
-
-            <p class="mt-4 text-xs leading-5 text-slate-300/80">{{ previewStory.guidance }}</p>
           </section>
 
           <section class="story-panel">
@@ -121,7 +107,14 @@
                 class="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/55 px-3 py-3"
               >
                 <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900/80">
-                  <img :src="member.avatar" :alt="member.name" class="h-14 w-14 pixel-art object-contain" />
+                  <Sprite
+                    :sprite="member.avatar"
+                    :zoom="1.75"
+                    :row="8"
+                    :frame="0"
+                    :size="32"
+                    :aria-label="member.name"
+                  />
                 </div>
                 <div class="min-w-0">
                   <p class="text-sm font-semibold text-white">{{ member.name }}</p>
@@ -141,9 +134,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import TitleBackground from './TitleBackground.vue';
+import Sprite from './Sprite.vue';
 import { resumeGame } from '../store/uiStore.ts';
 import { runSnapshot } from '../store/runStore.ts';
-import { createStoryBeat, storyModeActs, storyModeFeatures } from '../shared/story/storyMode.ts';
 import { createStoryProgression } from '../shared/story/progression.ts';
 import { getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
 import boyAvatar from '../assets/heroes/boy.png';
@@ -151,11 +144,21 @@ import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
 import santaAvatar from '../assets/heroes/santa.png';
 
-const openingStory = createStoryBeat(1, 1, {
-  key: 'open_frontier',
-  name: 'Open Frontier',
-  description: 'The charter favors broad scouting and fast, flexible expansion.',
-});
+const openingStory = {
+  chapterId: 'landfall',
+  chapterLabel: 'Landfall',
+  actLabel: 'Opening Days',
+  title: 'A New Landing',
+  kicker: 'A handful of people, a rough shoreline, and just enough supplies to start making promises.',
+  briefing: 'Gather the first stockpile, raise shelter, and turn scattered labor into the first real production chain.',
+  stakes: 'If housing, food, and work fall out of balance, the colony stalls before it becomes self-sustaining.',
+  guidance: 'Build the next useful thing, then make sure the colony has enough beds and workers to keep it running.',
+  completionTitle: 'The colony finds its footing',
+  completionText: 'The first loop holds. From here on, each new structure can unlock the next.',
+  failureTitle: 'The landing goes quiet',
+  failureText: 'Without enough shelter, food, and labor, the frontier stops moving.',
+  nextHint: 'The next unlock comes from the colony state itself, not a mission list.',
+};
 
 const openingProgression = createStoryProgression(1);
 const avatarByKey: Record<string, string> = {
@@ -164,10 +167,36 @@ const avatarByKey: Record<string, string> = {
   loophead: loopheadAvatar,
   santa: santaAvatar,
 };
+const loopSteps = [
+  {
+    label: '01',
+    title: 'Gather',
+    description: 'Collect wood, food, and salvage from the open ground around the landing.',
+  },
+  {
+    label: '02',
+    title: 'Build',
+    description: 'Turn that stockpile into a new structure that solves the next colony problem.',
+  },
+  {
+    label: '03',
+    title: 'Settle',
+    description: 'Raise houses so more settlers can join and keep the new site staffed.',
+  },
+  {
+    label: '04',
+    title: 'Produce',
+    description: 'Specialized job sites create the resource that unlocks the next building in the chain.',
+  },
+] as const;
 
 const currentRun = computed(() => runSnapshot.value);
-const previewStory = computed(() => currentRun.value?.story ?? openingStory);
+const previewStory = computed(() => currentRun.value?.chapter ?? openingStory);
 const currentProgression = computed(() => currentRun.value?.progression ?? openingProgression);
+const nextMilestone = computed(() => {
+  const nextNodeKey = currentProgression.value.nextRecommendedNodeKeys[0];
+  return currentProgression.value.nodes.find((node) => node.key === nextNodeKey) ?? null;
+});
 const crew = computed(() => currentProgression.value.heroes.available
   .map((heroId) => getStoryHeroTemplate(heroId))
   .filter((hero): hero is NonNullable<ReturnType<typeof getStoryHeroTemplate>> => !!hero)
@@ -176,19 +205,27 @@ const crew = computed(() => currentProgression.value.heroes.available
     role: hero.role,
     avatar: avatarByKey[hero.avatar] ?? santaAvatar,
   })));
-const primaryActionLabel = computed(() => currentRun.value ? 'Continue Story' : 'Begin Story Mode');
-const activeMutator = computed(() => currentRun.value?.mutator.name ?? 'Open Frontier');
-const objectivePreview = computed(() => currentRun.value ? `${currentRun.value.objectives.length} live objectives` : 'Procedural charter');
+const primaryActionLabel = computed(() => currentRun.value ? 'Continue Colony' : 'Start Colony');
+const nextMilestoneLabel = computed(() => nextMilestone.value?.label ?? 'Keep Expanding');
+const nextMilestoneDescription = computed(() => nextMilestone.value?.description ?? 'Build another useful production link and the next milestone will appear.');
 const activeSeed = computed(() => currentRun.value?.seed ?? 123456789);
 const crewHeading = computed(() => `${crew.value.length} hero${crew.value.length === 1 ? '' : 'es'} on the center stone`);
+const colonyPressure = computed(() => {
+  if (!currentRun.value) {
+    return 'Housing, food, and labor are all still fragile.';
+  }
+
+  const run = currentRun.value;
+  return `${run.activeTiles} active tiles, ${run.discoveredTiles} explored, ${run.progression.unlocked.heroes.length} hero${run.progression.unlocked.heroes.length === 1 ? '' : 'es'} available.`;
+});
 const crewHint = computed(() => {
   const lockedCount = 4 - crew.value.length;
 
   if (lockedCount > 0) {
-    return `${lockedCount} more recruit${lockedCount === 1 ? '' : 's'}, plus new buildings, tasks, and terrains, unlock as the campaign advances.`;
+    return `${lockedCount} more recruit${lockedCount === 1 ? '' : 's'} join once the colony can support more beds, more jobs, and stronger supply lines.`;
   }
 
-  return 'Every recruit is now in the field, and later charters expand the frontier with new works and terrain.';
+  return 'Every recruit is already in the field now, so further growth comes from deeper production chains and upgraded infrastructure.';
 });
 
 function joinGame() {

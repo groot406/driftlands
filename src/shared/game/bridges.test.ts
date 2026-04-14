@@ -6,9 +6,14 @@ import { loadWorld, tileIndex } from './world.ts';
 import {
   bridgeVariantSupportsSide,
   getBridgeConnectionSides,
+  getTunnelConnectionSides,
   isBridgeTile,
   isProceduralBridgeVariant,
+  isProceduralTunnelVariant,
+  isTunnelTile,
   resolveBridgeVariantFromAccessTile,
+  resolveTunnelVariantFromAccessTile,
+  tunnelVariantSupportsSide,
 } from './bridges.ts';
 
 test.afterEach(() => {
@@ -102,4 +107,80 @@ test('bridge helpers resolve straight bridge variants from shore and bridgeheads
   assert.equal(resolveBridgeVariantFromAccessTile(sidewaysTarget, plainShore), null);
   assert.equal(resolveBridgeVariantFromAccessTile(extension, bridgeHead), 'water_bridge_ad');
   assert.equal(resolveBridgeVariantFromAccessTile(sidewaysTarget, bridgeHead), null);
+});
+
+test('tunnel helpers resolve straight tunnel variants from roads and tunnel mouths', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'road',
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: 'mountain_tunnel_ad',
+    } satisfies Tile,
+    {
+      id: '0,2',
+      q: 0,
+      r: 2,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,1',
+      q: 1,
+      r: 1,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const tunnelMouth = tileIndex['0,1']!;
+  const extension = tileIndex['0,2']!;
+  const sidewaysTarget = tileIndex['1,1']!;
+  const towncenterApproach = tileIndex['0,0']!;
+  const roadApproach = tileIndex['1,0']!;
+
+  assert.equal(isProceduralTunnelVariant('mountain_tunnel_ad'), true);
+  assert.equal(isTunnelTile(tunnelMouth), true);
+  assert.deepEqual(getTunnelConnectionSides(tunnelMouth), ['a', 'd']);
+  assert.equal(tunnelVariantSupportsSide(tunnelMouth, 'a'), true);
+  assert.equal(tunnelVariantSupportsSide(tunnelMouth, 'c'), false);
+  assert.equal(resolveTunnelVariantFromAccessTile(tunnelMouth, towncenterApproach), 'mountain_tunnel_ad');
+  assert.equal(resolveTunnelVariantFromAccessTile(sidewaysTarget, roadApproach), 'mountain_tunnel_ad');
+  assert.equal(resolveTunnelVariantFromAccessTile(extension, tunnelMouth), 'mountain_tunnel_ad');
+  assert.equal(resolveTunnelVariantFromAccessTile(sidewaysTarget, tunnelMouth), null);
 });

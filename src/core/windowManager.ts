@@ -109,6 +109,8 @@ export const WINDOW_IDS = {
   TOWN_CENTER_PANEL: 'town-center-panel',
   BUILDING_DETAIL_MODAL: 'building-detail-modal',
   SETTLER_MODAL: 'settler-modal',
+  POPULATION_MODAL: 'population-modal',
+  RESOURCE_MODAL: 'resource-modal',
 } as const;
 
 // Register common windows with default configurations
@@ -163,5 +165,17 @@ registerWindow({
 registerWindow({
   id: WINDOW_IDS.SETTLER_MODAL,
   priority: 90,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.POPULATION_MODAL,
+  priority: 85,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.RESOURCE_MODAL,
+  priority: 85,
   blocksKeyboard: true,
 });

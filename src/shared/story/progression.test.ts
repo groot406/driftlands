@@ -42,7 +42,6 @@ test('shoreline and farming unlock from discovered water, housing, and populatio
   const landfall = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
     discoveredTerrains: ['water', 'forest'],
-    frontierDistance: 2,
     population: 2,
     beds: 2,
     buildingCounts: {
@@ -65,12 +64,10 @@ test('food economy chain unlocks irrigation, stores, and baking from real colony
   const base = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
     discoveredTerrains: ['water', 'forest', 'dirt', 'grain'],
-    frontierDistance: 4,
     population: 3,
     beds: 4,
     resourceStock: {
       grain: 10,
-      stone: 2,
     },
     buildingCounts: {
       house: 1,
@@ -97,12 +94,15 @@ test('food economy chain unlocks irrigation, stores, and baking from real colony
 test('frontier and logistics milestones unlock mining, depots, and the fourth hero', () => {
   const previous = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
-    discoveredTerrains: ['water', 'forest', 'mountain'],
-    frontierDistance: 6,
-    population: 4,
-    beds: 4,
+    discoveredTerrains: ['water', 'forest'],
+    population: 5,
+    beds: 5,
+    resourceStock: {
+      food: 8,
+      wood: 12,
+    },
     buildingCounts: {
-      house: 1,
+      house: 2,
       watchtower: 1,
       supplyDepot: 1,
     },
@@ -117,17 +117,17 @@ test('frontier and logistics milestones unlock mining, depots, and the fourth he
   assert.ok(progression.unlocked.heroes.includes('h4'));
   assert.ok(progression.unlocked.buildings.includes('watchtower'));
   assert.ok(progression.unlocked.buildings.includes('mine'));
+  assert.ok(progression.unlocked.buildings.includes('quarry'));
   assert.ok(progression.unlocked.buildings.includes('supplyDepot'));
   assert.ok(progression.unlocked.buildings.includes('lumberCamp'));
   assert.ok(taskKeys.includes('buildMine'));
+  assert.ok(taskKeys.includes('buildQuarry'));
   assert.ok(taskKeys.includes('buildSupplyDepot'));
 });
 
 test('masonry, expansion, and deep frontier unlock upgrades and late terrain bands', () => {
   const previous = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
-    discoveredTerrains: ['water', 'forest', 'mountain', 'snow', 'dessert'],
-    frontierDistance: 10,
     population: 7,
     beds: 8,
     resourceStock: {
@@ -136,9 +136,13 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
     },
     buildingCounts: {
       house: 2,
-      watchtower: 1,
       supplyDepot: 1,
+      bakery: 1,
       townCenter: 1,
+    },
+    operationalBuildingCounts: {
+      mine: 1,
+      lumberCamp: 1,
     },
   }), previous.unlockedNodeKeys);
 
@@ -150,6 +154,7 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
   assert.ok(progression.unlocked.upgrades.includes('stone_house_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('warehouse_upgrade'));
+  assert.ok(progression.unlocked.upgrades.includes('stone_road_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('sawmill_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('reinforced_mine_upgrade'));
   assert.ok(progression.unlocked.terrains.includes('snow'));
@@ -161,28 +166,33 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
 
 test('previously unlocked milestones stay unlocked after metrics dip on reload', () => {
   const richProgression = evaluateProgression(metrics({
-    discoveredTerrains: ['water', 'forest', 'mountain'],
-    frontierDistance: 6,
-    population: 4,
-    beds: 4,
+    discoveredTerrains: ['water', 'forest'],
+    population: 7,
+    beds: 8,
     resourceStock: {
       grain: 10,
+      food: 8,
+      wood: 12,
       stone: 8,
+      ore: 12,
     },
     buildingCounts: {
-      house: 1,
+      house: 2,
       watchtower: 1,
       granary: 1,
       supplyDepot: 1,
+      bakery: 1,
+      townCenter: 1,
     },
     operationalBuildingCounts: {
       granary: 1,
+      mine: 1,
+      lumberCamp: 1,
     },
   }));
 
   const reloaded = evaluateProgression(metrics({
     discoveredTerrains: ['water'],
-    frontierDistance: 2,
     population: 1,
     beds: 2,
   }), richProgression.unlockedNodeKeys);

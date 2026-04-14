@@ -8,6 +8,11 @@ const PROCEDURAL_ROAD_VARIANTS = new Set([
   'road_be',
   'road_ce',
   'road_cf',
+  'stone_road',
+  'stone_road_ad',
+  'stone_road_be',
+  'stone_road_ce',
+  'stone_road_cf',
 ]);
 
 export function isProceduralRoadVariant(variant: string | null | undefined) {
@@ -19,7 +24,10 @@ export function isRoadTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | unde
 }
 
 function isBridgeBuildAnchorTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | undefined) {
-  return tile?.terrain === 'water' && typeof tile.variant === 'string' && tile.variant.startsWith('water_bridge_');
+  return (
+    (tile?.terrain === 'water' && typeof tile.variant === 'string' && tile.variant.startsWith('water_bridge_'))
+    || (tile?.terrain === 'mountain' && typeof tile.variant === 'string' && tile.variant.startsWith('mountain_tunnel_'))
+  );
 }
 
 export function isInfrastructureBuildAnchorTile(tile: Tile | null | undefined, fromSide?: TileSide) {

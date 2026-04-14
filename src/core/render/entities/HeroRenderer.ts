@@ -8,6 +8,7 @@ import { isHeroWorkingTask } from '../../../shared/game/heroTaskState';
 import { camera, hexDistance } from '../../camera';
 import type { Hero } from '../../types/Hero';
 import type { Settler } from '../../types/Settler';
+import { getSettlerDisplayName } from '../../../shared/game/settlerNames.ts';
 import {
     computeTileSettlerOffsets,
     getSettlerInterpolatedPixelPosition,
@@ -426,7 +427,7 @@ export class HeroRenderer {
                     ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
                     ctx.stroke();
 
-                    const label = 'Settler';
+                    const label = getSettlerDisplayName(settler.id);
                     ctx.font = '600 9px system-ui, sans-serif';
                     const textWidth = ctx.measureText(label).width;
                     const labelWidth = Math.ceil(textWidth) + 10;

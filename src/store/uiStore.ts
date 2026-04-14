@@ -8,6 +8,7 @@ import {focusHero} from "../core/heroService.ts";
 import type {Hero} from "../core/types/Hero.ts";
 import type { Settler } from '../core/types/Settler';
 import { resetNotifications } from './notificationStore';
+import type { ResourceType } from '../core/types/Resource.ts';
 export type Phase = 'title' | 'playing';
 
 interface UIState {
@@ -18,6 +19,7 @@ interface UIState {
 const STATE_KEY = 'driftlands-ui-state-v1';
 export const selectedHeroId = ref<string | null>(null);
 export const selectedSettlerId = ref<string | null>(null);
+export const selectedResourceDetail = ref<ResourceType | null>(null);
 
 export const uiStore = reactive<UIState>({
     phase: 'title',
@@ -93,6 +95,24 @@ export function getSelectedSettler(): Settler | null {
     return selectedSettlerId.value ? getSettler(selectedSettlerId.value) : null;
 }
 
+export function openPopulationModal() {
+    openWindow(WINDOW_IDS.POPULATION_MODAL);
+}
+
+export function closePopulationModal() {
+    closeWindow(WINDOW_IDS.POPULATION_MODAL);
+}
+
+export function openResourceDetailModal(resourceType: ResourceType) {
+    selectedResourceDetail.value = resourceType;
+    openWindow(WINDOW_IDS.RESOURCE_MODAL);
+}
+
+export function closeResourceDetailModal() {
+    selectedResourceDetail.value = null;
+    closeWindow(WINDOW_IDS.RESOURCE_MODAL);
+}
+
 
 export function resumeGame() {
     uiStore.phase = 'playing';
@@ -120,6 +140,8 @@ export function returnToTitle() {
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
     closeWindow(WINDOW_IDS.MISSION_CENTER);
     closeWindow(WINDOW_IDS.NOTIFICATION_CENTER);
+    closePopulationModal();
+    closeResourceDetailModal();
     closeSettlerModal();
     resetNotifications();
 }

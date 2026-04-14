@@ -58,9 +58,17 @@ const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
     'road_be',
     'road_ce',
     'road_cf',
+    'stone_road',
+    'stone_road_ad',
+    'stone_road_be',
+    'stone_road_ce',
+    'stone_road_cf',
     'water_bridge_ad',
     'water_bridge_be',
     'water_bridge_cf',
+    'mountain_tunnel_ad',
+    'mountain_tunnel_be',
+    'mountain_tunnel_cf',
 ]);
 
 const BUILDING_VARIANT_KEYS = new Set<string>([
@@ -92,6 +100,9 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'water_bridge_ad',
     'water_bridge_be',
     'water_bridge_cf',
+    'mountain_tunnel_ad',
+    'mountain_tunnel_be',
+    'mountain_tunnel_cf',
 ]);
 
 let lastSnapshot: SettlementSupportSnapshot = {

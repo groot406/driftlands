@@ -1,8 +1,15 @@
 <template>
-  <div ref="bubbleEl" class="resource-bubble">
+  <button
+    ref="bubbleEl"
+    class="resource-bubble"
+    :class="{ 'resource-bubble-clickable': clickable }"
+    type="button"
+    :title="label"
+    @click="emit('select')"
+  >
     <span class="text-xs leading-none">{{ icon }}</span>
     <span class="text-[11px] font-mono leading-none text-slate-200">{{ value }}</span>
-  </div>
+  </button>
 </template>
 
 <script setup lang="ts">
@@ -15,6 +22,11 @@ const props = defineProps<{
   label: string;
   value: number | string;
   resourceKey: ResourceType;
+  clickable?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'select'): void;
 }>();
 
 const bubbleEl = ref<HTMLElement | null>(null);
@@ -33,5 +45,23 @@ onBeforeUnmount(() => registerResourceTarget(props.resourceKey, null));
 .resource-bubble {
   @apply flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2 py-1.5 shadow-lg backdrop-blur-sm;
   background: rgba(2, 6, 23, 0.82);
+  appearance: none;
+  border-radius: 0.5rem;
+}
+
+.resource-bubble-clickable {
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.resource-bubble-clickable:hover {
+  transform: translateY(-1px);
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.resource-bubble-clickable:focus-visible {
+  outline: 2px solid rgba(251, 191, 36, 0.7);
+  outline-offset: 2px;
 }
 </style>

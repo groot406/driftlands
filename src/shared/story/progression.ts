@@ -15,13 +15,16 @@ export type BuildingKey =
   | 'granary'
   | 'bakery'
   | 'mine'
-  | 'house';
+  | 'quarry'
+  | 'house'
+  | 'road';
 
 export type UpgradeKey =
   | 'stone_house_upgrade'
   | 'warehouse_upgrade'
   | 'sawmill_upgrade'
-  | 'reinforced_mine_upgrade';
+  | 'reinforced_mine_upgrade'
+  | 'stone_road_upgrade';
 
 export type ProgressionNodeKey =
   | 'landfall'
@@ -201,10 +204,20 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Establishes a lasting ore extraction point in the ridges.',
     taskKey: 'buildMine',
   },
+  quarry: {
+    label: 'Quarry',
+    description: 'Establishes a lasting stone extraction point in the ridges.',
+    taskKey: 'buildQuarry',
+  },
   house: {
     label: 'House',
     description: 'Shelters settlers and raises the colony population cap.',
     taskKey: 'buildHouse',
+  },
+  road: {
+    label: 'Road',
+    description: 'A laid route that can later be paved into faster stonework.',
+    taskKey: 'buildRoad',
   },
 };
 
@@ -248,6 +261,10 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   buildBridge: {
     label: 'Build Bridge',
     description: 'Span straight timber bridges over controlled water from active shore or bridgeheads.',
+  },
+  buildTunnel: {
+    label: 'Build Tunnel',
+    description: 'Cut straight mountain tunnels from active approaches or existing tunnel mouths.',
   },
   dig: {
     label: 'Dig',
@@ -351,6 +368,11 @@ const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; tas
     description: 'Stabilizes the mine head and improves ore output.',
     taskKey: 'upgradeMineToReinforced',
   },
+  stone_road_upgrade: {
+    label: 'Stone Road',
+    description: 'Paves a wooden road into a faster stone highway.',
+    taskKey: 'upgradeRoadToStone',
+  },
 };
 
 const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
@@ -389,10 +411,11 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'shoreline',
     label: 'Shoreline Works',
     category: 'Frontier',
-    description: 'Open the shoreline and begin working across shallow water.',
+    description: 'Turn the coast into part of the colony and start working over shallow water.',
     requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
+      { kind: 'population_at_least', amount: 2 },
       { kind: 'terrain_discovered', terrainKey: 'water' },
-      { kind: 'frontier_distance_at_least', amount: 2 },
     ],
     sortOrder: 20,
     unlocks: [
@@ -411,7 +434,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'farming',
     label: 'Working Fields',
     category: 'Food',
-    description: 'Turn the first houses into a farming settlement.',
+    description: 'Turn the first shelter into a farming settlement.',
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
       { kind: 'population_at_least', amount: 2 },
@@ -427,7 +450,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'irrigation',
     label: 'Irrigation',
     category: 'Food',
-    description: 'Carry water inland and expand the colony workforce.',
+    description: 'Carry water inland and push farming onto drier ground.',
     requirements: [
       { kind: 'resource_stock_at_least', resourceType: 'grain', amount: 6 },
       { kind: 'population_at_least', amount: 3 },
@@ -443,7 +466,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'stores',
     label: 'Stores',
     category: 'Food',
-    description: 'Secure a grain economy and preserve the harvest.',
+    description: 'Preserve the harvest before it starts bottlenecking growth.',
     requirements: [
       { kind: 'resource_stock_at_least', resourceType: 'grain', amount: 10 },
       { kind: 'population_at_least', amount: 3 },
@@ -457,10 +480,10 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'baking',
     label: 'Baking',
     category: 'Food',
-    description: 'Turn stored grain into dependable food.',
+    description: 'Turn stored grain into dependable food for a larger workforce.',
     requirements: [
       { kind: 'building_operational_at_least', buildingKey: 'granary', amount: 1 },
-      { kind: 'resource_stock_at_least', resourceType: 'stone', amount: 2 },
+      { kind: 'resource_stock_at_least', resourceType: 'grain', amount: 6 },
       { kind: 'population_at_least', amount: 3 },
     ],
     sortOrder: 60,
@@ -472,10 +495,10 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'security',
     label: 'Perimeter Security',
     category: 'Settlement',
-    description: 'Raise proper lookout posts around the settlement.',
+    description: 'Once food is stable, the colony can afford real lookout posts.',
     requirements: [
-      { kind: 'population_at_least', amount: 3 },
-      { kind: 'frontier_distance_at_least', amount: 4 },
+      { kind: 'resource_stock_at_least', resourceType: 'food', amount: 8 },
+      { kind: 'population_at_least', amount: 4 },
     ],
     sortOrder: 70,
     unlocks: [
@@ -486,25 +509,27 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'mountain_frontier',
     label: 'Mountain Frontier',
     category: 'Frontier',
-    description: 'Push into the ridges and begin mining.',
+    description: 'With a lookout in place, the colony can push into the ridges and start mining stone and ore.',
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'watchtower', amount: 1 },
-      { kind: 'frontier_distance_at_least', amount: 6 },
+      { kind: 'population_at_least', amount: 5 },
     ],
     sortOrder: 80,
     unlocks: [
       { kind: 'terrain', key: 'mountain' },
+      { kind: 'task', key: 'buildTunnel' },
       { kind: 'building', key: 'mine' },
+      { kind: 'building', key: 'quarry' },
     ],
   },
   {
     key: 'logistics',
     label: 'Logistics',
     category: 'Logistics',
-    description: 'Stage supplies away from the town center and bring in more crew.',
+    description: 'A bigger colony needs storage and hauling away from the first camp.',
     requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'house', amount: 2 },
       { kind: 'population_at_least', amount: 4 },
-      { kind: 'frontier_distance_at_least', amount: 5 },
     ],
     sortOrder: 90,
     unlocks: [
@@ -516,10 +541,10 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'timber_industry',
     label: 'Timber Industry',
     category: 'Industry',
-    description: 'Convert raw forests into a stable timber line.',
+    description: 'Industrialize timber so wood keeps pace with the rest of the colony.',
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
-      { kind: 'terrain_discovered', terrainKey: 'forest' },
+      { kind: 'resource_stock_at_least', resourceType: 'wood', amount: 12 },
     ],
     sortOrder: 100,
     unlocks: [
@@ -530,7 +555,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'masonry',
     label: 'Masonry',
     category: 'Upgrades',
-    description: 'Stonework unlocks more permanent housing and storage.',
+    description: 'Stonework makes the first permanent housing, storage, and paving upgrades possible.',
     requirements: [
       { kind: 'resource_stock_at_least', resourceType: 'stone', amount: 8 },
       { kind: 'population_at_least', amount: 4 },
@@ -539,16 +564,18 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'upgrade', key: 'stone_house_upgrade' },
       { kind: 'upgrade', key: 'warehouse_upgrade' },
+      { kind: 'upgrade', key: 'stone_road_upgrade' },
     ],
   },
   {
     key: 'harsh_frontier',
     label: 'Harsh Frontier',
     category: 'Frontier',
-    description: 'Extend the colony into harsher outer bands.',
+    description: 'Stable food and logistics let the colony survive harsher outer terrain.',
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
-      { kind: 'frontier_distance_at_least', amount: 8 },
+      { kind: 'building_count_at_least', buildingKey: 'bakery', amount: 1 },
+      { kind: 'population_at_least', amount: 5 },
     ],
     sortOrder: 120,
     unlocks: [
@@ -560,11 +587,11 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'expansion',
     label: 'Expansion',
     category: 'Settlement',
-    description: 'Establish a second settlement anchor deeper in the frontier.',
+    description: 'Ore output finally supports founding a second settlement anchor.',
     requirements: [
       { kind: 'population_at_least', amount: 7 },
       { kind: 'resource_stock_at_least', resourceType: 'ore', amount: 12 },
-      { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
+      { kind: 'building_operational_at_least', buildingKey: 'mine', amount: 1 },
     ],
     sortOrder: 130,
     unlocks: [
@@ -575,10 +602,11 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'deep_frontier',
     label: 'Deep Frontier',
     category: 'Upgrades',
-    description: 'Late frontier industry and extreme terrain come into view.',
+    description: 'A second settlement and real industry open the late frontier.',
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'townCenter', amount: 1 },
-      { kind: 'frontier_distance_at_least', amount: 10 },
+      { kind: 'building_operational_at_least', buildingKey: 'lumberCamp', amount: 1 },
+      { kind: 'building_operational_at_least', buildingKey: 'mine', amount: 1 },
     ],
     sortOrder: 140,
     unlocks: [

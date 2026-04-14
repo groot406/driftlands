@@ -4,7 +4,7 @@ import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
 import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
 import { resolveWorldTile } from '../../core/worldGeneration.ts';
 import { axialDistanceCoords } from '../game/hex';
-import { listBridgeAccessTiles } from '../game/bridges.ts';
+import { listBridgeAccessTiles, listTunnelAccessTiles } from '../game/bridges.ts';
 import { listDockAccessTiles } from '../game/docks.ts';
 import { isTileWalkable } from '../game/navigation';
 import {
@@ -17,6 +17,7 @@ import { tileIndex } from '../game/world';
 const ADJACENT_ACTIVE_ACCESS_TASKS = new Set<string>([
     'buildDock',
     'buildBridge',
+    'buildTunnel',
 ]);
 
 const ADJACENT_WALKABLE_ACCESS_TASKS = new Set<string>([
@@ -103,6 +104,10 @@ function listDockAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
     return listDockAccessTiles(tile).filter((candidate) => isTileActive(candidate));
 }
 
+function listTunnelAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
+    return listTunnelAccessTiles(tile).filter((candidate) => candidate.discovered && isTileActive(candidate));
+}
+
 function findNearestCandidateByDistance(candidates: Tile[], fromQ: number, fromR: number) {
     let best: Tile | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -128,6 +133,10 @@ export function listTaskAccessTiles(
 
     if (taskType === 'buildBridge') {
         return listBridgeAdjacentActiveAccessTiles(tile);
+    }
+
+    if (taskType === 'buildTunnel') {
+        return listTunnelAdjacentActiveAccessTiles(tile);
     }
 
     const mode = getTaskAccessMode(taskType, tile);
@@ -157,6 +166,10 @@ export function findNearestTaskAccessTile(
 
     if (taskType === 'buildBridge') {
         return findNearestCandidateByDistance(listBridgeAdjacentActiveAccessTiles(tile), fromQ, fromR);
+    }
+
+    if (taskType === 'buildTunnel') {
+        return findNearestCandidateByDistance(listTunnelAdjacentActiveAccessTiles(tile), fromQ, fromR);
     }
 
     const mode = getTaskAccessMode(taskType, tile);

@@ -147,7 +147,7 @@
               <div class="tc-job-site-top">
                 <div>
                   <div class="tc-job-site-name">{{ site.label }}</div>
-                  <div class="tc-job-site-meta">{{ site.tileId }}</div>
+                  <div class="tc-job-site-meta">{{ site.summary }}</div>
                 </div>
                 <div class="tc-job-site-aside">
                   <div class="tc-job-site-staff">{{ site.assignedWorkers }}/{{ site.slots }}</div>

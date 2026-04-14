@@ -8,7 +8,7 @@
               <div class="menu-header-copy">
                 <p class="menu-kicker pixel-font">Pause</p>
                 <h2 class="menu-title">Frontier Menu</h2>
-                <p class="menu-summary">Step back, review the run, or tune the frontier before heading out again.</p>
+                <p class="menu-summary">Step back, tune the frontier, or head back to the title when you need a break.</p>
               </div>
               <button class="menu-close" @click="resumeGame" title="Resume game">
                 ✕
@@ -21,14 +21,6 @@
                 <button class="menu-action" @click="resumeGame">
                   <span class="menu-action-title">Back to Game</span>
                   <span class="menu-action-copy">Return straight to the frontier with no extra menus in the way.</span>
-                </button>
-                <button class="menu-action" @click="openMissionCenterFromMenu">
-                  <span class="menu-action-title">Chronicle</span>
-                  <span class="menu-action-copy">Review chapter guidance, roadmap milestones, and the colony archive.</span>
-                </button>
-                <button class="menu-action" @click="openNotificationCenterFromMenu">
-                  <span class="menu-action-title">Notification Log</span>
-                  <span class="menu-action-copy">Catch up on discoveries, alerts, and the reports you may have missed.</span>
                 </button>
                 <button class="menu-action" @click="showSettings = true">
                   <span class="menu-action-title">Settings</span>
@@ -57,20 +49,9 @@
 import { uiStore, resumeGame, returnToTitle } from '../store/uiStore';
 import { computed, ref, watch } from 'vue';
 import Settings from './Settings.vue';
-import { openWindow, WINDOW_IDS } from '../core/windowManager';
 
 const visible = computed(() => uiStore.menuOpen);
 const showSettings = ref(false);
-
-function openMissionCenterFromMenu() {
-  resumeGame();
-  openWindow(WINDOW_IDS.MISSION_CENTER);
-}
-
-function openNotificationCenterFromMenu() {
-  resumeGame();
-  openWindow(WINDOW_IDS.NOTIFICATION_CENTER);
-}
 
 // Reset to main menu when menu is closed
 watch(visible, (isVisible) => {

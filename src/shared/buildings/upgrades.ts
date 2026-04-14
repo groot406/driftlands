@@ -152,6 +152,45 @@ const upgrades: UpgradeDefinition[] = [
       return tile.variant === 'mountains_with_mine' ? 'mountains_reinforced_mine' : null;
     },
   },
+  {
+    key: 'stone_road_upgrade',
+    label: 'Stone Road',
+    summary: 'Pave a timber road into dressed stone for the best travel speed.',
+    baseBuildingKey: 'road',
+    taskKey: 'upgradeRoadToStone',
+    buildTaskLabel: 'Upgrade To Stone Road',
+    sortOrder: 225,
+    fromVariants: ['road', 'road_ad', 'road_be', 'road_ce', 'road_cf'],
+    toVariant: 'stone_road',
+    progressionNodeKeys: ['masonry'],
+    costs: [
+      { type: 'stone', amount: 4 },
+      { type: 'ore', amount: 2 },
+    ],
+    requiredXp(_distance: number) {
+      return 2200;
+    },
+    heroRate(hero: Hero) {
+      return 18 * Math.max(1, hero.stats.atk);
+    },
+    effects: [],
+    resolveToVariant(tile: Tile) {
+      switch (tile.variant) {
+        case 'road':
+          return 'stone_road';
+        case 'road_ad':
+          return 'stone_road_ad';
+        case 'road_be':
+          return 'stone_road_be';
+        case 'road_ce':
+          return 'stone_road_ce';
+        case 'road_cf':
+          return 'stone_road_cf';
+        default:
+          return null;
+      }
+    },
+  },
 ];
 
 export function listUpgradeDefinitions() {

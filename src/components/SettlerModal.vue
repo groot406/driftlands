@@ -25,7 +25,7 @@
             <div class="settler-card">
               <p class="settler-card-label">Home</p>
               <p class="settler-card-value">{{ homeLabel }}</p>
-              <p class="settler-card-meta">Access {{ settler.homeAccessTileId }}</p>
+              <p class="settler-card-meta">{{ accessLabel }}</p>
             </div>
 
             <div class="settler-card">
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from 'vue';
 import { tileIndex } from '../core/world';
+import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { closeWindow, isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 import { closeSettlerModal, getSelectedSettler } from '../store/uiStore';
@@ -85,30 +86,30 @@ function formatTileLabel(tileId: string | null | undefined) {
 
   const tile = tileIndex[tileId] ?? null;
   if (!tile) {
-    return tileId;
+    return 'Unknown place';
   }
 
   if (tile.terrain === 'towncenter') {
-    return `Town Center (${tile.id})`;
+    return 'Town Center';
   }
 
   const building = getBuildingDefinitionForTile(tile);
   if (building) {
-    return `${building.label} (${tile.id})`;
+    return building.label;
   }
 
-  return `${formatTitleCase(tile.terrain)} (${tile.id})`;
+  return formatTitleCase(tile.terrain);
 }
 
 const settlerName = computed(() => {
   const id = settler.value?.id ?? 'Settler';
-  const match = /settler-(\d+)/.exec(id);
-  return match ? `Settler ${match[1]}` : id;
+  return getSettlerDisplayName(id);
 });
 
 const activityLabel = computed(() => settler.value ? formatTitleCase(settler.value.activity) : 'Unknown');
 const homeLabel = computed(() => formatTileLabel(settler.value?.homeTileId));
 const workLabel = computed(() => formatTileLabel(settler.value?.assignedWorkTileId));
+const accessLabel = computed(() => `Access via ${formatTileLabel(settler.value?.homeAccessTileId)}`);
 
 const isHungry = computed(() => (settler.value?.hungerMs ?? 0) >= HUNGRY_MS);
 const isTired = computed(() => (settler.value?.fatigueMs ?? 0) >= TIRED_MS);
@@ -146,7 +147,7 @@ const movementLabel = computed(() => {
     return 'Stationary';
   }
 
-  return `Heading to ${currentSettler.movement.target.q},${currentSettler.movement.target.r} · ${currentSettler.movement.path.length} steps queued`;
+  return `Traveling · ${currentSettler.movement.path.length} steps queued`;
 });
 
 const locationSummary = computed(() => {
@@ -163,7 +164,31 @@ const locationSummary = computed(() => {
     return `Working at ${workLabel.value}`;
   }
 
-  return `At ${currentSettler.q},${currentSettler.r}`;
+  if (currentSettler.activity === 'commuting_home') {
+    return `Heading home to ${homeLabel.value}`;
+  }
+
+  if (currentSettler.activity === 'commuting_work') {
+    return `Heading to ${workLabel.value}`;
+  }
+
+  if (currentSettler.activity === 'fetching_food') {
+    return 'Fetching food';
+  }
+
+  if (currentSettler.activity === 'fetching_input') {
+    return 'Fetching supplies';
+  }
+
+  if (currentSettler.activity === 'delivering') {
+    return 'Delivering cargo';
+  }
+
+  if (currentSettler.activity === 'waiting') {
+    return 'Waiting for work';
+  }
+
+  return 'In the colony';
 });
 
 const positionLabel = computed(() => {
@@ -176,7 +201,15 @@ const positionLabel = computed(() => {
     return `Inside ${homeLabel.value}`;
   }
 
-  return `${currentSettler.q},${currentSettler.r}`;
+  if (currentSettler.assignedWorkTileId) {
+    return `Near ${workLabel.value}`;
+  }
+
+  if (currentSettler.homeTileId) {
+    return `Near ${homeLabel.value}`;
+  }
+
+  return 'In the colony';
 });
 
 function close() {

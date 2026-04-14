@@ -2,6 +2,7 @@ import './definitions/breakDirtRock';
 import './definitions/buildings';
 import './definitions/buildBridge';
 import './definitions/buildRoad';
+import './definitions/buildTunnel';
 import './definitions/campfireRations';
 import './definitions/chopWood';
 import './definitions/clearRocks';

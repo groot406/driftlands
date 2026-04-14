@@ -140,6 +140,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
     const buildingProducesFood = building.key === 'bakery'
         || building.key === 'dock'
         || (building.produces ?? []).some((resource) => resource.type === 'food');
+    const buildingProducesStone = building.key === 'quarry'
+        || (building.produces ?? []).some((resource) => resource.type === 'stone');
 
     switch (site.status) {
         case 'offline':
@@ -187,6 +189,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Granaries work best when bakeries or construction are consuming the stock fast enough to keep bins clear.');
             } else if (buildingProducesFood) {
                 pushAdvice(advice, 'Food still needs empty storage, even if settlers will eat it soon, so keep some buffer space available.');
+            } else if (buildingProducesStone) {
+                pushAdvice(advice, 'Stone piles up quickly when no upgrades or roads are consuming it, so storage and spending both matter.');
             }
             break;
         case 'depleted':
@@ -212,6 +216,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Granaries scale with the grain tile they sit on plus each adjacent active grain field, so dense farms pay off fast.');
             } else if (building.key === 'lumberCamp') {
                 pushAdvice(advice, 'Lumber camps scale with their own forest tile plus adjacent active woods, so place them in thicker stands when you can.');
+            } else if (building.key === 'quarry') {
+                pushAdvice(advice, 'Quarries scale with their own mountain plus adjacent active ridge tiles, so broad mountain clusters produce the best stone flow.');
             } else if (building.key === 'dock') {
                 pushAdvice(advice, 'Dock yield scales with adjacent active water, so broad shoreline coves make better fishing platforms than cramped inlets.');
             }

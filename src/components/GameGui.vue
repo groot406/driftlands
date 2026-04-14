@@ -6,8 +6,6 @@
       </div>
       <div class="pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <button class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</button>
-        <MissionCenterButton />
-        <NotificationCenterButton />
       </div>
       <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
         <WorldControls/>
@@ -25,22 +23,17 @@
     <ChronicleBar />
   </div>
   <PlayerModal />
+  <PopulationOverviewModal />
+  <ResourceDetailModal />
   <SettlerModal />
   <NotificationOverlay />
-  <NotificationCenter />
   <InGameMenu />
-  <MissionCenter />
-  <RunOutcomeOverlay />
 </template>
 
 <script setup lang="ts">
 import {onMounted, ref} from 'vue';
 import ResourceBar from './ResourceBar.vue';
-import MissionCenterButton from './MissionCenterButton.vue';
-import NotificationCenterButton from './NotificationCenterButton.vue';
-import MissionCenter from './MissionCenter.vue';
 import ChronicleBar from './ChronicleBar.vue';
-import NotificationCenter from './NotificationCenter.vue';
 import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';
 import InGameMenu from './InGameMenu.vue';
@@ -48,9 +41,10 @@ import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
 import MusicPlayer from './MusicPlayer.vue';
 import PlayerModal from './PlayerModal.vue';
+import PopulationOverviewModal from './PopulationOverviewModal.vue';
+import ResourceDetailModal from './ResourceDetailModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
-import RunOutcomeOverlay from './RunOutcomeOverlay.vue';
 import { pauseGame } from '../store/uiStore';
 
 const showHelpers = ref(false);

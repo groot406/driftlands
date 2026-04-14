@@ -162,6 +162,67 @@ test('bridges extend from active shore or an existing straight bridgehead', () =
   );
 });
 
+test('tunnels extend from active approaches or an existing straight tunnel mouth', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: 'mountain_tunnel_ad',
+    } satisfies Tile,
+    {
+      id: '0,2',
+      q: 0,
+      r: 2,
+      biome: 'mountains',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const targetTile = tileIndex['0,2']!;
+  const accessTile = findNearestTaskAccessTile('buildTunnel', targetTile, 0, 0);
+
+  assert.equal(taskUsesAdjacentActiveAccess('buildTunnel'), true);
+  assert.equal(taskUsesAdjacentAccess('buildTunnel'), true);
+  assert.equal(accessTile?.id, '0,1');
+
+  const hero = {
+    q: 0,
+    r: 1,
+    movement: undefined,
+  } as Hero;
+
+  assert.equal(
+    isHeroAtTaskLocation(hero, {
+      tileId: targetTile.id,
+      type: 'buildTunnel',
+      context: { adjacentActiveAccess: true },
+    }),
+    true,
+  );
+});
+
 test('water lily tasks can use adjacent walkable lily paths even when the water tiles are inactive', () => {
   loadWorld([
     {

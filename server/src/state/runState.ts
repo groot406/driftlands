@@ -1,28 +1,25 @@
 import { broadcast } from '../messages/messageRouter';
-import { generateFoundingExpeditionMission } from '../../../src/shared/goals/generator';
 import type { GameplayEvent } from '../../../src/shared/gameplay/events';
 import { tiles } from '../../../src/shared/game/world';
 import { syncHeroRoster } from '../../../src/shared/game/state/heroStore';
 import { getPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getWorkforceSnapshot } from '../../../src/shared/game/state/jobStore';
 import { resourceInventory } from '../../../src/shared/game/state/resourceStore';
-import type { ResourceType } from '../../../src/shared/game/types/Resource';
 import { getDistanceToNearestTowncenter } from '../../../src/shared/game/worldQueries';
-import {
-  type CompletedChapterSnapshot,
-  type DialogueEntrySnapshot,
-  type DialogueLogSnapshot,
-  type DialogueSpeakerSnapshot,
-  type ObjectiveSnapshot,
-  type RunSnapshot,
+import type {
+  DialogueEntrySnapshot,
+  DialogueLogSnapshot,
+  DialogueSpeakerSnapshot,
+  RunSnapshot,
+  RunStoryBeat,
 } from '../../../src/shared/goals/types';
 import type { RunUpdateMessage } from '../../../src/shared/protocol';
 import {
   cloneStoryProgression,
-  createInitialProgressionSnapshot,
   evaluateProgression,
   type BuildingKey,
   type ProgressionMetrics,
+  type ProgressionNodeKey,
   type ProgressionNodeSnapshot,
   type ProgressionSnapshot,
 } from '../../../src/shared/story/progression';
@@ -30,32 +27,83 @@ import { loadStoryProgression } from '../../../src/shared/story/progressionState
 import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
 
-interface ChapterBaselines {
-  discoveredTiles: number;
-  deliveredResources: Partial<Record<ResourceType, number>>;
-  completedTasks: Record<string, number>;
-  restoredTiles: number;
-  bonusScore: number;
-}
-
 interface RunMetrics {
   discoveredTiles: number;
   frontierDistance: number;
-  population: number;
   activeTiles: number;
   inactiveTiles: number;
-  restoredTiles: number;
 }
 
-const ADVISOR_SPEAKER: DialogueSpeakerSnapshot = {
+const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: string }> = {
+  landfall: {
+    speakerId: 'h1',
+    text: 'We can survive the landing, but not much more than that. Get timber, raise a house, and make this place worth staying in.',
+  },
+  shoreline: {
+    speakerId: 'h4',
+    text: 'The coast is no longer just an edge. A dock and a few lily paths will turn it into part of the settlement.',
+  },
+  farming: {
+    speakerId: 'h2',
+    text: 'A real roof changes everything. More beds mean more hands, and more hands make fields worth the trouble.',
+  },
+  irrigation: {
+    speakerId: 'h3',
+    text: 'Dry ground is only a problem until we learn to move water. After that, the colony grows where we tell it to.',
+  },
+  stores: {
+    speakerId: 'h1',
+    text: 'Loose harvests are not a food system. We need proper storage before the colony can trust its own grain.',
+  },
+  baking: {
+    speakerId: 'h1',
+    text: 'Stored grain is promise, not dinner. Once a bakery is staffed, the colony finally starts eating like it means to last.',
+  },
+  security: {
+    speakerId: 'h2',
+    text: 'We are too spread out to keep guessing what lies ahead. Put up a watchtower and let the colony breathe a little farther.',
+  },
+  mountain_frontier: {
+    speakerId: 'h2',
+    text: 'The ridges are finally close enough to matter. A quarry gives us steady stone, and a mine turns the same frontier into ore.',
+  },
+  logistics: {
+    speakerId: 'h4',
+    text: 'Everything still bottlenecks through the center stone. A supply depot is how this stops feeling like improvisation.',
+  },
+  timber_industry: {
+    speakerId: 'h4',
+    text: 'We can stop scavenging wood tree by tree now. A staffed lumber camp turns forest into a real production line.',
+  },
+  masonry: {
+    speakerId: 'h1',
+    text: 'Stone is finally more than rubble. We have enough to make houses and storage feel permanent.',
+  },
+  harsh_frontier: {
+    speakerId: 'h2',
+    text: 'The forgiving ground ends here. Snow and desert are within reach now, if the colony can keep itself fed on the march.',
+  },
+  expansion: {
+    speakerId: 'h1',
+    text: 'One settlement is no longer enough for what we are trying to become. It is time to plant another center stone.',
+  },
+  deep_frontier: {
+    speakerId: 'h4',
+    text: 'The deep frontier is open now. If we stall here, it will be because the colony stopped upgrading the tools that got it this far.',
+  },
+};
+
+const DEFAULT_SPEAKER: DialogueSpeakerSnapshot = {
   id: 'advisor',
-  name: 'Chronicle',
+  name: 'Quartermaster',
   avatar: null,
 };
 
-function cloneObjectives(objectives: ObjectiveSnapshot[]) {
-  return objectives.map((objective) => ({ ...objective }));
-}
+const DEFAULT_MUTATOR = {
+  key: 'open_frontier' as const,
+  name: 'Colony Growth',
+  description: 'Population, job sites, and production chains unlock the next layer of buildings.',
+};
 
 function cloneDialogueSpeaker(speaker: DialogueSpeakerSnapshot): DialogueSpeakerSnapshot {
   return {
@@ -79,15 +127,6 @@ function cloneDialogue(dialogue: DialogueLogSnapshot): DialogueLogSnapshot {
   };
 }
 
-function cloneCompletedChapter(chapter: CompletedChapterSnapshot): CompletedChapterSnapshot {
-  return {
-    ...chapter,
-    mutator: { ...chapter.mutator },
-    chapter: { ...chapter.chapter },
-    objectives: cloneObjectives(chapter.objectives),
-  };
-}
-
 function cloneProgression(progression: ProgressionSnapshot): ProgressionSnapshot {
   return cloneStoryProgression(progression);
 }
@@ -96,88 +135,134 @@ function incrementRecordValue<T extends string>(record: Partial<Record<T, number
   record[key] = (record[key] ?? 0) + amount;
 }
 
-function createHeroSpeaker(heroId: string): DialogueSpeakerSnapshot | null {
-  const hero = getStoryHeroTemplate(heroId);
-  if (!hero) {
-    return null;
+function getSpeaker(heroId: string | null, fallbackName: string = 'Chronicle'): DialogueSpeakerSnapshot {
+  if (heroId) {
+    const hero = getStoryHeroTemplate(heroId);
+    if (hero) {
+      return {
+        id: hero.id,
+        name: hero.name,
+        avatar: hero.avatar,
+      };
+    }
   }
 
   return {
-    id: hero.id,
-    name: hero.name,
-    avatar: hero.avatar,
+    ...DEFAULT_SPEAKER,
+    name: fallbackName,
   };
 }
 
-function getPreferredSpeaker(progression: ProgressionSnapshot, fallbackHeroId: string | null = null): DialogueSpeakerSnapshot {
-  if (fallbackHeroId) {
-    const fallbackSpeaker = createHeroSpeaker(fallbackHeroId);
-    if (fallbackSpeaker) {
-      return fallbackSpeaker;
-    }
-  }
-
-  for (const heroId of progression.unlocked.heroes) {
-    const speaker = createHeroSpeaker(heroId);
-    if (speaker) {
-      return speaker;
-    }
-  }
-
-  return ADVISOR_SPEAKER;
+function getCurrentStoryNode(progression: ProgressionSnapshot) {
+  return progression.nodes.filter((node) => node.unlocked).at(-1) ?? null;
 }
 
-function buildNodeAdvice(node: ProgressionNodeSnapshot | undefined) {
+function getNextStoryNode(progression: ProgressionSnapshot) {
+  const nextNodeKey = progression.nextRecommendedNodeKeys[0];
+  return nextNodeKey
+    ? progression.nodes.find((node) => node.key === nextNodeKey) ?? null
+    : null;
+}
+
+function buildNodeAdvice(node: ProgressionNodeSnapshot | null | undefined) {
   if (!node) {
-    return 'The frontier is open. Keep building, staffing jobs, and discovering new ground to reveal the next milestone.';
+    return 'The colony has its own momentum now. Keep chaining one specialist building into the next resource it unlocks.';
   }
 
   const unmet = node.requirements.filter((requirement) => !requirement.satisfied);
-  if (unmet.length === 0) {
-    return `${node.label} is ready. Open the build and action menus to put the new milestone to work.`;
+  if (!unmet.length) {
+    return `${node.label} is ready. Build it, staff it, and let that new output carry the colony forward.`;
   }
 
-  const primaryBlocker = unmet[0];
-  return `Next milestone: ${node.label}. ${primaryBlocker.label} is still short at ${primaryBlocker.currentLabel}.`;
+  const primaryBlocker = unmet[0]!;
+  return `${node.label} is the next step. ${primaryBlocker.label} is currently ${primaryBlocker.currentLabel}.`;
+}
+
+function buildStoryBeat(progression: ProgressionSnapshot, _metrics: RunMetrics): RunStoryBeat {
+  const currentNode = getCurrentStoryNode(progression);
+  const nextNode = getNextStoryNode(progression);
+  const chapterNumber = Math.max(1, progression.unlockedNodeKeys.length);
+
+  return {
+    chapterId: currentNode?.key ?? 'landfall',
+    chapterLabel: currentNode?.label ?? `Stage ${chapterNumber}`,
+    actLabel: currentNode?.category ?? 'Colony Story',
+    title: currentNode?.label ?? 'Landfall',
+    kicker: currentNode?.description ?? 'The first camp is still little more than a promise.',
+    briefing: nextNode
+      ? `The next step is ${nextNode.label}. ${nextNode.description}`
+      : 'The colony has a working loop now. Keep expanding job sites and housing to deepen the frontier economy.',
+    stakes: 'The colony grows when food, housing, and staffed production stay in balance.',
+    guidance: buildNodeAdvice(nextNode),
+    completionTitle: currentNode?.label ?? 'Colony Growth',
+    completionText: currentNode?.description ?? 'The colony has found its footing.',
+    failureTitle: 'Keep The Chain Moving',
+    failureText: 'If houses, food, and job sites fall out of balance, the frontier stalls.',
+    nextHint: nextNode
+      ? `Unlocking ${nextNode.label} comes from colony state: resources, beds, and staffed job sites.`
+      : 'Keep building specialized production lines and stronger settlements.',
+  };
 }
 
 class RunState {
   private snapshot: RunSnapshot | null = null;
-  private baseSeed = 0;
-  private totalScore = 0;
-  private bonusScore = 0;
-  private deliveredResources: Partial<Record<ResourceType, number>> = {};
-  private completedTasks: Record<string, number> = {};
   private restoredTiles = 0;
-  private baselines: ChapterBaselines = {
-    discoveredTiles: 0,
-    deliveredResources: {},
-    completedTasks: {},
-    restoredTiles: 0,
-    bonusScore: 0,
-  };
   private dialogueSequence = 0;
 
   initialize(seed: number) {
-    this.baseSeed = seed;
-    this.totalScore = 0;
-    this.bonusScore = 0;
-    this.deliveredResources = {};
-    this.completedTasks = {};
     this.restoredTiles = 0;
     this.dialogueSequence = 0;
-    this.baselines = {
-      discoveredTiles: 0,
-      deliveredResources: {},
-      completedTasks: {},
-      restoredTiles: 0,
-      bonusScore: 0,
+
+    const now = Date.now();
+    const metrics = this.captureMetrics();
+    const progression = evaluateProgression(this.captureProgressionMetrics(metrics));
+    const dialogue: DialogueLogSnapshot = {
+      activeEntryId: null,
+      entries: [],
     };
 
-    const initialProgression = createInitialProgressionSnapshot();
-    loadStoryProgression(initialProgression);
-    syncHeroRoster(initialProgression.unlocked.heroes);
-    this.issueChapter(1);
+    this.snapshot = {
+      mode: 'story_mode',
+      modeLabel: 'Colony Mode',
+      seed,
+      chapterNumber: Math.max(1, progression.unlockedNodeKeys.length),
+      chaptersCompleted: Math.max(0, progression.unlockedNodeKeys.length - 1),
+      status: 'active',
+      startedAt: now,
+      score: 0,
+      chapterScore: 0,
+      discoveredTiles: metrics.discoveredTiles,
+      activeTiles: metrics.activeTiles,
+      inactiveTiles: metrics.inactiveTiles,
+      restoredTiles: this.restoredTiles,
+      summary: buildNodeAdvice(getNextStoryNode(progression)),
+      mutator: { ...DEFAULT_MUTATOR },
+      chapter: buildStoryBeat(progression, metrics),
+      progression: cloneProgression(progression),
+      objectives: [],
+      dialogue,
+      chapterArchive: [],
+      lastCompletedChapter: undefined,
+    };
+
+    this.appendDialogueEntry(
+      Math.max(1, progression.unlockedNodeKeys.length),
+      'chapter_intro',
+      STORY_VOICE.landfall.text,
+      getSpeaker(STORY_VOICE.landfall.speakerId),
+      now,
+    );
+    this.appendDialogueEntry(
+      Math.max(1, progression.unlockedNodeKeys.length),
+      'advice',
+      buildNodeAdvice(getNextStoryNode(progression)),
+      DEFAULT_SPEAKER,
+      now,
+    );
+
+    loadStoryProgression(progression);
+    syncHeroRoster(progression.unlocked.heroes);
+    this.broadcastUpdate();
   }
 
   isReady() {
@@ -194,12 +279,10 @@ class RunState {
       mutator: { ...this.snapshot.mutator },
       chapter: { ...this.snapshot.chapter },
       progression: cloneProgression(this.snapshot.progression),
-      objectives: cloneObjectives(this.snapshot.objectives),
+      objectives: [],
       dialogue: cloneDialogue(this.snapshot.dialogue),
-      chapterArchive: this.snapshot.chapterArchive.map(cloneCompletedChapter),
-      lastCompletedChapter: this.snapshot.lastCompletedChapter
-        ? cloneCompletedChapter(this.snapshot.lastCompletedChapter)
-        : undefined,
+      chapterArchive: [],
+      lastCompletedChapter: undefined,
     };
   }
 
@@ -209,183 +292,18 @@ class RunState {
     }
   }
 
-  grantBonusScore(points: number) {
-    if (!this.snapshot || this.snapshot.status !== 'active' || points <= 0) {
-      return;
-    }
-
-    this.bonusScore += points;
-    this.recomputeProgress();
-  }
+  grantBonusScore(_points: number) {}
 
   recordEvent(event: GameplayEvent) {
     if (!this.snapshot || this.snapshot.status !== 'active') {
       return;
     }
 
-    switch (event.type) {
-      case 'resource:delivered':
-        this.deliveredResources[event.resourceType] = (this.deliveredResources[event.resourceType] ?? 0) + event.amount;
-        break;
-      case 'task:completed':
-        this.completedTasks[event.taskType] = (this.completedTasks[event.taskType] ?? 0) + 1;
-        break;
-      case 'tile:discovered':
-        break;
-      case 'tile:restored':
-        this.restoredTiles += 1;
-        break;
-      default:
-        return;
+    if (event.type === 'tile:restored') {
+      this.restoredTiles += 1;
     }
 
     this.recomputeProgress();
-  }
-
-  private nextDialogueId(kind: DialogueEntrySnapshot['kind'], chapterNumber: number) {
-    this.dialogueSequence += 1;
-    return `${kind}:${chapterNumber}:${this.dialogueSequence}`;
-  }
-
-  private appendDialogueEntry(
-    dialogue: DialogueLogSnapshot,
-    chapterNumber: number,
-    kind: DialogueEntrySnapshot['kind'],
-    text: string,
-    speaker: DialogueSpeakerSnapshot,
-    createdAt: number,
-  ) {
-    const entry: DialogueEntrySnapshot = {
-      id: this.nextDialogueId(kind, chapterNumber),
-      chapterNumber,
-      kind,
-      speaker: cloneDialogueSpeaker(speaker),
-      text,
-      createdAt,
-    };
-
-    dialogue.entries.push(entry);
-    dialogue.activeEntryId = entry.id;
-  }
-
-  private applyProgression(progression: ProgressionSnapshot, previousProgression: ProgressionSnapshot | null, createdAt: number) {
-    if (!this.snapshot) {
-      return;
-    }
-
-    const rosterChanged = !previousProgression
-      || previousProgression.unlocked.heroes.length !== progression.unlocked.heroes.length
-      || previousProgression.unlocked.heroes.some((heroId, index) => progression.unlocked.heroes[index] !== heroId);
-
-    this.snapshot.progression = cloneProgression(progression);
-    loadStoryProgression(this.snapshot.progression);
-    if (rosterChanged) {
-      syncHeroRoster(this.snapshot.progression.unlocked.heroes);
-    }
-
-    if (previousProgression) {
-      for (const nodeKey of progression.recentlyUnlockedNodeKeys) {
-        const node = progression.nodes.find((candidate) => candidate.key === nodeKey);
-        if (!node) {
-          continue;
-        }
-
-        this.appendDialogueEntry(
-          this.snapshot.dialogue,
-          this.snapshot.chapterNumber,
-          'unlock',
-          `${node.label} unlocked. ${node.description}`,
-          getPreferredSpeaker(progression),
-          createdAt,
-        );
-      }
-    }
-  }
-
-  private recomputeProgress(forceBroadcast: boolean = false) {
-    if (!this.snapshot) {
-      return;
-    }
-
-    const before = JSON.stringify(this.snapshot);
-    const now = Date.now();
-    const metrics = this.captureMetrics();
-    const previousProgression = cloneProgression(this.snapshot.progression);
-    const nextProgression = evaluateProgression(
-      this.captureProgressionMetrics(metrics),
-      previousProgression.unlockedNodeKeys,
-    );
-
-    this.applyProgression(nextProgression, previousProgression, now);
-
-    for (const objective of this.snapshot.objectives) {
-      const nextProgress = this.computeObjectiveProgress(objective, metrics);
-      objective.progress = Math.min(objective.target, nextProgress);
-
-      if (!objective.completed && nextProgress >= objective.target) {
-        objective.completed = true;
-
-        if (objective.reward?.scoreBonus) {
-          this.bonusScore += objective.reward.scoreBonus;
-        }
-      }
-    }
-
-    if (
-      this.snapshot.objectives.some((objective) => objective.required)
-      && this.snapshot.objectives.filter((objective) => objective.required).every((objective) => objective.completed)
-    ) {
-      this.completeCurrentChapter(now);
-      return;
-    }
-
-    if (this.snapshot.status === 'active') {
-      const recommendedNodeKey = this.snapshot.progression.nextRecommendedNodeKeys[0];
-      this.snapshot.summary = buildNodeAdvice(
-        recommendedNodeKey
-          ? this.snapshot.progression.nodes.find((node) => node.key === recommendedNodeKey)
-          : undefined,
-      );
-    }
-    this.snapshot.discoveredTiles = metrics.discoveredTiles;
-    this.snapshot.activeTiles = metrics.activeTiles;
-    this.snapshot.inactiveTiles = metrics.inactiveTiles;
-    this.snapshot.restoredTiles = Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles);
-    this.snapshot.chapterScore = this.computeChapterScore();
-    this.snapshot.score = this.totalScore + this.snapshot.chapterScore;
-
-    if (forceBroadcast || before !== JSON.stringify(this.snapshot)) {
-      this.broadcastUpdate();
-    }
-  }
-
-  private computeObjectiveProgress(objective: ObjectiveSnapshot, metrics: RunMetrics) {
-    switch (objective.kind) {
-      case 'discover_tiles':
-        return metrics.discoveredTiles;
-      case 'deliver_resource':
-        if (!objective.resourceType) return 0;
-        return Math.max(
-          0,
-          (this.deliveredResources[objective.resourceType] ?? 0) - (this.baselines.deliveredResources[objective.resourceType] ?? 0),
-        );
-      case 'complete_task':
-        if (!objective.taskType) return 0;
-        return Math.max(
-          0,
-          (this.completedTasks[objective.taskType] ?? 0) - (this.baselines.completedTasks[objective.taskType] ?? 0),
-        );
-      case 'reach_distance':
-        return metrics.frontierDistance;
-      case 'reach_population':
-        return metrics.population;
-      case 'reach_active_tiles':
-        return metrics.activeTiles;
-      case 'restore_tiles':
-        return Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles);
-      default:
-        return 0;
-    }
   }
 
   private captureMetrics(): RunMetrics {
@@ -398,13 +316,10 @@ class RunState {
           return maxDistance;
         }
 
-        const distance = getDistanceToNearestTowncenter(tile.q, tile.r);
-        return Math.max(maxDistance, distance);
+        return Math.max(maxDistance, getDistanceToNearestTowncenter(tile.q, tile.r));
       }, 0),
-      population: population.current,
       activeTiles: population.activeTileCount,
       inactiveTiles: population.inactiveTileCount,
-      restoredTiles: this.restoredTiles,
     };
   }
 
@@ -452,163 +367,96 @@ class RunState {
     };
   }
 
-  private computeChapterScore() {
-    if (!this.snapshot) {
-      return 0;
-    }
-
-    const completedRequired = this.snapshot.objectives.filter((objective) => objective.required && objective.completed).length;
-    const completedOptional = this.snapshot.objectives.filter((objective) => !objective.required && objective.completed).length;
-    const deliveredTotal = Object.keys(this.deliveredResources).reduce((sum, key) => {
-      const resourceType = key as ResourceType;
-      const current = this.deliveredResources[resourceType] ?? 0;
-      const baseline = this.baselines.deliveredResources[resourceType] ?? 0;
-      return sum + Math.max(0, current - baseline);
-    }, 0);
-    const completedTaskTotal = Object.keys(this.completedTasks).reduce((sum, taskType) => {
-      const current = this.completedTasks[taskType] ?? 0;
-      const baseline = this.baselines.completedTasks[taskType] ?? 0;
-      return sum + Math.max(0, current - baseline);
-    }, 0);
-    const earnedBonusScore = Math.max(0, this.bonusScore - this.baselines.bonusScore);
-
-    return (completedRequired * 300) + (completedOptional * 150) + deliveredTotal + (completedTaskTotal * 25) + earnedBonusScore;
+  private nextDialogueId(kind: DialogueEntrySnapshot['kind'], chapterNumber: number) {
+    this.dialogueSequence += 1;
+    return `${kind}:${chapterNumber}:${this.dialogueSequence}`;
   }
 
-  private completeCurrentChapter(now: number) {
+  private appendDialogueEntry(
+    chapterNumber: number,
+    kind: DialogueEntrySnapshot['kind'],
+    text: string,
+    speaker: DialogueSpeakerSnapshot,
+    createdAt: number,
+  ) {
     if (!this.snapshot) {
       return;
     }
 
-    this.snapshot.chapterScore = this.computeChapterScore();
-    this.snapshot.score = this.totalScore + this.snapshot.chapterScore;
-
-    const totalScoreAfterCompletion = this.totalScore + this.snapshot.chapterScore;
-    const completedChapter: CompletedChapterSnapshot = {
-      chapterNumber: this.snapshot.chapterNumber,
-      completedAt: now,
-      score: this.snapshot.chapterScore,
-      totalScore: totalScoreAfterCompletion,
-      summary: this.snapshot.chapter.completionText,
-      mutator: { ...this.snapshot.mutator },
-      chapter: { ...this.snapshot.chapter },
-      objectives: cloneObjectives(this.snapshot.objectives),
+    const entry: DialogueEntrySnapshot = {
+      id: this.nextDialogueId(kind, chapterNumber),
+      chapterNumber,
+      kind,
+      speaker: cloneDialogueSpeaker(speaker),
+      text,
+      createdAt,
     };
 
-    this.totalScore = totalScoreAfterCompletion;
-    this.issueChapter(this.snapshot.chapterNumber + 1, completedChapter);
+    this.snapshot.dialogue.entries.push(entry);
+    this.snapshot.dialogue.activeEntryId = entry.id;
   }
 
-  private issueChapter(chapterNumber: number, lastCompletedChapter?: CompletedChapterSnapshot) {
-    const metrics = this.captureMetrics();
-    const previousProgression = this.snapshot?.progression ?? createInitialProgressionSnapshot();
-    const previousArchive = this.snapshot?.chapterArchive ?? [];
-    const previousDialogueEntries = this.snapshot?.dialogue.entries ?? [];
-    const now = Date.now();
-    const progression = evaluateProgression(
-      this.captureProgressionMetrics(metrics),
-      this.snapshot?.progression.unlockedNodeKeys ?? [],
-    );
-    const blueprint = generateFoundingExpeditionMission(this.baseSeed, chapterNumber, {
-      frontierDistance: metrics.frontierDistance,
-      population: metrics.population,
-      activeTiles: metrics.activeTiles,
-      inactiveTiles: metrics.inactiveTiles,
-    }, progression);
-    const dialogue: DialogueLogSnapshot = {
-      activeEntryId: null,
-      entries: previousDialogueEntries.map(cloneDialogueEntry),
-    };
-
-    if (lastCompletedChapter) {
-      this.appendDialogueEntry(
-        dialogue,
-        lastCompletedChapter.chapterNumber,
-        'chapter_complete',
-        lastCompletedChapter.chapter.completionText,
-        getPreferredSpeaker(previousProgression, 'h1'),
-        lastCompletedChapter.completedAt,
-      );
+  private recomputeProgress(forceBroadcast: boolean = false) {
+    if (!this.snapshot) {
+      return;
     }
 
-    if (this.snapshot) {
-      for (const nodeKey of progression.recentlyUnlockedNodeKeys) {
-        const node = progression.nodes.find((candidate) => candidate.key === nodeKey);
-        if (!node) {
-          continue;
-        }
+    const before = JSON.stringify(this.snapshot);
+    const metrics = this.captureMetrics();
+    const previousProgression = cloneProgression(this.snapshot.progression);
+    const nextProgression = evaluateProgression(
+      this.captureProgressionMetrics(metrics),
+      previousProgression.unlockedNodeKeys,
+    );
 
+    const heroRosterChanged = previousProgression.unlocked.heroes.length !== nextProgression.unlocked.heroes.length
+      || previousProgression.unlocked.heroes.some((heroId, index) => nextProgression.unlocked.heroes[index] !== heroId);
+
+    this.snapshot.progression = cloneProgression(nextProgression);
+    this.snapshot.chapterNumber = Math.max(1, nextProgression.unlockedNodeKeys.length);
+    this.snapshot.chaptersCompleted = Math.max(0, this.snapshot.chapterNumber - 1);
+    this.snapshot.chapter = buildStoryBeat(nextProgression, metrics);
+    this.snapshot.summary = buildNodeAdvice(getNextStoryNode(nextProgression));
+    this.snapshot.discoveredTiles = metrics.discoveredTiles;
+    this.snapshot.activeTiles = metrics.activeTiles;
+    this.snapshot.inactiveTiles = metrics.inactiveTiles;
+    this.snapshot.restoredTiles = this.restoredTiles;
+    this.snapshot.score = 0;
+    this.snapshot.chapterScore = 0;
+    this.snapshot.objectives = [];
+    this.snapshot.chapterArchive = [];
+    this.snapshot.lastCompletedChapter = undefined;
+
+    if (heroRosterChanged) {
+      syncHeroRoster(nextProgression.unlocked.heroes);
+    }
+    loadStoryProgression(nextProgression);
+
+    if (nextProgression.recentlyUnlockedNodeKeys.length > 0) {
+      const now = Date.now();
+      for (const nodeKey of nextProgression.recentlyUnlockedNodeKeys) {
+        const beat = STORY_VOICE[nodeKey];
+        const node = nextProgression.nodes.find((candidate) => candidate.key === nodeKey);
         this.appendDialogueEntry(
-          dialogue,
-          chapterNumber,
+          this.snapshot.chapterNumber,
           'unlock',
-          `${node.label} unlocked. ${node.description}`,
-          getPreferredSpeaker(progression),
+          beat?.text ?? `${node?.label ?? 'New milestone'} is now available.`,
+          getSpeaker(beat?.speakerId ?? null),
           now,
         );
       }
+      this.appendDialogueEntry(
+        this.snapshot.chapterNumber,
+        'advice',
+        buildNodeAdvice(getNextStoryNode(nextProgression)),
+        DEFAULT_SPEAKER,
+        now,
+      );
     }
 
-    this.appendDialogueEntry(
-      dialogue,
-      chapterNumber,
-      'chapter_intro',
-      blueprint.chapter.briefing,
-      getPreferredSpeaker(progression, 'h2'),
-      now,
-    );
-
-    this.appendDialogueEntry(
-      dialogue,
-      chapterNumber,
-      'advice',
-      buildNodeAdvice(progression.nodes.find((node) => node.key === progression.nextRecommendedNodeKeys[0])),
-      getPreferredSpeaker(progression, 'h1'),
-      now,
-    );
-
-    loadStoryProgression(progression);
-    syncHeroRoster(progression.unlocked.heroes);
-
-    this.baselines = {
-      discoveredTiles: metrics.discoveredTiles,
-      deliveredResources: { ...this.deliveredResources },
-      completedTasks: { ...this.completedTasks },
-      restoredTiles: metrics.restoredTiles,
-      bonusScore: this.bonusScore,
-    };
-
-    this.snapshot = {
-      mode: blueprint.mode,
-      modeLabel: blueprint.modeLabel,
-      seed: this.baseSeed,
-      chapterNumber,
-      chaptersCompleted: chapterNumber - 1,
-      status: 'active',
-      startedAt: now,
-      score: this.totalScore,
-      chapterScore: 0,
-      discoveredTiles: metrics.discoveredTiles,
-      activeTiles: metrics.activeTiles,
-      inactiveTiles: metrics.inactiveTiles,
-      restoredTiles: Math.max(0, metrics.restoredTiles - this.baselines.restoredTiles),
-      summary: buildNodeAdvice(progression.nodes.find((node) => node.key === progression.nextRecommendedNodeKeys[0])),
-      mutator: blueprint.mutator,
-      chapter: { ...blueprint.chapter },
-      progression: cloneProgression(progression),
-      objectives: blueprint.objectives.map((objective) => ({
-        ...objective,
-        progress: 0,
-        completed: false,
-      })),
-      dialogue,
-      chapterArchive: lastCompletedChapter
-        ? [...previousArchive.map(cloneCompletedChapter), cloneCompletedChapter(lastCompletedChapter)]
-        : previousArchive.map(cloneCompletedChapter),
-      lastCompletedChapter: lastCompletedChapter ? cloneCompletedChapter(lastCompletedChapter) : undefined,
-    };
-
-    this.recomputeProgress(true);
+    if (forceBroadcast || before !== JSON.stringify(this.snapshot)) {
+      this.broadcastUpdate();
+    }
   }
 
   private broadcastUpdate() {
