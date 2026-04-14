@@ -319,6 +319,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     for (const ct of cluster) {
         if (getTaskByTile(ct.id, pending.taskType)) continue;
         if (!canStartTaskDefinition(def, ct, hero)) continue;
+        if (def.canAutoChainTo && !def.canAutoChainTo(source, ct, hero)) continue;
         candidates.push(ct);
     }
     if (!candidates.length) return;

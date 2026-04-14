@@ -704,6 +704,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
             if (ct.id === tile.id) continue; // skip original completed tile
             if (getTaskByTile(ct.id, inst.type)) continue; // already has this task type
             if (!canStartTaskDefinition(def, ct, hero)) continue; // hero cannot start here
+            if (def.canAutoChainTo && !def.canAutoChainTo(tile, ct, hero)) continue;
             candidates.push(ct);
         }
         if (!candidates.length) continue;

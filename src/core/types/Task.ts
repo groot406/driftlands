@@ -32,6 +32,7 @@ export interface TaskDefinition {
     totalRewardedResources?(distance: number, tile ?: Tile): ResourceAmount;
 
     requiredResources?(distance: number): ResourceAmount[]
+    canAutoChainTo?(sourceTile: Tile, targetTile: Tile, hero: Hero): boolean;
 
     repeatTask?: boolean; // whether task can be repeated on same tile
     chainAdjacentSameTerrain?: boolean|Function; // optional flag to auto-chain task to neighboring same-terrain tiles

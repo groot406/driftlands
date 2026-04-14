@@ -242,6 +242,79 @@ test('mission 2 docks offer hero fishing', () => {
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), true);
 });
 
+test('deferred chop wood chaining skips young forest targets', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'chopped_forest',
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'young_forest',
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  let chainedTarget: { q: number; r: number } | null = null;
+  let chainedTask: string | undefined;
+  configureGameRuntime({
+    moveHero(_hero, target, task) {
+      chainedTarget = target;
+      chainedTask = task;
+    },
+  });
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    pendingChain: {
+      sourceTileId: '0,0',
+      taskType: 'chopWood',
+    },
+  };
+
+  handleHeroArrival(hero, tileIndex['0,0']!);
+
+  assert.equal(chainedTask, 'chopWood');
+  assert.equal(chainedTarget?.q, 1);
+  assert.equal(chainedTarget?.r, 0);
+});
+
 test('dismantle is available on inactive constructed tiles so blocked buildings can be cleared', () => {
   loadWorld([
     {

@@ -16,6 +16,10 @@ const chopWoodTask: TaskDefinition = {
         return tile.terrain === 'forest' && (tile.isBaseTile || tile.variant === '' || tile.variant === 'young_forest');
     },
 
+    canAutoChainTo(_sourceTile, targetTile, _hero) {
+        return targetTile.variant !== 'young_forest';
+    },
+
     requiredXp(_distance: number) {
         return 1200;
     },
