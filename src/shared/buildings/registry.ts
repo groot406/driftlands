@@ -1,12 +1,11 @@
 import { applyVariant } from '../../core/variants';
 import { discoverTile, ensureTileExists } from '../../core/world';
 import { terrainPositions } from '../../core/terrainRegistry';
-import { isTileWalkable } from '../game/navigation';
+import { listDockAccessTiles, isDockLandAccessTile } from '../game/docks.ts';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
 import {
     isTileActive,
     isTileControlled,
-    listActiveAdjacentAccessTiles,
 } from '../game/state/settlementSupportStore';
 import type { Hero } from '../../core/types/Hero';
 import type { ResourceAmount } from '../../core/types/Resource';
@@ -98,18 +97,18 @@ function resolveDockVariant(tile: Tile, preferredSide?: TileSide) {
     const neighbors = tile.neighbors;
     if (!neighbors) return 'water_dock_a';
 
-    // Use approach side only if the neighbor on that side is walkable
+    // Docks must face a land tile so they cannot be chained from water-only access.
     if (preferredSide) {
         const preferredNeighbor = neighbors[preferredSide];
-        if (preferredNeighbor && isTileWalkable(preferredNeighbor)) {
+        if (isDockLandAccessTile(preferredNeighbor)) {
             return `water_dock_${preferredSide}`;
         }
     }
 
-    // Fallback: find any walkable neighbor side
+    // Fallback: find any adjacent land access tile.
     for (const side of SIDE_NAMES) {
         const neighbor = neighbors[side];
-        if (neighbor && isTileWalkable(neighbor)) {
+        if (isDockLandAccessTile(neighbor)) {
             return `water_dock_${side}`;
         }
     }
@@ -433,7 +432,7 @@ const buildings: BuildingDefinition[] = [
             return tile.terrain === 'water'
                 && tile.isBaseTile
                 && isTileControlled(tile)
-                && listActiveAdjacentAccessTiles(tile).length > 0;
+                && listDockAccessTiles(tile).some((candidate) => isTileActive(candidate));
         },
         requiredXp(_distance: number) {
             return 3000;

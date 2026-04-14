@@ -164,7 +164,7 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Stabilize food first, because starving colonies cannot grow into the extra workers this site needs.');
             }
             if (!advice.length || workforce.availableWorkers <= 0) {
-                pushAdvice(advice, 'Every housed settler is already spoken for, so grow population before expecting this site to staff itself.');
+                pushAdvice(advice, 'Every available settler is already spoken for, so grow population before expecting this site to staff itself.');
             }
             break;
         case 'missing_input':

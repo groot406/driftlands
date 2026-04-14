@@ -29,9 +29,9 @@ import { canDrawWaterFromTile } from '../buildings/water';
 import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../buildings/storage';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
-import { isStoryTaskUnlocked } from '../story/progressionState.ts';
 import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from './taskAvailability.ts';
+import { isTaskUnlockedForUse } from './taskUnlocks.ts';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -345,7 +345,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     let tasks = listTaskDefinitions().filter(def =>
-        isStoryTaskUnlocked(def.key)
+        isTaskUnlockedForUse(def.key)
         && canStartTaskDefinition(def, tile, hero)
         && canStartTaskWhileCarrying(hero, def, tile)
     );

@@ -13,6 +13,7 @@ interface CameraCompositeStateLike {
 
 interface DrawOptionsLike {
     hoveredHero: Hero | null;
+    hoveredSettler?: { id: string } | null;
     globalReachTileIds?: Set<string>;
 }
 
@@ -89,6 +90,7 @@ export class EntityRenderer {
         deps.heroRenderer.drawHeroes(
             surface.ctx,
             opts.hoveredHero,
+            opts.hoveredSettler ?? null,
             overlayRecords,
             false,
             frame.movementNowMs,

@@ -190,6 +190,88 @@ function isInfrastructureTile(tile: Tile | null | undefined) {
     return !!tile?.variant && INFRASTRUCTURE_VARIANT_KEYS.has(tile.variant);
 }
 
+function getTileSettlementId(tile: Tile | null | undefined) {
+    return tile?.controlledBySettlementId ?? tile?.ownerSettlementId ?? null;
+}
+
+function settlementCanClaimTile(tile: Tile | null | undefined, settlementId: string | null = null) {
+    if (!settlementId) {
+        return true;
+    }
+
+    const tileSettlementId = getTileSettlementId(tile);
+    return !tileSettlementId || tileSettlementId === settlementId;
+}
+
+function extendReachWithInfrastructure(
+    reachSet: Set<string>,
+    settlementId: string | null = null,
+    requireActiveInfrastructure: boolean = true,
+) {
+    const projectedReach = new Set(reachSet);
+    const queuedInfrastructureIds = new Set<string>();
+    const queue: string[] = [];
+
+    for (const tileId of projectedReach) {
+        const tile = tileIndex[tileId];
+        if (!tile || !isInfrastructureTile(tile)) {
+            continue;
+        }
+
+        if (requireActiveInfrastructure && !isTileActive(tile)) {
+            continue;
+        }
+
+        if (!settlementCanClaimTile(tile, settlementId) || queuedInfrastructureIds.has(tile.id)) {
+            continue;
+        }
+
+        queuedInfrastructureIds.add(tile.id);
+        queue.push(tile.id);
+    }
+
+    queue.sort(compareTileIds);
+
+    while (queue.length > 0) {
+        const currentId = queue.shift();
+        if (!currentId) {
+            continue;
+        }
+
+        const tile = tileIndex[currentId];
+        if (!tile?.neighbors) {
+            continue;
+        }
+
+        for (const side of SIDE_NAMES) {
+            const neighbor = tile.neighbors[side];
+            if (!neighbor || !settlementCanClaimTile(neighbor, settlementId)) {
+                continue;
+            }
+
+            projectedReach.add(neighbor.id);
+
+            if (!isInfrastructureTile(neighbor)) {
+                continue;
+            }
+
+            if (requireActiveInfrastructure && !isTileActive(neighbor)) {
+                continue;
+            }
+
+            if (queuedInfrastructureIds.has(neighbor.id)) {
+                continue;
+            }
+
+            queuedInfrastructureIds.add(neighbor.id);
+            queue.push(neighbor.id);
+            queue.sort(compareTileIds);
+        }
+    }
+
+    return projectedReach;
+}
+
 function isBuildingPriorityTile(tile: Tile | null | undefined) {
     if (!tile?.variant) return false;
     if (isWatchtowerTile(tile)) return false;
@@ -536,7 +618,11 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
     for (const townCenter of townCenters) {
         staticReachBySettlementId.set(
             townCenter.id,
-            computeReachTileIdsFromTownCenters([townCenter], () => true),
+            extendReachWithInfrastructure(
+                computeReachTileIdsFromTownCenters([townCenter], () => true),
+                townCenter.id,
+                false,
+            ),
         );
     }
 
@@ -558,9 +644,12 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
         for (const townCenter of townCenters) {
             liveReachBySettlementId.set(
                 townCenter.id,
-                computeReachTileIdsFromTownCenters(
-                    [townCenter],
-                    (watchtower) => activeWatchtowerIds.has(watchtower.id),
+                extendReachWithInfrastructure(
+                    computeReachTileIdsFromTownCenters(
+                        [townCenter],
+                        (watchtower) => activeWatchtowerIds.has(watchtower.id),
+                    ),
+                    townCenter.id,
                 ),
             );
         }
@@ -739,17 +828,21 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
 }
 
 export function computeControlledTileIds() {
-    const settlementIds = getTownCenters();
-    return computeReachTileIdsFromTownCenters(
-        settlementIds,
-        (watchtower) => isTileActive(watchtower),
+    return extendReachWithInfrastructure(
+        computeReachTileIdsFromTownCenters(
+            getTownCenters(),
+            (watchtower) => isTileActive(watchtower),
+        ),
     );
 }
 
 export function computeControlledTileIdsForTC(tcQ: number, tcR: number) {
-    return computeReachTileIdsFromTownCenters(
-        [{ q: tcQ, r: tcR }],
-        (watchtower) => isTileActive(watchtower),
+    return extendReachWithInfrastructure(
+        computeReachTileIdsFromTownCenters(
+            [{ q: tcQ, r: tcR }],
+            (watchtower) => isTileActive(watchtower),
+        ),
+        `${tcQ},${tcR}`,
     );
 }
 

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from './roads';
+import type { Tile } from '../../core/types/Tile.ts';
+import { loadWorld, tileIndex } from './world.ts';
+import { hasAdjacentRoadBuildAnchor, isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from './roads';
+
+test.afterEach(() => {
+  loadWorld([]);
+});
 
 test('roads connect to adjacent roads and town centers', () => {
   assert.equal(isProceduralRoadVariant('road'), true);
@@ -48,4 +54,80 @@ test('road-facing buildings only accept one incoming road', () => {
 
   assert.equal(isRoadConnectionTarget(buildingTile, 'a'), true);
   assert.equal(isRoadConnectionTarget(buildingTile, 'c'), false);
+});
+
+test('roads can only start from an adjacent town center, road, or bridge anchor', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'road',
+    } satisfies Tile,
+    {
+      id: '3,0',
+      q: 3,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '4,1',
+      q: 4,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'water_bridge_ad',
+    } satisfies Tile,
+    {
+      id: '4,0',
+      q: 4,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  assert.equal(hasAdjacentRoadBuildAnchor(tileIndex['1,0']!), true);
+  assert.equal(hasAdjacentRoadBuildAnchor(tileIndex['3,0']!), true);
+  assert.equal(hasAdjacentRoadBuildAnchor(tileIndex['4,0']!), true);
+  assert.equal(hasAdjacentRoadBuildAnchor(tileIndex['5,0']!), false);
 });

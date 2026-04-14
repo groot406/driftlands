@@ -4,10 +4,12 @@ import { loadTasks, taskStore } from "../../src/shared/game/state/taskStore";
 import { depositResourceToStorage, listStorageSnapshots, resetResourceState, resourceInventory } from "../../src/shared/game/state/resourceStore";
 import { getWorkforceSnapshot, resetWorkforceState } from '../../src/shared/game/state/jobStore';
 import { getPopulationSnapshot, getPopulationState, initializePopulation, resetPopulationState } from "../../src/shared/game/state/populationStore";
+import { getSettlerSnapshot, loadSettlers, resetSettlerState } from '../../src/shared/game/state/settlerStore';
 import { recalculateSettlementSupport, resetSettlementSupportState } from '../../src/shared/game/state/settlementSupportStore';
 import { setSupportMetrics } from '../../src/shared/game/state/populationStore';
 import type { Tile } from "../../src/shared/game/types/Tile";
 import type { Hero } from "../../src/shared/game/types/Hero";
+import type { Settler } from '../../src/shared/game/types/Settler';
 import type { TaskInstance } from "../../src/shared/game/types/Task";
 import type { ResourceType } from "../../src/shared/game/types/Resource";
 import type { StorageSnapshot } from '../../src/shared/game/storage';
@@ -17,6 +19,7 @@ import { runState } from "./state/runState";
 import { resetMineReserveState } from './state/mineReserveState';
 import { setStoryProgressionForMission } from '../../src/shared/story/progressionState';
 import { tickEngine } from './tick';
+import { syncSettlerPopulation } from './systems/settlerSystem';
 
 const STARTING_FOOD = 12;
 const MAX_UINT32 = 0xffffffff;
@@ -122,6 +125,40 @@ function serializeTask(task: TaskInstance): TaskInstance {
   };
 }
 
+function serializeSettler(settler: Settler): Settler {
+  return {
+    id: settler.id,
+    q: settler.q,
+    r: settler.r,
+    facing: settler.facing,
+    appearanceSeed: settler.appearanceSeed,
+    homeTileId: settler.homeTileId,
+    homeAccessTileId: settler.homeAccessTileId,
+    settlementId: settler.settlementId ?? null,
+    assignedWorkTileId: settler.assignedWorkTileId ?? null,
+    activity: settler.activity,
+    stateSinceMs: settler.stateSinceMs,
+    hungerMs: settler.hungerMs,
+    fatigueMs: settler.fatigueMs,
+    workProgressMs: settler.workProgressMs,
+    carryingKind: settler.carryingKind ?? null,
+    movement: settler.movement
+      ? {
+          path: settler.movement.path.map((step) => ({ ...step })),
+          origin: { ...settler.movement.origin },
+          target: { ...settler.movement.target },
+          startMs: settler.movement.startMs,
+          stepDurations: settler.movement.stepDurations.slice(),
+          cumulative: settler.movement.cumulative.slice(),
+          taskType: settler.movement.taskType,
+          requestId: settler.movement.requestId,
+          authoritative: settler.movement.authoritative,
+        }
+      : undefined,
+    carryingPayload: settler.carryingPayload ? { ...settler.carryingPayload } : undefined,
+  };
+}
+
 // Simple in-memory world state. For now, generate a minimal world.
 // This can later be replaced with a richer generator and persistence layer.
 class WorldState {
@@ -134,14 +171,17 @@ class WorldState {
     resetResourceState();
     resetWorkforceState();
     resetPopulationState();
+    resetSettlerState();
     resetSettlementSupportState();
     resetMineReserveState();
     loadTasks([]);
     loadHeroes([]);
+    loadSettlers([]);
     setStoryProgressionForMission(1);
     tickEngine.setSeed(resolvedSeed);
     startWorldGeneration(worldRadius, resolvedSeed);
     initializePopulation();
+    syncSettlerPopulation(Date.now());
     depositResourceToStorage('0,0', 'food', STARTING_FOOD);
     const population = getPopulationState();
     const support = recalculateSettlementSupport(population.current, population.hungerMs);
@@ -154,7 +194,7 @@ class WorldState {
     return this.activeSeed;
   }
 
-  getSnapshot(): { tiles: Tile[], heroes: Hero[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot } {
+  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot } {
     const resources: Partial<Record<ResourceType, number>> = {};
     for (const [k, v] of Object.entries(resourceInventory)) {
       (resources as any)[k] = v as number;
@@ -163,10 +203,12 @@ class WorldState {
     const storages = listStorageSnapshots();
     const population = getPopulationSnapshot();
     const jobs = getWorkforceSnapshot();
+    const settlers = getSettlerSnapshot();
 
     return {
       tiles: tiles.map(serializeTile),
       heroes: heroes.map(serializeHero),
+      settlers: settlers.map(serializeSettler),
       tasks: taskStore.tasks.map(serializeTask),
       resources,
       storages,

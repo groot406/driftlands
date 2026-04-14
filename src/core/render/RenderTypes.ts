@@ -71,7 +71,7 @@ export interface EntityShadowSpec {
 
 export interface EntityRenderItem extends AxialCoord {
     entityId: string;
-    kind: 'hero' | 'tileOverlay' | 'buildingOverlay' | 'prop';
+    kind: 'hero' | 'settler' | 'tileOverlay' | 'buildingOverlay' | 'prop';
     worldX: number;
     worldY: number;
     spriteKey: string;
@@ -179,6 +179,9 @@ export interface HexMapDrawOptions {
         discovered: boolean;
     } | null;
     hoveredHero: {
+        id: string;
+    } | null;
+    hoveredSettler?: {
         id: string;
     } | null;
     taskMenuTile: {

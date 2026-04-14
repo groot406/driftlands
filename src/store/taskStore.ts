@@ -23,10 +23,10 @@ import { axialDistanceCoords } from '../shared/game/hex';
 import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../shared/buildings/storage';
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
-import { isStoryTaskUnlocked } from '../shared/story/progressionState.ts';
 import { getTaskEconomyDistance } from '../shared/tasks/economy';
 import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/taskAvailability';
+import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -304,7 +304,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
  *  5. Otherwise (no requirements, no resource rewards) → allowed (hero can
  *     do useful work while still holding resources).
  */
-export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, tile: Tile): boolean {
+export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, _tile: Tile): boolean {
     if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) return true;
 
     const required = def.requiredResources?.(getTaskEconomyDistance());
@@ -321,7 +321,7 @@ export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, tile:
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     const def = getTaskDefinition(type);
     if (!def) return null;
-    if (!isStoryTaskUnlocked(type)) return null;
+    if (!isTaskUnlockedForUse(type)) return null;
     if (!canStartTaskDefinition(def, tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 

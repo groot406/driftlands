@@ -8,6 +8,7 @@ import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
 import type {PopulationSnapshot} from "../store/populationStore.ts";
 import type { WorkforceSnapshot } from '../store/jobStore.ts';
+import type { Settler } from '../core/types/Settler.ts';
 
 export interface BaseMessage {
     type: string;
@@ -97,6 +98,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     type: 'world:snapshot';
     tiles: Tile[];
     heroes: Hero[];
+    settlers: Settler[];
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
     storages: StorageSnapshot[];
@@ -110,6 +112,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     totalTiles: number;
     totalChunks: number;
     heroes: Hero[];
+    settlers: Settler[];
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
     storages: StorageSnapshot[];
@@ -269,6 +272,11 @@ export interface JobsUpdateMessage extends BaseMessage {
     sites: WorkforceSnapshot['sites'];
 }
 
+export interface SettlersUpdateMessage extends BaseMessage {
+    type: 'settlers:update';
+    settlers: Settler[];
+}
+
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
@@ -309,4 +317,5 @@ export type ServerMessage =
     | RunSnapshotMessage
     | RunUpdateMessage
     | PopulationUpdateMessage
-    | JobsUpdateMessage;
+    | JobsUpdateMessage
+    | SettlersUpdateMessage;

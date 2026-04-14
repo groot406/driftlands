@@ -3,6 +3,7 @@ import { applyVariant } from '../../../core/variants';
 import type { Hero } from '../../../core/types/Hero';
 import type { ResourceAmount } from '../../../core/types/Resource';
 import type { TaskDefinition } from '../../../core/types/Task';
+import { hasAdjacentRoadBuildAnchor } from '../../game/roads.ts';
 
 const buildRoadTask: TaskDefinition = {
     key: 'buildRoad',
@@ -10,7 +11,9 @@ const buildRoadTask: TaskDefinition = {
     chainAdjacentSameTerrain: false,
 
     canStart(tile, _hero) {
-        return tile.terrain === 'plains' && tile.isBaseTile ;
+        return tile.terrain === 'plains'
+            && tile.isBaseTile
+            && hasAdjacentRoadBuildAnchor(tile);
     },
 
     requiredXp(_distance: number) {

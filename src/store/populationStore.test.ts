@@ -45,3 +45,32 @@ test('watchtowers chain their reach when each next tower is inside current reach
     resetSettlementSupportState();
   }
 });
+
+test('active roads extend reach into the surrounding frontier beyond the base town-center ring', () => {
+  loadWorld([
+    tile(0, 0, 'towncenter'),
+    tile(9, 0, 'plains', 'road'),
+    {
+      id: '10,-1',
+      q: 10,
+      r: -1,
+      biome: 'plains',
+      terrain: 'plains',
+      variant: null,
+      discovered: false,
+      isBaseTile: true,
+      activationState: 'inactive',
+    } satisfies Tile,
+  ]);
+
+  try {
+    recalculateSettlementSupport(0, 0);
+    const townCenterReach = computeReachTileIdsForTC(0, 0);
+
+    assert.equal(townCenterReach.has('10,-1'), true);
+    assert.equal(isTileWithinReach(10, -1), true);
+  } finally {
+    loadWorld([]);
+    resetSettlementSupportState();
+  }
+});

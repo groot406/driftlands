@@ -1,205 +1,191 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { BaseMessage, ResourceWithdrawMessage } from '../../../src/shared/protocol';
 import type { Tile } from '../../../src/shared/game/types/Tile';
-import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
 import { loadWorld } from '../../../src/shared/game/world';
-import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
-import { loadPopulationSnapshot, resetPopulationState, getPopulationState } from '../../../src/shared/game/state/populationStore';
+import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
+import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
-import { jobSystem } from './jobSystem';
-import { populationSystem } from './populationSystem';
+import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
+import { settlerSystem } from './settlerSystem';
 
-function captureBroadcasts() {
-  const messages: BaseMessage[] = [];
-  configureGameRuntime({
-    broadcast: (message) => {
-      messages.push(message);
-    },
-  });
-  return messages;
+function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
+  return {
+    id: overrides.id,
+    q: overrides.q,
+    r: overrides.r,
+    biome: overrides.biome ?? 'plains',
+    terrain: overrides.terrain,
+    discovered: overrides.discovered ?? true,
+    isBaseTile: overrides.isBaseTile ?? true,
+    variant: overrides.variant ?? null,
+    activationState: overrides.activationState ?? 'active',
+    controlledBySettlementId: overrides.controlledBySettlementId ?? '0,0',
+    ownerSettlementId: overrides.ownerSettlementId ?? '0,0',
+    supportBand: overrides.supportBand ?? 'stable',
+    jobSiteEnabled: overrides.jobSiteEnabled ?? null,
+  };
 }
 
 function createTowncenterTile(): Tile {
-  return {
+  return createTile({
     id: '0,0',
     q: 0,
     r: 0,
-    biome: 'plains',
     terrain: 'towncenter',
-    discovered: true,
-    isBaseTile: true,
-    activationState: 'active',
-    variant: null,
-  };
+  });
 }
 
-function createDockTile(): Tile {
-  return {
-    id: '0,1',
-    q: 0,
-    r: 1,
-    biome: 'lake',
-    terrain: 'water',
-    discovered: true,
-    isBaseTile: true,
-    activationState: 'active',
-    controlledBySettlementId: '0,0',
-    ownerSettlementId: '0,0',
-    supportBand: 'stable',
-    variant: 'water_dock_a',
-  };
+function loadPopulation(current: number, beds: number) {
+  loadPopulationSnapshot({
+    current,
+    max: Math.max(10, current, beds),
+    beds,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+}
+
+function tickAt(now: number, dt: number = 1_000) {
+  settlerSystem.tick({
+    now,
+    dt,
+    tick: Math.floor(now / Math.max(1, dt)),
+    rng: {} as never,
+  });
 }
 
 test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
   resetPopulationState();
+  resetSettlerState();
   resetSettlementSupportState();
   resetWorkforceState();
-  resetGameRuntime();
 });
 
-test('population upkeep broadcasts the food withdrawn for the colony meal tick', () => {
-  loadWorld([createTowncenterTile()]);
-  depositResourceToStorage('0,0', 'food', 5);
-  loadPopulationSnapshot({
-    current: 2,
-    max: 2,
-    beds: 2,
-    hungerMs: 0,
-    supportCapacity: 0,
-    activeTileCount: 0,
-    inactiveTileCount: 0,
-    pressureState: 'stable',
-    settlements: [],
-  });
+test('settlers only consume food after they arrive at storage', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'left',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 90_000,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'food', 2);
+  settlerSystem.init();
 
-  const broadcasts = captureBroadcasts();
-  const start = Date.now();
-  populationSystem.init();
-
-  populationSystem.tick({
-    now: start + 60_000,
-    dt: 60_000,
-    tick: 1,
-    rng: {} as never,
-  });
-
-  assert.equal(resourceInventory.food, 3);
-  assert.deepEqual(
-    broadcasts.filter((message) => message.type === 'resource:withdraw'),
-    [
-      {
-        type: 'resource:withdraw',
-        heroId: 'colony',
-        storageTileId: '0,0',
-        resource: { type: 'food', amount: 2 },
-      } satisfies ResourceWithdrawMessage,
-    ],
-  );
-});
-
-test('starving settlers recover immediately once enough food reaches storage', () => {
-  loadWorld([createTowncenterTile()]);
-  depositResourceToStorage('0,0', 'food', 6);
-  loadPopulationSnapshot({
-    current: 2,
-    max: 10,
-    beds: 10,
-    hungerMs: 120_000,
-    supportCapacity: 0,
-    activeTileCount: 0,
-    inactiveTileCount: 0,
-    pressureState: 'stable',
-    settlements: [],
-  });
-
-  const broadcasts = captureBroadcasts();
-  const start = Date.now();
-  populationSystem.init();
-
-  populationSystem.tick({
-    now: start + 1_000,
-    dt: 1_000,
-    tick: 1,
-    rng: {} as never,
-  });
-
-  assert.equal(getPopulationState().hungerMs, 0);
-  assert.equal(resourceInventory.food, 4);
-  assert.equal(
-    broadcasts.some((message) => message.type === 'population:update'),
-    true,
-  );
-});
-
-test('population growth requires enough reserve for the next larger colony meal', () => {
-  loadWorld([createTowncenterTile()]);
-  depositResourceToStorage('0,0', 'food', 4);
-  loadPopulationSnapshot({
-    current: 2,
-    max: 10,
-    beds: 10,
-    hungerMs: 0,
-    supportCapacity: 0,
-    activeTileCount: 0,
-    inactiveTileCount: 0,
-    pressureState: 'stable',
-    settlements: [],
-  });
-
-  const start = Date.now();
-  populationSystem.init();
-
-  populationSystem.tick({
-    now: start + 60_000,
-    dt: 60_000,
-    tick: 1,
-    rng: {} as never,
-  });
-
-  assert.equal(getPopulationState().current, 2);
+  tickAt(1_000, 1_000);
   assert.equal(resourceInventory.food, 2);
+  assert.equal(settlers[0]?.movement?.target.q, 0);
+  assert.equal(settlers[0]?.movement?.target.r, 0);
+
+  tickAt(3_000, 2_000);
+  assert.equal(resourceInventory.food, 1);
+  assert.equal(settlers[0]?.hungerMs, 0);
+  assert.equal(settlers[0]?.q, 0);
+  assert.equal(settlers[0]?.r, 0);
 });
 
-test('a hungry colony settles at the population its staffed food jobs can sustain', () => {
-  loadWorld([createTowncenterTile(), createDockTile()]);
-  loadPopulationSnapshot({
-    current: 4,
-    max: 10,
-    beds: 10,
-    hungerMs: 0,
-    supportCapacity: 0,
-    activeTileCount: 0,
-    inactiveTileCount: 0,
-    pressureState: 'stable',
-    settlements: [],
-  });
+test('job output reaches inventory only after a settler returns to storage', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
 
-  const start = Date.now();
-  populationSystem.init();
-  jobSystem.init();
+  tickAt(1_000, 1_000);
+  tickAt(62_000, 61_000);
 
-  for (let minute = 1; minute <= 7; minute++) {
-    const now = start + (minute * 60_000);
-    populationSystem.tick({
-      now,
-      dt: 60_000,
-      tick: minute,
-      rng: {} as never,
-    });
-    jobSystem.tick({
-      now,
-      dt: 60_000,
-      tick: minute,
-      rng: {} as never,
-    });
-  }
+  assert.equal(resourceInventory.wood, 0);
+  assert.equal(settlers[0]?.carryingKind, 'output');
+  assert.equal(settlers[0]?.movement?.target.q, 0);
+  assert.equal(settlers[0]?.movement?.target.r, 0);
 
-  assert.equal(getPopulationState().current, 2);
-  assert.equal(getPopulationState().hungerMs, 0);
-  assert.equal(resourceInventory.food, 2);
+  tickAt(64_000, 2_000);
+  assert.equal(resourceInventory.wood, 1);
+  assert.equal(settlers[0]?.carryingPayload, undefined);
+  assert.equal(settlers[0]?.q, 0);
+  assert.equal(settlers[0]?.r, 0);
+});
+
+test('tired settlers go home to sleep before resuming work', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'left',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 181_000,
+      workProgressMs: 5_000,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  assert.equal(settlers[0]?.movement?.target.q, 0);
+  assert.equal(settlers[0]?.activity, 'commuting_home');
+
+  tickAt(3_000, 2_000);
+  assert.equal(settlers[0]?.activity, 'sleeping');
+
+  tickAt(50_000, 47_000);
+  assert.equal(settlers[0]?.fatigueMs, 0);
+  assert.equal(settlers[0]?.activity === 'sleeping', false);
 });

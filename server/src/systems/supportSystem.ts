@@ -4,7 +4,6 @@ import { tileIndex } from '../../../src/shared/game/world';
 import { heroes } from '../../../src/shared/game/state/heroStore';
 import {
     findNearestActiveTileInSettlement,
-    isTileActive,
     recalculateSettlementSupport,
 } from '../../../src/shared/game/state/settlementSupportStore';
 import {

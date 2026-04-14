@@ -592,7 +592,7 @@ const jobsStatusText = computed(() => {
     return 'The colony is hungry, but staffed jobs keep running';
   }
   if (workforceState.availableWorkers <= 0) {
-    return 'No housed settlers are available for work';
+    return 'No settlers are available for work';
   }
   if (workforceState.idleWorkers > 0) {
     return `${workforceState.idleWorkers} worker${workforceState.idleWorkers === 1 ? '' : 's'} waiting for more job slots`;

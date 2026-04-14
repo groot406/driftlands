@@ -18,7 +18,7 @@ test.afterEach(() => {
   loadWorld([]);
 });
 
-test('shoreline construction tasks use adjacent active shore access instead of the water tile itself', () => {
+test('dock construction uses adjacent active land access instead of the water tile itself', () => {
   loadWorld([
     {
       id: '0,0',
@@ -69,6 +69,38 @@ test('shoreline construction tasks use adjacent active shore access instead of t
   );
 });
 
+test('dock construction does not use bridges as water-only access', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'water_bridge_ad',
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const shoreline = tileIndex['0,1']!;
+  const accessTile = findNearestTaskAccessTile('buildDock', shoreline, 0, 0);
+
+  assert.equal(accessTile, null);
+});
+
 test('bridges extend from active shore or an existing straight bridgehead', () => {
   loadWorld([
     {
@@ -76,7 +108,7 @@ test('bridges extend from active shore or an existing straight bridgehead', () =
       q: 0,
       r: 0,
       biome: 'plains',
-      terrain: 'plains',
+      terrain: 'towncenter',
       discovered: true,
       isBaseTile: true,
       activationState: 'active',

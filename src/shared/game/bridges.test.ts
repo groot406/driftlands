@@ -22,6 +22,28 @@ test('bridge helpers resolve straight bridge variants from shore and bridgeheads
       q: 0,
       r: 0,
       biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'road',
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
       terrain: 'plains',
       discovered: true,
       isBaseTile: true,
@@ -59,21 +81,25 @@ test('bridge helpers resolve straight bridge variants from shore and bridgeheads
       discovered: true,
       isBaseTile: true,
       activationState: 'active',
-      variant: 'water_bridge_be',
+      variant: null,
     } satisfies Tile,
   ]);
 
   const bridgeHead = tileIndex['0,1']!;
   const extension = tileIndex['0,2']!;
   const sidewaysTarget = tileIndex['1,1']!;
-  const shore = tileIndex['0,0']!;
+  const towncenterShore = tileIndex['0,0']!;
+  const roadShore = tileIndex['1,0']!;
+  const plainShore = tileIndex['2,0']!;
 
   assert.equal(isProceduralBridgeVariant('water_bridge_ad'), true);
   assert.equal(isBridgeTile(bridgeHead), true);
   assert.deepEqual(getBridgeConnectionSides(bridgeHead), ['a', 'd']);
   assert.equal(bridgeVariantSupportsSide(bridgeHead, 'a'), true);
   assert.equal(bridgeVariantSupportsSide(bridgeHead, 'c'), false);
-  assert.equal(resolveBridgeVariantFromAccessTile(bridgeHead, shore), 'water_bridge_ad');
+  assert.equal(resolveBridgeVariantFromAccessTile(bridgeHead, towncenterShore), 'water_bridge_ad');
+  assert.equal(resolveBridgeVariantFromAccessTile(sidewaysTarget, roadShore), 'water_bridge_ad');
+  assert.equal(resolveBridgeVariantFromAccessTile(sidewaysTarget, plainShore), null);
   assert.equal(resolveBridgeVariantFromAccessTile(extension, bridgeHead), 'water_bridge_ad');
   assert.equal(resolveBridgeVariantFromAccessTile(sidewaysTarget, bridgeHead), null);
 });

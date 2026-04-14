@@ -6,6 +6,7 @@ import type { Tile } from '../../../core/types/Tile';
 import { getTaskDefinition } from '../taskRegistry';
 import { configureGameRuntime, resetGameRuntime } from '../../game/runtime';
 import { loadWorld, tileIndex } from '../../game/world';
+import { recalculateSettlementSupport, resetSettlementSupportState } from '../../../store/settlementSupportStore.ts';
 import './explore';
 
 function createDiscoveredTile(tile: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
@@ -22,6 +23,7 @@ function createDiscoveredTile(tile: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' 
 test.afterEach(() => {
   loadWorld([]);
   resetGameRuntime();
+  resetSettlementSupportState();
 });
 
 test('explore chaining chooses a random eligible neighbor instead of the closest one', async () => {
@@ -157,4 +159,51 @@ test('shore exploration reveals a small connected patch of water without sending
 
   assert.equal(tileIndex['0,2']?.discovered, true);
   assert.equal(moveCalls.length, 0);
+});
+
+test('road reach unlocks explore tasks on the frontier just beyond the base town-center ring', () => {
+  loadWorld([
+    createDiscoveredTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+    }),
+    createDiscoveredTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'plains',
+      isBaseTile: false,
+      variant: 'road',
+    }),
+    {
+      id: '10,-1',
+      q: 10,
+      r: -1,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: false,
+      isBaseTile: true,
+      activationState: 'inactive',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  recalculateSettlementSupport(0, 0);
+
+  const exploreTask = getTaskDefinition('explore');
+  const frontierTile = tileIndex['10,-1']!;
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Scout',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(frontierTile.discovered, false);
+  assert.equal(exploreTask?.canStart(frontierTile, hero), true);
 });

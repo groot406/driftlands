@@ -135,6 +135,310 @@ test('inactive discovered tiles do not offer or start normal work tasks', () => 
   assert.equal(startTask(tileIndex['1,0']!, 'forage', hero), null);
 });
 
+test('dismantle is available on inactive constructed tiles so blocked buildings can be cleared', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'plains_house',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  const availableTasks = getAvailableTasks(tileIndex['1,0']!, hero);
+  assert.equal(availableTasks.some((task) => task.key === 'dismantle'), true);
+  assert.ok(startTask(tileIndex['1,0']!, 'dismantle', hero));
+});
+
+test('dismantle restores constructed tiles back to their base terrain', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'road',
+    } satisfies Tile,
+  ]);
+
+  const dismantle = getTaskDefinition('dismantle');
+  const tile = tileIndex['0,0']!;
+
+  dismantle?.onComplete?.(tile, {
+    id: 'task-dismantle',
+    type: 'dismantle',
+    tileId: tile.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, []);
+
+  assert.equal(tile.variant, null);
+  assert.equal(tile.isBaseTile, true);
+});
+
+test('road and bridge tasks require town center, road, or bridge anchors before they can start', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '3,0',
+      q: 3,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'road',
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '4,1',
+      q: 4,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'water_bridge_ad',
+    } satisfies Tile,
+    {
+      id: '4,0',
+      q: 4,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '5,0',
+      q: 5,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,1',
+      q: 2,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '6,1',
+      q: 6,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  const buildRoad = getTaskDefinition('buildRoad');
+  const buildBridge = getTaskDefinition('buildBridge');
+
+  assert.equal(buildRoad?.canStart(tileIndex['1,0']!, hero), true);
+  assert.equal(buildRoad?.canStart(tileIndex['2,0']!, hero), true);
+  assert.equal(buildRoad?.canStart(tileIndex['4,0']!, hero), true);
+  assert.equal(buildRoad?.canStart(tileIndex['5,0']!, hero), false);
+  assert.equal(buildBridge?.canStart(tileIndex['0,1']!, hero), true);
+  assert.equal(buildBridge?.canStart(tileIndex['2,1']!, hero), true);
+  assert.equal(buildBridge?.canStart(tileIndex['6,1']!, hero), false);
+});
+
+test('dock tasks only start on water tiles that touch active land', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,1',
+      q: 1,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'water_bridge_be',
+    } satisfies Tile,
+    {
+      id: '2,1',
+      q: 2,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const buildDock = getTaskDefinition('buildDock');
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(buildDock?.canStart(tileIndex['0,1']!, hero), true);
+  assert.equal(buildDock?.canStart(tileIndex['2,1']!, hero), false);
+});
+
 test('adjacent dock deliveries are applied to the task before the town center warehouse', () => {
   loadWorld([
     {

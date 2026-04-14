@@ -5,6 +5,7 @@ import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
 import { resolveWorldTile } from '../../core/worldGeneration.ts';
 import { axialDistanceCoords } from '../game/hex';
 import { listBridgeAccessTiles } from '../game/bridges.ts';
+import { listDockAccessTiles } from '../game/docks.ts';
 import { isTileWalkable } from '../game/navigation';
 import {
     findNearestActiveAdjacentAccessTile,
@@ -98,10 +99,33 @@ function listBridgeAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
     return listBridgeAccessTiles(tile).filter((candidate) => candidate.discovered && isTileActive(candidate));
 }
 
+function listDockAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
+    return listDockAccessTiles(tile).filter((candidate) => isTileActive(candidate));
+}
+
+function findNearestCandidateByDistance(candidates: Tile[], fromQ: number, fromR: number) {
+    let best: Tile | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const candidate of candidates) {
+        const distance = axialDistanceCoords(fromQ, fromR, candidate.q, candidate.r);
+        if (distance < bestDistance || (distance === bestDistance && candidate.id.localeCompare(best?.id ?? candidate.id) < 0)) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+
+    return best;
+}
+
 export function listTaskAccessTiles(
     taskType: TaskType | string | null | undefined,
     tile: Tile | null | undefined,
 ) {
+    if (taskType === 'buildDock') {
+        return listDockAdjacentActiveAccessTiles(tile);
+    }
+
     if (taskType === 'buildBridge') {
         return listBridgeAdjacentActiveAccessTiles(tile);
     }
@@ -127,20 +151,12 @@ export function findNearestTaskAccessTile(
 ) {
     if (!tile) return null;
 
+    if (taskType === 'buildDock') {
+        return findNearestCandidateByDistance(listDockAdjacentActiveAccessTiles(tile), fromQ, fromR);
+    }
+
     if (taskType === 'buildBridge') {
-        const candidates = listBridgeAdjacentActiveAccessTiles(tile);
-        let best: Tile | null = null;
-        let bestDistance = Number.POSITIVE_INFINITY;
-
-        for (const candidate of candidates) {
-            const distance = axialDistanceCoords(fromQ, fromR, candidate.q, candidate.r);
-            if (distance < bestDistance || (distance === bestDistance && candidate.id.localeCompare(best?.id ?? candidate.id) < 0)) {
-                best = candidate;
-                bestDistance = distance;
-            }
-        }
-
-        return best;
+        return findNearestCandidateByDistance(listBridgeAdjacentActiveAccessTiles(tile), fromQ, fromR);
     }
 
     const mode = getTaskAccessMode(taskType, tile);
@@ -150,19 +166,7 @@ export function findNearestTaskAccessTile(
     }
 
     if (mode === 'adjacent_walkable') {
-        const candidates = listAdjacentWalkableAccessTiles(tile);
-        let best: Tile | null = null;
-        let bestDistance = Number.POSITIVE_INFINITY;
-
-        for (const candidate of candidates) {
-            const distance = axialDistanceCoords(fromQ, fromR, candidate.q, candidate.r);
-            if (distance < bestDistance || (distance === bestDistance && candidate.id.localeCompare(best?.id ?? candidate.id) < 0)) {
-                best = candidate;
-                bestDistance = distance;
-            }
-        }
-
-        return best;
+        return findNearestCandidateByDistance(listAdjacentWalkableAccessTiles(tile), fromQ, fromR);
     }
 
     return tile;
@@ -182,9 +186,13 @@ export function isHeroAtTaskAccess(
     }
 
     const heroTile = tileIndex[`${hero.q},${hero.r}`] ?? null;
-    return !!heroTile
-        && heroTile.discovered
-        && isTileWalkable(heroTile)
-        && (mode !== 'adjacent_active' || isTileActive(heroTile))
-        && axialDistanceCoords(hero.q, hero.r, tile.q, tile.r) === 1;
+    if (!heroTile || !heroTile.discovered || !isTileWalkable(heroTile)) {
+        return false;
+    }
+
+    if (mode === 'adjacent_active' && !isTileActive(heroTile)) {
+        return false;
+    }
+
+    return listTaskAccessTiles(taskType, tile).some((candidate) => candidate.id === heroTile.id);
 }

@@ -1,5 +1,5 @@
 import { TERRAIN_DEFS } from '../../core/terrainDefs.ts';
-import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile.ts';
+import { OPPOSITE_SIDE, SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile.ts';
 import { getBuildingDefinitionForTile } from '../buildings/registry.ts';
 
 const PROCEDURAL_ROAD_VARIANTS = new Set([
@@ -16,6 +16,31 @@ export function isProceduralRoadVariant(variant: string | null | undefined) {
 
 export function isRoadTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | undefined) {
   return tile?.terrain === 'plains' && isProceduralRoadVariant(tile.variant);
+}
+
+function isBridgeBuildAnchorTile(tile: Pick<Tile, 'terrain' | 'variant'> | null | undefined) {
+  return tile?.terrain === 'water' && typeof tile.variant === 'string' && tile.variant.startsWith('water_bridge_');
+}
+
+export function isInfrastructureBuildAnchorTile(tile: Tile | null | undefined, fromSide?: TileSide) {
+  if (!tile) {
+    return false;
+  }
+
+  return (tile.terrain === 'towncenter' || isRoadTile(tile) || isBridgeBuildAnchorTile(tile))
+    && isRoadConnectionTarget(tile, fromSide);
+}
+
+export function isRoadBuildAnchorTile(tile: Tile | null | undefined, fromSide?: TileSide) {
+  return isInfrastructureBuildAnchorTile(tile, fromSide);
+}
+
+export function hasAdjacentRoadBuildAnchor(tile: Tile | null | undefined) {
+  if (!tile?.neighbors) {
+    return false;
+  }
+
+  return SIDE_NAMES.some((side) => isInfrastructureBuildAnchorTile(tile.neighbors?.[side], OPPOSITE_SIDE[side]));
 }
 
 function getVariantDefinition(tile: Tile) {

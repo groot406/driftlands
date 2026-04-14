@@ -38,6 +38,7 @@ export class ServerGameStateHandler {
       totalTiles: snapshot.tiles.length,
       totalChunks,
       heroes: snapshot.heroes,
+      settlers: snapshot.settlers,
       tasks: snapshot.tasks,
       resources: snapshot.resources,
       storages: snapshot.storages,

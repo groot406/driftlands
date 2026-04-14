@@ -1,5 +1,6 @@
 import { OPPOSITE_SIDE, SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile.ts';
 import { isTileWalkable } from './navigation.ts';
+import { isInfrastructureBuildAnchorTile } from './roads.ts';
 import { ensureTileExists } from './world.ts';
 
 export const PROCEDURAL_BRIDGE_VARIANTS = new Set([
@@ -95,6 +96,23 @@ function isBridgeAccessTileCompatible(targetTile: Tile, accessTile: Tile) {
   return isBridgeTile(accessTile) && bridgeVariantSupportsSide(accessTile, OPPOSITE_SIDE[side]);
 }
 
+export function isBridgeConstructionAccessTile(targetTile: Tile | null | undefined, accessTile: Tile | null | undefined) {
+  if (!targetTile || !accessTile || targetTile.terrain !== 'water') {
+    return false;
+  }
+
+  const side = getNeighborSide(targetTile, accessTile);
+  if (!side || !isBridgeAccessTileCompatible(targetTile, accessTile)) {
+    return false;
+  }
+
+  if (accessTile.terrain === 'water') {
+    return isBridgeTile(accessTile) && bridgeVariantSupportsSide(accessTile, OPPOSITE_SIDE[side]);
+  }
+
+  return isInfrastructureBuildAnchorTile(accessTile, OPPOSITE_SIDE[side]);
+}
+
 export function listBridgeAccessTiles(tile: Tile | null | undefined) {
   if (!tile || tile.terrain !== 'water') {
     return [];
@@ -104,7 +122,7 @@ export function listBridgeAccessTiles(tile: Tile | null | undefined) {
 
   for (const side of SIDE_NAMES) {
     const accessTile = getNeighborTile(tile, side);
-    if (!accessTile || !isBridgeAccessTileCompatible(tile, accessTile)) {
+    if (!accessTile || !isBridgeConstructionAccessTile(tile, accessTile)) {
       continue;
     }
 
@@ -124,7 +142,7 @@ export function resolveBridgeVariantFromAccessTile(
   }
 
   const side = getNeighborSide(targetTile, accessTile);
-  if (!side || !isBridgeAccessTileCompatible(targetTile, accessTile)) {
+  if (!side || !isBridgeConstructionAccessTile(targetTile, accessTile)) {
     return null;
   }
 

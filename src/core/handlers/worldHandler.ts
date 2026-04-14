@@ -1,6 +1,7 @@
 import type {
     JobsUpdateMessage,
     PopulationUpdateMessage,
+    SettlersUpdateMessage,
     TileUpdatedMessage,
     WorldSnapshotChunkMessage,
     WorldSnapshotCompleteMessage,
@@ -14,6 +15,7 @@ import {loadTasks} from "../../store/taskStore";
 import {replaceInventory, replaceStorageInventories} from "../../store/resourceStore";
 import {loadPopulation, updatePopulation} from "../../store/clientPopulationStore";
 import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
+import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -21,11 +23,13 @@ interface PendingWorldSnapshot {
     totalChunks: number;
     tiles: WorldSnapshotMessage['tiles'];
     heroes: WorldSnapshotMessage['heroes'];
+    settlers: WorldSnapshotMessage['settlers'];
     tasks: WorldSnapshotMessage['tasks'];
     resources: WorldSnapshotMessage['resources'];
     storages: WorldSnapshotMessage['storages'];
     population: WorldSnapshotMessage['population'];
     jobs: WorldSnapshotMessage['jobs'];
+    timestamp?: number;
 }
 
 class WorldHandler {
@@ -43,13 +47,15 @@ class WorldHandler {
         clientMessageRouter.on('world:snapshot_chunk', this.handleWorldSnapshotChunk.bind(this));
         clientMessageRouter.on('world:snapshot_complete', this.handleWorldSnapshotComplete.bind(this));
         clientMessageRouter.on('jobs:update', this.handleJobsUpdate.bind(this));
+        clientMessageRouter.on('settlers:update', this.handleSettlersUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs' | 'timestamp'>): void {
         loadWorld(message.tiles);
         loadHeroes(message.heroes);
+        loadSettlers(message.settlers ?? [], message.timestamp);
         loadTasks(message.tasks);
         replaceStorageInventories(message.storages ?? []);
         if (message.resources) {
@@ -71,11 +77,13 @@ class WorldHandler {
             totalChunks: message.totalChunks,
             tiles: [],
             heroes: message.heroes,
+            settlers: message.settlers,
             tasks: message.tasks,
             resources: message.resources,
             storages: message.storages,
             population: message.population,
             jobs: message.jobs,
+            timestamp: message.timestamp,
         };
     }
 
@@ -130,6 +138,10 @@ class WorldHandler {
             idleWorkers: message.idleWorkers,
             sites: message.sites,
         });
+    }
+
+    private handleSettlersUpdate(message: SettlersUpdateMessage): void {
+        updateSettlers(message.settlers, message.timestamp);
     }
 }
 

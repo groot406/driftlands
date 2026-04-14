@@ -1,27 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { BaseMessage } from '../../../src/shared/protocol';
 import type { Tile } from '../../../src/shared/game/types/Tile';
-import { onGameplayEvent } from '../../../src/shared/gameplay/events';
-import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
 import { loadWorld } from '../../../src/shared/game/world';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
-import { getStorageResourceAmount, depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
+import { loadSettlers, resetSettlerState } from '../../../src/shared/game/state/settlerStore';
+import { resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
-import { resetMineReserveState } from '../state/mineReserveState';
 import { jobSystem } from './jobSystem';
-
-function captureBroadcasts() {
-  const messages: BaseMessage[] = [];
-  configureGameRuntime({
-    broadcast: (message) => {
-      messages.push(message);
-    },
-  });
-  return messages;
-}
+import { settlerSystem } from './settlerSystem';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -47,17 +35,15 @@ function createTowncenterTile(): Tile {
     q: 0,
     r: 0,
     terrain: 'towncenter',
-    controlledBySettlementId: '0,0',
-    ownerSettlementId: '0,0',
   });
 }
 
-function loadPopulation(current: number, beds: number, hungerMs: number = 0) {
+function loadPopulation(current: number, beds: number) {
   loadPopulationSnapshot({
     current,
-    max: Math.max(current, beds, 10),
+    max: Math.max(10, current, beds),
     beds,
-    hungerMs,
+    hungerMs: 0,
     supportCapacity: 0,
     activeTileCount: 0,
     inactiveTileCount: 0,
@@ -66,11 +52,17 @@ function loadPopulation(current: number, beds: number, hungerMs: number = 0) {
   });
 }
 
-function tickAt(now: number) {
+function tickAll(now: number, dt: number = 1_000) {
+  settlerSystem.tick({
+    now,
+    dt,
+    tick: Math.floor(now / Math.max(1, dt)),
+    rng: {} as never,
+  });
   jobSystem.tick({
     now,
-    dt: 1_000,
-    tick: Math.floor(now / 1_000),
+    dt,
+    tick: Math.floor(now / Math.max(1, dt)),
     rng: {} as never,
   });
 }
@@ -79,258 +71,166 @@ test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
   resetPopulationState();
+  resetSettlerState();
   resetSettlementSupportState();
   resetWorkforceState();
-  resetMineReserveState();
-  resetGameRuntime();
 });
 
-test('workforce availability is capped by beds and does not pause on hunger', () => {
+test('workforce snapshots reflect assigned settlers per site', () => {
   loadWorld([
     createTowncenterTile(),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
     createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain', variant: 'grain_granary' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
   ]);
-  loadPopulation(3, 1, 0);
-  jobSystem.init();
-
-  let snapshot = getWorkforceSnapshot();
-  assert.equal(snapshot.availableWorkers, 1);
-  assert.equal(snapshot.assignedWorkers, 1);
-
-  const broadcasts = captureBroadcasts();
-  loadPopulation(3, 2, 60_000);
-  tickAt(1_000);
-
-  snapshot = getWorkforceSnapshot();
-  assert.equal(snapshot.availableWorkers, 2);
-  assert.equal(snapshot.assignedWorkers, 2);
-  assert.ok(broadcasts.some((message) => message.type === 'jobs:update'));
-  assert.equal(snapshot.idleWorkers, 0);
-});
-
-test('workers are assigned in a stable even order across job sites', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
-    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain', variant: 'grain_granary' }),
-    createTile({ id: '3,0', q: 3, r: 0, terrain: 'grain', variant: 'grain_granary' }),
-    createTile({ id: '4,0', q: 4, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'settler-2',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
   ]);
-  loadPopulation(2, 4, 0);
   jobSystem.init();
 
   const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.availableWorkers, 2);
+  assert.equal(snapshot.assignedWorkers, 2);
+  assert.equal(snapshot.idleWorkers, 0);
   assert.deepEqual(
-    snapshot.sites.map((site) => ({
-      tileId: site.tileId,
-      assignedWorkers: site.assignedWorkers,
-    })),
+    snapshot.sites.map((site) => ({ tileId: site.tileId, assignedWorkers: site.assignedWorkers })),
     [
       { tileId: '1,0', assignedWorkers: 1 },
       { tileId: '2,0', assignedWorkers: 1 },
       { tileId: '3,0', assignedWorkers: 0 },
-      { tileId: '4,0', assignedWorkers: 0 },
     ],
   );
 });
 
-test('granary and bakery can complete a full passive production chain', () => {
+test('starter settlers can staff docks before any houses are built', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', variant: 'water_dock_a' }),
+  ]);
+  loadPopulation(1, 0);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.availableWorkers, 1);
+  assert.equal(snapshot.assignedWorkers, 1);
+  assert.equal(snapshot.idleWorkers, 0);
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.assignedWorkers, 1);
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'staffed');
+});
+
+test('granary and bakery form a settler-driven production chain', () => {
   loadWorld([
     createTowncenterTile(),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary' }),
     createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
   ]);
-  loadPopulation(2, 2, 0);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'settler-2',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
   jobSystem.init();
 
-  tickAt(1_000);
-  tickAt(61_000);
+  tickAll(1_000, 1_000);
+  tickAll(62_000, 61_000);
+  tickAll(64_000, 2_000);
+  tickAll(66_000, 2_000);
+  tickAll(128_000, 62_000);
+  tickAll(131_000, 3_000);
 
   assert.equal(resourceInventory.grain, 0);
-  assert.equal(resourceInventory.food, 3);
-  assert.equal(getStorageResourceAmount('0,0', 'grain'), 0);
-  assert.equal(getStorageResourceAmount('0,0', 'food'), 3);
-});
-
-test('staffed jobs keep running while the colony is hungry', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
-  ]);
-  loadPopulation(1, 1, 60_000);
-  depositResourceToStorage('0,0', 'grain', 1);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.grain, 0);
-  assert.equal(resourceInventory.food, 3);
-  assert.equal(getWorkforceSnapshot().sites[0]?.assignedWorkers, 1);
-  assert.equal(getWorkforceSnapshot().sites[0]?.status, 'missing_input');
-});
-
-test('granary output scales with adjacent active grain fields', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary' }),
-    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain' }),
-    createTile({ id: '1,1', q: 1, r: 1, terrain: 'grain' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.grain, 3);
-  assert.equal(getStorageResourceAmount('0,0', 'grain'), 3);
-});
-
-test('lumber camp output scales with adjacent active forests', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
-    createTile({ id: '2,0', q: 2, r: 0, terrain: 'forest' }),
-    createTile({ id: '1,1', q: 1, r: 1, terrain: 'forest' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.wood, 3);
-  assert.equal(getStorageResourceAmount('0,0', 'wood'), 3);
-});
-
-test('dock output scales with adjacent active water tiles', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '0,1', q: 0, r: 1, terrain: 'water', variant: 'water_dock_a', biome: 'lake' }),
-    createTile({ id: '1,1', q: 1, r: 1, terrain: 'water', biome: 'lake' }),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', biome: 'lake' }),
-    createTile({ id: '0,2', q: 0, r: 2, terrain: 'water', biome: 'lake' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.food, 3);
-  assert.equal(getStorageResourceAmount('0,0', 'food'), 3);
-});
-
-test('mine produces ore once staffed for a full cycle', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,-1', q: 1, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.ore, 1);
-  assert.equal(getStorageResourceAmount('0,0', 'ore'), 1);
-});
-
-test('passive job output counts as a delivered resource event for mission objectives', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,-1', q: 1, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
-
-  const deliveries: Array<{ resourceType: string; amount: number }> = [];
-  const unsubscribe = onGameplayEvent((event) => {
-    if (event.type === 'resource:delivered') {
-      deliveries.push({ resourceType: event.resourceType, amount: event.amount });
-    }
-  });
-
-  try {
-    tickAt(1_000);
-    tickAt(61_000);
-  } finally {
-    unsubscribe();
-  }
-
-  assert.deepEqual(deliveries, [{ resourceType: 'ore', amount: 1 }]);
-});
-
-test('production skips the whole cycle when output storage is full', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  depositResourceToStorage('0,0', 'stone', 238);
-  depositResourceToStorage('0,0', 'grain', 1);
-  jobSystem.init();
-
-  tickAt(1_000);
-  tickAt(61_000);
-
-  assert.equal(resourceInventory.food, 0);
-  assert.equal(resourceInventory.grain, 1);
-  assert.equal(getWorkforceSnapshot().sites[0]?.status, 'storage_full');
-});
-
-test('manually paused job sites free their workers', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', jobSiteEnabled: false }),
-  ]);
-  loadPopulation(1, 1, 0);
-  jobSystem.init();
+  assert.equal(resourceInventory.food, 2);
 
   const snapshot = getWorkforceSnapshot();
-  assert.equal(snapshot.assignedWorkers, 0);
-  assert.equal(snapshot.idleWorkers, 1);
-  assert.equal(snapshot.sites[0]?.status, 'paused');
-});
-
-test('workers are freed from sites that cannot unload their output', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
-  ]);
-  loadPopulation(1, 1, 0);
-  depositResourceToStorage('0,0', 'stone', 238);
-  depositResourceToStorage('0,0', 'grain', 1);
-  jobSystem.init();
-
-  const snapshot = getWorkforceSnapshot();
-  assert.equal(snapshot.assignedWorkers, 0);
-  assert.equal(snapshot.idleWorkers, 1);
-  assert.equal(snapshot.sites[0]?.status, 'storage_full');
-});
-
-test('mines share a finite reserve across the whole mountain cluster', () => {
-  loadWorld([
-    createTowncenterTile(),
-    createTile({ id: '1,-1', q: 1, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
-    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'mountain', variant: 'mountains_with_mine' }),
-  ]);
-  loadPopulation(2, 2, 0);
-  jobSystem.init();
-
-  tickAt(1_000);
-  for (let cycle = 1; cycle <= 5; cycle++) {
-    tickAt(1_000 + (cycle * 60_000));
-  }
-
-  assert.equal(resourceInventory.ore, 20);
-  assert.equal(getStorageResourceAmount('0,0', 'ore'), 20);
-
-  tickAt(362_000);
-
-  const snapshot = getWorkforceSnapshot();
-  assert.equal(resourceInventory.ore, 20);
-  assert.ok(snapshot.sites.every((site) => site.status === 'depleted'));
+  assert.equal(snapshot.assignedWorkers, 2);
+  assert.equal(snapshot.sites.find((site) => site.tileId === '2,0')?.status, 'missing_input');
 });

@@ -19,6 +19,7 @@ import {
     moveCamera
 } from './camera';
 import {heroes} from '../store/heroStore';
+import { settlers } from '../store/settlerStore';
 import {TERRAIN_DEFS} from './terrainDefs';
 import { selectedHeroId } from '../store/uiStore';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
@@ -28,6 +29,7 @@ import {getTextIndicators} from "./textIndicators.ts";
 import type { PathCoord } from './PathService';
 import { OPPOSITE_SIDE, SIDE_NAMES, type Tile, type TileSide } from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
+import type { Settler } from "./types/Settler.ts";
 import type {ResourceType} from "./types/Resource.ts";
 import type {TaskInstance} from "./types/Task.ts";
 import {getDecorativeSelectionForTile} from './tileVisuals';
@@ -84,6 +86,11 @@ import { MotionBlurEffect } from './render/effects/MotionBlurEffect';
 import { ResourceFlightEffect } from './render/effects/ResourceFlightEffect';
 import { DebugRenderer } from './render/debug/DebugRenderer';
 import { DEFAULT_DEBUG_FLAGS } from './render/debug/DebugFlags';
+import {
+    computeTileSettlerOffsets,
+    getSettlerInterpolatedPixelPosition,
+    isSettlerVisibleOnMap,
+} from './render/entities/settlerRender';
 
 type GlowColor = readonly [number, number, number];
 
@@ -118,6 +125,7 @@ function buildHeroSources(): Record<string, string> {
 interface DrawOptions {
     hoveredTile: Tile | null;
     hoveredHero: Hero | null;
+    hoveredSettler: Settler | null;
     taskMenuTile: Tile | null;
     pathCoords: PathCoord[];
     clusterBoundaryTiles?: Tile[]; // boundary tiles of same-terrain cluster for menu highlighting
@@ -689,6 +697,69 @@ export class HexMapService {
         return picked?.hero ?? null;
     }
 
+    pickSettler(screenX: number, screenY: number): Settler | null {
+        if (!this._canvas) return null;
+        const rect = this._canvas.getBoundingClientRect();
+        const visibleSettlers = settlers
+            .filter((settler) => isSettlerVisibleOnMap(settler))
+            .sort((a, b) => {
+                if (a.r !== b.r) {
+                    return a.r - b.r;
+                }
+                if (a.q !== b.q) {
+                    return a.q - b.q;
+                }
+                return a.id.localeCompare(b.id);
+            });
+
+        const settlerLayoutMap = new Map<string, Settler[]>();
+        for (const settler of visibleSettlers) {
+            const key = axialKey(settler.q, settler.r);
+            let list = settlerLayoutMap.get(key);
+            if (!list) {
+                list = [];
+                settlerLayoutMap.set(key, list);
+            }
+            list.push(settler);
+        }
+
+        const settlerLayouts = new Map<string, Record<string, { x: number; y: number }>>();
+        for (const [key, list] of settlerLayoutMap) {
+            settlerLayouts.set(key, computeTileSettlerOffsets(list));
+        }
+
+        const now = Date.now();
+        const bounds = visibleSettlers.map((settler) => {
+            const interp = getSettlerInterpolatedPixelPosition(settler, now);
+            const screen = this.worldToScreen(settler.q, settler.r);
+            const layout = settlerLayouts.get(axialKey(settler.q, settler.r)) || {};
+            const pos = layout[settler.id] || { x: -6, y: 7 };
+            const offsetX = interp.x - axialToPixel(settler.q, settler.r).x;
+            const offsetY = interp.y - axialToPixel(settler.q, settler.r).y;
+            const left = screen.x + pos.x + offsetX - 5;
+            const top = screen.y + pos.y + offsetY - 15;
+
+            return {
+                entityId: settler.id,
+                settler,
+                left,
+                top,
+                width: 12,
+                height: 16,
+            };
+        });
+
+        const picked = MapPicker.pickBoundsFromClientPoint(screenX, screenY, rect, bounds, (bound, localX, localY) => {
+            const inHead = localX >= 2 && localX <= 7 && localY >= 0 && localY <= 6;
+            const inBody = localX >= 1 && localX <= 8 && localY >= 7 && localY <= 13;
+            const inLegs = ((localX >= 3 && localX <= 4) || (localX >= 6 && localX <= 7)) && localY >= 12 && localY <= 15;
+            const inCargo = !!bound.settler.carryingKind && localX >= 8 && localX <= 11 && localY >= 8 && localY <= 12;
+            return inHead || inBody || inLegs || inCargo;
+        });
+
+        return picked?.settler ?? null;
+    }
+
     // ---------------- Private helpers ----------------
     private get2dContext(canvas: HTMLCanvasElement) {
         return canvas.getContext('2d', {
@@ -967,6 +1038,11 @@ export class HexMapService {
                     id: opts.hoveredHero.id,
                 }
                 : null,
+            hoveredSettler: opts.hoveredSettler
+                ? {
+                    id: opts.hoveredSettler.id,
+                }
+                : null,
             taskMenuTile: opts.taskMenuTile
                 ? {
                     id: opts.taskMenuTile.id,
@@ -1088,6 +1164,7 @@ export class HexMapService {
             cameraMoving,
             candidateTiles: radiusTiles,
             candidateHeroes: heroes,
+            candidateSettlers: settlers,
             selectedHeroId: selectedHeroId.value,
             worldRenderVersion: getWorldRenderVersion(),
             dirtyChunkKeys,

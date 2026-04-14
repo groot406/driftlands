@@ -22,6 +22,7 @@
     <OnlinePlayersIndicator />
   </div>
   <PlayerModal />
+  <SettlerModal />
   <NotificationOverlay />
   <NotificationCenter />
   <InGameMenu />
@@ -43,6 +44,7 @@ import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
 import MusicPlayer from './MusicPlayer.vue';
 import PlayerModal from './PlayerModal.vue';
+import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import RunOutcomeOverlay from './RunOutcomeOverlay.vue';
 import { pauseGame } from '../store/uiStore';

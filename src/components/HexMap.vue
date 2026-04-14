@@ -1,5 +1,12 @@
 <template>
-  <div ref="container" class="w-full h-full relative map-container" :class="{ 'map-container-lite': !useCanvasDropShadow }">
+  <div
+    ref="container"
+    class="w-full h-full relative map-container"
+    :class="{
+      'map-container-lite': !useCanvasDropShadow,
+      'map-container-settler-hover': !!hoveredSettler,
+    }"
+  >
     <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
@@ -45,7 +52,7 @@ import {
   keyUp,
   stopCameraAnimation
 } from '../core/camera';
-import {getSelectedHero, isPaused, selectedHeroId, selectHero,} from '../store/uiStore';
+import {getSelectedHero, isPaused, openSettlerModal, selectedHeroId, selectHero,} from '../store/uiStore';
 import {isHeroWorkingTask} from '../shared/game/heroTaskState';
 import {taskStore} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
@@ -56,6 +63,7 @@ import {getAvailableTasks} from "../shared/tasks/tasks";
 import {PathService} from "../core/PathService";
 import type {Tile} from "../core/types/Tile.ts";
 import type {Hero} from "../core/types/Hero.ts";
+import type { Settler } from '../core/types/Settler.ts';
 import type {TaskDefinition} from "../core/types/Task.ts";
 import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/gameFeel';
 import {addNotification} from '../store/notificationStore';
@@ -83,6 +91,7 @@ const {pointerDown, pointerMove, pointerUp, pointerCancel} = createPointerHandle
 // Hover & path reactive state
 const hoveredTile = shallowRef<Tile | null>(null);
 const hoveredHero = shallowRef<Hero | null>(null);
+const hoveredSettler = shallowRef<Settler | null>(null);
 const pathCoords = shallowRef<{ q: number; r: number }[]>([]);
 const pathPreviewState = shallowRef<{ heroId: string; targetKey: string; sourceKey: string } | null>(null);
 
@@ -198,6 +207,7 @@ function handlePointerLeaveEvent() {
   lastPointerClient = null;
   hoveredTile.value = null;
   hoveredHero.value = null;
+  hoveredSettler.value = null;
   clearPathPreview();
 }
 
@@ -226,6 +236,7 @@ function animationLoop() {
     service.draw({
       hoveredTile: hoveredTile.value,
       hoveredHero: hoveredHero.value,
+      hoveredSettler: hoveredSettler.value,
       pathCoords: pathCoords.value,
       taskMenuTile: taskMenuTile.value,
       clusterBoundaryTiles: clusterBoundaryTiles.value,
@@ -332,9 +343,21 @@ function handleClick(e: PointerEvent) {
     }
     selectHero(hero, false);
     hoveredHero.value = hero;
+    hoveredSettler.value = null;
     emit('hero-click', hero);
     return;
   }
+
+  const settler = service.pickSettler(e.clientX, e.clientY);
+  if (settler) {
+    closeTownCenterPanel();
+    hoveredHero.value = null;
+    hoveredSettler.value = settler;
+    openSettlerModal(settler);
+    return;
+  }
+
+  hoveredSettler.value = null;
 
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
@@ -490,6 +513,7 @@ function updateHoverAt(clientX: number, clientY: number) {
   if (isPaused() || showTaskMenu.value) {
     hoveredTile.value = null;
     hoveredHero.value = null;
+    hoveredSettler.value = null;
     clearPathPreview();
     return;
   }
@@ -497,12 +521,23 @@ function updateHoverAt(clientX: number, clientY: number) {
   const hero = service.pickHero(clientX, clientY);
   if (hero) {
     hoveredHero.value = hero;
+    hoveredSettler.value = null;
+    hoveredTile.value = null;
+    clearPathPreview();
+    return;
+  }
+
+  const settler = service.pickSettler(clientX, clientY);
+  if (settler) {
+    hoveredHero.value = null;
+    hoveredSettler.value = settler;
     hoveredTile.value = null;
     clearPathPreview();
     return;
   }
 
   hoveredHero.value = null;
+  hoveredSettler.value = null;
   const tile = service.pickTile(clientX, clientY);
   if (tile !== hoveredTile.value) hoveredTile.value = tile;
 }
@@ -732,6 +767,10 @@ onBeforeUnmount(() => {
 
 .map-container-lite canvas {
   filter: none;
+}
+
+.map-container-settler-hover {
+  cursor: pointer;
 }
 
 .coop-ping {

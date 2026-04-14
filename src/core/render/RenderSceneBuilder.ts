@@ -1,6 +1,8 @@
 import type { Hero } from '../types/Hero';
+import type { Settler } from '../types/Settler';
 import { DEFAULT_RENDER_CONFIG, type RenderConfig } from './RenderConfig';
 import { EntitySortService } from './entities/EntitySortService';
+import { isSettlerVisibleOnMap } from './entities/settlerRender';
 import { HexProjection } from './math/HexProjection';
 import { filterAxialItemsToViewport } from './math/VisibilityMath';
 import { createTerrainChunkKey, getTerrainChunkBounds, getTerrainChunkCoordForTile } from './terrain/TerrainChunkKey';
@@ -26,6 +28,7 @@ interface RenderSceneBuilderInput {
     cameraMoving: boolean;
     candidateTiles: readonly RenderSceneBuilderTile[];
     candidateHeroes?: readonly Hero[];
+    candidateSettlers?: readonly Settler[];
     selectedHeroId?: string | null;
     worldRenderVersion: number;
     dirtyChunkKeys?: readonly string[];
@@ -53,7 +56,8 @@ export class RenderSceneBuilder {
         const visibleTiles = this.buildVisibleTiles(input.candidateTiles, input.viewport, input.drawOptions.globalReachTileIds);
         const visibleChunks = this.buildVisibleChunks(visibleTiles);
         const heroCandidates = input.candidateHeroes ?? [];
-        const visibleEntities = this.buildVisibleEntities(heroCandidates, input.viewport);
+        const settlerCandidates = input.candidateSettlers ?? [];
+        const visibleEntities = this.buildVisibleEntities(heroCandidates, settlerCandidates, input.viewport);
         const overlays = this.buildOverlays(input.drawOptions);
 
         return {
@@ -151,9 +155,10 @@ export class RenderSceneBuilder {
 
     private buildVisibleEntities(
         candidateHeroes: readonly Hero[],
+        candidateSettlers: readonly Settler[],
         viewport: ViewportSnapshot,
     ) {
-        const unsorted = filterAxialItemsToViewport(candidateHeroes, viewport, Math.max(this.config.tileDrawSize * 1.5, 72), this.config)
+        const heroEntities = filterAxialItemsToViewport(candidateHeroes, viewport, Math.max(this.config.tileDrawSize * 1.5, 72), this.config)
             .map((hero): EntityRenderItem => {
                 const world = HexProjection.axialToWorld(hero.q, hero.r, this.config);
 
@@ -183,7 +188,41 @@ export class RenderSceneBuilder {
                 };
             });
 
-        return EntitySortService.sort(unsorted);
+        const settlerEntities = filterAxialItemsToViewport(
+            candidateSettlers.filter((settler) => isSettlerVisibleOnMap(settler)),
+            viewport,
+            Math.max(this.config.tileDrawSize * 1.25, 64),
+            this.config,
+        )
+            .map((settler): EntityRenderItem => {
+                const world = HexProjection.axialToWorld(settler.q, settler.r, this.config);
+
+                return {
+                    entityId: settler.id,
+                    kind: 'settler',
+                    q: settler.q,
+                    r: settler.r,
+                    worldX: world.x,
+                    worldY: world.y,
+                    spriteKey: 'settler',
+                    sortY: settler.r,
+                    sortX: settler.q,
+                    layer: 1,
+                    opacity: 1,
+                    scale: 1.4,
+                    shadow: {
+                        opacity: 0.45,
+                        widthFactor: 0.36,
+                        heightFactor: 0.12,
+                        yOffset: 0.08,
+                    },
+                    facing: settler.facing,
+                    movement: settler.movement,
+                    carryingPayload: settler.carryingPayload,
+                };
+            });
+
+        return EntitySortService.sort([...heroEntities, ...settlerEntities]);
     }
 
     private buildOverlays(drawOptions: HexMapDrawOptions) {

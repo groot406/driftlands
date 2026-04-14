@@ -6,6 +6,7 @@ import type { TaskInstance } from '../../src/core/types/Task.ts';
 import { hexDistance, tiles } from '../../src/shared/game/world.ts';
 import { getWorldGenerationSeed } from '../../src/core/worldVariation.ts';
 import { heroes, loadHeroes } from '../../src/shared/game/state/heroStore.ts';
+import { settlers, loadSettlers } from '../../src/shared/game/state/settlerStore.ts';
 import { loadTasks, taskStore } from '../../src/shared/game/state/taskStore.ts';
 import { setIo } from './messages/messageRouter.ts';
 import { runState } from './state/runState.ts';
@@ -53,6 +54,23 @@ test('worldState.init uses the provided seed and resets hero/task state', async 
     setIo({ emit() {} });
     delete process.env.SERVER_SEED;
     loadHeroes([createDirtyHero()]);
+    loadSettlers([{
+      id: 'settler-debug',
+      q: 4,
+      r: 4,
+      facing: 'left',
+      appearanceSeed: 99,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 1,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    }]);
     loadTasks([createDirtyTask()]);
 
     await worldState.init(42);
@@ -61,7 +79,9 @@ test('worldState.init uses the provided seed and resets hero/task state', async 
     assert.equal(getWorldGenerationSeed(), 42);
     assert.equal(taskStore.tasks.length, 0);
     assert.ok(heroes.length > 0);
+    assert.equal(settlers.length, 1);
     assert.ok(heroes.every((hero) => hero.q === 0 && hero.r === 0));
+    assert.ok(settlers.every((settler) => settler.q === 0 && settler.r === 0));
     assert.ok(heroes.every((hero) => !hero.currentTaskId && !hero.pendingTask && !hero.carryingPayload));
   } finally {
     if (originalEnvSeed === undefined) {

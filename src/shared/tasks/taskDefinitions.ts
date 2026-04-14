@@ -5,6 +5,7 @@ import './definitions/buildRoad';
 import './definitions/chopWood';
 import './definitions/clearRocks';
 import './definitions/convertToGrass';
+import './definitions/dismantle';
 import './definitions/dig';
 import './definitions/explore';
 import './definitions/forage';
