@@ -131,8 +131,115 @@ test('inactive discovered tiles do not offer or start normal work tasks', () => 
 
   const availableTasks = getAvailableTasks(tileIndex['1,0']!, hero);
 
-  assert.equal(availableTasks.some((task) => task.key === 'forage'), false);
-  assert.equal(startTask(tileIndex['1,0']!, 'forage', hero), null);
+  assert.equal(availableTasks.some((task) => task.key === 'hunt'), false);
+  assert.equal(startTask(tileIndex['1,0']!, 'hunt', hero), null);
+});
+
+test('mission 1 offers hunt on forest but not on plains', () => {
+  setStoryProgressionForMission(1);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'hunt'), true);
+  assert.equal(getAvailableTasks(tileIndex['1,0']!, hero).some((task) => task.key === 'hunt'), false);
+});
+
+test('mission 1 campfires offer ration cooking', () => {
+  setStoryProgressionForMission(1);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'plains_campfire',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'campfireRations'), true);
+});
+
+test('mission 2 docks offer hero fishing', () => {
+  setStoryProgressionForMission(2);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'water_dock_a',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), true);
 });
 
 test('dismantle is available on inactive constructed tiles so blocked buildings can be cleared', () => {

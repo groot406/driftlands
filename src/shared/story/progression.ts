@@ -170,9 +170,13 @@ const STORY_TASKS: Record<string, StoryTaskMeta> = {
     label: 'Convert to grass',
     description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
-  forage: {
-    label: 'Forage',
-    description: 'Scrounge a little food from the nearby land when the colony needs an emergency meal.',
+  hunt: {
+    label: 'Hunt',
+    description: 'Track forest game for a little emergency food when stores run thin.',
+  },
+  campfireRations: {
+    label: 'Cook Rations',
+    description: 'Burn spare timber at a campfire to turn it into a meager emergency meal.',
   },
   tillLand: {
     label: 'Prepare Land',
@@ -256,7 +260,8 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
       'buildRoad',
       'dig',
       'convertToGrass',
-      'forage',
+      'hunt',
+      'campfireRations',
     ],
     terrains: ['plains', 'forest', 'dirt', 'water'],
   },
@@ -264,6 +269,7 @@ const STORY_UNLOCK_STEPS: readonly StoryMissionUnlockStep[] = [
     missionNumber: 2,
     buildings: ['dock', 'house'],
     tasks: [
+      'fishAtDock',
       'harvestWaterLilies',
       'placeWaterLilies',
       'buildBridge',

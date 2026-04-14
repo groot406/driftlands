@@ -1,0 +1,2 @@
+export const HERO_MOVEMENT_SPEED_ADJ = 1.25;
+export const SETTLER_MOVEMENT_SPEED_ADJ = 2.3;

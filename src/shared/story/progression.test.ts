@@ -12,7 +12,8 @@ test('mission 1 starts with basic exploration heroes, tasks, and terrains', () =
   assert.deepEqual(progression.terrains.available, ['plains', 'forest', 'dirt', 'water']);
   assert.ok(getAvailableStoryTaskKeys(progression).includes('explore'));
   assert.ok(getAvailableStoryTaskKeys(progression).includes('chopWood'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('forage'));
+  assert.ok(getAvailableStoryTaskKeys(progression).includes('hunt'));
+  assert.ok(getAvailableStoryTaskKeys(progression).includes('campfireRations'));
   assert.ok(getAvailableStoryTaskKeys(progression).includes('buildCampfire'));
   assert.ok(getAvailableStoryTaskKeys(progression).includes('buildRoad'));
   assert.ok(!getAvailableStoryTaskKeys(progression).includes('buildDock'));
@@ -27,7 +28,7 @@ test('mission 2 unlocks dock, house, and shore logistics', () => {
 
   assert.ok(taskKeys.includes('buildDock'));
   assert.ok(taskKeys.includes('buildHouse'));
-  assert.ok(!taskKeys.includes('fishAtDock'));
+  assert.ok(taskKeys.includes('fishAtDock'));
   assert.ok(taskKeys.includes('harvestWaterLilies'));
   assert.ok(taskKeys.includes('placeWaterLilies'));
   assert.ok(taskKeys.includes('buildBridge'));

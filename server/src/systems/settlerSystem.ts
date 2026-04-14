@@ -9,6 +9,7 @@ import {
     computePathTimings,
     isTileWalkable,
 } from '../../../src/shared/game/navigation';
+import { SETTLER_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBalance';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import {
     depositResourceToStorage,
@@ -152,7 +153,7 @@ function startMovement(settler: Settler, target: Tile, activity: SettlerActivity
     }
 
     const origin = { q: settler.q, r: settler.r };
-    const timings = computePathTimings(path, origin, 1.15, SETTLER_STEP_BASE_MS);
+    const timings = computePathTimings(path, origin, SETTLER_MOVEMENT_SPEED_ADJ, SETTLER_STEP_BASE_MS);
     updateFacing(settler, origin, path[0] ?? target);
     settler.movement = {
         path: path.slice(),
