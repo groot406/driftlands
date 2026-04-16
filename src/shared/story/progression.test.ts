@@ -35,6 +35,8 @@ test('landfall starts unlocked with the first crew, shelter, and frontier basics
   assert.ok(taskKeys.includes('explore'));
   assert.ok(taskKeys.includes('buildHouse'));
   assert.ok(taskKeys.includes('dig'));
+  assert.ok(taskKeys.includes('hunt'));
+  assert.ok(taskKeys.includes('campfireRations'));
   assert.ok(!taskKeys.includes('buildDock'));
 });
 
@@ -133,16 +135,19 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
     resourceStock: {
       stone: 8,
       ore: 12,
+      tools: 6,
     },
     buildingCounts: {
       house: 2,
       supplyDepot: 1,
       bakery: 1,
       townCenter: 1,
+      workshop: 1,
     },
     operationalBuildingCounts: {
       mine: 1,
       lumberCamp: 1,
+      workshop: 1,
     },
   }), previous.unlockedNodeKeys);
 
@@ -150,8 +155,10 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
 
   assert.ok(progression.unlockedNodeKeys.includes('masonry'));
   assert.ok(progression.unlockedNodeKeys.includes('harsh_frontier'));
+  assert.ok(progression.unlockedNodeKeys.includes('toolmaking'));
   assert.ok(progression.unlockedNodeKeys.includes('expansion'));
   assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
+  assert.ok(progression.unlocked.buildings.includes('workshop'));
   assert.ok(progression.unlocked.upgrades.includes('stone_house_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('warehouse_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('stone_road_upgrade'));
@@ -175,6 +182,7 @@ test('previously unlocked milestones stay unlocked after metrics dip on reload',
       wood: 12,
       stone: 8,
       ore: 12,
+      tools: 6,
     },
     buildingCounts: {
       house: 2,
@@ -182,12 +190,14 @@ test('previously unlocked milestones stay unlocked after metrics dip on reload',
       granary: 1,
       supplyDepot: 1,
       bakery: 1,
+      workshop: 1,
       townCenter: 1,
     },
     operationalBuildingCounts: {
       granary: 1,
       mine: 1,
       lumberCamp: 1,
+      workshop: 1,
     },
   }));
 

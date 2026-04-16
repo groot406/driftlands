@@ -9,6 +9,7 @@ import { depositResourceToStorage, getStorageFreeCapacity, getStorageResourceAmo
 import { listBuildingDefinitions } from './registry';
 import { getStorageKindForBuildingTile } from './state.ts';
 import { isTileActive } from '../game/state/settlementSupportStore';
+import { isBuildingOfflineFromCondition } from './maintenance.ts';
 
 export function getStorageKindForTile(tile: Tile | null | undefined): StorageKind | null {
     if (!tile) {
@@ -28,7 +29,7 @@ export function isWarehouseBuildingTile(tile: Tile | null | undefined) {
 }
 
 export function canUseWarehouseAtTile(tile: Tile | null | undefined) {
-    if (!tile?.discovered || !isTileWalkable(tile) || !isTileActive(tile)) {
+    if (!tile?.discovered || !isTileWalkable(tile) || !isTileActive(tile) || isBuildingOfflineFromCondition(tile)) {
         return false;
     }
 

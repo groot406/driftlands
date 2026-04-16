@@ -11,6 +11,7 @@ import type { Settler } from '../../types/Settler';
 import { getSettlerDisplayName } from '../../../shared/game/settlerNames.ts';
 import {
     computeTileSettlerOffsets,
+    getSettlerRenderCoords,
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './settlerRender';
@@ -141,7 +142,8 @@ export class HeroRenderer {
             if (!isSettlerVisibleOnMap(settler)) {
                 continue;
             }
-            const key = axialKey(settler.q, settler.r);
+            const renderCoords = getSettlerRenderCoords(settler);
+            const key = axialKey(renderCoords.q, renderCoords.r);
             let list = settlerLayoutMap.get(key);
             if (!list) {
                 list = [];
@@ -228,7 +230,8 @@ export class HeroRenderer {
             const dist = hexDistance(camera, settler);
             if (dist > radius) continue;
 
-            const layout = settlerLayouts.get(axialKey(settler.q, settler.r)) || {};
+            const renderCoords = getSettlerRenderCoords(settler);
+            const layout = settlerLayouts.get(axialKey(renderCoords.q, renderCoords.r)) || {};
             const pos = layout[settler.id] || { x: -6, y: 7 };
 
             settlerRecords.push({
@@ -281,23 +284,23 @@ export class HeroRenderer {
                 ? a.ov.r
                 : a.kind === 'hero'
                     ? a.rec.hero.r
-                    : a.rec.settler.r;
+                    : getSettlerRenderCoords(a.rec.settler).r;
             const br = b.kind === 'overlay'
                 ? b.ov.r
                 : b.kind === 'hero'
                     ? b.rec.hero.r
-                    : b.rec.settler.r;
+                    : getSettlerRenderCoords(b.rec.settler).r;
             if (ar !== br) return ar - br;
             const aq = a.kind === 'overlay'
                 ? a.ov.q
                 : a.kind === 'hero'
                     ? a.rec.hero.q
-                    : a.rec.settler.q;
+                    : getSettlerRenderCoords(a.rec.settler).q;
             const bq = b.kind === 'overlay'
                 ? b.ov.q
                 : b.kind === 'hero'
                     ? b.rec.hero.q
-                    : b.rec.settler.q;
+                    : getSettlerRenderCoords(b.rec.settler).q;
             if (aq !== bq) return aq - bq;
             if (a.kind === 'overlay' && b.kind === 'overlay' && a.ov.z !== b.ov.z) return a.ov.z - b.ov.z;
             if (a.kind !== b.kind) {
@@ -325,7 +328,7 @@ export class HeroRenderer {
                 const palette = getSettlerPalette(settler.appearanceSeed);
                 const hoverAlpha = this.settlerHoverAlphaById.get(settler.id) ?? 0;
                 const walking = isSettlerWalking(settler);
-                const working = settler.activity === 'working';
+                const working = settler.activity === 'working' || settler.activity === 'repairing';
                 const idling = !walking && !working;
                 const phase = (now + settler.appearanceSeed) / 95;
                 const walkBeat = walking ? Math.sin(phase) : 0;

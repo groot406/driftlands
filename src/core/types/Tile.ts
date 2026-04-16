@@ -3,6 +3,7 @@ export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; 
 export type Terrain = TerrainKey;
 export type TileActivationState = 'active' | 'inactive';
 export type TileSupportBand = 'stable' | 'fragile' | 'inactive' | 'uncontrolled';
+export type TileConditionState = 'healthy' | 'worn' | 'damaged' | 'offline';
 
 export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
 export type TileSide = typeof SIDE_NAMES[number];
@@ -32,4 +33,7 @@ export interface Tile {
     activationState?: TileActivationState | null;
     supportBand?: TileSupportBand | null;
     jobSiteEnabled?: boolean | null;
+    condition?: number | null;
+    conditionState?: TileConditionState | null;
+    lastConditionUpdateMs?: number | null;
 }

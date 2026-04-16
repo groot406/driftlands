@@ -24,16 +24,20 @@ function lateProgression(): ProgressionSnapshot {
       grain: 10,
       stone: 8,
       ore: 12,
+      tools: 6,
     },
     buildingCounts: {
       house: 2,
       watchtower: 1,
       granary: 1,
       supplyDepot: 1,
+      workshop: 1,
       townCenter: 1,
     },
     operationalBuildingCounts: {
       granary: 1,
+      mine: 1,
+      workshop: 1,
     },
   });
 }

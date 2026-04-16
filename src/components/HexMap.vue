@@ -11,7 +11,7 @@
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
                 :visible="showTaskMenu"
-                @close="showTaskMenu=false; taskMenuTile=null; closeWindow(WINDOW_IDS.TASK_MENU)"
+                @close="handleTaskMenuClose"
                 @hover="handleTaskHover"
       />
     </transition>
@@ -33,13 +33,15 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex} from '../core/world';
 import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
+import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
+import { isRoadTile } from '../shared/game/roads.ts';
 import {
   axialToPixel,
   camera,
@@ -76,6 +78,8 @@ import {
   isTileActive,
 } from '../store/settlementSupportStore';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
+
+import { detachHeroFromCurrentTask } from '../store/taskStore';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -146,6 +150,14 @@ let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mob
 let lastPointerClient: { x: number; y: number } | null = null;
 let pendingPathPreviewUpdate = false;
 let lastPathPreviewComputeMs = 0;
+let pendingMenuTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelPendingMenu() {
+  if (pendingMenuTimer !== null) {
+    clearTimeout(pendingMenuTimer);
+    pendingMenuTimer = null;
+  }
+}
 
 // Cap canvas rendering to the target FPS while movement simulation stays on real time.
 let lastDrawTime = 0;
@@ -302,26 +314,95 @@ function updatePath(force = false, nowMs: number = Date.now()) {
   setPathPreview(pathService.updatePath(hero, hoveredTile.value), hero, hoveredTile.value, nowMs);
 }
 
+function handleTaskMenuClose() {
+  cancelPendingMenu();
+  const closedTile = taskMenuTile.value;
+  const timeSinceOpen = Date.now() - lastMenuOpenTime;
+
+  showTaskMenu.value = false;
+  taskMenuTile.value = null;
+  closeWindow(WINDOW_IDS.TASK_MENU);
+
+  // The TaskMenu overlay stops pointer-event propagation, so the second click
+  // of a double-click never reaches handleClick.  Detect the pattern here
+  // instead: if the menu was closed very quickly after opening, the user
+  // intended a "go here" double-click, not a task selection.
+  if (closedTile && closedTile.discovered && timeSinceOpen < 400) {
+    const selHero = getSelectedHero();
+    if (selHero && canControlHero(selHero.id, currentPlayerId.value)) {
+      const goalTile = findNearestTaskAccessTile(null, closedTile, selHero.q, selHero.r);
+      if (goalTile) {
+        closeTownCenterPanel();
+        const path = pathService.findWalkablePath(selHero.q, selHero.r, goalTile.q, goalTile.r);
+        if (path.length) {
+          detachHeroFromCurrentTask(selHero);
+          requestHeroMovement(selHero.id, path, goalTile);
+          clearPathPreview();
+        }
+        hoveredTile.value = closedTile;
+        emit('tile-doubleclick', closedTile);
+      }
+    }
+  }
+}
+
 function closeTownCenterPanel() {
   showTownCenterPanel.value = false;
   closeWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
 }
 
-function isInspectableJobSiteTile(tile: Tile) {
-  return (getBuildingDefinitionForTile(tile)?.jobSlots ?? 0) > 0;
+function isInspectableBuildingTile(tile: Tile) {
+  return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
 }
 
-function openJobSiteDetailFromTile(tile: Tile) {
+async function openJobSiteDetailFromTile(tile: Tile) {
   showTownCenterPanel.value = true;
   openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
-  townCenterPanel.value?.openStandaloneJobSiteDetail(tile.id);
+  await nextTick();
+  townCenterPanel.value?.openStandaloneBuildingDetail(tile.id);
 }
 
 function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
+  if (isPaused()) return;
+  if (dragged) return;
+
+  const nowTs = Date.now();
+
+  // ── Double-click on tile: send hero directly (skip task menu) ──
+  // Detect before the menu guard so the second click isn't swallowed.
+  const dblTile = service.pickTile(e.clientX, e.clientY);
+  const isDoubleClick = (nowTs - lastClickTime) < 300;
+  if (isDoubleClick && dblTile) {
+    lastClickTime = 0; // consume
+    cancelPendingMenu();
+    const selHero = getSelectedHero();
+    if (selHero && dblTile.discovered
+      && canControlHero(selHero.id, currentPlayerId.value)) {
+      // For non-walkable tiles (e.g. resources), resolve the nearest walkable neighbor
+      const goalTile = findNearestTaskAccessTile(null, dblTile, selHero.q, selHero.r);
+      if (goalTile) {
+        if (showTaskMenu.value) {
+          showTaskMenu.value = false;
+          taskMenuTile.value = null;
+          closeWindow(WINDOW_IDS.TASK_MENU);
+        }
+        closeTownCenterPanel();
+        const path = pathService.findWalkablePath(selHero.q, selHero.r, goalTile.q, goalTile.r);
+        if (path.length) {
+          detachHeroFromCurrentTask(selHero);
+          requestHeroMovement(selHero.id, path, goalTile);
+          clearPathPreview();
+        }
+        hoveredTile.value = dblTile;
+        emit('tile-doubleclick', dblTile);
+        return;
+      }
+    }
+    // No reachable goal — fall through to normal handling
+  }
 
   // If menu just opened, ignore further taps briefly to avoid flicker-close
-  const nowTs = Date.now();
   if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
     return;
   } else if (showTaskMenu.value) {
@@ -331,9 +412,6 @@ function handleClick(e: PointerEvent) {
     closeWindow(WINDOW_IDS.TASK_MENU);
     return;
   }
-
-  if (isPaused()) return;
-  if (dragged) return;
 
   const hero = service.pickHero(e.clientX, e.clientY);
   if (hero) {
@@ -363,11 +441,10 @@ function handleClick(e: PointerEvent) {
   if (!tile) return;
   const selHero = getSelectedHero();
 
-  const now = Date.now();
-  const doubleClick = (now - lastClickTime) < 300;
-  lastClickTime = doubleClick ? 0 : now;
+  // Track click time for double-click detection (handled at top of function)
+  lastClickTime = nowTs;
   hoveredTile.value = tile;
-  if (doubleClick) emit('tile-doubleclick', tile); else emit('tile-click', tile);
+  emit('tile-click', tile);
 
   // Town center click — toggle the info panel or drop off goods
   if (tile.terrain === 'towncenter') {
@@ -394,7 +471,7 @@ function handleClick(e: PointerEvent) {
     return;
   }
 
-  if (tile.discovered && isInspectableJobSiteTile(tile)) {
+  if (tile.discovered && isInspectableBuildingTile(tile)) {
     if (showTaskMenu.value) {
       showTaskMenu.value = false;
       taskMenuTile.value = null;
@@ -460,16 +537,26 @@ function handleClick(e: PointerEvent) {
   if (tile.discovered && availableTasks.value.length > 0) {
     // If menu already open on this tile, keep it open (do nothing)
     if (!(showTaskMenu.value && taskMenuTile.value === tile)) {
-      taskMenuTile.value = tile;
-      showTaskMenu.value = true;
-      openWindow(WINDOW_IDS.TASK_MENU);
-      lastMenuOpenTime = Date.now(); // start cooldown
+      // Delay opening so a double-tap "go here" can cancel it before
+      // the overlay steals pointer events from the second tap.
+      cancelPendingMenu();
+      const pendingTile = tile;
+      const pendingTasks = availableTasks.value;
+      pendingMenuTimer = setTimeout(() => {
+        pendingMenuTimer = null;
+        taskMenuTile.value = pendingTile;
+        availableTasks.value = pendingTasks;
+        showTaskMenu.value = true;
+        openWindow(WINDOW_IDS.TASK_MENU);
+        lastMenuOpenTime = Date.now();
+      }, 200);
     }
 
-    // Skip movement logic while menu open
+    // Skip movement logic while menu pending or open
     return;
-  } else if (showTaskMenu.value) {
+  } else if (showTaskMenu.value || pendingMenuTimer !== null) {
     // Close if switching to a tile without tasks
+    cancelPendingMenu();
     showTaskMenu.value = false;
     taskMenuTile.value = null;
     closeWindow(WINDOW_IDS.TASK_MENU);
@@ -732,6 +819,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId);
+  cancelPendingMenu();
   window.removeEventListener('resize', onWindowResize);
   window.removeEventListener('orientationchange', onOrientationChange);
   window.removeEventListener('keydown', keyDown);

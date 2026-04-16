@@ -9,6 +9,7 @@ import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
 import { loadTasks, startTask } from '../../store/taskStore.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
+import { evaluateProgression } from '../story/progression.ts';
 import { getTaskDefinition } from './taskRegistry.ts';
 import { getAvailableTasks, handleHeroArrival } from './tasks.ts';
 import { loadWorld, tileIndex } from '../game/world.ts';
@@ -211,7 +212,7 @@ test('mission 1 campfires offer ration cooking', () => {
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'campfireRations'), true);
 });
 
-test('mission 2 docks offer hero fishing', () => {
+test('manual dock fishing stays unavailable when docks are job-only', () => {
   setStoryProgressionForMission(2);
   loadWorld([
     {
@@ -239,7 +240,7 @@ test('mission 2 docks offer hero fishing', () => {
     facing: 'down',
   };
 
-  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), true);
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), false);
 });
 
 test('deferred chop wood chaining skips young forest targets', () => {
@@ -823,6 +824,17 @@ test('dock builds face the access tile where the hero starts construction', () =
       carryingPayload: { type: 'wood', amount: 5 },
     } satisfies Hero,
   ]);
+
+  loadStoryProgression(evaluateProgression({
+    population: 2,
+    beds: 2,
+    frontierDistance: 0,
+    resourceStock: {},
+    buildingCounts: { house: 1 },
+    operationalBuildingCounts: {},
+    discoveredTerrains: ['water'],
+    unlockedHeroIds: [],
+  }));
 
   const hero = heroes[0]!;
   const dockTile = tileIndex['0,1']!;

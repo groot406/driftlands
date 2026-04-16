@@ -1,6 +1,20 @@
 <template>
+  <!-- Backdrop overlay when conversation is active -->
+  <Transition name="story-backdrop">
+    <div
+      v-if="visibleEntry"
+      class="story-backdrop"
+      @click="advanceOrDismiss"
+    />
+  </Transition>
+
+  <!-- Centered conversation panel -->
   <Transition name="story-pop">
-    <section v-if="visibleEntry" class="story-popup pointer-events-auto">
+    <section
+      v-if="visibleEntry"
+      class="story-popup pointer-events-auto"
+      @click="advanceOrDismiss"
+    >
       <div class="story-popup__header">
         <div class="flex flex-wrap items-center gap-2">
           <span class="story-popup__chip story-popup__chip--accent">{{ visibleEntry.speaker.name }}</span>
@@ -35,20 +49,28 @@
             v-if="canGoBack"
             class="story-popup__action"
             type="button"
-            @click="showPreviousEntry"
+            @click.stop="showPreviousEntry"
           >
             Back
           </button>
           <button
-            v-if="canGoForward"
             class="story-popup__action story-popup__action--primary"
             type="button"
-            @click="showNextEntry"
+            @click.stop="advanceOrDismiss"
           >
-            Continue
+            {{ hasMoreUnread ? 'Continue' : 'Close' }}
           </button>
         </div>
-        <button class="story-popup__dismiss" type="button" @click="dismissEntry">Hide</button>
+        <span v-if="unreadCount > 1" class="story-popup__unread-badge">
+          {{ unreadCount - 1 }} more
+        </span>
+        <button
+          class="story-popup__dismiss"
+          type="button"
+          @click.stop="dismissAll"
+        >
+          Skip all
+        </button>
       </div>
     </section>
   </Transition>
@@ -58,6 +80,7 @@
 import { computed, ref, watch } from 'vue';
 import Sprite from './Sprite.vue';
 import { runSnapshot } from '../store/runStore.ts';
+import { chronicleReopenRequested, chronicleHasEntries } from '../store/chronicleStore.ts';
 import boyAvatar from '../assets/heroes/boy.png';
 import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
@@ -70,48 +93,38 @@ const avatarByKey: Record<string, string> = {
   santa: santaAvatar,
 };
 
-const selectedEntryId = ref<string | null>(null);
-const dismissedEntryIds = ref<string[]>([]);
+/** IDs of entries the user has acknowledged (clicked through or dismissed). */
+const acknowledgedIds = ref<Set<string>>(new Set());
+/** Whether the panel was explicitly dismissed (hides until new entries arrive). */
+const dismissed = ref(false);
+/** Manual browse override: when set, shows this entry instead of the queue head. */
+const browseEntryId = ref<string | null>(null);
 
 const entries = computed(() => runSnapshot.value?.dialogue.entries ?? []);
-const activeEntryId = computed(() => runSnapshot.value?.dialogue.activeEntryId ?? null);
 
-const activeEntry = computed(() => {
-  if (!entries.value.length) {
-    return null;
-  }
+/** Ordered list of entries the user hasn't clicked through yet. */
+const unreadEntries = computed(() =>
+  entries.value.filter((e) => !acknowledgedIds.value.has(e.id)),
+);
 
-  return entries.value.find((entry) => entry.id === activeEntryId.value)
-    ?? entries.value[entries.value.length - 1]
-    ?? null;
-});
+const unreadCount = computed(() => unreadEntries.value.length);
 
+/** The entry currently displayed. */
 const currentEntry = computed(() => {
-  if (!entries.value.length) {
-    return null;
+  if (browseEntryId.value) {
+    return entries.value.find((e) => e.id === browseEntryId.value) ?? null;
   }
-
-  const entryId = selectedEntryId.value ?? activeEntry.value?.id ?? null;
-  return entries.value.find((entry) => entry.id === entryId)
-    ?? activeEntry.value
-    ?? null;
+  return unreadEntries.value[0] ?? null;
 });
 
 const visibleEntry = computed(() => {
-  const entry = currentEntry.value;
-  if (!entry) {
-    return null;
-  }
-
-  return dismissedEntryIds.value.includes(entry.id) ? null : entry;
+  if (dismissed.value) return null;
+  return currentEntry.value;
 });
 
 const entryIndex = computed(() => {
-  if (!visibleEntry.value) {
-    return -1;
-  }
-
-  return entries.value.findIndex((entry) => entry.id === visibleEntry.value?.id);
+  if (!visibleEntry.value) return -1;
+  return entries.value.findIndex((e) => e.id === visibleEntry.value?.id);
 });
 
 const speakerAvatar = computed(() => {
@@ -123,6 +136,8 @@ const headline = computed(() => {
   switch (visibleEntry.value?.kind) {
     case 'chapter_intro':
       return 'Story';
+    case 'chapter_complete':
+      return 'Chapter Complete';
     case 'unlock':
       return 'New Unlock';
     case 'advice':
@@ -133,61 +148,115 @@ const headline = computed(() => {
 });
 
 const entryCounter = computed(() => {
-  if (!visibleEntry.value || entryIndex.value < 0) {
-    return '';
-  }
-
+  if (!visibleEntry.value || entryIndex.value < 0) return '';
   return `${entryIndex.value + 1} / ${entries.value.length}`;
 });
 
 const canGoBack = computed(() => entryIndex.value > 0);
-const canGoForward = computed(() => entryIndex.value >= 0 && entryIndex.value < entries.value.length - 1);
+const hasMoreUnread = computed(() => unreadEntries.value.length > 1 || browseEntryId.value !== null);
 
-watch(() => activeEntry.value?.id, (entryId) => {
-  if (!entryId) {
-    selectedEntryId.value = null;
+// When new entries arrive, un-dismiss so the panel reappears automatically.
+watch(
+  () => entries.value.length,
+  (newLen, oldLen) => {
+    if (newLen > (oldLen ?? 0)) {
+      dismissed.value = false;
+      browseEntryId.value = null;
+    }
+  },
+);
+
+/** Advance to the next unread entry, or close the panel if done. */
+function advanceOrDismiss() {
+  const entry = currentEntry.value;
+  if (!entry) {
+    dismissed.value = true;
     return;
   }
 
-  if (!dismissedEntryIds.value.includes(entryId)) {
-    selectedEntryId.value = entryId;
-  }
-});
-
-function dismissEntry() {
-  if (!currentEntry.value) {
+  // If browsing a specific entry, acknowledge it and return to queue.
+  if (browseEntryId.value) {
+    acknowledgedIds.value = new Set([...acknowledgedIds.value, browseEntryId.value]);
+    browseEntryId.value = null;
+    if (unreadEntries.value.length === 0) {
+      dismissed.value = true;
+    }
     return;
   }
 
-  if (!dismissedEntryIds.value.includes(currentEntry.value.id)) {
-    dismissedEntryIds.value = [...dismissedEntryIds.value, currentEntry.value.id];
+  // Acknowledge current queue head.
+  acknowledgedIds.value = new Set([...acknowledgedIds.value, entry.id]);
+
+  // If no more unread, close.
+  if (unreadEntries.value.length === 0) {
+    dismissed.value = true;
   }
+}
+
+/** Skip all remaining unread entries and close. */
+function dismissAll() {
+  for (const e of unreadEntries.value) {
+    acknowledgedIds.value = new Set([...acknowledgedIds.value, e.id]);
+  }
+  browseEntryId.value = null;
+  dismissed.value = true;
 }
 
 function showPreviousEntry() {
-  if (entryIndex.value <= 0) {
+  if (entryIndex.value <= 0) return;
+  browseEntryId.value = entries.value[entryIndex.value - 1]?.id ?? null;
+}
+
+/** Re-open the conversation showing the most recent entry. */
+function reopenConversation() {
+  dismissed.value = false;
+
+  if (unreadEntries.value.length > 0) {
+    // There are still unread entries – resume the queue.
+    browseEntryId.value = null;
     return;
   }
 
-  selectedEntryId.value = entries.value[entryIndex.value - 1]?.id ?? null;
-}
-
-function showNextEntry() {
-  if (entryIndex.value < 0 || entryIndex.value >= entries.value.length - 1) {
-    return;
+  // Everything already acknowledged – jump to the last entry.
+  if (entries.value.length > 0) {
+    browseEntryId.value = entries.value[entries.value.length - 1].id;
   }
-
-  selectedEntryId.value = entries.value[entryIndex.value + 1]?.id ?? null;
 }
+
+// Sync hasEntries flag to shared store so recall button can show/hide.
+watch(() => entries.value.length, (len) => {
+  chronicleHasEntries.value = len > 0;
+}, { immediate: true });
+
+// Listen for reopen requests from the recall button / keyboard shortcut.
+watch(chronicleReopenRequested, () => {
+  if (entries.value.length > 0) {
+    reopenConversation();
+  }
+});
 </script>
 
 <style scoped>
+.story-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  background: rgba(2, 6, 23, 0.55);
+  pointer-events: auto;
+}
+
 .story-popup {
-  @apply flex w-[min(92vw,32rem)] flex-col gap-3 rounded-[1.6rem] border px-4 py-3 shadow-2xl;
-  border-color: rgba(245, 195, 92, 0.18);
+  @apply flex w-[min(94vw,36rem)] flex-col gap-4 rounded-[1.8rem] border px-5 py-4 shadow-2xl;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  border-color: rgba(245, 195, 92, 0.22);
   background:
-    linear-gradient(180deg, rgba(9, 18, 23, 0.96), rgba(10, 18, 24, 0.99)),
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.12), transparent 32%);
+    linear-gradient(180deg, rgba(9, 18, 23, 0.98), rgba(10, 18, 24, 0.995)),
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.14), transparent 36%);
+  cursor: pointer;
 }
 
 .story-popup__header,
@@ -198,10 +267,11 @@ function showNextEntry() {
 
 .story-popup__body {
   @apply items-start;
+  cursor: default;
 }
 
 .story-popup__avatar {
-  @apply flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border;
+  @apply flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border;
   border-color: rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.74);
 }
@@ -211,7 +281,7 @@ function showNextEntry() {
 }
 
 .story-popup__chip {
-  @apply rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-200;
+  @apply rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-200;
   border-color: rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.68);
 }
@@ -222,7 +292,7 @@ function showNextEntry() {
 }
 
 .story-popup__speaker {
-  @apply text-sm font-semibold text-white;
+  @apply text-base font-semibold text-white;
 }
 
 .story-popup__text {
@@ -242,11 +312,18 @@ function showNextEntry() {
   @apply shrink-0 rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-slate-200 transition-colors;
   border-color: rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.74);
+  cursor: pointer;
 }
 
 .story-popup__action--primary {
-  border-color: rgba(245, 195, 92, 0.18);
-  background: rgba(120, 53, 15, 0.44);
+  @apply px-4 py-2 text-[11px];
+  border-color: rgba(245, 195, 92, 0.28);
+  background: rgba(120, 53, 15, 0.55);
+  color: #fde68a;
+}
+
+.story-popup__action--primary:hover {
+  background: rgba(120, 53, 15, 0.72);
 }
 
 .story-popup__action:hover,
@@ -254,14 +331,41 @@ function showNextEntry() {
   background: rgba(30, 41, 59, 0.88);
 }
 
-.story-pop-enter-active,
-.story-pop-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+.story-popup__unread-badge {
+  @apply rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.14em];
+  border-color: rgba(245, 195, 92, 0.18);
+  color: rgba(253, 230, 138, 0.7);
+  background: rgba(120, 53, 15, 0.2);
 }
 
-.story-pop-enter-from,
+.story-popup__footer {
+  @apply flex items-center justify-between gap-3;
+}
+
+/* Backdrop transition */
+.story-backdrop-enter-active,
+.story-backdrop-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.story-backdrop-enter-from,
+.story-backdrop-leave-to {
+  opacity: 0;
+}
+
+/* Panel transition */
+.story-pop-enter-active,
+.story-pop-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.story-pop-enter-from {
+  opacity: 0;
+  transform: translate(-50%, -46%);
+}
+
 .story-pop-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translate(-50%, -54%);
 }
 </style>

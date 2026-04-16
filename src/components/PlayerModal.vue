@@ -212,8 +212,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
 }
 
 .player-modal-panel {
@@ -222,8 +222,8 @@ onUnmounted(() => {
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.84)),
-    radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 58%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
+    radial-gradient(circle at top, rgba(14, 165, 233, 0.1), transparent 58%);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
   color: #f8fafc;
   display: flex;

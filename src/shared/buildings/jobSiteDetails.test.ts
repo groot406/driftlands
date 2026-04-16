@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { getJobSiteAdvice, getJobSiteStatusDescriptor, getMissingInputResources } from './jobSiteDetails.ts';
+import { formatSettlerBlocker } from '../game/settlerBlockers.ts';
 
 test('job site status descriptors stay user-facing and stable', () => {
   assert.deepEqual(getJobSiteStatusDescriptor('staffed'), {
@@ -108,4 +109,17 @@ test('missing input gap calculation scales by assigned workers', () => {
     available: 1,
     missing: 1,
   }]);
+});
+
+test('settler blocker labels explain the resource or logistics problem', () => {
+  assert.equal(formatSettlerBlocker({
+    code: 'missing_repair_material',
+    resourceType: 'wood',
+    amount: 2,
+  }), 'Waiting: needs 2 wood for repairs');
+
+  assert.equal(formatSettlerBlocker({
+    code: 'storage_full',
+    resourceType: 'stone',
+  }), 'Waiting: storage full for stone');
 });

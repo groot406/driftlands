@@ -39,6 +39,10 @@ function cloneSettler(
         ...previous,
         ...settler,
         movement: cloneMovement(settler.movement, serverTimestamp),
+        assignedRole: settler.assignedRole ?? null,
+        workTileId: settler.workTileId ?? null,
+        hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
+        blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,
         carryingKind: settler.carryingKind ?? null,
         carryingPayload: settler.carryingPayload ? { ...settler.carryingPayload } : undefined,
     };

@@ -6,7 +6,7 @@ import { loadWorld } from '../../../src/shared/game/world';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState } from '../../../src/shared/game/state/settlerStore';
-import { resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
+import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { jobSystem } from './jobSystem';
 import { settlerSystem } from './settlerSystem';
@@ -222,15 +222,63 @@ test('granary and bakery form a settler-driven production chain', () => {
 
   tickAll(1_000, 1_000);
   tickAll(62_000, 61_000);
-  tickAll(64_000, 2_000);
-  tickAll(66_000, 2_000);
-  tickAll(128_000, 62_000);
-  tickAll(131_000, 3_000);
+  tickAll(69_000, 7_000);
+  tickAll(75_000, 6_000);
+  tickAll(137_000, 62_000);
+  tickAll(145_000, 8_000);
 
   assert.equal(resourceInventory.grain, 0);
   assert.equal(resourceInventory.food, 2);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.assignedWorkers, 2);
-  assert.equal(snapshot.sites.find((site) => site.tileId === '2,0')?.status, 'missing_input');
+  const bakerySite = snapshot.sites.find((site) => site.tileId === '2,0');
+  assert.equal(bakerySite?.status, 'missing_input');
+  assert.deepEqual(bakerySite?.blockerReason, {
+    code: 'missing_input',
+    resourceType: 'grain',
+    amount: 1,
+    tileId: '2,0',
+  });
+});
+
+test('workshop turns ore into delivered tools', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_workshop' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'ore', 2);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(7_000, 6_000);
+  tickAll(68_000, 61_000);
+  tickAll(75_000, 7_000);
+
+  assert.equal(resourceInventory.ore, 0);
+  assert.equal(resourceInventory.tools, 1);
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
 });

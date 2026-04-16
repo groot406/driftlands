@@ -1,6 +1,6 @@
 <template>
   <div class="absolute left-0 bottom-0 w-full z-30 m-2 pointer-events-none">
-    <div class="heroes-avatar-strip w-full overflow-x-auto flex gap-3 p-2">
+    <div class="heroes-avatar-strip w-full overflow-x-auto flex flex-nowrap gap-3 p-2 pointer-events-auto">
       <template v-if="heroes.length">
         <div
           v-for="hero in heroes"
@@ -163,8 +163,10 @@ function onStripTouchMove(e: TouchEvent) {
   if (!touch) return;
   const dy = touch.clientY - touchStartY;
   const dx = touch.clientX - touchStartX;
-  if (Math.abs(dy) < 10 || Math.abs(dy) < Math.abs(dx) + 10) return;
-  e.preventDefault();
+  // Only intercept clearly vertical swipes; let horizontal scroll through
+  if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 2) {
+    e.preventDefault();
+  }
 }
 
 function onStripTouchEnd(e: TouchEvent) {
@@ -203,6 +205,16 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.heroes-avatar-strip {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: none; /* Firefox */
+}
+
+.heroes-avatar-strip::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
 .heroes-sheet-enter-active, .heroes-sheet-leave-active { transition: transform .18s ease; }
 .heroes-sheet-enter-from, .heroes-sheet-leave-to { transform: translateY(80px); }
 .heroes-sheet-enter-to, .heroes-sheet-leave-from { transform: translateY(0); }

@@ -19,7 +19,7 @@
           </button>
         </div>
 
-        <div class="tc-section">
+        <div class="tc-section tc-section-progress">
           <div class="tc-section-row">
             <div class="tc-section-title">Colony Progress</div>
           </div>
@@ -36,7 +36,7 @@
         </div>
 
         <!-- Population Section -->
-        <div class="tc-section">
+        <div class="tc-section tc-section-housing">
           <div class="tc-section-row">
             <div class="tc-section-title">Housing</div>
           </div>
@@ -60,7 +60,7 @@
           </div>
         </div>
 
-        <div class="tc-section">
+        <div class="tc-section tc-section-support">
           <div class="tc-section-row">
             <div class="tc-section-title">Frontier Support</div>
           </div>
@@ -85,7 +85,7 @@
         </div>
 
         <!-- Food Section -->
-        <div class="tc-section">
+        <div class="tc-section tc-section-food">
           <div class="tc-section-row">
             <div class="tc-section-title">Food Supply</div>
           </div>
@@ -108,8 +108,60 @@
           </div>
         </div>
 
+        <div v-if="maintenanceSummary.maintainedCount > 0" class="tc-section tc-section-maintenance">
+          <div class="tc-section-row">
+            <div class="tc-section-title">Maintenance</div>
+            <div class="tc-section-caption">{{ maintenanceSummary.assignedRepairers }}/{{ maintenanceSummary.crewDemand }} crews assigned</div>
+          </div>
+          <div class="tc-stat-grid tc-stat-grid-4">
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ maintenanceSummary.maintainedCount }}</span>
+              <span class="tc-stat-label">Maintained</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ maintenanceSummary.needsRepairCount }}</span>
+              <span class="tc-stat-label">Needs Repair</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ maintenanceSummary.offlineCount }}</span>
+              <span class="tc-stat-label">Offline</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ maintenanceSummary.averageCondition }}%</span>
+              <span class="tc-stat-label">Avg Condition</span>
+            </div>
+          </div>
+          <div class="tc-status-row" :class="maintenanceStatusClass">
+            <span class="tc-status-dot" :class="maintenanceStatusClass" />
+            <span class="tc-status-text">{{ maintenanceSummary.statusText }}</span>
+          </div>
+          <div v-if="maintenanceSummary.backlogResources.length" class="tc-detail-chip-row tc-maintenance-chip-row">
+            <span
+              v-for="resource in maintenanceSummary.backlogResources"
+              :key="resource.type"
+              class="tc-detail-chip"
+              :class="{ 'tc-detail-chip-alert': resource.shortfall > 0 }"
+            >
+              {{ formatMaintenanceBacklog(resource) }}
+            </span>
+          </div>
+          <div v-if="maintenanceSummary.urgentSites.length" class="tc-maintenance-list">
+            <div v-for="site in maintenanceSummary.urgentSites" :key="site.tileId" class="tc-maintenance-site">
+              <div class="tc-maintenance-site-top">
+                <span class="tc-maintenance-site-name">{{ site.label }}</span>
+                <span class="tc-maintenance-site-state" :class="getStatusClassFromTone(getConditionTone(site.conditionState))">
+                  {{ getConditionLabel(site.conditionState) }}
+                </span>
+              </div>
+              <div class="tc-maintenance-bar-track">
+                <div class="tc-maintenance-bar-fill" :class="getConditionFillClass(site.conditionState)" :style="{ width: `${site.condition}%` }" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Job Sites Section (placeholder) -->
-        <div class="tc-section">
+        <div class="tc-section tc-section-jobs">
           <div class="tc-section-row">
             <div class="tc-section-title">Job Sites</div>
             <div class="tc-section-caption">{{ workforceState.assignedWorkers }}/{{ workforceState.availableWorkers }} staffed</div>
@@ -154,24 +206,33 @@
                   <div v-if="site.hasDetail" class="tc-job-site-open">Inspect</div>
                 </div>
               </div>
+              <div v-if="site.conditionPercent !== null" class="tc-job-site-condition">
+                <div class="tc-job-site-condition-top">
+                  <span class="tc-job-site-condition-label">{{ site.conditionLabel }}</span>
+                  <span class="tc-job-site-condition-value">{{ site.conditionPercent }}%</span>
+                </div>
+                <div class="tc-maintenance-bar-track tc-maintenance-bar-track-compact">
+                  <div class="tc-maintenance-bar-fill" :class="site.conditionBarClass" :style="{ width: `${site.conditionPercent}%` }" />
+                </div>
+              </div>
               <div class="tc-job-site-status" :class="site.statusClass">{{ site.statusText }}</div>
+              <div v-if="site.blockerText" class="tc-job-site-blocker">{{ site.blockerText }}</div>
             </div>
           </div>
           <p v-else class="tc-placeholder-text">Build a dock, granary, bakery, lumber camp, or mine to create settler jobs.</p>
         </div>
       </div>
 
-      <transition name="smooth-modal" appear>
-        <div
-          v-if="selectedJobSiteDetail"
-          class="tc-detail-backdrop smooth-modal-backdrop"
-          :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
-          @click.self="closeJobSiteDetail"
-        >
-          <div class="tc-detail-modal smooth-modal-surface" @click.stop>
+      <div
+        v-if="selectedJobSiteDetail"
+        class="tc-detail-backdrop smooth-modal-backdrop"
+        :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
+        @click.self="closeJobSiteDetail"
+      >
+        <div class="tc-detail-modal smooth-modal-surface" @click.stop>
             <div class="tc-detail-header">
               <div>
-                <p class="tc-detail-kicker pixel-font">Production Site</p>
+                <p class="tc-detail-kicker pixel-font">{{ selectedJobSiteDetail.detailKicker }}</p>
                 <h4 class="tc-detail-title">{{ selectedJobSiteDetail.label }}</h4>
                 <p class="tc-detail-summary">{{ selectedJobSiteDetail.summary }}</p>
               </div>
@@ -181,12 +242,19 @@
             </div>
 
             <div class="tc-detail-pill-row">
-              <span class="tc-detail-pill" :class="selectedJobSiteDetail.statusBadgeClass">{{ selectedJobSiteDetail.statusText }}</span>
-              <span class="tc-detail-pill">Crew {{ selectedJobSiteDetail.assignedWorkers }}/{{ selectedJobSiteDetail.slots }}</span>
-              <span class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
+              <span v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-pill" :class="selectedJobSiteDetail.statusBadgeClass">{{ selectedJobSiteDetail.statusText }}</span>
+              <span
+                v-if="selectedJobSiteDetail.conditionPercent !== null"
+                class="tc-detail-pill"
+                :class="selectedJobSiteDetail.conditionBadgeClass"
+              >
+                {{ selectedJobSiteDetail.conditionLabel }} · {{ selectedJobSiteDetail.conditionPercent }}%
+              </span>
+              <span v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-pill">Crew {{ selectedJobSiteDetail.assignedWorkers }}/{{ selectedJobSiteDetail.slots }}</span>
+              <span v-if="selectedJobSiteDetail.cycleLabel" class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
             </div>
 
-            <div class="tc-detail-action-row">
+            <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-action-row">
               <button
                 class="tc-detail-toggle"
                 :class="{ 'tc-detail-toggle-off': !selectedJobSiteDetail.isEnabled }"
@@ -199,7 +267,11 @@
               </p>
             </div>
 
-            <div class="tc-detail-grid">
+            <div v-if="selectedJobSiteDetail.blockerText" class="tc-detail-blocker">
+              {{ selectedJobSiteDetail.blockerText }}
+            </div>
+
+            <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-grid">
               <section class="tc-detail-card">
                 <p class="tc-detail-card-label">Current Staffing</p>
                 <div class="tc-detail-card-value">{{ selectedJobSiteDetail.assignedWorkersLabel }}</div>
@@ -212,50 +284,124 @@
               </section>
             </div>
 
-            <div class="tc-detail-section">
-              <div class="tc-detail-section-title">Production Flow</div>
-              <div class="tc-detail-flow-grid">
-                <section class="tc-detail-flow-card">
-                  <p class="tc-detail-flow-title">Consumes</p>
-                  <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
-                  <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.inputRateLabel }}</p>
-                </section>
-                <section class="tc-detail-flow-card">
-                  <p class="tc-detail-flow-title">Produces</p>
-                  <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentOutputLabel }}</p>
-                  <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.outputRateLabel }}</p>
-                </section>
+            <div class="tc-detail-dashboard">
+              <div class="tc-detail-main-column">
+                <div v-if="selectedJobSiteDetail.conditionPercent !== null" class="tc-detail-section">
+                  <div class="tc-detail-section-title">Condition</div>
+                  <div class="tc-detail-condition-card">
+                    <div class="tc-detail-condition-top">
+                      <div>
+                        <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.conditionStatusText }}</p>
+                        <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.repairBacklogLabel }}</p>
+                      </div>
+                      <span class="tc-detail-pill" :class="selectedJobSiteDetail.conditionBadgeClass">
+                        {{ selectedJobSiteDetail.conditionPercent }}%
+                      </span>
+                    </div>
+                    <div class="tc-maintenance-bar-track">
+                      <div class="tc-maintenance-bar-fill" :class="selectedJobSiteDetail.conditionBarClass" :style="{ width: `${selectedJobSiteDetail.conditionPercent}%` }" />
+                    </div>
+                    <div class="tc-detail-chip-row">
+                      <span class="tc-detail-chip">{{ selectedJobSiteDetail.repairResourceLabel }}</span>
+                      <span
+                        v-for="shortage in selectedJobSiteDetail.repairShortages"
+                        :key="shortage.type"
+                        class="tc-detail-chip tc-detail-chip-alert"
+                      >
+                        {{ shortage.missingLabel }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="selectedJobSiteDetail.building?.jobSlots" class="tc-detail-section">
+                  <div class="tc-detail-section-title">Production Flow</div>
+                  <div class="tc-detail-flow-grid">
+                    <section class="tc-detail-flow-card">
+                      <p class="tc-detail-flow-title">Consumes</p>
+                      <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
+                      <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.inputRateLabel }}</p>
+                    </section>
+                    <section class="tc-detail-flow-card">
+                      <p class="tc-detail-flow-title">Produces</p>
+                      <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentOutputLabel }}</p>
+                      <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.outputRateLabel }}</p>
+                    </section>
+                  </div>
+                </div>
+
+                <div v-if="selectedJobSiteDetail.shortages.length" class="tc-detail-section">
+                  <div class="tc-detail-section-title">Current Bottleneck</div>
+                  <div class="tc-detail-chip-row">
+                    <span v-for="shortage in selectedJobSiteDetail.shortages" :key="shortage.type" class="tc-detail-chip">
+                      {{ shortage.missingLabel }}
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="selectedJobSiteDetail.advice.length" class="tc-detail-section">
+                  <div class="tc-detail-section-title">How To Improve</div>
+                  <ul class="tc-detail-advice-list">
+                    <li v-for="tip in selectedJobSiteDetail.advice" :key="tip" class="tc-detail-advice-item">
+                      {{ tip }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="tc-detail-side-column">
+                <div v-if="selectedJobSiteDetail.availableActions.length || selectedJobSiteDetail.actionHint" class="tc-detail-section tc-detail-section-sticky">
+                  <div class="tc-detail-section-title">Orders</div>
+                  <div v-if="selectedJobSiteDetail.availableActions.length" class="tc-detail-order-list">
+                    <div v-for="action in selectedJobSiteDetail.availableActions" :key="action.key" class="tc-detail-order-card">
+                      <div class="tc-detail-order-top">
+                        <div>
+                          <p class="tc-detail-order-title">{{ action.label }}</p>
+                          <p class="tc-detail-order-copy">{{ action.summary }}</p>
+                          <p v-if="!action.unlocked && action.lockHint" class="tc-detail-order-note">{{ action.lockHint }}</p>
+                        </div>
+                        <button
+                          class="tc-detail-order-button"
+                          :class="{ 'tc-detail-order-button-disabled': !action.unlocked }"
+                          :disabled="!action.unlocked"
+                          @click.stop="startBuildingAction(selectedJobSiteDetail.tileId, action.definition)"
+                        >
+                          {{ !action.unlocked ? 'Locked' : (selectedHero ? 'Send Hero' : 'Select Hero') }}
+                        </button>
+                      </div>
+                      <div v-if="action.costs.length" class="tc-detail-chip-row">
+                        <span
+                          v-for="resource in action.costs"
+                          :key="`${action.key}:${resource.type}`"
+                          class="tc-detail-chip"
+                          :class="{ 'tc-detail-chip-alert': getWarehouseAmount(resource.type) < resource.amount }"
+                        >
+                          {{ formatNumber(resource.amount) }} {{ formatResourceType(resource.type) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <p v-else class="tc-placeholder-text">{{ selectedJobSiteDetail.actionHint }}</p>
+                </div>
               </div>
             </div>
-
-            <div v-if="selectedJobSiteDetail.shortages.length" class="tc-detail-section">
-              <div class="tc-detail-section-title">Current Bottleneck</div>
-              <div class="tc-detail-chip-row">
-                <span v-for="shortage in selectedJobSiteDetail.shortages" :key="shortage.type" class="tc-detail-chip">
-                  {{ shortage.missingLabel }}
-                </span>
-              </div>
-            </div>
-
-            <div class="tc-detail-section">
-              <div class="tc-detail-section-title">How To Improve</div>
-              <ul class="tc-detail-advice-list">
-                <li v-for="tip in selectedJobSiteDetail.advice" :key="tip" class="tc-detail-advice-item">
-                  {{ tip }}
-                </li>
-              </ul>
-            </div>
-          </div>
         </div>
-      </transition>
+      </div>
     </div>
   </transition>
 </template>
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import type { ResourceAmount } from '../core/types/Resource.ts';
-import { getBuildingDefinitionByKey, resolveBuildingJobResources } from '../shared/buildings/registry';
+import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
+import type { TileConditionState } from '../core/types/Tile.ts';
+import type { Hero } from '../core/types/Hero.ts';
+import type { TaskDefinition } from '../core/types/Task.ts';
+import { requestHeroMovement, startTaskRequest } from '../core/heroService';
+import { PathService } from '../core/PathService';
+import { getBuildingDefinitionByKey, getBuildingDefinitionByTaskKey, resolveBuildingJobResources } from '../shared/buildings/registry';
+import { resolveBuildingStateForTile } from '../shared/buildings/state.ts';
+import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
 import {
   formatResourceType,
   getJobSiteAdvice,
@@ -263,12 +409,32 @@ import {
   getMissingInputResources,
   getPerMinuteResources,
 } from '../shared/buildings/jobSiteDetails.ts';
-import { tileIndex } from '../shared/game/world.ts';
+import { getTaskEconomyDistance } from '../shared/tasks/economy.ts';
+import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess.ts';
+import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
+import { listTaskDefinitions } from '../shared/tasks/taskRegistry.ts';
+import { getTaskUnlockStatus, isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
+import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
+import { isRoadTile } from '../shared/game/roads.ts';
+import {
+  getConditionLabel,
+  getConditionStatusText,
+  getConditionTone,
+  getMaintenanceOverview,
+} from '../shared/buildings/maintenanceDetails.ts';
+import { tileIndex, worldVersion } from '../shared/game/world.ts';
+import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
 import { resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
+import { settlers, settlerVersion } from '../store/settlerStore';
+import { getSelectedHero } from '../store/uiStore';
+import { detachHeroFromCurrentTask } from '../store/taskStore.ts';
+import { addNotification } from '../store/notificationStore';
+import { canControlHero, getHeroOwnerName } from '../store/playerStore';
 import { sendMessage } from '../core/socket';
+import { currentPlayerId } from '../core/socket';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
@@ -286,6 +452,8 @@ const emit = defineEmits<{
 
 const selectedJobSiteId = ref<string | null>(null);
 const detailOnlyMode = ref(false);
+const pathService = new PathService();
+const selectedHero = computed(() => getSelectedHero());
 
 function close() {
   clearJobSiteDetailState();
@@ -343,6 +511,115 @@ function formatRateList(resources: ResourceAmount[], emptyText: string) {
 
 function getStatusClassFromTone(tone: 'ok' | 'warn' | 'danger') {
   return `tc-job-site-status-${tone}`;
+}
+
+function getConditionFillClass(conditionState: TileConditionState) {
+  return `tc-maintenance-bar-fill-${getConditionTone(conditionState)}`;
+}
+
+function getStructureLabel(tileId: string) {
+  const tile = tileIndex[tileId] ?? null;
+  const building = resolveBuildingStateForTile(tile)?.building ?? null;
+  if (building) {
+    return building.label;
+  }
+  if (isRoadTile(tile)) {
+    return tile?.variant?.startsWith('stone_road') ? 'Stone Road' : 'Road';
+  }
+  if (isBridgeTile(tile)) {
+    return 'Bridge';
+  }
+  if (isTunnelTile(tile)) {
+    return 'Tunnel';
+  }
+  return tile?.terrain ? tile.terrain[0].toUpperCase() + tile.terrain.slice(1) : 'Building';
+}
+
+function getStructureSummary(tileId: string) {
+  const tile = tileIndex[tileId] ?? null;
+  const buildingState = resolveBuildingStateForTile(tile);
+  if (buildingState?.building) {
+    return buildingState.upgrade
+      ? `${buildingState.building.summary} Level ${buildingState.level}.`
+      : buildingState.building.summary;
+  }
+  if (isRoadTile(tile)) {
+    return tile?.variant?.startsWith('stone_road')
+      ? 'A paved road segment that speeds movement through the colony.'
+      : 'A road segment that keeps movement and logistics flowing.';
+  }
+  if (isBridgeTile(tile)) {
+    return 'A bridge segment that carries roads over water.';
+  }
+  if (isTunnelTile(tile)) {
+    return 'A tunnel segment that carries roads through mountains.';
+  }
+  return 'Constructed infrastructure in the colony.';
+}
+
+function formatMaintenanceBacklog(resource: {
+  type: ResourceType;
+  amount: number;
+  shortfall: number;
+}) {
+  const base = `${resource.amount} ${formatResourceType(resource.type)}`;
+  return resource.shortfall > 0 ? `${base} · short ${resource.shortfall}` : base;
+}
+
+function getWarehouseAmount(type: ResourceType) {
+  return resourceInventory[type] ?? 0;
+}
+
+function getActionSummary(def: TaskDefinition) {
+  if (def.key === 'dismantle') {
+    return 'Order a hero to remove this structure and clear the tile.';
+  }
+  return getTaskSummary(def);
+}
+
+function createInspectorHero(tile: { q: number; r: number }): Hero {
+  return {
+    id: 'inspector-hero',
+    name: 'Inspector',
+    avatar: '',
+    q: tile.q,
+    r: tile.r,
+    stats: {
+      xp: 0,
+      hp: 1,
+      atk: 1,
+      spd: 1,
+    },
+    facing: 'down',
+  };
+}
+
+function getTaskSummary(def: TaskDefinition) {
+  const building = getBuildingDefinitionByTaskKey(def.key);
+  if (building) {
+    return building.summary;
+  }
+
+  const upgrade = getUpgradeDefinitionByTaskKey(def.key);
+  if (upgrade) {
+    return upgrade.summary;
+  }
+
+  return def.label;
+}
+
+function getTaskLockHint(def: TaskDefinition) {
+  const unlockStatus = getTaskUnlockStatus(def.key);
+  if (unlockStatus.unlocked || !unlockStatus.lockingNode) {
+    return null;
+  }
+
+  const unmetRequirement = unlockStatus.lockingNode.requirements.find((requirement) => !requirement.satisfied);
+  if (!unmetRequirement) {
+    return `${unlockStatus.lockingNode.label} has not been reached yet.`;
+  }
+
+  return `${unlockStatus.lockingNode.label}: ${unmetRequirement.label} (${unmetRequirement.currentLabel}).`;
 }
 
 // --- Colony Progress ---
@@ -455,6 +732,21 @@ const foodStatusText = computed(() => {
   return `~${mins} minutes of food remaining`;
 });
 
+// --- Maintenance ---
+
+const maintenanceSummary = computed(() => {
+  void resourceVersion.value;
+  void settlerVersion.value;
+  void worldVersion.value;
+  return getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
+});
+
+const maintenanceStatusClass = computed(() => {
+  if (maintenanceSummary.value.tone === 'danger') return 'tc-status-danger';
+  if (maintenanceSummary.value.tone === 'warn') return 'tc-status-warn';
+  return 'tc-status-ok';
+});
+
 // --- Jobs ---
 
 const totalFreeStorage = computed(() => {
@@ -466,69 +758,131 @@ const totalFreeStorage = computed(() => {
 });
 
 const jobSites = computed(() => {
+  void worldVersion.value;
   return workforceState.sites.map((site) => {
     const building = getBuildingDefinitionByKey(site.buildingKey);
     const status = getJobSiteStatusDescriptor(site.status);
+    const tile = tileIndex[site.tileId] ?? null;
+    const conditionPercent = typeof tile?.condition === 'number' ? Math.round(tile.condition) : null;
+    const conditionState = conditionPercent !== null ? tile?.conditionState ?? 'healthy' : null;
+    const statusText = site.status === 'offline' && conditionState === 'offline'
+      ? 'Offline — awaiting repairs'
+      : status.text;
+    const statusTone = site.status === 'offline' && conditionState === 'offline'
+      ? 'danger'
+      : status.tone;
 
     return {
       ...site,
       building,
       label: building?.label ?? site.buildingKey,
       summary: building?.summary ?? 'Settlers can staff this site to keep the colony moving.',
-      statusText: status.text,
-      statusClass: getStatusClassFromTone(status.tone),
-      statusBadgeClass: `tc-detail-pill-${status.tone}`,
+      statusText,
+      blockerText: formatSettlerBlocker(site.blockerReason),
+      statusClass: getStatusClassFromTone(statusTone),
+      statusBadgeClass: `tc-detail-pill-${statusTone}`,
+      conditionPercent,
+      conditionLabel: conditionState ? getConditionLabel(conditionState) : null,
+      conditionBarClass: conditionState ? getConditionFillClass(conditionState) : null,
       hasDetail: !!building,
     };
   });
 });
 
 const selectedJobSiteDetail = computed(() => {
+  void worldVersion.value;
   if (!selectedJobSiteId.value) {
     return null;
   }
 
-  const site = jobSites.value.find((entry) => entry.tileId === selectedJobSiteId.value);
-  const building = site?.building;
-  if (!site || !building) {
+  const tile = tileIndex[selectedJobSiteId.value] ?? null;
+  if (!tile) {
     return null;
   }
 
-  const tile = tileIndex[site.tileId] ?? null;
-  const { consumes: currentInputs, produces: currentOutputs } = resolveBuildingJobResources(building, tile, site.assignedWorkers);
-  const { consumes: fullInputs, produces: fullOutputs } = resolveBuildingJobResources(building, tile, site.slots);
-  const currentInputRates = getPerMinuteResources(currentInputs, 1, building.cycleMs);
-  const currentOutputRates = getPerMinuteResources(currentOutputs, 1, building.cycleMs);
-  const fullOutputRates = getPerMinuteResources(fullOutputs, 1, building.cycleMs);
-  const shortages = getMissingInputResources(currentInputs, 1, resourceInventory);
-  const advice = getJobSiteAdvice({
-    building,
-    site,
-    population: {
-      current: populationState.current,
-      max: populationState.max,
-      beds: populationState.beds,
-      hungerMs: populationState.hungerMs,
-      pressureState: populationState.pressureState,
-      inactiveTileCount: populationState.inactiveTileCount,
-    },
-    workforce: {
-      availableWorkers: workforceState.availableWorkers,
-      idleWorkers: workforceState.idleWorkers,
-    },
-    resourceInventory,
-    totalFreeStorage: totalFreeStorage.value,
-  });
+  const site = jobSites.value.find((entry) => entry.tileId === selectedJobSiteId.value) ?? null;
+  const buildingState = resolveBuildingStateForTile(tile);
+  const building = buildingState?.building ?? null;
+  const hasJobSite = !!site && !!building;
+  const currentWorkerCount = site?.assignedWorkers ?? 0;
+  const fullWorkerCount = site?.slots ?? Math.max(1, building?.jobSlots ?? 0);
+  const { consumes: currentInputs, produces: currentOutputs } = building
+    ? resolveBuildingJobResources(building, tile, currentWorkerCount)
+    : { consumes: [], produces: [] };
+  const { consumes: fullInputs, produces: fullOutputs } = building
+    ? resolveBuildingJobResources(building, tile, fullWorkerCount)
+    : { consumes: [], produces: [] };
+  const currentInputRates = building ? getPerMinuteResources(currentInputs, 1, building.cycleMs) : [];
+  const currentOutputRates = building ? getPerMinuteResources(currentOutputs, 1, building.cycleMs) : [];
+  const fullOutputRates = building ? getPerMinuteResources(fullOutputs, 1, building.cycleMs) : [];
+  const shortages = building ? getMissingInputResources(currentInputs, 1, resourceInventory) : [];
+  const conditionPercent = typeof tile?.condition === 'number' ? Math.round(tile.condition) : null;
+  const conditionState = conditionPercent !== null ? tile?.conditionState ?? 'healthy' : null;
+  const repairResources = tile ? building?.repairResources ?? [] : [];
+  const repairNeeded = conditionPercent !== null ? Math.max(0, 100 - conditionPercent) : 0;
+  const repairShortages = getMissingInputResources(repairResources, 1, resourceInventory);
+  const advice = hasJobSite && building && site
+    ? getJobSiteAdvice({
+      building,
+      site,
+      population: {
+        current: populationState.current,
+        max: populationState.max,
+        beds: populationState.beds,
+        hungerMs: populationState.hungerMs,
+        pressureState: populationState.pressureState,
+        inactiveTileCount: populationState.inactiveTileCount,
+      },
+      workforce: {
+        availableWorkers: workforceState.availableWorkers,
+        idleWorkers: workforceState.idleWorkers,
+      },
+      resourceInventory,
+      totalFreeStorage: totalFreeStorage.value,
+    })
+    : [];
   const isEnabled = tile?.jobSiteEnabled !== false;
+  const hero = selectedHero.value;
+  const inspectorHero = hero ?? createInspectorHero(tile);
+  const availableActions = listTaskDefinitions()
+    .filter((task) => task.key !== 'walk')
+    .filter((task) => canStartTaskDefinition(task, tile, inspectorHero))
+    .map((task) => ({
+      key: task.key,
+      definition: task,
+      label: task.label,
+      summary: getActionSummary(task),
+      costs: getTaskCosts(task),
+      unlocked: isTaskUnlockedForUse(task.key),
+      lockHint: getTaskLockHint(task),
+    }));
+  const isInfrastructure = !building && (isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile));
+  if (!building && !isInfrastructure) {
+    return null;
+  }
 
   return {
-    ...site,
+    ...(site ?? {
+      tileId: tile.id,
+      assignedWorkers: 0,
+      slots: building?.jobSlots ?? 0,
+      statusText: 'No crew needed',
+      statusBadgeClass: 'tc-detail-pill-ok',
+      blockerText: null,
+      statusClass: 'tc-job-site-status-ok',
+    }),
+    tileId: tile.id,
+    building,
     isEnabled,
-    cycleLabel: formatCycleDuration(building.cycleMs),
-    assignedWorkersLabel: site.assignedWorkers > 0
-      ? `${site.assignedWorkers} ${building.jobLabel ?? 'worker'}${site.assignedWorkers === 1 ? '' : 's'} on duty`
+    detailKicker: hasJobSite ? 'Production Site' : 'Building',
+    label: site?.label ?? getStructureLabel(tile.id),
+    summary: site?.summary ?? getStructureSummary(tile.id),
+    isJobSite: hasJobSite,
+    cycleLabel: formatCycleDuration(building?.cycleMs),
+    assignedWorkersLabel: currentWorkerCount > 0
+      ? `${currentWorkerCount} ${building?.jobLabel ?? 'worker'}${currentWorkerCount === 1 ? '' : 's'} on duty`
       : 'No crew assigned',
-    fullStaffingLabel: `${site.slots} slot${site.slots === 1 ? '' : 's'} available`,
+    fullStaffingLabel: `${fullWorkerCount} slot${fullWorkerCount === 1 ? '' : 's'} available`,
     currentThroughputLabel: formatRateList(currentOutputRates, 'No output per minute while idle'),
     maxThroughputLabel: formatRateList(fullOutputRates, 'No output defined'),
     currentInputLabel: formatResourceList(currentInputs, 'No input required'),
@@ -541,13 +895,34 @@ const selectedJobSiteDetail = computed(() => {
       ...shortage,
       missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing`,
     })),
+    conditionPercent,
+    conditionLabel: conditionState ? getConditionLabel(conditionState) : null,
+    conditionStatusText: conditionState ? getConditionStatusText(conditionState) : null,
+    conditionBarClass: conditionState ? getConditionFillClass(conditionState) : null,
+    conditionBadgeClass: conditionState ? `tc-detail-pill-${getConditionTone(conditionState)}` : null,
+    repairBacklogLabel: repairNeeded > 0
+      ? `${repairNeeded}% condition missing · ${Math.ceil(repairNeeded / 35)} repair cycle${Math.ceil(repairNeeded / 35) === 1 ? '' : 's'} needed`
+      : 'No repairs needed right now',
+    repairResourceLabel: repairResources.length
+      ? `Each repair uses ${formatResourceList(repairResources, 'No repair cost')}`
+      : 'No repair materials required',
+    repairShortages: repairShortages.map((shortage) => ({
+      ...shortage,
+      missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing for repairs`,
+    })),
     advice,
+    availableActions,
+    actionHint: hero
+      ? 'No hero orders are available on this structure right now.'
+      : 'Select a hero to issue the order shown here.',
   };
 });
 
 function openJobSiteDetail(tileId: string, options?: { detailOnly?: boolean }) {
   const site = jobSites.value.find((entry) => entry.tileId === tileId);
-  if (!site?.hasDetail) {
+  const tile = tileIndex[tileId] ?? null;
+  const inspectableStructure = !!resolveBuildingStateForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
+  if (!site?.hasDetail && !inspectableStructure) {
     return;
   }
 
@@ -560,6 +935,10 @@ function openStandaloneJobSiteDetail(tileId: string) {
   openJobSiteDetail(tileId, { detailOnly: true });
 }
 
+function openStandaloneBuildingDetail(tileId: string) {
+  openJobSiteDetail(tileId, { detailOnly: true });
+}
+
 function closeJobSiteDetail() {
   const shouldClosePanel = detailOnlyMode.value;
   clearJobSiteDetailState();
@@ -568,9 +947,87 @@ function closeJobSiteDetail() {
   }
 }
 
+function getTaskCosts(def: TaskDefinition) {
+  return def.requiredResources?.(getTaskEconomyDistance()) ?? [];
+}
+
+function startBuildingAction(tileId: string, def: TaskDefinition) {
+  const tile = tileIndex[tileId] ?? null;
+  if (!isTaskUnlockedForUse(def.key)) {
+    return;
+  }
+  const hero = selectedHero.value;
+  if (!tile) {
+    return;
+  }
+  if (!hero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Pick a hero first, then issue this building order.',
+      duration: 2600,
+    });
+    return;
+  }
+
+  const accessMode = getTaskAccessMode(def.key, tile);
+  const accessTile = findNearestTaskAccessTile(def.key, tile, hero.q, hero.r);
+  if ((accessMode === 'adjacent_walkable' || accessMode === 'adjacent_active') && !accessTile) {
+    addNotification({
+      type: 'run_state',
+      title: 'No valid approach',
+      message: 'This structure needs an active approach tile before a hero can work on it.',
+      duration: 3200,
+    });
+    return;
+  }
+
+  if (!canControlHero(hero.id, currentPlayerId.value)) {
+    addNotification({
+      type: 'coop_state',
+      title: `${hero.name} is occupied`,
+      message: `${getHeroOwnerName(hero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    return;
+  }
+
+  if (accessTile && hero.q === accessTile.q && hero.r === accessTile.r) {
+    if (def.key !== 'walk') {
+      startTaskRequest(hero.id, def.key, { q: tile.q, r: tile.r });
+      closeJobSiteDetail();
+    }
+    return;
+  }
+
+  const path = accessTile
+    ? pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r)
+    : [];
+  if (!path.length) {
+    addNotification({
+      type: 'run_state',
+      title: 'No path',
+      message: 'This hero cannot reach the selected structure right now.',
+      duration: 2800,
+    });
+    return;
+  }
+
+  detachHeroFromCurrentTask(hero);
+  requestHeroMovement(
+    hero.id,
+    path,
+    accessTile ?? tile,
+    def.key,
+    accessMode !== 'tile' ? tile : undefined,
+  );
+  closeJobSiteDetail();
+}
+
 defineExpose({
   openJobSiteDetail,
   openStandaloneJobSiteDetail,
+  openStandaloneBuildingDetail,
   closeJobSiteDetail,
 });
 
@@ -660,8 +1117,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(2, 6, 23, 0.62);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(4px);
   pointer-events: auto;
 }
 
@@ -677,21 +1134,24 @@ onUnmounted(() => {
 
 .tc-panel {
   position: relative;
-  width: min(460px, calc(100vw - 32px));
+  width: min(940px, calc(100vw - 32px));
   padding: 20px;
   border-radius: 28px;
   max-height: min(82vh, calc(100vh - 32px));
   overflow-x: hidden;
   overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 14px;
   background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.18), transparent 32%),
-    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.16), transparent 26%),
-    linear-gradient(180deg, rgba(7, 12, 24, 0.96), rgba(12, 18, 33, 0.92));
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.14), transparent 32%),
+    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.12), transparent 26%),
+    linear-gradient(180deg, rgba(7, 12, 24, 0.995), rgba(12, 18, 33, 0.99));
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow:
     0 30px 60px rgba(2, 6, 23, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-  backdrop-filter: blur(24px);
+  backdrop-filter: none;
 }
 
 .tc-panel::before {
@@ -720,6 +1180,7 @@ onUnmounted(() => {
 .tc-header {
   position: relative;
   z-index: 1;
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -774,9 +1235,24 @@ onUnmounted(() => {
 .tc-section {
   position: relative;
   z-index: 1;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  margin-top: 0;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(15, 23, 42, 0.3);
+}
+
+.tc-section-jobs {
+  grid-column: 1 / -1;
+}
+
+.tc-section-maintenance {
+  grid-column: 1 / -1;
+}
+
+.tc-section-progress .tc-stat-grid,
+.tc-section-food .tc-stat-grid {
+  margin-bottom: 10px;
 }
 
 .tc-section-muted {
@@ -815,6 +1291,10 @@ onUnmounted(() => {
 
 .tc-stat-grid-3 {
   grid-template-columns: 1fr 1fr 1fr;
+}
+
+.tc-stat-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .tc-stat {
@@ -908,8 +1388,8 @@ onUnmounted(() => {
 }
 
 .tc-job-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -983,6 +1463,22 @@ onUnmounted(() => {
   line-height: 1.35;
 }
 
+.tc-job-site-blocker,
+.tc-detail-blocker {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  background: rgba(120, 53, 15, 0.18);
+  padding: 8px 10px;
+  color: rgba(254, 243, 199, 0.92);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tc-detail-blocker {
+  margin-top: 12px;
+}
+
 .tc-job-site-status-ok {
   color: rgba(134, 239, 172, 0.92);
 }
@@ -993,6 +1489,91 @@ onUnmounted(() => {
 
 .tc-job-site-status-danger {
   color: rgba(252, 165, 165, 0.94);
+}
+
+.tc-job-site-condition {
+  margin-top: 8px;
+}
+
+.tc-job-site-condition-top,
+.tc-maintenance-site-top,
+.tc-detail-condition-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tc-job-site-condition-label,
+.tc-job-site-condition-value,
+.tc-maintenance-site-name,
+.tc-maintenance-site-state {
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.tc-job-site-condition-label,
+.tc-maintenance-site-name {
+  color: rgba(191, 219, 254, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tc-job-site-condition-value {
+  color: rgba(226, 232, 240, 0.84);
+}
+
+.tc-maintenance-chip-row {
+  margin-top: 10px;
+}
+
+.tc-maintenance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tc-maintenance-site {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.tc-maintenance-site-state {
+  color: rgba(226, 232, 240, 0.84);
+}
+
+.tc-maintenance-bar-track {
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.66);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  overflow: hidden;
+}
+
+.tc-maintenance-bar-track-compact {
+  height: 6px;
+}
+
+.tc-maintenance-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.tc-maintenance-bar-fill-ok {
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.72), rgba(34, 197, 94, 0.92));
+}
+
+.tc-maintenance-bar-fill-warn {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.72), rgba(245, 158, 11, 0.92));
+}
+
+.tc-maintenance-bar-fill-danger {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.74), rgba(239, 68, 68, 0.96));
 }
 
 .tc-placeholder-text {
@@ -1022,13 +1603,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(2, 6, 23, 0.44);
-  backdrop-filter: blur(6px);
+  background: rgba(2, 6, 23, 0.56);
+  backdrop-filter: blur(4px);
 }
 
 .tc-detail-backdrop-standalone {
   background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(4px);
 }
 
 .tc-detail-modal {
@@ -1038,9 +1619,9 @@ onUnmounted(() => {
   border-radius: 28px;
   padding: 20px;
   background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.15), transparent 34%),
-    radial-gradient(circle at 78% 12%, rgba(251, 191, 36, 0.12), transparent 24%),
-    linear-gradient(180deg, rgba(5, 10, 19, 0.98), rgba(12, 18, 33, 0.94));
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 34%),
+    radial-gradient(circle at 78% 12%, rgba(251, 191, 36, 0.1), transparent 24%),
+    linear-gradient(180deg, rgba(5, 10, 19, 0.995), rgba(12, 18, 33, 0.99));
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow: 0 34px 80px rgba(2, 6, 23, 0.48);
 }
@@ -1224,6 +1805,86 @@ onUnmounted(() => {
   margin-top: 10px;
 }
 
+.tc-detail-condition-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  margin-top: 10px;
+}
+
+.tc-detail-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tc-detail-order-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.tc-detail-order-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tc-detail-order-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tc-detail-order-copy {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.tc-detail-order-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(253, 224, 71, 0.88);
+}
+
+.tc-detail-order-button {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(37, 99, 235, 0.22);
+  color: #eff6ff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.tc-detail-order-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.4);
+  background: rgba(37, 99, 235, 0.3);
+}
+
+.tc-detail-order-button-disabled,
+.tc-detail-order-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+  transform: none;
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(51, 65, 85, 0.4);
+  color: rgba(226, 232, 240, 0.72);
+}
+
 .tc-detail-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -1234,9 +1895,15 @@ onUnmounted(() => {
 .tc-detail-chip {
   padding: 7px 10px;
   border-radius: 999px;
-  background: rgba(127, 29, 29, 0.28);
-  border: 1px solid rgba(248, 113, 113, 0.2);
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   font-size: 11px;
+  color: rgba(226, 232, 240, 0.84);
+}
+
+.tc-detail-chip-alert {
+  background: rgba(127, 29, 29, 0.28);
+  border-color: rgba(248, 113, 113, 0.2);
   color: rgba(254, 202, 202, 0.92);
 }
 
@@ -1255,12 +1922,24 @@ onUnmounted(() => {
 }
 
 @media (max-width: 760px) {
+  .tc-stat-grid-4,
   .tc-detail-grid,
-  .tc-detail-flow-grid {
+  .tc-detail-flow-grid,
+  .tc-job-list {
     grid-template-columns: 1fr;
   }
 
-  .tc-panel,
+  .tc-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+    display: block;
+  }
+
+  .tc-section {
+    margin-top: 16px;
+  }
+
   .tc-detail-modal {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);

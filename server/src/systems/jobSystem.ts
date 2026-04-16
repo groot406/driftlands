@@ -8,7 +8,7 @@ import {
 } from '../../../src/shared/game/state/jobStore';
 import { getPopulationState } from '../../../src/shared/game/state/populationStore';
 import { settlers } from '../../../src/shared/game/state/settlerStore';
-import { listResolvedJobSites, resolveSiteStatus } from './jobSiteRuntime';
+import { getSiteBlockerReason, listResolvedJobSites, resolveSiteStatus } from './jobSiteRuntime';
 
 function getAvailableWorkers() {
     const population = getPopulationState();
@@ -44,6 +44,7 @@ function createSnapshot(): WorkforceSnapshot {
             slots: site.slots,
             assignedWorkers,
             status: resolveSiteStatus(site, assignedWorkers),
+            blockerReason: getSiteBlockerReason(site, assignedWorkers),
         };
     });
 
@@ -72,7 +73,11 @@ function snapshotsEqual(a: WorkforceSnapshot, b: WorkforceSnapshot) {
             || siteA.buildingKey !== siteB.buildingKey
             || siteA.slots !== siteB.slots
             || siteA.assignedWorkers !== siteB.assignedWorkers
-            || siteA.status !== siteB.status) {
+            || siteA.status !== siteB.status
+            || siteA.blockerReason?.code !== siteB.blockerReason?.code
+            || siteA.blockerReason?.resourceType !== siteB.blockerReason?.resourceType
+            || siteA.blockerReason?.amount !== siteB.blockerReason?.amount
+            || siteA.blockerReason?.tileId !== siteB.blockerReason?.tileId) {
             return false;
         }
     }

@@ -6,6 +6,7 @@ import {
 import { getBuildingOutputMultiplier } from '../../../src/shared/buildings/state.ts';
 import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
+import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
 import {
     planResourceWithdrawalsAcrossStorages,
@@ -14,6 +15,7 @@ import {
 } from '../../../src/shared/game/state/resourceStore';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
 import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
+import type { SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { tileIndex } from '../../../src/shared/game/world';
 import { extractMineOre, getExtractableMineOre, getMineClusterReserve } from '../state/mineReserveState';
@@ -71,6 +73,10 @@ export function isOnlineJobSite(tile: Tile) {
         && isTileActive(tile);
 }
 
+function isOperationalJobSite(tile: Tile) {
+    return isOnlineJobSite(tile) && !isBuildingOfflineFromCondition(tile);
+}
+
 function capSiteOutputs(site: ResolvedJobSite, outputs: ResourceAmount[]) {
     if (site.building.key !== 'mine') {
         return outputs;
@@ -105,6 +111,20 @@ export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: numb
 
 function hasMissingInputs(resources: ResourceAmount[]) {
     return resources.some((resource) => (resourceInventory[resource.type] ?? 0) < resource.amount);
+}
+
+function getMissingInputReason(resources: ResourceAmount[], tileId: string): SettlerBlockerReason | null {
+    const missing = resources.find((resource) => (resourceInventory[resource.type] ?? 0) < resource.amount);
+    if (!missing) {
+        return null;
+    }
+
+    return {
+        code: 'missing_input',
+        resourceType: missing.type,
+        amount: Math.max(0, missing.amount - (resourceInventory[missing.type] ?? 0)),
+        tileId,
+    };
 }
 
 function buildFreedCapacityByTileId(resources: ResourceAmount[]) {
@@ -162,8 +182,53 @@ export function getSiteOperationalBlock(site: ResolvedJobSite, assignedWorkers: 
     return null;
 }
 
+export function getSiteBlockerReason(site: ResolvedJobSite, assignedWorkers: number): SettlerBlockerReason | null {
+    if (!isOperationalJobSite(site.tile)) {
+        return {
+            code: 'site_offline',
+            tileId: site.tile.id,
+        };
+    }
+
+    if (!isJobSiteEnabled(site.tile)) {
+        return {
+            code: 'site_paused',
+            tileId: site.tile.id,
+        };
+    }
+
+    if (assignedWorkers <= 0) {
+        return null;
+    }
+
+    if (site.building.key === 'mine' && getMineClusterReserve(site.tile).totalRemaining <= 0) {
+        return {
+            code: 'resource_depleted',
+            resourceType: 'ore',
+            tileId: site.tile.id,
+        };
+    }
+
+    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
+    const missingInput = getMissingInputReason(scaledInputs, site.tile.id);
+    if (missingInput) {
+        return missingInput;
+    }
+
+    if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
+        return {
+            code: 'storage_full',
+            resourceType: scaledOutputs[0]?.type,
+            amount: scaledOutputs[0]?.amount,
+            tileId: site.tile.id,
+        };
+    }
+
+    return null;
+}
+
 export function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: number) {
-    if (!isOnlineJobSite(site.tile) || !isJobSiteEnabled(site.tile)) {
+    if (!isOperationalJobSite(site.tile) || !isJobSiteEnabled(site.tile)) {
         return false;
     }
 
@@ -172,7 +237,7 @@ export function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: n
 }
 
 export function resolveSiteStatus(site: ResolvedJobSite, assignedWorkers: number): JobSiteStatus {
-    if (!isOnlineJobSite(site.tile)) {
+    if (!isOperationalJobSite(site.tile)) {
         return 'offline';
     }
 

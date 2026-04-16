@@ -47,10 +47,10 @@
 }
 
 .smooth-modal-surface {
-    transform: translate3d(0, 0, 0);
     transform-origin: center;
-    backface-visibility: hidden;
-    will-change: transform, opacity;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: subpixel-antialiased;
+    font-synthesis: none;
 }
 
 .smooth-modal-enter-active, .smooth-modal-leave-active {
@@ -60,6 +60,7 @@
 .smooth-modal-enter-active .smooth-modal-surface,
 .smooth-modal-leave-active .smooth-modal-surface {
     transition: opacity 250ms ease, transform 180ms ease;
+    will-change: transform, opacity;
 }
 
 .smooth-modal-enter-from, .smooth-modal-leave-to {

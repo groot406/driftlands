@@ -19,6 +19,7 @@ import { supportSystem } from './systems/supportSystem';
 import { jobSystem } from './systems/jobSystem';
 import { coopSystem } from './systems/coopSystem';
 import { runState } from './state/runState';
+import { maintenanceSystem } from './systems/maintenanceSystem';
 
 const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
   .split(',')
@@ -91,6 +92,7 @@ tickEngine.register(movementSystem);
 tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
 tickEngine.register(populationSystem);
+tickEngine.register(maintenanceSystem);
 tickEngine.register(settlerSystem);
 tickEngine.register(supportSystem);
 tickEngine.register(jobSystem);

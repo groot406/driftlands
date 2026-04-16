@@ -1,4 +1,4 @@
-
+import { ref } from 'vue';
 import {resetTerrainWeightCache} from './terrain';
 import type {TerrainKey} from './terrainDefs';
 import {TERRAIN_DEFS} from './terrainDefs';
@@ -22,6 +22,7 @@ const pendingRenderDirtyTileIds = new Set<string>();
 
 export let worldOuterRadius = 0;
 let worldRenderVersion = 0;
+export const worldVersion = ref(0);
 
 // Per-axis discovered radius caches
 const maxRadiusByQ = new Map<number, number>();
@@ -34,6 +35,7 @@ export function axialKey(q: number, r: number) {
 
 function bumpWorldRenderVersion() {
     worldRenderVersion++;
+    worldVersion.value++;
 }
 
 export function getWorldRenderVersion() {

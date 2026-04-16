@@ -1,4 +1,5 @@
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
+import type { SettlerBlockerReason } from '../core/types/Settler';
 
 export type JobSiteStatus = 'staffed' | 'unstaffed' | 'offline' | 'paused' | 'missing_input' | 'storage_full' | 'depleted';
 
@@ -8,6 +9,7 @@ export interface JobSiteSnapshot {
     slots: number;
     assignedWorkers: number;
     status: JobSiteStatus;
+    blockerReason?: SettlerBlockerReason | null;
 }
 
 export interface WorkforceSnapshot {
@@ -26,6 +28,7 @@ function cloneSite(site: JobSiteSnapshot): JobSiteSnapshot {
         slots: site.slots,
         assignedWorkers: site.assignedWorkers,
         status: site.status,
+        blockerReason: site.blockerReason ? { ...site.blockerReason } : null,
     };
 }
 

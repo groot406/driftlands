@@ -1,81 +1,90 @@
 <template>
-  <div v-if="tile" class="task-overlay" @pointerdown.stop.prevent @pointerup.stop :style="menuStyle">
-    <div class="task-container">
-      <div ref="panelEl" class="task-panel pointer-events-auto">
-        <div class="task-header">
-          <div class="task-header-copy">
-            <p class="task-kicker pixel-font">{{ constructionTasks.length ? 'Frontier Orders' : 'Field Actions' }}</p>
-            <h3 class="task-hero-title">{{ previewTask?.label ?? 'Choose an order' }}</h3>
-            <p class="task-header-summary">
-              {{
-                previewTask
-                  ? getConstructionSummary(previewTask)
-                  : 'Choose what your hero should do on this tile.'
-              }}
-            </p>
-          </div>
-          <button class="task-close" @click.stop.prevent="close" title="Close">
-            ✕
-          </button>
-        </div>
+  <div v-if="tile" class="task-overlay" @pointerdown.stop.prevent @pointerup.stop>
+    <!-- Backdrop (click to close) -->
+    <div class="task-backdrop" @click.stop="close"></div>
 
-        <div class="task-layout">
-          <div class="task-list-pane">
+    <div class="task-panel pointer-events-auto">
+      <!-- Header -->
+      <div class="task-header">
+        <div class="task-header-copy">
+          <p class="task-kicker pixel-font">{{ constructionTasks.length ? 'Frontier Orders' : 'Field Actions' }}</p>
+          <h3 class="task-hero-title">{{ selectedTask?.label ?? 'Choose an order' }}</h3>
+        </div>
+        <button class="task-close" @click.stop.prevent="close" title="Close">✕</button>
+      </div>
+
+      <!-- Left / Right split body -->
+      <div class="task-body">
+        <!-- LEFT: scrollable task list -->
+        <div class="task-list-pane">
+          <div class="task-list-scroll">
+            <!-- Build & Upgrade section -->
             <div v-if="constructionTasks.length" class="task-section">
-              <div class="task-section-row">
-                <div class="task-section-title">Build & Upgrade</div>
-                <div class="task-section-caption">
-                  {{ constructionTasks.length }} {{ constructionTasks.length === 1 ? 'option' : 'options' }}
+              <div class="task-section-header">
+                <span class="task-section-icon">🏗</span>
+                <div class="task-section-row">
+                  <div class="task-section-title">Build & Upgrade</div>
+                  <div class="task-section-caption">
+                    {{ constructionTasks.length }} {{ constructionTasks.length === 1 ? 'option' : 'options' }}
+                  </div>
                 </div>
               </div>
 
-              <transition-group name="fade-task" tag="div" class="task-list">
+              <div class="task-list">
                 <button
                   v-for="t in constructionTasks"
                   :key="t.key"
                   class="task-list-row"
-                  :class="{ 'task-list-row--active': previewTask?.key === t.key }"
-                  @click="selectTask(t)"
-                  @mouseover="hoverTask(t)"
-                  @mouseleave="unHoverTask(t)"
-                  @focus="hoverTask(t)"
-                  @blur="unHoverTask(t)"
+                  :class="{
+                    'task-list-row--selected': selectedTask?.key === t.key,
+                    'task-list-row--locked': isTaskLocked(t),
+                  }"
+                  @click="handleTaskClick(t)"
+                  @pointerenter="hoverTask(t)"
+                  @pointerleave="unHoverTask(t)"
                 >
-                  <div class="min-w-0">
+                  <div class="task-list-row__info">
                     <p class="task-list-row__title">{{ t.label }}</p>
                     <p class="task-list-row__meta">{{ getBuildCategoryLabel(t) }}</p>
                   </div>
-                  <span
-                    class="task-list-row__state"
-                    :class="getBuildStateTone(t)"
-                  >
+                  <span class="task-list-row__state" :class="getBuildStateTone(t)">
                     {{ getBuildStateLabel(t) }}
                   </span>
                 </button>
-              </transition-group>
+              </div>
             </div>
 
+            <!-- Divider between sections -->
+            <div v-if="constructionTasks.length && actionTasks.length" class="task-section-divider">
+              <span class="task-section-divider__line"></span>
+            </div>
+
+            <!-- Actions section -->
             <div v-if="actionTasks.length" class="task-section">
-              <div class="task-section-row">
-                <div class="task-section-title">Actions</div>
-                <div class="task-section-caption">
-                  {{ actionTasks.length }} {{ actionTasks.length === 1 ? 'command' : 'commands' }}
+              <div class="task-section-header">
+                <span class="task-section-icon">⚡</span>
+                <div class="task-section-row">
+                  <div class="task-section-title">Actions</div>
+                  <div class="task-section-caption">
+                    {{ actionTasks.length }} {{ actionTasks.length === 1 ? 'command' : 'commands' }}
+                  </div>
                 </div>
               </div>
 
-              <transition-group name="fade-task" tag="div" class="task-list">
+              <div class="task-list">
                 <button
                   v-for="t in actionTasks"
                   :key="t.key"
                   class="task-list-row task-list-row--action"
-                  :class="{ 'task-list-row--active': previewTask?.key === t.key }"
-                  @click="selectTask(t)"
-                  @mouseover="hoverTask(t)"
-                  @mouseleave="unHoverTask(t)"
-                  @focus="hoverTask(t)"
-                  @blur="unHoverTask(t)"
+                  :class="{
+                    'task-list-row--selected': selectedTask?.key === t.key,
+                    'task-list-row--locked': isTaskLocked(t),
+                  }"
+                  @click="handleTaskClick(t)"
+                  @pointerenter="hoverTask(t)"
+                  @pointerleave="unHoverTask(t)"
                 >
-                  <div class="min-w-0">
+                  <div class="task-list-row__info">
                     <p class="task-list-row__title">{{ t.label }}</p>
                     <p class="task-list-row__meta">{{ isTaskLocked(t) ? 'Locked action' : 'Available action' }}</p>
                   </div>
@@ -83,106 +92,134 @@
                     {{ isTaskLocked(t) ? 'Locked' : 'Ready' }}
                   </span>
                 </button>
-              </transition-group>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div v-if="previewTask" class="task-detail-pane">
-            <div class="task-detail-top">
-              <div>
-                <span class="task-badge">{{ getBuildCategoryLabel(previewTask) }}</span>
-                <h4 class="mt-3 text-lg font-semibold text-white">{{ previewTask.label }}</h4>
+        <!-- RIGHT: scrollable detail pane -->
+        <div class="task-detail-pane">
+          <div class="task-detail-scroll">
+            <template v-if="selectedTask">
+              <!-- Detail header -->
+              <div class="task-detail-top">
+                <div>
+                  <span class="task-badge">{{ getBuildCategoryLabel(selectedTask) }}</span>
+                  <h4 class="task-detail-title">{{ selectedTask.label }}</h4>
+                </div>
+                <span class="task-detail-state" :class="getBuildStateTone(selectedTask)">
+                  {{ getBuildStateLabel(selectedTask) }}
+                </span>
               </div>
-              <span class="task-detail-state" :class="getBuildStateTone(previewTask)">
-                {{ getBuildStateLabel(previewTask) }}
-              </span>
-            </div>
 
-            <section v-if="previewBuildingVisual" class="task-preview-card">
-              <div class="task-preview-card__copy">
-                <p class="task-detail-block__label">Building Preview</p>
-                <p class="task-preview-card__hint">Shows the finished look on this tile.</p>
-              </div>
-              <div class="task-preview-stage">
-                <img
-                  v-if="previewBuildingVisual.baseSrc"
-                  :src="previewBuildingVisual.baseSrc"
-                  :alt="`${previewTask.label} base`"
-                  class="task-preview-stage__layer task-preview-stage__layer--base"
-                >
-                <img
-                  v-if="previewBuildingVisual.terrainOverlaySrc"
-                  :src="previewBuildingVisual.terrainOverlaySrc"
-                  :alt="`${previewTask.label} terrain overlay`"
-                  class="task-preview-stage__layer task-preview-stage__layer--terrain-overlay"
-                  :style="previewBuildingVisual.terrainOverlayStyle"
-                >
-                <img
-                  v-if="previewBuildingVisual.buildingOverlaySrc"
-                  :src="previewBuildingVisual.buildingOverlaySrc"
-                  :alt="`${previewTask.label} building overlay`"
-                  class="task-preview-stage__layer task-preview-stage__layer--building-overlay"
-                  :style="previewBuildingVisual.buildingOverlayStyle"
-                >
-              </div>
-            </section>
-
-            <p class="task-detail-copy">{{ getConstructionSummary(previewTask) }}</p>
-            <p v-if="getTaskLockHint(previewTask)" class="task-lock-hint">{{ getTaskLockHint(previewTask) }}</p>
-            <p v-else-if="previewTaskHint" class="task-lock-hint">{{ previewTaskHint }}</p>
-
-            <div class="task-detail-grid">
-              <section class="task-detail-block">
-                <p class="task-detail-block__label">Build Cost</p>
-                <div class="task-costs">
-                  <span
-                    v-for="resource in getBuildingCosts(previewTask)"
-                    :key="resource.type"
-                    class="task-cost-chip"
-                    :class="{ 'task-cost-chip-missing': isCostMissing(resource) }"
+              <!-- Building preview image -->
+              <section v-if="previewBuildingVisual" class="task-preview-card">
+                <div class="task-preview-card__copy">
+                  <p class="task-detail-block__label">Building Preview</p>
+                  <p class="task-preview-card__hint">Shows the finished look on this tile.</p>
+                </div>
+                <div class="task-preview-stage">
+                  <img
+                    v-if="previewBuildingVisual.baseSrc"
+                    :src="previewBuildingVisual.baseSrc"
+                    :alt="`${selectedTask.label} base`"
+                    class="task-preview-stage__layer task-preview-stage__layer--base"
                   >
-                    {{ resourceLabel(resource.type) }} {{ getWarehouseAmount(resource.type) }}/{{ resource.amount }}
-                  </span>
-                  <span
-                    v-if="getPopulationRequirement(previewTask)"
-                    class="task-cost-chip"
-                    :class="{ 'task-cost-chip-missing': !isPopulationMet(previewTask) }"
+                  <img
+                    v-if="previewBuildingVisual.terrainOverlaySrc"
+                    :src="previewBuildingVisual.terrainOverlaySrc"
+                    :alt="`${selectedTask.label} terrain overlay`"
+                    class="task-preview-stage__layer task-preview-stage__layer--terrain-overlay"
+                    :style="previewBuildingVisual.terrainOverlayStyle"
                   >
-                    Population {{ populationState.current }}/{{ getPopulationRequirement(previewTask) }}
-                  </span>
-                  <span v-if="!getBuildingCosts(previewTask).length && !getPopulationRequirement(previewTask)" class="task-cost-chip">
-                    No build cost
-                  </span>
+                  <img
+                    v-if="previewBuildingVisual.buildingOverlaySrc"
+                    :src="previewBuildingVisual.buildingOverlaySrc"
+                    :alt="`${selectedTask.label} building overlay`"
+                    class="task-preview-stage__layer task-preview-stage__layer--building-overlay"
+                    :style="previewBuildingVisual.buildingOverlayStyle"
+                  >
                 </div>
               </section>
 
-              <section v-if="getBuildingWorkSummary(previewTask) || getBuildingEconomyFlow(previewTask).length" class="task-detail-block">
-                <p class="task-detail-block__label">Job Site</p>
-                <p v-if="getBuildingWorkSummary(previewTask)" class="task-detail-block__copy">
-                  {{ getBuildingWorkSummary(previewTask) }}
-                </p>
-                <div class="task-flow-list">
-                  <div
-                    v-for="flow in getBuildingEconomyFlow(previewTask)"
-                    :key="`${previewTask.key}:${flow.label}`"
-                    class="task-flow-row"
-                  >
-                    <span class="task-flow-row__label">{{ flow.label }}</span>
-                    <div class="task-costs">
-                      <span v-for="resource in flow.resources" :key="resource.type" class="task-cost-chip">
-                        {{ resourceLabel(resource.type) }} {{ resource.amount }}
-                      </span>
+              <!-- Description (works for both building and action tasks) -->
+              <p class="task-detail-copy">{{ getTaskSummary(selectedTask) }}</p>
+              <p v-if="getTaskLockHint(selectedTask)" class="task-lock-hint">{{ getTaskLockHint(selectedTask) }}</p>
+              <p v-else-if="selectedTaskHint" class="task-lock-hint">{{ selectedTaskHint }}</p>
+
+              <!-- Cost / economy / upgrade blocks (for buildings) -->
+              <div v-if="isBuildingTask(selectedTask)" class="task-detail-grid">
+                <section class="task-detail-block">
+                  <p class="task-detail-block__label">Build Cost</p>
+                  <div class="task-costs">
+                    <span
+                      v-for="resource in getBuildingCosts(selectedTask)"
+                      :key="resource.type"
+                      class="task-cost-chip"
+                      :class="{ 'task-cost-chip-missing': isCostMissing(resource) }"
+                    >
+                      {{ resourceLabel(resource.type) }} {{ getWarehouseAmount(resource.type) }}/{{ resource.amount }}
+                    </span>
+                    <span
+                      v-if="getPopulationRequirement(selectedTask)"
+                      class="task-cost-chip"
+                      :class="{ 'task-cost-chip-missing': !isPopulationMet(selectedTask) }"
+                    >
+                      Population {{ populationState.current }}/{{ getPopulationRequirement(selectedTask) }}
+                    </span>
+                    <span v-if="!getBuildingCosts(selectedTask).length && !getPopulationRequirement(selectedTask)" class="task-cost-chip">
+                      No build cost
+                    </span>
+                  </div>
+                </section>
+
+                <section v-if="getBuildingWorkSummary(selectedTask) || getBuildingEconomyFlow(selectedTask).length" class="task-detail-block">
+                  <p class="task-detail-block__label">Job Site</p>
+                  <p v-if="getBuildingWorkSummary(selectedTask)" class="task-detail-block__copy">
+                    {{ getBuildingWorkSummary(selectedTask) }}
+                  </p>
+                  <div class="task-flow-list">
+                    <div
+                      v-for="flow in getBuildingEconomyFlow(selectedTask)"
+                      :key="`${selectedTask.key}:${flow.label}`"
+                      class="task-flow-row"
+                    >
+                      <span class="task-flow-row__label">{{ flow.label }}</span>
+                      <div class="task-costs">
+                        <span v-for="resource in flow.resources" :key="resource.type" class="task-cost-chip">
+                          {{ resourceLabel(resource.type) }} {{ resource.amount }}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </section>
 
-              <section v-if="getUpgradeEffectLabels(previewTask).length" class="task-detail-block">
-                <p class="task-detail-block__label">Upgrade Effect</p>
-                <ul class="task-effect-list">
-                  <li v-for="effect in getUpgradeEffectLabels(previewTask)" :key="effect">{{ effect }}</li>
-                </ul>
-              </section>
+                <section v-if="getUpgradeEffectLabels(selectedTask).length" class="task-detail-block">
+                  <p class="task-detail-block__label">Upgrade Effect</p>
+                  <ul class="task-effect-list">
+                    <li v-for="effect in getUpgradeEffectLabels(selectedTask)" :key="effect">{{ effect }}</li>
+                  </ul>
+                </section>
+              </div>
+
+              <!-- Confirm button inside detail pane -->
+              <button
+                class="task-confirm-btn"
+                :class="{ 'task-confirm-btn--disabled': isTaskLocked(selectedTask) }"
+                :disabled="isTaskLocked(selectedTask)"
+                @click.stop="confirmTask"
+              >
+                {{ isTaskLocked(selectedTask) ? 'Locked' : `Send Hero — ${selectedTask.label}` }}
+              </button>
+            </template>
+
+            <!-- Empty state when nothing selected -->
+            <div v-else class="task-detail-empty">
+              <div class="task-detail-empty__icon">📋</div>
+              <p class="task-detail-empty__title">Select an order</p>
+              <p class="task-detail-empty__hint">
+                {{ isMobile ? 'Tap' : 'Hover over' }} a task to see its details.
+              </p>
             </div>
           </div>
         </div>
@@ -192,12 +229,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Tile } from '../core/types/Tile';
 import { requestHeroMovement, startTaskRequest } from '../core/heroService';
 import { detachHeroFromCurrentTask } from '../store/taskStore';
 import { PathService } from '../core/PathService';
-import { axialToPixel, camera } from '../core/camera';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import { getSelectedHero } from '../store/uiStore';
 import type { TaskDefinition } from '../core/types/Task.ts';
@@ -226,6 +262,7 @@ import { getTaskUnlockStatus } from '../shared/tasks/taskUnlocks.ts';
 import { canStartTaskWhileCarrying } from '../store/taskStore.ts';
 import { isTileWalkable } from '../shared/game/navigation';
 import { getStorageCapacity } from '../shared/game/storage.ts';
+import { getStoryTaskDescriptor } from '../shared/story/progression';
 
 interface Props {
   tile: Tile | null;
@@ -243,13 +280,18 @@ const emit = defineEmits<{
 
 const pathService = new PathService();
 const hoveredTask = ref<TaskDefinition | null>(null);
-const panelEl = ref<HTMLElement | null>(null);
-const panelSize = ref({ width: 460, height: 0 });
+const tappedTask = ref<TaskDefinition | null>(null);
+const isMobile = ref(false);
+
+function checkMobile() {
+  isMobile.value = window.matchMedia('(max-width: 640px)').matches || 'ontouchstart' in window;
+}
 
 const resourceLabels: Record<ResourceType, string> = {
   wood: 'Wood',
   ore: 'Ore',
   stone: 'Stone',
+  tools: 'Tools',
   food: 'Food',
   crystal: 'Crystal',
   artifact: 'Artifact',
@@ -298,17 +340,18 @@ const sortedTasks = computed(() => {
 });
 const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
 const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
-const previewTask = computed(() => {
-  const hovered = hoveredTask.value;
 
-  if (hovered && constructionTasks.value.some((task) => task.key === hovered.key)) {
-    return hovered;
-  }
-
-  return constructionTasks.value[0] ?? null;
+// The "selected" task is the one shown in the detail pane.
+// On desktop: hovering selects; on mobile: tapping selects.
+// Nothing is preselected — the detail pane shows the empty state until the user interacts.
+const selectedTask = computed(() => {
+  if (hoveredTask.value) return hoveredTask.value;
+  if (tappedTask.value) return tappedTask.value;
+  return null;
 });
-const previewTaskHint = computed(() => {
-  const task = previewTask.value;
+
+const selectedTaskHint = computed(() => {
+  const task = selectedTask.value;
   const tile = props.tile;
   const hero = getSelectedHero();
 
@@ -362,21 +405,6 @@ const previewTaskHint = computed(() => {
 
   return null;
 });
-const panelWidth = computed(() => {
-  const containerWidth = props.containerSize?.width ?? 0;
-
-  if (containerWidth <= 0) {
-    return 720;
-  }
-
-  return Math.min(760, Math.max(320, containerWidth - 32));
-});
-const panelEstimatedHeight = computed(() => {
-  const listRows = constructionTasks.value.length + actionTasks.value.length;
-  const baseHeight = 188 + Math.max(0, listRows - 1) * 58;
-  const detailHeight = previewTask.value ? 260 : 0;
-  return Math.max(320, Math.min(720, baseHeight + detailHeight));
-});
 
 interface TaskFlowGroup {
   label: string;
@@ -399,7 +427,7 @@ const tileImageSources = Object.fromEntries(
   }),
 ) as Record<string, string>;
 const previewBuildingVisual = computed<PreviewBuildingVisual | null>(() => {
-  const task = previewTask.value;
+  const task = selectedTask.value;
   const tile = props.tile;
   if (!task || !tile) {
     return null;
@@ -441,29 +469,16 @@ const previewBuildingVisual = computed<PreviewBuildingVisual | null>(() => {
   };
 });
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function updatePanelSize() {
-  const el = panelEl.value;
-
-  if (!el) {
-    return;
-  }
-
-  panelSize.value = {
-    width: el.offsetWidth || panelWidth.value,
-    height: el.offsetHeight || panelEstimatedHeight.value,
-  };
-}
-
 function getBuildingMeta(def: TaskDefinition) {
   return getBuildingDefinitionByTaskKey(def.key);
 }
 
 function getUpgradeMeta(def: TaskDefinition) {
   return getUpgradeDefinitionByTaskKey(def.key);
+}
+
+function isBuildingTask(def: TaskDefinition) {
+  return !!getBuildingMeta(def) || !!getUpgradeMeta(def);
 }
 
 function getTileImageSource(key: string | null | undefined) {
@@ -524,13 +539,27 @@ function resolveBuildingPreviewVariant(variantKeys: string[], terrain: Tile['ter
   return variantKeys[0] ?? null;
 }
 
-function getConstructionSummary(def: TaskDefinition) {
+/** Get a description for any task — building, upgrade, or field action */
+function getTaskSummary(def: TaskDefinition) {
+  // Building summary
   const building = getBuildingMeta(def);
   if (building) {
     return building.summary;
   }
 
-  return getUpgradeMeta(def)?.summary ?? 'Choose what your hero should do on this tile.';
+  // Upgrade summary
+  const upgrade = getUpgradeMeta(def);
+  if (upgrade) {
+    return upgrade.summary;
+  }
+
+  // Action task — pull from story progression descriptors
+  const descriptor = getStoryTaskDescriptor(def.key);
+  if (descriptor?.description) {
+    return descriptor.description;
+  }
+
+  return 'Send your hero to perform this action on the selected tile.';
 }
 
 function getBuildCategoryLabel(def: TaskDefinition) {
@@ -539,7 +568,11 @@ function getBuildCategoryLabel(def: TaskDefinition) {
     return building.categoryLabel;
   }
 
-  return getUpgradeMeta(def) ? 'Upgrade' : 'Construction';
+  if (getUpgradeMeta(def)) {
+    return 'Upgrade';
+  }
+
+  return 'Action';
 }
 
 function getBuildingCosts(def: TaskDefinition): ResourceAmount[] {
@@ -790,7 +823,32 @@ function getUpgradeEffectLabels(def: TaskDefinition) {
 }
 
 function close() {
+  hoveredTask.value = null;
+  tappedTask.value = null;
   emit('close');
+}
+
+
+function handleTaskClick(def: TaskDefinition) {
+  if (isMobile.value) {
+    // On mobile, first tap selects, second tap on same task confirms
+    if (tappedTask.value?.key === def.key) {
+      selectTask(def);
+    } else {
+      tappedTask.value = def;
+      hoveredTask.value = null;
+      emit('hover', def);
+    }
+  } else {
+    selectTask(def);
+  }
+}
+
+/** Confirm the currently selected task (used by the confirm button) */
+function confirmTask() {
+  if (selectedTask.value) {
+    selectTask(selectedTask.value);
+  }
 }
 
 function selectTask(def: TaskDefinition) {
@@ -866,62 +924,17 @@ function selectTask(def: TaskDefinition) {
   close();
 }
 
-const menuStyle = computed(() => {
-  if (!props.tile) return {};
-  const camPx = axialToPixel(camera.q, camera.r);
-  const tilePx = axialToPixel(props.tile.q, props.tile.r);
-  const w = props.containerSize?.width ?? 0;
-  const h = props.containerSize?.height ?? 0;
-  const menuWidth = panelSize.value.width || panelWidth.value;
-  const menuHeight = panelSize.value.height || panelEstimatedHeight.value;
-  const cx = w > 0 ? w / 2 : window.innerWidth / 2;
-  const cy = h > 0 ? h / 2 : window.innerHeight / 2;
-  const tileX = tilePx.x - camPx.x + cx;
-  const tileY = tilePx.y - camPx.y + cy;
-  const margin = 16;
-  const horizontalOffset = 36;
-  const verticalOffset = 24;
-  const spaceRight = w > 0 ? w - tileX - margin : Number.POSITIVE_INFINITY;
-  const spaceLeft = w > 0 ? tileX - margin : Number.POSITIVE_INFINITY;
-  const spaceBelow = h > 0 ? h - tileY - margin : Number.POSITIVE_INFINITY;
-  const spaceAbove = h > 0 ? tileY - margin : Number.POSITIVE_INFINITY;
-
-  let left = tileX + horizontalOffset;
-  let top = tileY + verticalOffset;
-
-  if (w > 0 && spaceRight < menuWidth && spaceLeft > spaceRight) {
-    left = tileX - menuWidth - horizontalOffset;
-  }
-
-  if (h > 0 && spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-    top = tileY - menuHeight - verticalOffset;
-  }
-
-  if (w > 0) {
-    left = clamp(left, margin, Math.max(margin, w - menuWidth - margin));
-  }
-
-  if (h > 0) {
-    top = clamp(top, margin, Math.max(margin, h - menuHeight - margin));
-  }
-
-  return {
-    position: 'absolute',
-    left: left + 'px',
-    top: top + 'px',
-    '--task-panel-width': panelWidth.value + 'px',
-  } as const;
-});
-
 function hoverTask(t: TaskDefinition) {
-  hoveredTask.value = t;
-  emit('hover', hoveredTask.value);
+  if (!isMobile.value) {
+    hoveredTask.value = t;
+    emit('hover', t);
+  }
 }
 
 function unHoverTask(t: TaskDefinition) {
-  if (hoveredTask.value === t) {
+  if (!isMobile.value && hoveredTask.value === t) {
     hoveredTask.value = null;
-    emit('hover', hoveredTask.value);
+    emit('hover', null);
   }
 }
 
@@ -933,8 +946,13 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
+// Reset selection when tile changes
+watch(() => props.tile, () => {
+  hoveredTask.value = null;
+  tappedTask.value = null;
+});
+
 let listenerActive = false;
-let panelResizeObserver: ResizeObserver | null = null;
 
 watch(() => props.visible, (isVisible) => {
   if (isVisible && !listenerActive) {
@@ -944,100 +962,67 @@ watch(() => props.visible, (isVisible) => {
     window.removeEventListener('keydown', handleKeydown);
     listenerActive = false;
   }
+  if (!isVisible) {
+    hoveredTask.value = null;
+    tappedTask.value = null;
+  }
 }, { immediate: true });
 
-watch(
-  [
-    () => props.visible,
-    () => props.tile?.q,
-    () => props.tile?.r,
-    () => props.containerSize?.width,
-    () => props.containerSize?.height,
-    panelWidth,
-    panelEstimatedHeight,
-  ],
-  async ([isVisible]) => {
-    if (!isVisible) {
-      return;
-    }
-
-    await nextTick();
-    requestAnimationFrame(() => updatePanelSize());
-  },
-  { immediate: true },
-);
-
-watch(panelEl, (el, previousEl) => {
-  if (previousEl && panelResizeObserver) {
-    panelResizeObserver.unobserve(previousEl);
-  }
-
-  if (el && panelResizeObserver) {
-    panelResizeObserver.observe(el);
-    updatePanelSize();
-  }
-});
-
 onMounted(() => {
-  if (typeof ResizeObserver !== 'undefined') {
-    panelResizeObserver = new ResizeObserver(() => updatePanelSize());
-
-    if (panelEl.value) {
-      panelResizeObserver.observe(panelEl.value);
-    }
-  }
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile);
+
   if (listenerActive) {
     window.removeEventListener('keydown', handleKeydown);
     listenerActive = false;
   }
-
-  panelResizeObserver?.disconnect();
-  panelResizeObserver = null;
 });
 </script>
 
 <style scoped>
+/* ── Overlay: covers the game viewport ───────────────── */
 .task-overlay {
   position: absolute;
-  pointer-events: none;
+  inset: 0;
   z-index: 40;
-}
-
-.task-container {
-  position: relative;
-  width: var(--task-panel-width, 460px);
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
   pointer-events: none;
 }
 
+/* ── Backdrop: clickable transparent area to close ───── */
+.task-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+/* ── Panel: right-aligned modal with margin ──────────── */
 .task-panel {
   position: relative;
-  width: 100%;
-  padding: 18px;
-  border-radius: 28px;
-  max-height: min(70vh, calc(100vh - 32px));
-  overflow-x: hidden;
-  overflow-y: auto;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 50vw;
+  max-width: 50vw;
+  height: 100%;
+  pointer-events: auto;
+  border-radius: 0;
   background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.18), transparent 32%),
-    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.16), transparent 26%),
-    linear-gradient(180deg, rgba(7, 12, 24, 0.96), rgba(12, 18, 33, 0.92));
-  border: 1px solid rgba(148, 163, 184, 0.2);
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.1), transparent 40%),
+    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(7, 12, 24, 0.995), rgba(12, 18, 33, 0.99));
+  border: 1px solid rgba(148, 163, 184, 0.16);
   box-shadow:
-    0 30px 60px rgba(2, 6, 23, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-  backdrop-filter: blur(24px);
-}
-
-.task-panel::-webkit-scrollbar {
-  width: 8px;
-}
-
-.task-panel::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.24);
+    -20px 0 60px rgba(2, 6, 23, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  backdrop-filter: none;
 }
 
 .task-panel::before {
@@ -1047,22 +1032,21 @@ onUnmounted(() => {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 22%),
-    linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.14));
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 22%),
+    linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.1));
   opacity: 0.8;
 }
 
-.task-header,
-.task-section {
+/* ── Header: pinned at top ───────────────────────────── */
+.task-header {
   position: relative;
   z-index: 1;
-}
-
-.task-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  padding: 20px 20px 0;
+  flex-shrink: 0;
 }
 
 .task-header-copy {
@@ -1078,30 +1062,22 @@ onUnmounted(() => {
 }
 
 .task-hero-title {
-  margin: 10px 0 0;
-  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  margin: 8px 0 0;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
   font-weight: 700;
-  line-height: 1.05;
+  line-height: 1.1;
   color: #f8fafc;
   text-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
 }
 
-.task-header-summary {
-  margin: 8px 0 0;
-  max-width: 56ch;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: rgba(226, 232, 240, 0.78);
-}
-
 .task-close {
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(15, 23, 42, 0.42);
   color: rgba(248, 250, 252, 0.9);
@@ -1115,8 +1091,97 @@ onUnmounted(() => {
   background: rgba(15, 23, 42, 0.62);
 }
 
+/* ── Body: two-column left/right split ───────────────── */
+.task-body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0; /* allow flex children to shrink & scroll */
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 0;
+  padding: 16px 0 0;
+}
+
+/* ── Left pane: task list ────────────────────────────── */
+.task-list-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.task-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 16px 16px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
+
+.task-list-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.task-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+/* ── Right pane: detail ──────────────────────────────── */
+.task-detail-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.task-detail-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 20px 16px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
+
+.task-detail-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.task-detail-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+/* ── Section ─────────────────────────────────────────── */
 .task-section {
-  margin-top: 16px;
+  position: relative;
+  z-index: 1;
+  padding: 4px 0;
+}
+
+.task-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.task-section-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: rgba(56, 189, 248, 0.1);
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .task-section-row {
@@ -1124,7 +1189,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-section-title {
@@ -1137,60 +1203,68 @@ onUnmounted(() => {
 .task-section-caption {
   font-size: 11px;
   color: rgba(191, 219, 254, 0.56);
+  flex-shrink: 0;
 }
 
-.task-layout {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr);
-  gap: 16px;
-  margin-top: 18px;
-}
-
-.task-list-pane {
+/* ── Section divider ─────────────────────────────────── */
+.task-section-divider {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
 }
 
+.task-section-divider__line {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148, 163, 184, 0.22) 20%,
+    rgba(148, 163, 184, 0.22) 80%,
+    transparent
+  );
+}
+
+/* ── Task list rows ──────────────────────────────────── */
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .task-list-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.9)),
-    linear-gradient(135deg, rgba(56, 189, 248, 0.06), transparent 64%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.9));
   text-align: left;
-  transition: transform .15s, border-color .15s, background .15s, box-shadow .15s;
+  cursor: pointer;
+  transition: transform .12s, border-color .12s, background .12s, box-shadow .12s;
 }
 
 .task-list-row:hover,
 .task-list-row:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.28);
-  box-shadow: 0 14px 24px rgba(2, 6, 23, 0.24);
+  border-color: rgba(125, 211, 252, 0.24);
+  box-shadow: 0 6px 14px rgba(2, 6, 23, 0.2);
 }
 
-.task-list-row--active {
-  border-color: rgba(250, 204, 21, 0.28);
+.task-list-row--selected {
+  border-color: rgba(250, 204, 21, 0.32) !important;
   background:
     linear-gradient(180deg, rgba(40, 54, 98, 0.82), rgba(15, 23, 42, 0.96)),
     linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent 64%);
   box-shadow:
     inset 0 0 0 1px rgba(250, 204, 21, 0.08),
-    0 16px 28px rgba(2, 6, 23, 0.3);
+    0 8px 18px rgba(2, 6, 23, 0.25);
 }
 
 .task-list-row--action {
@@ -1199,18 +1273,30 @@ onUnmounted(() => {
     linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent 64%);
 }
 
+.task-list-row--locked {
+  opacity: 0.55;
+}
+
+.task-list-row__info {
+  min-width: 0;
+  flex: 1;
+}
+
 .task-list-row__title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.15;
   color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-list-row__meta {
-  margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: rgba(191, 219, 254, 0.62);
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(191, 219, 254, 0.58);
 }
 
 .task-list-row__state,
@@ -1219,16 +1305,18 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.12);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   background: rgba(15, 23, 42, 0.72);
+  white-space: nowrap;
 }
 
+/* ── State tones ─────────────────────────────────────── */
 .task-state--ready {
   color: rgba(167, 243, 208, 0.96);
   border-color: rgba(52, 211, 153, 0.22);
@@ -1247,25 +1335,21 @@ onUnmounted(() => {
   background: rgba(120, 53, 15, 0.28);
 }
 
-.task-detail-pane {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 100%;
-  padding: 16px;
-  border-radius: 22px;
-  border: 1px solid rgba(125, 211, 252, 0.14);
-  background:
-    linear-gradient(180deg, rgba(11, 18, 32, 0.95), rgba(15, 23, 42, 0.84)),
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 34%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
 
+/* ── Detail header ───────────────────────────────────── */
 .task-detail-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+}
+
+.task-detail-title {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #f8fafc;
 }
 
 .task-badge {
@@ -1281,26 +1365,34 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
+/* ── Description ─────────────────────────────────────── */
 .task-detail-copy {
   font-size: 13px;
   line-height: 1.6;
   color: rgba(226, 232, 240, 0.84);
 }
 
+.task-lock-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(253, 230, 138, 0.9);
+}
+
+/* ── Building preview card ───────────────────────────── */
 .task-preview-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.5), rgba(15, 23, 42, 0.72)),
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 54%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.5), rgba(15, 23, 42, 0.7)),
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 54%);
 }
 
 .task-preview-card__copy {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .task-preview-card__hint {
@@ -1313,8 +1405,8 @@ onUnmounted(() => {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 144px;
-  border-radius: 20px;
+  min-height: 110px;
+  border-radius: 14px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 24%, rgba(34, 197, 94, 0.18), transparent 34%),
@@ -1325,40 +1417,41 @@ onUnmounted(() => {
 .task-preview-stage::before {
   content: '';
   position: absolute;
-  inset: 16px;
-  border-radius: 18px;
+  inset: 12px;
+  border-radius: 12px;
   border: 1px dashed rgba(148, 163, 184, 0.18);
   pointer-events: none;
 }
 
 .task-preview-stage__layer {
   position: absolute;
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   image-rendering: pixelated;
   object-fit: contain;
 }
 
 .task-preview-stage__layer--base {
-  filter: drop-shadow(0 12px 22px rgba(2, 6, 23, 0.42));
+  filter: drop-shadow(0 10px 18px rgba(2, 6, 23, 0.42));
 }
 
 .task-preview-stage__layer--terrain-overlay,
 .task-preview-stage__layer--building-overlay {
-  filter: drop-shadow(0 12px 22px rgba(2, 6, 23, 0.32));
+  filter: drop-shadow(0 10px 18px rgba(2, 6, 23, 0.32));
 }
 
+/* ── Detail grid (costs, economy, upgrades) ──────────── */
 .task-detail-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .task-detail-block {
   display: grid;
   gap: 8px;
-  padding: 12px 13px;
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
   background: rgba(15, 23, 42, 0.5);
 }
 
@@ -1378,19 +1471,13 @@ onUnmounted(() => {
 .task-costs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.task-lock-hint {
-  font-size: 11px;
-  line-height: 1.45;
-  color: rgba(253, 230, 138, 0.9);
+  gap: 5px;
 }
 
 .task-cost-chip {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   background: rgba(30, 41, 59, 0.85);
   color: rgba(226, 232, 240, 0.9);
@@ -1427,33 +1514,134 @@ onUnmounted(() => {
   line-height: 1.55;
 }
 
-.fade-task-enter-active,
-.fade-task-leave-active {
-  transition: opacity .16s ease, transform .16s ease;
+/* ── Confirm button ──────────────────────────────────── */
+.task-confirm-btn {
+  margin-top: auto;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(6, 78, 59, 0.5), rgba(6, 78, 59, 0.7));
+  color: rgba(167, 243, 208, 0.96);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  cursor: pointer;
+  transition: transform .12s, background .12s, border-color .12s, box-shadow .12s;
 }
 
-.fade-task-enter-from,
-.fade-task-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
+.task-confirm-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(52, 211, 153, 0.44);
+  box-shadow: 0 8px 18px rgba(6, 78, 59, 0.3);
 }
 
+.task-confirm-btn:active {
+  transform: translateY(0);
+}
+
+.task-confirm-btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.5);
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.task-confirm-btn--disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ── Empty state ─────────────────────────────────────── */
+.task-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 140px;
+  text-align: center;
+  gap: 8px;
+  opacity: 0.7;
+}
+
+.task-detail-empty__icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.task-detail-empty__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(191, 219, 254, 0.8);
+}
+
+.task-detail-empty__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(148, 163, 184, 0.6);
+  max-width: 24ch;
+}
+
+/* ── Mobile (≤ 640px): bottom sheet ──────────────────── */
 @media (max-width: 640px) {
+  .task-overlay {
+    position: fixed;
+    inset: 0;
+    padding: 0;
+    justify-content: stretch;
+    align-items: stretch;
+  }
+
+  .task-backdrop {
+    background: transparent;
+  }
+
   .task-panel {
-    padding: 16px;
-    border-radius: 24px;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  .task-layout {
-    grid-template-columns: minmax(0, 1fr);
+  .task-header {
+    padding: 16px 16px 0;
   }
 
-  .task-header-summary {
-    max-width: none;
+  .task-body {
+    grid-template-columns: 1fr;
+    padding: 12px 0 0;
+    overflow-y: auto;
+    max-height: none;
   }
 
-  .task-detail-pane {
-    padding: 14px;
+  .task-list-pane {
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
+  .task-list-scroll {
+    padding: 0 16px 12px;
+    max-height: 36vh;
+  }
+
+  .task-detail-scroll {
+    padding: 12px 16px 16px;
+  }
+
+  .task-confirm-btn {
+    padding: 14px 16px;
+    font-size: 14px;
+    border-radius: 16px;
+  }
+
+  .task-preview-stage {
+    min-height: 100px;
   }
 }
 </style>

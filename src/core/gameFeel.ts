@@ -71,6 +71,7 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     wood: {icon: '\uD83C\uDF32', color: '#85c46c'},
     ore: {icon: '\u26CF\uFE0F', color: '#9aa6c7'},
     stone: {icon: '\uD83E\uDEA8', color: '#b9b3a1'},
+    tools: {icon: '\uD83D\uDEE0\uFE0F', color: '#d8b46a'},
     food: {icon: '\uD83C\uDF56', color: '#ffb56e'},
     crystal: {icon: '\uD83D\uDC8E', color: '#8cd6ff'},
     artifact: {icon: '\uD83C\uDFFA', color: '#e5d489'},

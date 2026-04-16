@@ -6,6 +6,7 @@ import { ensureTileExists, tileIndex } from '../game/world';
 import { findNearestWalkableNeighborToTerrain } from '../game/worldQueries';
 import { getBuildingDefinitionForTile, listBuildingDefinitions } from './registry';
 import { isTileActive } from '../game/state/settlementSupportStore';
+import { isBuildingOfflineFromCondition } from './maintenance.ts';
 
 function getNeighbors(tile: Tile) {
     return tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
@@ -16,7 +17,10 @@ function isNaturalWaterSourceTile(tile: Tile | null | undefined) {
 }
 
 export function isWaterSourceBuildingTile(tile: Tile | null | undefined) {
-    return !!tile && isTileActive(tile) && !!getBuildingDefinitionForTile(tile)?.providesWaterSource;
+    return !!tile
+        && isTileActive(tile)
+        && !isBuildingOfflineFromCondition(tile)
+        && !!getBuildingDefinitionForTile(tile)?.providesWaterSource;
 }
 
 export function hasAdjacentWaterSource(tile: Tile | null | undefined): boolean {

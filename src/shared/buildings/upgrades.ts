@@ -108,7 +108,7 @@ const upgrades: UpgradeDefinition[] = [
     costs: [
       { type: 'wood', amount: 6 },
       { type: 'stone', amount: 6 },
-      { type: 'ore', amount: 4 },
+      { type: 'tools', amount: 3 },
     ],
     requiredXp(_distance: number) {
       return 3600;
@@ -137,7 +137,7 @@ const upgrades: UpgradeDefinition[] = [
     costs: [
       { type: 'wood', amount: 4 },
       { type: 'stone', amount: 8 },
-      { type: 'ore', amount: 6 },
+      { type: 'tools', amount: 4 },
     ],
     requiredXp(_distance: number) {
       return 3800;

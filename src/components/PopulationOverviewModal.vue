@@ -65,6 +65,7 @@ import { computed, onUnmounted, watch } from 'vue';
 import type { Settler } from '../core/types/Settler.ts';
 import { tileIndex } from '../core/world.ts';
 import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
+import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
@@ -95,7 +96,11 @@ function getTileLabel(tileId: string | null | undefined) {
 }
 
 function getSettlerLocation(settler: Settler) {
-  if (settler.activity === 'working' && settler.assignedWorkTileId) return `at ${getTileLabel(settler.assignedWorkTileId)}`;
+  const blocker = formatSettlerBlocker(settler.blockerReason);
+  if (blocker) return blocker;
+  if ((settler.activity === 'working' || settler.activity === 'repairing') && (settler.workTileId || settler.assignedWorkTileId)) {
+    return `at ${getTileLabel(settler.workTileId ?? settler.assignedWorkTileId ?? null)}`;
+  }
   if (settler.activity === 'sleeping' && settler.homeTileId) return `in ${getTileLabel(settler.homeTileId)}`;
   if (settler.activity === 'commuting_home' && settler.homeTileId) return `heading to ${getTileLabel(settler.homeTileId)}`;
   if (settler.activity === 'commuting_work' && settler.assignedWorkTileId) return `heading to ${getTileLabel(settler.assignedWorkTileId)}`;
@@ -155,8 +160,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.76);
+  backdrop-filter: blur(4px);
 }
 
 .population-modal-panel {
@@ -166,8 +171,8 @@ onUnmounted(() => {
   border-radius: 28px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.88)),
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 58%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 58%);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
   color: #f8fafc;
 }

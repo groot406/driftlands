@@ -93,6 +93,7 @@ import { DebugRenderer } from './render/debug/DebugRenderer';
 import { DEFAULT_DEBUG_FLAGS } from './render/debug/DebugFlags';
 import {
     computeTileSettlerOffsets,
+    getSettlerRenderCoords,
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './render/entities/settlerRender';
@@ -708,18 +709,21 @@ export class HexMapService {
         const visibleSettlers = settlers
             .filter((settler) => isSettlerVisibleOnMap(settler))
             .sort((a, b) => {
-                if (a.r !== b.r) {
-                    return a.r - b.r;
+                const aCoords = getSettlerRenderCoords(a);
+                const bCoords = getSettlerRenderCoords(b);
+                if (aCoords.r !== bCoords.r) {
+                    return aCoords.r - bCoords.r;
                 }
-                if (a.q !== b.q) {
-                    return a.q - b.q;
+                if (aCoords.q !== bCoords.q) {
+                    return aCoords.q - bCoords.q;
                 }
                 return a.id.localeCompare(b.id);
             });
 
         const settlerLayoutMap = new Map<string, Settler[]>();
         for (const settler of visibleSettlers) {
-            const key = axialKey(settler.q, settler.r);
+            const renderCoords = getSettlerRenderCoords(settler);
+            const key = axialKey(renderCoords.q, renderCoords.r);
             let list = settlerLayoutMap.get(key);
             if (!list) {
                 list = [];
@@ -735,12 +739,13 @@ export class HexMapService {
 
         const now = Date.now();
         const bounds = visibleSettlers.map((settler) => {
+            const renderCoords = getSettlerRenderCoords(settler);
             const interp = getSettlerInterpolatedPixelPosition(settler, now);
-            const screen = this.worldToScreen(settler.q, settler.r);
-            const layout = settlerLayouts.get(axialKey(settler.q, settler.r)) || {};
+            const screen = this.worldToScreen(renderCoords.q, renderCoords.r);
+            const layout = settlerLayouts.get(axialKey(renderCoords.q, renderCoords.r)) || {};
             const pos = layout[settler.id] || { x: -6, y: 7 };
-            const offsetX = interp.x - axialToPixel(settler.q, settler.r).x;
-            const offsetY = interp.y - axialToPixel(settler.q, settler.r).y;
+            const offsetX = interp.x - axialToPixel(renderCoords.q, renderCoords.r).x;
+            const offsetY = interp.y - axialToPixel(renderCoords.q, renderCoords.r).y;
             const left = screen.x + pos.x + offsetX - 5;
             const top = screen.y + pos.y + offsetY - 15;
 
@@ -4788,6 +4793,7 @@ export class HexMapService {
         wood: '🪵',
         ore: '⛏️',
         stone: '🪨',
+        tools: '🛠️',
         food: '🍎',
         crystal: '🔮',
         artifact: '🗿',

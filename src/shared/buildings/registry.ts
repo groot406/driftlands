@@ -36,6 +36,9 @@ export interface BuildingDefinition {
     consumes?: ResourceAmount[];
     produces?: ResourceAmount[];
     jobLabel?: string;
+    jobPresentation?: 'indoor' | 'outdoor' | 'field';
+    repairResources?: ResourceAmount[];
+    maintenanceDecayPerMinute?: number;
     getJobResources?(tile: Tile, assignedWorkers: number): { consumes?: ResourceAmount[]; produces?: ResourceAmount[] };
     canPlace(tile: Tile, hero: Hero): boolean;
     requiredXp(distance: number): number;
@@ -364,7 +367,8 @@ const buildings: BuildingDefinition[] = [
         requiredResources(_distance: number) {
             return [
                 { type: 'wood', amount: 60 },
-                { type: 'ore', amount: 24 },
+                { type: 'ore', amount: 12 },
+                { type: 'tools', amount: 8 },
                 { type: 'food', amount: 18 },
             ];
         },
@@ -387,6 +391,8 @@ const buildings: BuildingDefinition[] = [
         overlayAssetKey: 'building_depot_overlay',
         providesWarehouse: true,
         maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.2,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
@@ -430,6 +436,9 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Fisher',
+        jobPresentation: 'outdoor',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 2.4,
         getJobResources(tile, assignedWorkers) {
             const nearbyWaterTiles = countActiveAdjacentTiles(tile, 'water');
             return {
@@ -490,6 +499,9 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Timber crew',
+        jobPresentation: 'field',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 2.1,
         getJobResources(tile, assignedWorkers) {
             return {
                 produces: [{ type: 'wood', amount: countActiveConnectedTiles(tile, 'forest') * assignedWorkers }],
@@ -528,6 +540,9 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Grain keeper',
+        jobPresentation: 'field',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.9,
         getJobResources(tile, assignedWorkers) {
             return {
                 produces: [{ type: 'grain', amount: countActiveConnectedTiles(tile, 'grain') * assignedWorkers }],
@@ -568,6 +583,9 @@ const buildings: BuildingDefinition[] = [
         consumes: [{ type: 'grain', amount: 1 }],
         produces: [{ type: 'food', amount: 3 }],
         jobLabel: 'Baker',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.6,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
@@ -592,6 +610,50 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'workshop',
+        label: 'Workshop',
+        summary: 'Turns ore into tools for expansion and advanced upgrades.',
+        categoryLabel: 'Industry',
+        buildTaskKey: 'buildWorkshop',
+        buildTaskLabel: 'Build Workshop',
+        sortOrder: 38,
+        requiredPopulation: 5,
+        variantKeys: ['plains_workshop', 'dirt_workshop'],
+        overlayAssetKey: 'building_depot_overlay',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        consumes: [{ type: 'ore', amount: 2 }],
+        produces: [{ type: 'tools', amount: 1 }],
+        jobLabel: 'Toolmaker',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.8,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 4200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 10 },
+                { type: 'stone', amount: 4 },
+                { type: 'ore', amount: 4 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_workshop', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_workshop', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
         key: 'house',
         label: 'House',
         summary: 'Shelters settlers and raises the colony population cap by 2.',
@@ -601,6 +663,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 37,
         variantKeys: ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'],
         maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.1,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
         },
@@ -638,6 +702,9 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Stone crew',
+        jobPresentation: 'outdoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.4,
         getJobResources(tile, assignedWorkers) {
             return {
                 produces: [{ type: 'stone', amount: getQuarryStonePerCycle(tile, assignedWorkers) }],
@@ -674,6 +741,9 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Miner',
+        jobPresentation: 'outdoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.4,
         getJobResources(tile, assignedWorkers) {
             return {
                 produces: [{ type: 'ore', amount: getMineOrePerCycle(tile, assignedWorkers) }],

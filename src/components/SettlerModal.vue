@@ -108,7 +108,7 @@ const settlerName = computed(() => {
 
 const activityLabel = computed(() => settler.value ? formatTitleCase(settler.value.activity) : 'Unknown');
 const homeLabel = computed(() => formatTileLabel(settler.value?.homeTileId));
-const workLabel = computed(() => formatTileLabel(settler.value?.assignedWorkTileId));
+const workLabel = computed(() => formatTileLabel(settler.value?.workTileId ?? settler.value?.assignedWorkTileId));
 const accessLabel = computed(() => `Access via ${formatTileLabel(settler.value?.homeAccessTileId)}`);
 
 const isHungry = computed(() => (settler.value?.hungerMs ?? 0) >= HUNGRY_MS);
@@ -118,6 +118,12 @@ const workProgressLabel = computed(() => {
   const currentSettler = settler.value;
   if (!currentSettler?.assignedWorkTileId) {
     return 'No active work cycle';
+  }
+
+  if (currentSettler.assignedRole === 'repair') {
+    const clamped = Math.min(currentSettler.workProgressMs, 30_000);
+    const percent = Math.round((clamped / 30_000) * 100);
+    return `Repair ${percent}% · ${formatDuration(clamped)} / ${formatDuration(30_000)}`;
   }
 
   const workTile = tileIndex[currentSettler.assignedWorkTileId] ?? null;
@@ -160,8 +166,8 @@ const locationSummary = computed(() => {
     return `Inside ${homeLabel.value}`;
   }
 
-  if (currentSettler.assignedWorkTileId && currentSettler.activity === 'working') {
-    return `Working at ${workLabel.value}`;
+  if ((currentSettler.activity === 'working' || currentSettler.activity === 'repairing') && (currentSettler.workTileId || currentSettler.assignedWorkTileId)) {
+    return `${currentSettler.activity === 'repairing' ? 'Repairing' : 'Working'} at ${workLabel.value}`;
   }
 
   if (currentSettler.activity === 'commuting_home') {
@@ -201,7 +207,7 @@ const positionLabel = computed(() => {
     return `Inside ${homeLabel.value}`;
   }
 
-  if (currentSettler.assignedWorkTileId) {
+  if (currentSettler.workTileId || currentSettler.assignedWorkTileId) {
     return `Near ${workLabel.value}`;
   }
 
@@ -259,8 +265,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
 }
 
 .settler-modal-panel {
@@ -268,8 +274,8 @@ onUnmounted(() => {
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.88)),
-    radial-gradient(circle at top, rgba(45, 212, 191, 0.12), transparent 60%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
+    radial-gradient(circle at top, rgba(45, 212, 191, 0.1), transparent 60%);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
   color: #f8fafc;
 }

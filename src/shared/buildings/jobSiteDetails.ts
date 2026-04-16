@@ -142,6 +142,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
         || (building.produces ?? []).some((resource) => resource.type === 'food');
     const buildingProducesStone = building.key === 'quarry'
         || (building.produces ?? []).some((resource) => resource.type === 'stone');
+    const buildingProducesTools = building.key === 'workshop'
+        || (building.produces ?? []).some((resource) => resource.type === 'tools');
 
     switch (site.status) {
         case 'offline':
@@ -191,6 +193,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Food still needs empty storage, even if settlers will eat it soon, so keep some buffer space available.');
             } else if (buildingProducesStone) {
                 pushAdvice(advice, 'Stone piles up quickly when no upgrades or roads are consuming it, so storage and spending both matter.');
+            } else if (buildingProducesTools) {
+                pushAdvice(advice, 'Tools are compact but precious, so keep workshop output moving into expansion and advanced upgrade projects.');
             }
             break;
         case 'depleted':
@@ -220,6 +224,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Quarries scale with their own mountain plus adjacent active ridge tiles, so broad mountain clusters produce the best stone flow.');
             } else if (building.key === 'dock') {
                 pushAdvice(advice, 'Dock yield scales with adjacent active water, so broad shoreline coves make better fishing platforms than cramped inlets.');
+            } else if (building.key === 'workshop') {
+                pushAdvice(advice, 'Workshops are the ore sink: keep mines staffed so toolmaking does not starve.');
             }
             break;
     }

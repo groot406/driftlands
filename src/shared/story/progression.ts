@@ -14,6 +14,7 @@ export type BuildingKey =
   | 'lumberCamp'
   | 'granary'
   | 'bakery'
+  | 'workshop'
   | 'mine'
   | 'quarry'
   | 'house'
@@ -39,6 +40,7 @@ export type ProgressionNodeKey =
   | 'timber_industry'
   | 'masonry'
   | 'harsh_frontier'
+  | 'toolmaking'
   | 'expansion'
   | 'deep_frontier';
 
@@ -199,6 +201,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Turns stored grain into dependable food once workers staff it.',
     taskKey: 'buildBakery',
   },
+  workshop: {
+    label: 'Workshop',
+    description: 'Turns ore into tools for expansion and advanced upgrades.',
+    taskKey: 'buildWorkshop',
+  },
   mine: {
     label: 'Mine',
     description: 'Establishes a lasting ore extraction point in the ridges.',
@@ -274,9 +281,13 @@ const TASK_META: Record<string, { label: string; description: string }> = {
     label: 'Convert To Grass',
     description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
-  forage: {
-    label: 'Forage',
-    description: 'Scrounge a little food from the nearby land when the colony needs an emergency meal.',
+  campfireRations: {
+    label: 'Cook Rations',
+    description: 'Burn spare wood at a campfire to create a little emergency food.',
+  },
+  hunt: {
+    label: 'Hunt',
+    description: 'Gather emergency food from nearby forests when the stores run thin.',
   },
   tillLand: {
     label: 'Prepare Land',
@@ -395,7 +406,8 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'task', key: 'buildRoad' },
       { kind: 'task', key: 'dig' },
       { kind: 'task', key: 'convertToGrass' },
-      { kind: 'task', key: 'forage' },
+      { kind: 'task', key: 'campfireRations' },
+      { kind: 'task', key: 'hunt' },
       { kind: 'task', key: 'breakDirtRock' },
       { kind: 'terrain', key: 'plains' },
       { kind: 'terrain', key: 'forest' },
@@ -584,14 +596,30 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     ],
   },
   {
+    key: 'toolmaking',
+    label: 'Toolmaking',
+    category: 'Industry',
+    description: 'Ore becomes real industry once a workshop can turn it into tools.',
+    requirements: [
+      { kind: 'building_operational_at_least', buildingKey: 'mine', amount: 1 },
+      { kind: 'resource_stock_at_least', resourceType: 'ore', amount: 6 },
+      { kind: 'population_at_least', amount: 5 },
+    ],
+    sortOrder: 125,
+    unlocks: [
+      { kind: 'building', key: 'workshop' },
+    ],
+  },
+  {
     key: 'expansion',
     label: 'Expansion',
     category: 'Settlement',
-    description: 'Ore output finally supports founding a second settlement anchor.',
+    description: 'Tools and ore output finally support founding a second settlement anchor.',
     requirements: [
       { kind: 'population_at_least', amount: 7 },
-      { kind: 'resource_stock_at_least', resourceType: 'ore', amount: 12 },
+      { kind: 'resource_stock_at_least', resourceType: 'tools', amount: 6 },
       { kind: 'building_operational_at_least', buildingKey: 'mine', amount: 1 },
+      { kind: 'building_operational_at_least', buildingKey: 'workshop', amount: 1 },
     ],
     sortOrder: 130,
     unlocks: [

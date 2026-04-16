@@ -18,9 +18,15 @@ test('task economy formulas stay flat regardless of distance', () => {
 test('building economy formulas stay flat regardless of distance', () => {
   const dock = getBuildingDefinitionByTaskKey('buildDock');
   const townCenter = getBuildingDefinitionByTaskKey('buildTownCenter');
+  const workshop = getBuildingDefinitionByTaskKey('buildWorkshop');
 
   assert.equal(dock?.requiredXp(1), dock?.requiredXp(20));
   assert.deepEqual(dock?.requiredResources(1), dock?.requiredResources(20));
+  assert.deepEqual(workshop?.consumes, [
+    { type: 'ore', amount: 2 },
+  ]);
+  assert.deepEqual(workshop?.produces, [{ type: 'tools', amount: 1 }]);
   assert.equal(townCenter?.requiredXp(1), townCenter?.requiredXp(20));
+  assert.deepEqual(townCenter?.requiredResources(1).find((resource) => resource.type === 'tools'), { type: 'tools', amount: 8 });
   assert.deepEqual(townCenter?.requiredResources(1), townCenter?.requiredResources(20));
 });

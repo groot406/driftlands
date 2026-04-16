@@ -21,6 +21,8 @@ body, html {
   background: black;
   overflow:hidden;
   user-select: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: subpixel-antialiased;
 }
 
 .pixel-font {

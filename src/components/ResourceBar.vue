@@ -44,6 +44,7 @@ watch(() => resourceVersion.value, () => {
     {key: 'wood', label: 'Wood', icon: '\uD83C\uDF32'},
     {key: 'ore', label: 'Ore', icon: '\u26CF\uFE0F'},
     {key: 'stone', label: 'Stone', icon: '\uD83E\uDEA8'},
+    {key: 'tools', label: 'Tools', icon: '\uD83D\uDEE0\uFE0F'},
     {key: 'food', label: 'Food', icon: '\uD83C\uDF56'},
     {key: 'grain', label: 'Grain', icon: '\uD83C\uDF3E'},
     {key: 'water_lily', label: 'Water Lilies', icon: '\uD83E\uDEB7'},

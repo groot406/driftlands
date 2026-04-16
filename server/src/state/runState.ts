@@ -83,6 +83,10 @@ const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: 
     speakerId: 'h2',
     text: 'The forgiving ground ends here. Snow and desert are within reach now, if the colony can keep itself fed on the march.',
   },
+  toolmaking: {
+    speakerId: 'h4',
+    text: 'Ore is useful. Tools are leverage. Give the miners a workshop and the whole frontier starts moving differently.',
+  },
   expansion: {
     speakerId: 'h1',
     text: 'One settlement is no longer enough for what we are trying to become. It is time to plant another center stone.',

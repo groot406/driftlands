@@ -74,6 +74,9 @@ function serializeTile(tile: Tile): Tile {
     activationState: tile.activationState ?? null,
     supportBand: tile.supportBand ?? null,
     jobSiteEnabled: tile.jobSiteEnabled ?? null,
+    condition: tile.condition ?? null,
+    conditionState: tile.conditionState ?? null,
+    lastConditionUpdateMs: tile.lastConditionUpdateMs ?? null,
   };
 }
 
@@ -136,7 +139,11 @@ function serializeSettler(settler: Settler): Settler {
     homeAccessTileId: settler.homeAccessTileId,
     settlementId: settler.settlementId ?? null,
     assignedWorkTileId: settler.assignedWorkTileId ?? null,
+    assignedRole: settler.assignedRole ?? null,
+    workTileId: settler.workTileId ?? null,
+    hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
     activity: settler.activity,
+    blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,
     stateSinceMs: settler.stateSinceMs,
     hungerMs: settler.hungerMs,
     fatigueMs: settler.fatigueMs,

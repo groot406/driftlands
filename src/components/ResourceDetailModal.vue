@@ -29,6 +29,21 @@
               <p class="resource-detail-label">Net Flow</p>
               <p class="resource-detail-value" :class="activeResource.netClass">{{ formatSigned(activeResource.net) }}/min</p>
             </div>
+            <div v-if="activeResource.maintenanceDemand" class="resource-detail-card">
+              <p class="resource-detail-label">Maintenance Need</p>
+              <p
+                class="resource-detail-value"
+                :class="activeResource.maintenanceDemand.shortfall > 0 ? 'resource-detail-bad' : 'resource-detail-neutral'"
+              >
+                {{ activeResource.maintenanceDemand.amount }} now
+              </p>
+              <p
+                v-if="activeResource.maintenanceDemand.shortfall > 0"
+                class="resource-detail-card-note resource-detail-bad"
+              >
+                {{ activeResource.maintenanceDemand.shortfall }} short
+              </p>
+            </div>
           </div>
         </section>
 
@@ -55,7 +70,20 @@
               <span>-{{ formatAmount(entry.amount) }}/min</span>
             </div>
           </div>
-          <p v-else class="resource-detail-empty">No active consumption right now.</p>
+          <p v-else class="resource-detail-empty">No active per-minute consumption right now.</p>
+          <div v-if="activeResource.maintenanceDemand" class="resource-detail-list resource-detail-maintenance-list">
+            <div class="resource-detail-list-row resource-detail-list-row-maintenance">
+              <span>Building repairs</span>
+              <span>{{ activeResource.maintenanceDemand.amount }} needed now</span>
+            </div>
+            <div
+              v-if="activeResource.maintenanceDemand.shortfall > 0"
+              class="resource-detail-list-row resource-detail-list-row-maintenance"
+            >
+              <span>Repair shortfall</span>
+              <span>{{ activeResource.maintenanceDemand.shortfall }} missing</span>
+            </div>
+          </div>
         </section>
       </section>
     </div>
@@ -69,10 +97,12 @@ import { tileIndex } from '../core/world.ts';
 import { getBuildingDefinitionByKey } from '../shared/buildings/registry.ts';
 import { getPerMinuteResources } from '../shared/buildings/jobSiteDetails.ts';
 import { resolveBuildingJobResources } from '../shared/buildings/registry.ts';
+import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
 import { workforceState } from '../store/clientJobStore';
 import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { populationState } from '../store/clientPopulationStore';
 import { resourceInventory } from '../store/resourceStore';
+import { settlers } from '../store/settlerStore.ts';
 import { closeResourceDetailModal, selectedResourceDetail } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 
@@ -82,6 +112,7 @@ const RESOURCE_META: Record<ResourceType, { label: string; icon: string }> = {
   grain: { label: 'Grain', icon: '🌾' },
   ore: { label: 'Ore', icon: '⛏️' },
   stone: { label: 'Stone', icon: '🪨' },
+  tools: { label: 'Tools', icon: '🛠️' },
   water_lily: { label: 'Water Lilies', icon: '🪷' },
   water: { label: 'Water', icon: '💧' },
   crystal: { label: 'Crystal', icon: '💎' },
@@ -137,6 +168,8 @@ const activeResource = computed(() => {
   const consumedAmount = consumers.reduce((sum, entry) => sum + entry.amount, 0);
   const net = Number((producedAmount - consumedAmount).toFixed(1));
   const meta = RESOURCE_META[resourceType];
+  const maintenanceOverview = getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
+  const maintenanceDemand = maintenanceOverview.backlogResources.find((resource) => resource.type === resourceType) ?? null;
 
   return {
     key: resourceType,
@@ -147,6 +180,7 @@ const activeResource = computed(() => {
     net,
     producers,
     consumers,
+    maintenanceDemand,
     netClass: net > 0 ? 'resource-detail-good' : net < 0 ? 'resource-detail-bad' : 'resource-detail-neutral',
   };
 });
@@ -191,8 +225,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.76);
+  backdrop-filter: blur(4px);
 }
 
 .resource-detail-panel {
@@ -202,8 +236,8 @@ onUnmounted(() => {
   border-radius: 28px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.88)),
-    radial-gradient(circle at top, rgba(245, 158, 11, 0.14), transparent 58%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
+    radial-gradient(circle at top, rgba(245, 158, 11, 0.11), transparent 58%);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
   color: #f8fafc;
 }
@@ -252,9 +286,18 @@ onUnmounted(() => {
   padding: 14px;
 }
 
+.resource-detail-card-note {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
 .resource-detail-list {
   display: grid;
   gap: 10px;
+}
+
+.resource-detail-maintenance-list {
+  margin-top: 10px;
 }
 
 .resource-detail-list-row {
@@ -265,6 +308,13 @@ onUnmounted(() => {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(15, 23, 42, 0.48);
+}
+
+.resource-detail-list-row-maintenance {
+  border-color: rgba(251, 191, 36, 0.22);
+  background:
+    linear-gradient(180deg, rgba(120, 53, 15, 0.2), rgba(15, 23, 42, 0.52)),
+    rgba(15, 23, 42, 0.48);
 }
 
 .resource-detail-good {

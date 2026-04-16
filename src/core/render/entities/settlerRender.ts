@@ -1,16 +1,32 @@
 import { axialToPixel } from '../../camera';
 import type { Settler } from '../../types/Settler';
+import { tileIndex } from '../../../shared/game/world';
 
 export function isSettlerHiddenInHouse(settler: Settler) {
-    return settler.activity === 'sleeping';
+    return settler.activity === 'sleeping'
+        || (!!settler.hiddenWhileWorking && (settler.activity === 'working' || settler.activity === 'repairing'));
 }
 
 export function isSettlerVisibleOnMap(settler: Settler) {
     return !isSettlerHiddenInHouse(settler);
 }
 
+export function getSettlerRenderCoords(settler: Settler) {
+    if (!settler.movement && settler.workTileId && (settler.activity === 'working' || settler.activity === 'repairing')) {
+        const workTile = tileIndex[settler.workTileId];
+        if (workTile) {
+            return { q: workTile.q, r: workTile.r };
+        }
+    }
+
+    return { q: settler.q, r: settler.r };
+}
+
 export function getSettlerInterpolatedPixelPosition(settler: Settler, now: number) {
-    if (!settler.movement) return axialToPixel(settler.q, settler.r);
+    if (!settler.movement) {
+        const renderCoords = getSettlerRenderCoords(settler);
+        return axialToPixel(renderCoords.q, renderCoords.r);
+    }
     const movement = settler.movement;
     const elapsed = now - movement.startMs;
     if (elapsed < 0) return axialToPixel(movement.origin.q, movement.origin.r);

@@ -102,7 +102,7 @@ test('settlers only consume food after they arrive at storage', () => {
   assert.equal(settlers[0]?.movement?.target.q, 0);
   assert.equal(settlers[0]?.movement?.target.r, 0);
 
-  tickAt(3_000, 2_000);
+  tickAt(6_000, 5_000);
   assert.equal(resourceInventory.food, 1);
   assert.equal(settlers[0]?.hungerMs, 0);
   assert.equal(settlers[0]?.q, 0);
@@ -144,7 +144,7 @@ test('job output reaches inventory only after a settler returns to storage', () 
   assert.equal(settlers[0]?.movement?.target.q, 0);
   assert.equal(settlers[0]?.movement?.target.r, 0);
 
-  tickAt(64_000, 2_000);
+  tickAt(69_000, 7_000);
   assert.equal(resourceInventory.wood, 1);
   assert.equal(settlers[0]?.carryingPayload, undefined);
   assert.equal(settlers[0]?.q, 0);
@@ -182,10 +182,52 @@ test('tired settlers go home to sleep before resuming work', () => {
   assert.equal(settlers[0]?.movement?.target.q, 0);
   assert.equal(settlers[0]?.activity, 'commuting_home');
 
-  tickAt(3_000, 2_000);
+  tickAt(7_000, 6_000);
   assert.equal(settlers[0]?.activity, 'sleeping');
 
-  tickAt(50_000, 47_000);
+  tickAt(53_000, 46_000);
   assert.equal(settlers[0]?.fatigueMs, 0);
   assert.equal(settlers[0]?.activity === 'sleeping', false);
+});
+
+test('settlers blocked by missing job inputs stay waiting instead of flickering idle', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  assert.equal(settlers[0]?.activity, 'waiting');
+  assert.deepEqual(settlers[0]?.blockerReason, {
+    code: 'missing_input',
+    resourceType: 'grain',
+    amount: 1,
+    tileId: '1,0',
+  });
+
+  tickAt(2_000, 1_000);
+  assert.equal(settlers[0]?.activity, 'waiting');
+  assert.equal(settlers[0]?.blockerReason?.code, 'missing_input');
 });
