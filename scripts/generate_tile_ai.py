@@ -63,11 +63,12 @@ DEFAULT_SIZE = 64
 # ---------------------------------------------------------------------------
 
 STYLE_PROMPT = (
-    "Top-down pixel art game tile, 64×64 pixels, hex-shaped tile for a colony "
-    "simulation game. Earthy natural palette, soft lighting, subtle dithering, "
-    "no outlines on the hex border. The tile should look good when tiled next "
-    "to other hex tiles. Viewed from slightly above (isometric-lite). "
-    "Clean pixel art, no anti-aliasing, limited color palette."
+    "Extremely low-resolution pixel art, exactly 64×64 pixel grid, each pixel "
+    "clearly visible as a distinct square block. Top-down hex game tile for a "
+    "retro colony sim. Minimal detail – only a handful of colors per tile, "
+    "chunky blocky shapes, NO fine detail, NO gradients, NO anti-aliasing. "
+    "Think SNES / GBA era sprite art. The entire image is a 64×64 grid "
+    "upscaled so every pixel is a sharp square. Earthy muted natural palette."
 )
 
 
@@ -509,8 +510,28 @@ def clean_edge_outline(tile: Image.Image) -> Image.Image:
     return tile
 
 
-def postprocess(raw: Image.Image, size: int = DEFAULT_SIZE, *, is_overlay: bool = False) -> Image.Image:
-    """Convert a raw AI-generated image into a game-ready hex tile."""
+def quantize_colors(img: Image.Image, max_colors: int = 24) -> Image.Image:
+    """Reduce the palette to a small number of colors for a retro pixel-art feel."""
+    alpha = img.getchannel("A")
+    rgb = img.convert("RGB")
+    quantized = rgb.quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT, dither=0)
+    result = quantized.convert("RGBA")
+    result.putalpha(alpha)
+    return result
+
+
+def postprocess(raw: Image.Image, size: int = DEFAULT_SIZE, *, is_overlay: bool = False, max_colors: int = 24) -> Image.Image:
+    """Convert a raw AI-generated image into a game-ready hex tile.
+
+    The AI generates at 1024×1024 (DALL-E minimum). To get clean 64×64 pixel
+    art we:
+      1. Center-crop to square
+      2. Downscale with BOX resampling (area-average) so each output pixel is
+         the average of a 16×16 block – this collapses any pseudo-pixel grid
+         the model drew into single solid pixels.
+      3. Quantize the palette to ≤24 colours for a retro look.
+      4. Apply the hex mask + edge cleanup.
+    """
     raw = raw.convert("RGBA")
 
     # Center crop to square
@@ -519,11 +540,13 @@ def postprocess(raw: Image.Image, size: int = DEFAULT_SIZE, *, is_overlay: bool 
     top = (raw.height - s) // 2
     tile = raw.crop((left, top, left + s, top + s))
 
-    # Resize – use NEAREST for a crisp pixel-art look
-    tile = tile.resize((size, size), Image.Resampling.NEAREST)
+    # Downscale with BOX (area average) – collapses detail into solid pixels
+    tile = tile.resize((size, size), Image.Resampling.BOX)
+
+    # Reduce palette for a clean pixel-art look
+    tile = quantize_colors(tile, max_colors=max_colors)
 
     if not is_overlay:
-        # Apply hex mask
         tile.putalpha(hex_mask(size))
         tile = clean_edge_outline(tile)
 
@@ -601,6 +624,7 @@ def generate_tile(
     backend: str = "openai",
     model: Optional[str] = None,
     size: int = DEFAULT_SIZE,
+    max_colors: int = 24,
     raw: bool = False,
     outdir: Optional[Path] = None,
     force: bool = False,
@@ -637,7 +661,7 @@ def generate_tile(
         return draft_path
 
     # Post-process
-    tile_img = postprocess(raw_img, size, is_overlay=tile.is_overlay)
+    tile_img = postprocess(raw_img, size, is_overlay=tile.is_overlay, max_colors=max_colors)
     tile_img.save(out_path)
     print(f"  ✅ Tile → {out_path.relative_to(ROOT)}")
     return out_path
@@ -673,6 +697,8 @@ def parse_args() -> argparse.Namespace:
                     help="Custom output directory (default: src/assets/tiles/).")
     p.add_argument("--force", action="store_true",
                     help="Overwrite existing files.")
+    p.add_argument("--colors", type=int, default=24,
+                    help="Max palette colors after quantization (default: 24).")
     p.add_argument("--delay", type=float, default=1.0,
                     help="Delay in seconds between API calls (rate limiting).")
     return p.parse_args()
@@ -744,6 +770,7 @@ def main() -> None:
                 backend=args.backend,
                 model=args.model,
                 size=args.size,
+                max_colors=args.colors,
                 raw=args.raw,
                 outdir=args.outdir,
                 force=args.force,
