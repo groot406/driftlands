@@ -3,7 +3,7 @@ import {serverMessageRouter} from '../messages/messageRouter';
 import type {StartTaskRequestMessage } from '../../../src/shared/protocol';
 import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../src/shared/game/state/taskStore';
 import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
-import { getTile } from '../../../src/shared/game/world';
+import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 
@@ -24,7 +24,7 @@ export class ServerTaskHandler {
 
         coopState.touchHeroActivity(heroId);
 
-        const tile = getTile(location);
+        const tile = getTileForTaskLocation(location, task);
         if (!tile) return;
 
         if (!isHeroAtTaskAccess(hero, task, tile)) return;
@@ -57,4 +57,16 @@ function normalizeExploreTarget(task: string, target: { q: number; r: number } |
         q: Math.trunc(target.q),
         r: Math.trunc(target.r),
     };
+}
+
+function getTileForTaskLocation(location: { q: number; r: number }, task: string) {
+    if (!Number.isFinite(location.q) || !Number.isFinite(location.r)) {
+        return null;
+    }
+
+    if (task === 'explore') {
+        return ensureTileExists(Math.trunc(location.q), Math.trunc(location.r));
+    }
+
+    return getTile(location);
 }

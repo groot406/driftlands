@@ -1,4 +1,4 @@
-import {discoverTile, ensureTileExists, getTile} from '../../../core/world';
+import {discoverTile, getTile} from '../../../core/world';
 import { resolveWorldTile } from '../../../core/worldGeneration';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
@@ -6,8 +6,9 @@ import type {Hero} from "../../../core/types/Hero";
 import { SIDE_NAMES, type Tile } from "../../../core/types/Tile";
 import { PathService } from '../../game/PathService';
 import { moveHeroWithRuntime } from '../../game/runtime';
-import { computeControlledTileIds, isPositionControlled } from '../../game/state/settlementSupportStore';
+import { isPositionControlled } from '../../game/state/settlementSupportStore';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
+import { listUndiscoveredFrontierTiles } from '../../game/explorationFrontier';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
 const EXPLORE_BASE_REQUIRED_XP = 795;
@@ -108,6 +109,10 @@ function moveHeroToExploreTile(hero: Hero, tile: Tile) {
 function pickNextExploreTile(tile: Tile, hero: Hero): Tile | null {
     const target = hero.pendingExploreTarget;
     if (target) {
+        if (isPendingExploreTargetReached(hero, target)) {
+            return null;
+        }
+
         const directed = pickDirectedControlledUndiscoveredTile(hero, target);
         if (directed) {
             return directed;
@@ -117,13 +122,17 @@ function pickNextExploreTile(tile: Tile, hero: Hero): Tile | null {
     return pickRandomControlledUndiscoveredNeighbor(tile, hero);
 }
 
-function pickDirectedControlledUndiscoveredTile(hero: Hero, target: { q: number; r: number }): Tile | null {
+function isPendingExploreTargetReached(hero: Hero, target: { q: number; r: number }) {
     const targetTile = getTile(target);
-    if (targetTile?.discovered) {
-        hero.pendingExploreTarget = undefined;
-        return null;
+    if (!targetTile?.discovered) {
+        return false;
     }
 
+    hero.pendingExploreTarget = undefined;
+    return true;
+}
+
+function pickDirectedControlledUndiscoveredTile(hero: Hero, target: { q: number; r: number }): Tile | null {
     const candidates = listReachableControlledUndiscoveredTiles(hero);
     if (!candidates.length) {
         return null;
@@ -155,15 +164,7 @@ function pickRandomControlledUndiscoveredNeighbor(tile: Tile, hero: Hero): Tile 
 function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
     const candidates: Tile[] = [];
 
-    for (const tileId of computeControlledTileIds()) {
-        const [qRaw, rRaw] = tileId.split(',');
-        const q = Number(qRaw);
-        const r = Number(rRaw);
-        if (!Number.isFinite(q) || !Number.isFinite(r)) {
-            continue;
-        }
-
-        const tile = ensureTileExists(q, r);
+    for (const tile of listUndiscoveredFrontierTiles()) {
         if (isReachableControlledUndiscoveredTile(tile, hero)) {
             candidates.push(tile);
         }

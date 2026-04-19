@@ -88,6 +88,7 @@ import {populationVersion} from '../store/clientPopulationStore';
 import {runSnapshot, runVersion} from '../store/runStore';
 import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
 import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
+import { listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
 import {
   computeControlledTileIds,
   isPositionControlled,
@@ -276,26 +277,28 @@ function setPathPreview(path: { q: number; r: number }[], hero: Hero, tile: Tile
 }
 
 function getControlledUndiscoveredHintStep(target: Tile, hero: Hero): Tile | null {
-  const controlledIds = computeControlledTileIds();
+  const frontierTiles = listUndiscoveredFrontierTiles();
   let best: { tile: Tile; distanceToTarget: number; distanceFromHero: number } | null = null;
 
-  for (const tileId of controlledIds) {
-    const sep = tileId.indexOf(',');
-    if (sep < 0) continue;
+  for (const candidate of frontierTiles) {
+    if (candidate.discovered) {
+      continue;
+    }
 
-    const q = Number(tileId.substring(0, sep));
-    const r = Number(tileId.substring(sep + 1));
-    if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
-
-    const candidate = tileIndex[tileId] ?? ensureTileExists(q, r);
-    if (candidate.discovered) continue;
+    if (!isPositionControlled(candidate.q, candidate.r)) {
+      continue;
+    }
 
     const accessTile = findNearestTaskAccessTile('explore', candidate, hero.q, hero.r);
-    if (!accessTile) continue;
+    if (!accessTile) {
+      continue;
+    }
 
     const canReachAccess = accessTile.q === hero.q && accessTile.r === hero.r
       || pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
-    if (!canReachAccess) continue;
+    if (!canReachAccess) {
+      continue;
+    }
 
     const distanceToTarget = pathService.axialDistance(candidate.q, candidate.r, target.q, target.r);
     const distanceFromHero = pathService.axialDistance(hero.q, hero.r, candidate.q, candidate.r);
@@ -312,18 +315,10 @@ function getControlledUndiscoveredHintStep(target: Tile, hero: Hero): Tile | nul
   return best?.tile ?? null;
 }
 
-function getStoryHintExplorationRoute(target: Tile, hero: Hero) {
-  if (target.discovered) {
-    return null;
-  }
-
-  const taskTile = isPositionControlled(target.q, target.r)
-    ? target
-    : getControlledUndiscoveredHintStep(target, hero);
-  if (!taskTile) {
-    return null;
-  }
-
+function buildStoryHintExplorationRoute(
+  taskTile: Tile,
+  hero: Hero,
+) {
   const accessTile = findNearestTaskAccessTile('explore', taskTile, hero.q, hero.r) ?? taskTile;
   const path = (accessTile.q === hero.q && accessTile.r === hero.r)
     ? []
@@ -338,14 +333,58 @@ function getStoryHintExplorationRoute(target: Tile, hero: Hero) {
   return { taskTile, accessTile, path };
 }
 
-function requestSelectedHeroExploreStoryHint(target: Tile) {
+function getStoryHintExplorationRoute(target: Tile, hero: Hero) {
+  if (target.discovered) {
+    return null;
+  }
+
+  if (isPositionControlled(target.q, target.r)) {
+    const directRoute = buildStoryHintExplorationRoute(target, hero);
+    if (directRoute) {
+      return directRoute;
+    }
+  }
+
+  const taskTile = getControlledUndiscoveredHintStep(target, hero);
+  if (!taskTile) {
+    return null;
+  }
+
+  return buildStoryHintExplorationRoute(taskTile, hero);
+}
+
+function requestSelectedHeroExploreStoryHint(target: Tile, source = 'map-click') {
+  const isStoryHintSource = source === 'story-hint';
   const selHero = getSelectedHero();
-  if (!selHero || !canControlHero(selHero.id, currentPlayerId.value)) {
+  const selectedHeroControllable = selHero ? canControlHero(selHero.id, currentPlayerId.value) : false;
+
+  if (!selHero) {
+    return false;
+  }
+
+  if (!selectedHeroControllable) {
+    if (isStoryHintSource) {
+      addNotification({
+        type: 'coop_state',
+        title: `${selHero.name} is occupied`,
+        message: `${getHeroOwnerName(selHero.id) ?? 'Another player'} has claimed this hero.`,
+        duration: 3000,
+      });
+    }
     return false;
   }
 
   const route = getStoryHintExplorationRoute(target, selHero);
+
   if (!route) {
+    if (isStoryHintSource) {
+      addNotification({
+        type: 'coop_state',
+        title: 'No route to hint',
+        message: 'No reachable frontier tile could be found for this explore target.',
+        duration: 3500,
+      });
+    }
     return false;
   }
 
@@ -370,9 +409,11 @@ function requestSelectedHeroExploreStoryHint(target: Tile) {
 }
 
 function handleStoryHintPointerUp(hint: { q: number; r: number }) {
-  if (isPaused() || dragged) return;
+  if (isPaused() || dragged) {
+    return;
+  }
   const target = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
-  requestSelectedHeroExploreStoryHint(target);
+  requestSelectedHeroExploreStoryHint(target, 'story-hint');
 }
 
 function handlePointerMoveEvent(ev: Event) {

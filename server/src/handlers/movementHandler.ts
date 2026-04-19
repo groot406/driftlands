@@ -2,7 +2,7 @@ import type {Socket} from 'socket.io';
 import {broadcast, serverMessageRouter} from '../messages/messageRouter';
 import type {MoveRequestMessage, PathUpdateMessage} from '../../../src/shared/protocol';
 import {handleHeroArrival} from "../../../src/shared/tasks/tasks";
-import { getTile } from '../../../src/shared/game/world';
+import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { getHero, heroes } from "../../../src/shared/game/state/heroStore";
 import { detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask, updateActiveTasks } from "../../../src/shared/game/state/taskStore";
 import { PathService } from "../../../src/shared/game/PathService";
@@ -51,7 +51,7 @@ export class ServerMovementHandler {
     ): boolean {
         if (!task) return false;
 
-        const tile = getTile(taskLocation ?? target);
+        const tile = getTileForTaskPosition(taskLocation ?? target, task);
         if (!tile) return false;
 
         const existing = getTaskByTile(tile.id, task);
@@ -90,13 +90,13 @@ export class ServerMovementHandler {
         // Always build the authoritative movement plan from the server's actual hero position.
         const origin = { q: hero.q, r: hero.r };
 
-        const targetTile = getTile(target);
+        const targetTile = getTileForTaskPosition(target, message.task);
         if (!targetTile) {
             return;
         }
 
         const logicalTaskTarget = message.taskLocation ?? target;
-        const logicalTaskTile = getTile(logicalTaskTarget);
+        const logicalTaskTile = getTileForTaskPosition(logicalTaskTarget, message.task);
         const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
         const exploreTarget = normalizeExploreTarget(message.task, message.exploreTarget);
         if (!isWalkablePosition(target.q, target.r) && targetTile.discovered && !canUseTaskTarget) return;
@@ -124,7 +124,7 @@ export class ServerMovementHandler {
             path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r);
         }
 
-        if (!path.length) return; // no path
+        if (!path.length) return;
 
         const now = Date.now();
         const startAt = clampMovementStart(message.startAt, now);
@@ -424,4 +424,16 @@ function normalizeExploreTarget(task: TaskType | undefined, target: { q: number;
         q: Math.trunc(target.q),
         r: Math.trunc(target.r),
     };
+}
+
+function getTileForTaskPosition(position: { q: number; r: number }, task: TaskType | undefined) {
+    if (!Number.isFinite(position.q) || !Number.isFinite(position.r)) {
+        return null;
+    }
+
+    if (task === 'explore') {
+        return ensureTileExists(Math.trunc(position.q), Math.trunc(position.r));
+    }
+
+    return getTile(position);
 }

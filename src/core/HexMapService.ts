@@ -45,6 +45,7 @@ import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/buildings/storage';
 import { getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
+import { isVisibleExplorationTile } from '../shared/game/explorationFrontier';
 import {
     consumePendingCameraNudges,
     consumePendingTerrainBursts,
@@ -1198,7 +1199,9 @@ export class HexMapService {
         const cameraMoving = isCameraMoving();
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
-        const radiusTiles = getTilesInRadius(cq, cr, camera.radius);
+        const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
+        const radiusTiles = getTilesInRadius(cq, cr, camera.radius)
+            .filter((tile) => isVisibleExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
         const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
         const dirtyChunkKeys = getDirtyChunkKeysForTiles(consumePendingRenderDirtyTiles(), this._renderConfig.terrainChunkSize);
@@ -1818,7 +1821,9 @@ export class HexMapService {
         const translateY = cy - camPx.y;
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
-        const visibleTiles = precomputedVisibleTiles ?? getTilesInRadius(cq, cr, camera.radius);
+        const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
+        const visibleTiles = precomputedVisibleTiles ?? getTilesInRadius(cq, cr, camera.radius)
+            .filter((tile) => isVisibleExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const allowInteractiveHighlights = !forMotionBlur;
         const allowPersistentWorldUi = allowInteractiveHighlights && !suppressWorldUi;
         ctx.save();

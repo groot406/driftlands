@@ -162,6 +162,75 @@ test('explore chaining steers toward a pending far target when one is set', asyn
     task: 'explore',
     taskLocation: undefined,
   }]);
+  assert.equal(tileIndex['-2,3'], undefined);
+});
+
+test('explore chaining stops once the pending far target is reached', async () => {
+  const townCenter = createDiscoveredTile({
+    id: '0,0',
+    q: 0,
+    r: 0,
+    terrain: 'towncenter',
+  });
+  const targetTile = createDiscoveredTile({
+    id: '1,0',
+    q: 1,
+    r: 0,
+    terrain: 'plains',
+  });
+
+  loadWorld([
+    townCenter,
+    targetTile,
+    createDiscoveredTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains' }),
+    createDiscoveredTile({ id: '1,1', q: 1, r: 1, terrain: 'plains' }),
+    createDiscoveredTile({ id: '0,1', q: 0, r: 1, terrain: 'plains' }),
+  ]);
+
+  const moveCalls: Array<{ q: number; r: number; task?: string }> = [];
+  configureGameRuntime({
+    moveHero: (_hero, target, task) => {
+      moveCalls.push({ q: target.q, r: target.r, task });
+    },
+  });
+
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Scout',
+    avatar: 'santa',
+    q: targetTile.q,
+    r: targetTile.r,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    pendingExploreTarget: { q: targetTile.q, r: targetTile.r },
+  };
+
+  const exploreTask = getTaskDefinition('explore');
+  assert.ok(exploreTask?.onComplete);
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.99;
+
+  try {
+    exploreTask.onComplete!(targetTile, {
+      id: 'task-explore-target-reached',
+      type: 'explore',
+      tileId: targetTile.id,
+      progressXp: 0,
+      requiredXp: 1,
+      createdMs: 0,
+      lastUpdateMs: 0,
+      participants: {},
+      active: true,
+    }, [hero]);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.deepEqual(moveCalls, []);
+  assert.equal(hero.pendingExploreTarget, undefined);
 });
 
 test('shore exploration reveals a small connected patch of water without sending heroes onto the water', async () => {
