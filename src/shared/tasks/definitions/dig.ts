@@ -11,6 +11,7 @@ const BLOCKED_VARIANTS = new Set([
   'plains_watchtower',
   'plains_depot',
   'plains_warehouse',
+  'plains_library',
   'plains_house',
   'plains_stone_house',
 ]);

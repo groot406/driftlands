@@ -8,6 +8,7 @@ import { loadPopulationSnapshot, resetPopulationState } from '../../../src/share
 import { loadSettlers, resetSettlerState } from '../../../src/shared/game/state/settlerStore';
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
+import { getStudySnapshot, resetStudyState } from '../../../src/store/studyStore';
 import { jobSystem } from './jobSystem';
 import { settlerSystem } from './settlerSystem';
 
@@ -74,6 +75,7 @@ test.afterEach(() => {
   resetSettlerState();
   resetSettlementSupportState();
   resetWorkforceState();
+  resetStudyState();
 });
 
 test('workforce snapshots reflect assigned settlers per site', () => {
@@ -281,4 +283,43 @@ test('workshop turns ore into delivered tools', () => {
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('library scholars advance the active study instead of producing resources', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_library' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(62_000, 61_000);
+
+  const study = getStudySnapshot().studies.find((entry) => entry.key === 'field_notebooks');
+  assert.equal(study?.progressMs, 60_000);
+  assert.equal(study?.completed, false);
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'staffed');
 });

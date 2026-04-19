@@ -11,6 +11,7 @@ export type RenderFeatureKey =
     | 'reachGlow'
     | 'heroAuras'
     | 'fogShimmer'
+    | 'tileRelief'
     | 'manualShadowComposite';
 
 export type RenderFeatureOverrideMode = 'auto' | 'off' | 'on';
@@ -26,6 +27,7 @@ export const renderFeatureOverrideStore = reactive<Record<RenderFeatureKey, Rend
     reachGlow: 'auto',
     heroAuras: 'auto',
     fogShimmer: 'auto',
+    tileRelief: 'auto',
     manualShadowComposite: 'auto',
 });
 

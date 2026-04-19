@@ -82,6 +82,8 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'dirt_warehouse',
     'plains_bakery',
     'dirt_bakery',
+    'plains_library',
+    'dirt_library',
     'plains_house',
     'dirt_house',
     'plains_stone_house',

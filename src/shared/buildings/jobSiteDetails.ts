@@ -66,6 +66,11 @@ export function getJobSiteStatusDescriptor(status: JobSiteStatus): JobSiteStatus
                 text: 'Depleted — this vein has run dry',
                 tone: 'danger',
             };
+        case 'complete':
+            return {
+                text: 'Complete — no studies waiting',
+                tone: 'ok',
+            };
         case 'staffed':
         default:
             return {

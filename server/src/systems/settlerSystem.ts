@@ -24,6 +24,7 @@ import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessag
 import { findNearestTaskAccessTile } from '../../../src/shared/tasks/taskAccess';
 import { tileIndex } from '../../../src/shared/game/world';
 import { canAssignWorkersToSite, finalizeMineExtraction, listResolvedJobSites } from './jobSiteRuntime';
+import { addStudyProgress, broadcastStudyState, hasActiveStudy } from '../../../src/store/studyStore';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
 import {
     getRepairNeededAmount,
@@ -860,6 +861,26 @@ function maybeFetchInput(settler: Settler, now: number) {
 
 function completeWorkCycle(settler: Settler, now: number) {
     const siteInfo = getSiteInputsOutputs(settler);
+    if (siteInfo?.site.building.jobKind === 'study') {
+        const completedStudy = addStudyProgress(siteInfo.site.building.cycleMs ?? SETTLER_MEAL_INTERVAL_MS);
+        settler.workProgressMs = 0;
+        broadcastStudyState();
+        if (completedStudy) {
+            emitGameplayEvent({
+                type: 'study:completed',
+                studyKey: completedStudy.key,
+            });
+        }
+
+        if (hasActiveStudy()) {
+            setActivity(settler, 'working', now);
+            return true;
+        }
+
+        setWaiting(settler, now, { code: 'no_work', tileId: settler.assignedWorkTileId ?? undefined });
+        return true;
+    }
+
     if (!siteInfo?.output || siteInfo.output.amount <= 0) {
         return setWaiting(settler, now, { code: 'resource_depleted', tileId: settler.assignedWorkTileId ?? undefined });
     }

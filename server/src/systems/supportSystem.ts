@@ -41,6 +41,7 @@ function rerouteHeroToActiveSettlementTile(heroId: string) {
 
     detachHeroFromCurrentTask(hero);
     hero.pendingTask = undefined;
+    hero.pendingExploreTarget = undefined;
 
     if (!fallbackTile) {
         hero.movement = undefined;

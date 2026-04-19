@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { loadWorld } from '../../../src/shared/game/world';
 import { listResolvedJobSites, resolveJobResources } from './jobSiteRuntime';
+import { resetStudyState } from '../../../src/store/studyStore';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -25,6 +26,7 @@ function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'te
 
 test.afterEach(() => {
   loadWorld([]);
+  resetStudyState();
 });
 
 test('quarry sites resolve into infinite stone-producing job sites', () => {

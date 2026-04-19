@@ -14,6 +14,7 @@ import {
     type StorageResourceTransfer,
 } from '../../../src/shared/game/state/resourceStore';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
+import { hasActiveStudy } from '../../../src/store/studyStore';
 import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
 import type { SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
@@ -32,7 +33,11 @@ export function isJobBuilding(building: BuildingDefinition | null | undefined): 
     return !!building
         && (building.jobSlots ?? 0) > 0
         && (building.cycleMs ?? 0) > 0
-        && ((building.produces?.length ?? 0) > 0 || typeof building.getJobResources === 'function');
+        && (
+            building.jobKind === 'study'
+            || (building.produces?.length ?? 0) > 0
+            || typeof building.getJobResources === 'function'
+        );
 }
 
 export function compareResolvedSites(a: ResolvedJobSite, b: ResolvedJobSite) {
@@ -197,6 +202,13 @@ export function getSiteBlockerReason(site: ResolvedJobSite, assignedWorkers: num
         };
     }
 
+    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+        return {
+            code: 'no_work',
+            tileId: site.tile.id,
+        };
+    }
+
     if (assignedWorkers <= 0) {
         return null;
     }
@@ -232,6 +244,10 @@ export function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: n
         return false;
     }
 
+    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+        return false;
+    }
+
     const blocked = getSiteOperationalBlock(site, assignedWorkers);
     return blocked !== 'storage_full' && blocked !== 'depleted';
 }
@@ -243,6 +259,10 @@ export function resolveSiteStatus(site: ResolvedJobSite, assignedWorkers: number
 
     if (!isJobSiteEnabled(site.tile)) {
         return 'paused';
+    }
+
+    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+        return 'complete';
     }
 
     if (assignedWorkers <= 0) {

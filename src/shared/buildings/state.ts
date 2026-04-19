@@ -2,6 +2,7 @@ import type { Tile } from '../../core/types/Tile.ts';
 import type { StorageKind } from '../game/storage.ts';
 import { getBuildingDefinitionForTile, type BuildingDefinition } from './registry.ts';
 import { getUpgradeDefinitionByKey, listUpgradeDefinitions, type UpgradeDefinition } from './upgrades.ts';
+import { getStudyJobOutputMultiplier } from '../../store/studyStore.ts';
 
 export interface BuildingStateSnapshot {
   building: BuildingDefinition;
@@ -46,7 +47,8 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
     ? ((upgrade?.effects.find((effect) => effect.kind === 'storage_kind_override')?.value
       ?? (building.key === 'supplyDepot' ? 'depot' : 'warehouse')) as StorageKind)
     : (building.key === 'supplyDepot' ? 'depot' : null);
-  const jobOutputMultiplier = upgrade?.effects.find((effect) => effect.kind === 'job_output_multiplier')?.value ?? 1;
+  const upgradeOutputMultiplier = upgrade?.effects.find((effect) => effect.kind === 'job_output_multiplier')?.value ?? 1;
+  const jobOutputMultiplier = upgradeOutputMultiplier * getStudyJobOutputMultiplier();
 
   return {
     building,

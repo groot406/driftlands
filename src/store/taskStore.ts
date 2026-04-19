@@ -328,6 +328,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     detachHeroFromCurrentTask(starter);
 
     const economyDistance = getTaskEconomyDistance();
+    const tileDistance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const requiredResources = def.requiredResources?.(economyDistance);
     const collectedResources: ResourceAmount[] = [];
 
@@ -345,7 +346,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
         type,
         tileId: tile.id,
         progressXp: 0,
-        requiredXp: def.requiredXp(economyDistance),
+        requiredXp: def.requiredXp(tileDistance),
         createdMs: nowMs,
         lastUpdateMs: nowMs,
         participants: {},

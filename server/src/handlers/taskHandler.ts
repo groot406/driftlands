@@ -29,6 +29,8 @@ export class ServerTaskHandler {
 
         if (!isHeroAtTaskAccess(hero, task, tile)) return;
 
+        hero.pendingExploreTarget = normalizeExploreTarget(task, message.exploreTarget);
+
         // If a task of this type already exists on this tile, join it; else start it.
         const existing = getTaskByTile(tile.id, task);
         if (!existing) {
@@ -40,4 +42,19 @@ export class ServerTaskHandler {
         // Kick task processing
         updateActiveTasks(heroes);
     }
+}
+
+function normalizeExploreTarget(task: string, target: { q: number; r: number } | undefined) {
+    if (task !== 'explore' || !target) {
+        return undefined;
+    }
+
+    if (!Number.isFinite(target.q) || !Number.isFinite(target.r)) {
+        return undefined;
+    }
+
+    return {
+        q: Math.trunc(target.q),
+        r: Math.trunc(target.r),
+    };
 }

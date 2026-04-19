@@ -162,6 +162,7 @@ export interface RenderQualityProfile {
     enableReachGlow: boolean;
     enableHeroAuras: boolean;
     enableFogShimmer: boolean;
+    enableTileRelief: boolean;
     enableManualShadowComposite: boolean;
     particleBudgetScale: number;
     overlaySoftness: number;
@@ -194,6 +195,7 @@ export interface HexMapDrawOptions {
     clusterTileIds?: ReadonlySet<string>;
     globalReachBoundary?: readonly AxialCoord[];
     globalReachTileIds?: ReadonlySet<string>;
+    storyHintTiles?: readonly AxialCoord[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean;
 }

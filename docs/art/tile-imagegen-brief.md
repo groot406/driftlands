@@ -1,5 +1,10 @@
 # Driftlands Tile Image Generation Brief
 
+For player-facing building art, use
+[`docs/art/building-pixel-art-pipeline.md`](./building-pixel-art-pipeline.md)
+instead. That pipeline is true pixel art, uses built-in image generation by
+default, and includes deterministic post-processing plus contact sheets.
+
 This brief packages the current terrain art direction into a concrete `imagegen` handoff for two goals:
 
 - improve the most visible live tiles without overwriting existing assets

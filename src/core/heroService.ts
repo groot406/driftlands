@@ -22,6 +22,7 @@ type StartHeroMovementOptions = {
     requestId?: string;
     authoritative?: boolean;
     taskLocation?: AxialCoord;
+    exploreTarget?: AxialCoord;
 };
 
 export function updateHeroMovements(nowMs: number = Date.now()) {
@@ -82,12 +83,23 @@ export function updateHeroMovements(nowMs: number = Date.now()) {
     }
 }
 
-export function startTaskRequest(heroId: string, taskType: string, location: { q: number; r: number }) {
+export function startTaskRequest(
+    heroId: string,
+    taskType: string,
+    location: { q: number; r: number },
+    exploreTarget?: { q: number; r: number },
+) {
+    const hero = heroes.find(h => h.id === heroId);
+    if (hero && taskType === 'explore' && exploreTarget) {
+        hero.pendingExploreTarget = { ...exploreTarget };
+    }
+
     const msg: StartTaskRequestMessage = {
         type: 'task:request_start',
         heroId,
         task: taskType as any,
         location,
+        exploreTarget,
     } as any;
     sendMessage(msg as any);
 }
@@ -234,6 +246,7 @@ export function requestHeroMovement(
     target: { q: number; r: number },
     taskType?: string,
     taskLocation?: { q: number; r: number },
+    exploreTarget?: { q: number; r: number },
 ) {
     const hero = heroes.find(h => h.id === heroId);
     if (!hero) return;
@@ -243,7 +256,7 @@ export function requestHeroMovement(
 
     // If there is no path (hero already at target), request immediate task start
     if (!normalizedPath.length) {
-        if (taskType) startTaskRequest(heroId, taskType, taskLocation ?? target);
+        if (taskType) startTaskRequest(heroId, taskType, taskLocation ?? target, exploreTarget);
         return;
     }
 
@@ -260,6 +273,7 @@ export function requestHeroMovement(
         path: normalizedPath.slice(),
         task: taskType as any,
         taskLocation,
+        exploreTarget,
     };
     sendMessage(msg as any);
 }
@@ -386,9 +400,13 @@ function syncPendingTask(
             tileId: ensureTileExists(logicalTarget.q, logicalTarget.r).id,
             taskType,
         } as HeroPendingTaskIntent;
+        hero.pendingExploreTarget = taskType === 'explore' && options?.exploreTarget
+            ? { ...options.exploreTarget }
+            : undefined;
         return;
     }
 
+    hero.pendingExploreTarget = undefined;
     if (!options?.authoritative) {
         hero.pendingTask = undefined;
     }

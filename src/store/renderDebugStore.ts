@@ -28,6 +28,7 @@ export interface RenderDebugState {
     reachGlowEnabled: boolean;
     heroAurasEnabled: boolean;
     fogShimmerEnabled: boolean;
+    tileReliefEnabled: boolean;
     manualShadowComposite: boolean;
     particleCount: number;
     birdParticleCount: number;
@@ -64,6 +65,7 @@ export const renderDebugState = reactive<RenderDebugState>({
     reachGlowEnabled: false,
     heroAurasEnabled: false,
     fogShimmerEnabled: false,
+    tileReliefEnabled: false,
     manualShadowComposite: false,
     particleCount: 0,
     birdParticleCount: 0,

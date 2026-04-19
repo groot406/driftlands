@@ -55,7 +55,7 @@ interface EntityRendererDependencies {
     ): HTMLCanvasElement | null;
     images: Record<string, HTMLImageElement>;
     heroRenderer: HeroRenderer;
-    heroRenderDependencies: Parameters<HeroRenderer['drawHeroes']>[5];
+    heroRenderDependencies: Parameters<HeroRenderer['drawHeroes']>[6];
 }
 
 export class EntityRenderer {

@@ -1,4 +1,4 @@
-import {discoverTile} from '../../../core/world';
+import {discoverTile, ensureTileExists, getTile} from '../../../core/world';
 import { resolveWorldTile } from '../../../core/worldGeneration';
 import {registerTask} from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
@@ -6,11 +6,12 @@ import type {Hero} from "../../../core/types/Hero";
 import { SIDE_NAMES, type Tile } from "../../../core/types/Tile";
 import { PathService } from '../../game/PathService';
 import { moveHeroWithRuntime } from '../../game/runtime';
-import { isPositionControlled } from '../../game/state/settlementSupportStore';
+import { computeControlledTileIds, isPositionControlled } from '../../game/state/settlementSupportStore';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
-const EXPLORE_REQUIRED_XP = 795;
+const EXPLORE_BASE_REQUIRED_XP = 795;
+const EXPLORE_DISTANCE_XP_RATE = 0.08;
 const EXPLORE_REWARDED_XP = 1;
 const EXPLORE_SCOUTING_RATE = 24;
 const EXPLORE_WATER_SURVEY_RADIUS = 2;
@@ -18,8 +19,9 @@ const EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES = 7;
 
 const explorePathService = new PathService();
 
-export function getExploreRequiredXp(_distance: number) {
-    return EXPLORE_REQUIRED_XP;
+export function getExploreRequiredXp(distance: number) {
+    const distanceFactor = 1 + Math.max(0, distance) * EXPLORE_DISTANCE_XP_RATE;
+    return Math.round(EXPLORE_BASE_REQUIRED_XP * distanceFactor);
 }
 
 export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
@@ -83,42 +85,120 @@ function continueExploration(tile: Tile, participants: Hero[]) {
             continue;
         }
         participant.delayedMovementTimer = undefined;
-        const nextUndiscovered = pickRandomControlledUndiscoveredNeighbor(tile, participant);
+        const nextUndiscovered = pickNextExploreTile(tile, participant);
 
         if (nextUndiscovered) {
-            const accessTile = findNearestTaskAccessTile('explore', nextUndiscovered, participant.q, participant.r) ?? nextUndiscovered;
-            moveHeroWithRuntime(
-                participant,
-                accessTile,
-                'explore',
-                accessTile.id === nextUndiscovered.id ? undefined : { q: nextUndiscovered.q, r: nextUndiscovered.r },
-            );
+            moveHeroToExploreTile(participant, nextUndiscovered);
+        } else {
+            participant.pendingExploreTarget = undefined;
         }
     }
 }
 
+function moveHeroToExploreTile(hero: Hero, tile: Tile) {
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r) ?? tile;
+    moveHeroWithRuntime(
+        hero,
+        accessTile,
+        'explore',
+        accessTile.id === tile.id ? undefined : { q: tile.q, r: tile.r },
+    );
+}
+
+function pickNextExploreTile(tile: Tile, hero: Hero): Tile | null {
+    const target = hero.pendingExploreTarget;
+    if (target) {
+        const directed = pickDirectedControlledUndiscoveredTile(hero, target);
+        if (directed) {
+            return directed;
+        }
+    }
+
+    return pickRandomControlledUndiscoveredNeighbor(tile, hero);
+}
+
+function pickDirectedControlledUndiscoveredTile(hero: Hero, target: { q: number; r: number }): Tile | null {
+    const targetTile = getTile(target);
+    if (targetTile?.discovered) {
+        hero.pendingExploreTarget = undefined;
+        return null;
+    }
+
+    const candidates = listReachableControlledUndiscoveredTiles(hero);
+    if (!candidates.length) {
+        return null;
+    }
+
+    return candidates
+        .slice()
+        .sort((a, b) => {
+            const distanceDelta = explorePathService.axialDistance(a.q, a.r, target.q, target.r)
+                - explorePathService.axialDistance(b.q, b.r, target.q, target.r);
+            if (distanceDelta !== 0) return distanceDelta;
+
+            const accessDelta = getExploreAccessDistance(hero, a) - getExploreAccessDistance(hero, b);
+            if (accessDelta !== 0) return accessDelta;
+
+            return a.id.localeCompare(b.id);
+        })[0] ?? null;
+}
+
 function pickRandomControlledUndiscoveredNeighbor(tile: Tile, hero: Hero): Tile | null {
-    const candidates = SIDE_NAMES
-        .map((side) => tile.neighbors?.[side] ?? null)
-        .filter((neighbor): neighbor is Tile => {
-            if (!neighbor || neighbor.discovered || !isPositionControlled(neighbor.q, neighbor.r)) {
-                return false;
-            }
-
-            const accessTile = findNearestTaskAccessTile('explore', neighbor, hero.q, hero.r);
-            if (!accessTile) {
-                return false;
-            }
-
-            return accessTile.q === hero.q && accessTile.r === hero.r
-                || explorePathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
-        });
-
+    const candidates = listReachableControlledUndiscoveredNeighbors(tile, hero);
     if (!candidates.length) {
         return null;
     }
 
     return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+}
+
+function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
+    const candidates: Tile[] = [];
+
+    for (const tileId of computeControlledTileIds()) {
+        const [qRaw, rRaw] = tileId.split(',');
+        const q = Number(qRaw);
+        const r = Number(rRaw);
+        if (!Number.isFinite(q) || !Number.isFinite(r)) {
+            continue;
+        }
+
+        const tile = ensureTileExists(q, r);
+        if (isReachableControlledUndiscoveredTile(tile, hero)) {
+            candidates.push(tile);
+        }
+    }
+
+    return candidates;
+}
+
+function listReachableControlledUndiscoveredNeighbors(tile: Tile, hero: Hero): Tile[] {
+    return SIDE_NAMES
+        .map((side) => tile.neighbors?.[side] ?? null)
+        .filter((neighbor): neighbor is Tile => !!neighbor && isReachableControlledUndiscoveredTile(neighbor, hero));
+}
+
+function isReachableControlledUndiscoveredTile(tile: Tile, hero: Hero): boolean {
+    if (tile.discovered || !isPositionControlled(tile.q, tile.r)) {
+        return false;
+    }
+
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r);
+    if (!accessTile) {
+        return false;
+    }
+
+    return accessTile.q === hero.q && accessTile.r === hero.r
+        || explorePathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
+}
+
+function getExploreAccessDistance(hero: Hero, tile: Tile) {
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r);
+    if (!accessTile) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    return explorePathService.axialDistance(hero.q, hero.r, accessTile.q, accessTile.r);
 }
 
 function revealNearbyWaterFromShore(origin: Tile) {

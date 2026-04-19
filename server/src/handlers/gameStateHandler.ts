@@ -44,6 +44,7 @@ export class ServerGameStateHandler {
       storages: snapshot.storages,
       population: snapshot.population,
       jobs: snapshot.jobs,
+      studies: snapshot.studies,
       timestamp: Date.now(),
     });
 

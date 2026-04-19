@@ -13,6 +13,7 @@ const BLOCKED_DIRT_VARIANTS = new Set([
   'dirt_watchtower',
   'dirt_depot',
   'dirt_warehouse',
+  'dirt_library',
   'dirt_house',
   'dirt_stone_house',
 ]);

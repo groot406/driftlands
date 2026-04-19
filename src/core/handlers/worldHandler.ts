@@ -2,6 +2,7 @@ import type {
     JobsUpdateMessage,
     PopulationUpdateMessage,
     SettlersUpdateMessage,
+    StudiesUpdateMessage,
     TileUpdatedMessage,
     WorldSnapshotChunkMessage,
     WorldSnapshotCompleteMessage,
@@ -15,6 +16,7 @@ import {loadTasks} from "../../store/taskStore";
 import {replaceInventory, replaceStorageInventories} from "../../store/resourceStore";
 import {loadPopulation, updatePopulation} from "../../store/clientPopulationStore";
 import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
+import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
 import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 
 interface PendingWorldSnapshot {
@@ -29,6 +31,7 @@ interface PendingWorldSnapshot {
     storages: WorldSnapshotMessage['storages'];
     population: WorldSnapshotMessage['population'];
     jobs: WorldSnapshotMessage['jobs'];
+    studies: WorldSnapshotMessage['studies'];
     timestamp?: number;
 }
 
@@ -47,22 +50,25 @@ class WorldHandler {
         clientMessageRouter.on('world:snapshot_chunk', this.handleWorldSnapshotChunk.bind(this));
         clientMessageRouter.on('world:snapshot_complete', this.handleWorldSnapshotComplete.bind(this));
         clientMessageRouter.on('jobs:update', this.handleJobsUpdate.bind(this));
+        clientMessageRouter.on('studies:update', this.handleStudiesUpdate.bind(this));
         clientMessageRouter.on('settlers:update', this.handleSettlersUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs' | 'timestamp'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
         loadWorld(message.tiles);
         loadHeroes(message.heroes);
         loadSettlers(message.settlers ?? [], message.timestamp);
         loadTasks(message.tasks);
-        replaceStorageInventories(message.storages ?? []);
-        if (message.resources) {
+        const storages = message.storages ?? [];
+        replaceStorageInventories(storages);
+        if (storages.length === 0 && message.resources) {
             replaceInventory(message.resources);
         }
         loadPopulation(message.population);
         loadWorkforce(message.jobs);
+        loadStudyState(message.studies);
     }
 
     private handleWorldSnapshot(message: WorldSnapshotMessage): void {
@@ -83,6 +89,7 @@ class WorldHandler {
             storages: message.storages,
             population: message.population,
             jobs: message.jobs,
+            studies: message.studies,
             timestamp: message.timestamp,
         };
     }
@@ -138,6 +145,10 @@ class WorldHandler {
             idleWorkers: message.idleWorkers,
             sites: message.sites,
         });
+    }
+
+    private handleStudiesUpdate(message: StudiesUpdateMessage): void {
+        updateStudyState(message.studies);
     }
 
     private handleSettlersUpdate(message: SettlersUpdateMessage): void {

@@ -26,6 +26,7 @@ import {
 import { loadStoryProgression } from '../../../src/shared/story/progressionState';
 import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
+import { getForestDiscoveryHintTile, getWaterDiscoveryHintTile } from '../../../src/shared/game/waterDiscoveryHint';
 
 interface RunMetrics {
   discoveredTiles: number;
@@ -108,6 +109,9 @@ const DEFAULT_MUTATOR = {
   name: 'Colony Growth',
   description: 'Population, job sites, and production chains unlock the next layer of buildings.',
 };
+
+const FOREST_DISCOVERY_ADVICE = 'I spotted a stand of timber nearby. Scout those trees first, and we should have the wood for a proper house.';
+const WATER_DISCOVERY_ADVICE = 'With a roof standing, I can hear water nearby. Find it next; a dock there gives us fish when the stores run thin.';
 
 function cloneDialogueSpeaker(speaker: DialogueSpeakerSnapshot): DialogueSpeakerSnapshot {
   return {
@@ -256,6 +260,15 @@ class RunState {
       getSpeaker(STORY_VOICE.landfall.speakerId),
       now,
     );
+    if (getForestDiscoveryHintTile()) {
+      this.appendDialogueEntry(
+        Math.max(1, progression.unlockedNodeKeys.length),
+        'advice',
+        FOREST_DISCOVERY_ADVICE,
+        getSpeaker('h2'),
+        now,
+      );
+    }
     this.appendDialogueEntry(
       Math.max(1, progression.unlockedNodeKeys.length),
       'advice',
@@ -305,6 +318,11 @@ class RunState {
 
     if (event.type === 'tile:restored') {
       this.restoredTiles += 1;
+    }
+
+    if (event.type === 'study:completed') {
+      this.recomputeProgress(true);
+      return;
     }
 
     this.recomputeProgress();
@@ -400,6 +418,32 @@ class RunState {
     this.snapshot.dialogue.activeEntryId = entry.id;
   }
 
+  private hasDialogueText(text: string) {
+    return this.snapshot?.dialogue.entries.some((entry) => entry.text === text) ?? false;
+  }
+
+  private maybeAppendWaterDiscoveryAdvice(progressionMetrics: ProgressionMetrics, createdAt: number) {
+    if (!this.snapshot) {
+      return;
+    }
+
+    if ((progressionMetrics.buildingCounts.house ?? 0) < 1) {
+      return;
+    }
+
+    if (!getWaterDiscoveryHintTile() || this.hasDialogueText(WATER_DISCOVERY_ADVICE)) {
+      return;
+    }
+
+    this.appendDialogueEntry(
+      this.snapshot.chapterNumber,
+      'advice',
+      WATER_DISCOVERY_ADVICE,
+      getSpeaker('h2'),
+      createdAt,
+    );
+  }
+
   private recomputeProgress(forceBroadcast: boolean = false) {
     if (!this.snapshot) {
       return;
@@ -408,8 +452,9 @@ class RunState {
     const before = JSON.stringify(this.snapshot);
     const metrics = this.captureMetrics();
     const previousProgression = cloneProgression(this.snapshot.progression);
+    const progressionMetrics = this.captureProgressionMetrics(metrics);
     const nextProgression = evaluateProgression(
-      this.captureProgressionMetrics(metrics),
+      progressionMetrics,
       previousProgression.unlockedNodeKeys,
     );
 
@@ -435,6 +480,7 @@ class RunState {
       syncHeroRoster(nextProgression.unlocked.heroes);
     }
     loadStoryProgression(nextProgression);
+    this.maybeAppendWaterDiscoveryAdvice(progressionMetrics, Date.now());
 
     if (nextProgression.recentlyUnlockedNodeKeys.length > 0) {
       const now = Date.now();

@@ -219,7 +219,7 @@
               <div v-if="site.blockerText" class="tc-job-site-blocker">{{ site.blockerText }}</div>
             </div>
           </div>
-          <p v-else class="tc-placeholder-text">Build a dock, granary, bakery, lumber camp, or mine to create settler jobs.</p>
+          <p v-else class="tc-placeholder-text">Build a dock, granary, bakery, lumber camp, library, or mine to create settler jobs.</p>
         </div>
       </div>
 
@@ -315,8 +315,31 @@
                 </div>
 
                 <div v-if="selectedJobSiteDetail.building?.jobSlots" class="tc-detail-section">
-                  <div class="tc-detail-section-title">Production Flow</div>
-                  <div class="tc-detail-flow-grid">
+                  <div v-if="selectedJobSiteDetail.studyProgress" class="tc-detail-section-title">Study</div>
+                  <div v-else class="tc-detail-section-title">Production Flow</div>
+                  <div v-if="selectedJobSiteDetail.studyProgress" class="tc-detail-condition-card">
+                    <div class="tc-detail-condition-top">
+                      <div>
+                        <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.studyProgress.label }}</p>
+                        <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.studyProgress.summary }}</p>
+                      </div>
+                      <span class="tc-detail-pill tc-detail-pill-ok">{{ selectedJobSiteDetail.studyProgress.percent }}%</span>
+                    </div>
+                    <div class="tc-maintenance-bar-track">
+                      <div class="tc-maintenance-bar-fill tc-maintenance-bar-fill-ok" :style="{ width: `${selectedJobSiteDetail.studyProgress.percent}%` }" />
+                    </div>
+                    <div class="tc-detail-chip-row">
+                      <span class="tc-detail-chip">{{ selectedJobSiteDetail.studyProgress.progressLabel }}</span>
+                      <span
+                        v-for="unlock in selectedJobSiteDetail.studyProgress.unlocks"
+                        :key="`${unlock.kind}:${unlock.key}`"
+                        class="tc-detail-chip"
+                      >
+                        {{ unlock.label }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="!selectedJobSiteDetail.studyProgress" class="tc-detail-flow-grid">
                     <section class="tc-detail-flow-card">
                       <p class="tc-detail-flow-title">Consumes</p>
                       <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.currentInputLabel }}</p>
@@ -426,6 +449,7 @@ import { tileIndex, worldVersion } from '../shared/game/world.ts';
 import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
+import { studyState, studyVersion } from '../store/clientStudyStore';
 import { resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
 import { settlers, settlerVersion } from '../store/settlerStore';
@@ -489,6 +513,17 @@ function formatCycleDuration(cycleMs: number | undefined) {
   return `${minutes}m ${seconds}s cycle`;
 }
 
+function formatStudyDuration(ms: number) {
+  const totalMinutes = Math.max(0, Math.round(ms / 60_000));
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function formatResourceList(resources: ResourceAmount[], emptyText: string) {
   if (!resources.length) {
     return emptyText;
@@ -532,7 +567,7 @@ function getStructureLabel(tileId: string) {
   if (isTunnelTile(tile)) {
     return 'Tunnel';
   }
-  return tile?.terrain ? tile.terrain[0].toUpperCase() + tile.terrain.slice(1) : 'Building';
+  return tile?.terrain ? tile.terrain.charAt(0).toUpperCase() + tile.terrain.slice(1) : 'Building';
 }
 
 function getStructureSummary(tileId: string) {
@@ -791,6 +826,7 @@ const jobSites = computed(() => {
 
 const selectedJobSiteDetail = computed(() => {
   void worldVersion.value;
+  void studyVersion.value;
   if (!selectedJobSiteId.value) {
     return null;
   }
@@ -821,6 +857,28 @@ const selectedJobSiteDetail = computed(() => {
   const repairResources = tile ? building?.repairResources ?? [] : [];
   const repairNeeded = conditionPercent !== null ? Math.max(0, 100 - conditionPercent) : 0;
   const repairShortages = getMissingInputResources(repairResources, 1, resourceInventory);
+  const activeStudy = building?.key === 'library'
+    ? (studyState.studies.find((study) => study.active) ?? null)
+    : null;
+  const studyProgress = activeStudy
+    ? {
+      label: activeStudy.label,
+      summary: activeStudy.summary,
+      progressLabel: `${formatStudyDuration(activeStudy.progressMs)} / ${formatStudyDuration(activeStudy.requiredProgressMs)}`,
+      percent: activeStudy.requiredProgressMs > 0
+        ? Math.min(100, Math.round((activeStudy.progressMs / activeStudy.requiredProgressMs) * 100))
+        : 100,
+      unlocks: activeStudy.unlocks,
+    }
+    : (building?.key === 'library'
+      ? {
+        label: 'All studies complete',
+        summary: 'The shelves are quiet for now. Future subjects can plug into the library queue.',
+        progressLabel: `${studyState.completedStudyKeys.length} completed`,
+        percent: 100,
+        unlocks: [],
+      }
+      : null);
   const advice = hasJobSite && building && site
     ? getJobSiteAdvice({
       building,
@@ -879,12 +937,17 @@ const selectedJobSiteDetail = computed(() => {
     summary: site?.summary ?? getStructureSummary(tile.id),
     isJobSite: hasJobSite,
     cycleLabel: formatCycleDuration(building?.cycleMs),
+    studyProgress,
     assignedWorkersLabel: currentWorkerCount > 0
       ? `${currentWorkerCount} ${building?.jobLabel ?? 'worker'}${currentWorkerCount === 1 ? '' : 's'} on duty`
       : 'No crew assigned',
     fullStaffingLabel: `${fullWorkerCount} slot${fullWorkerCount === 1 ? '' : 's'} available`,
-    currentThroughputLabel: formatRateList(currentOutputRates, 'No output per minute while idle'),
-    maxThroughputLabel: formatRateList(fullOutputRates, 'No output defined'),
+    currentThroughputLabel: studyProgress
+      ? (currentWorkerCount > 0 ? 'Study progress advances each completed duty cycle' : 'Study pauses while no scholars are assigned')
+      : formatRateList(currentOutputRates, 'No output per minute while idle'),
+    maxThroughputLabel: studyProgress
+      ? 'More scholars complete subjects sooner'
+      : formatRateList(fullOutputRates, 'No output defined'),
     currentInputLabel: formatResourceList(currentInputs, 'No input required'),
     currentOutputLabel: formatResourceList(currentOutputs, 'No output while idle'),
     inputRateLabel: formatRateList(currentInputRates, 'Consumes nothing per minute'),

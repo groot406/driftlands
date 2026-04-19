@@ -29,12 +29,22 @@
       <div class="coop-ping-ring"></div>
       <div class="coop-ping-label">{{ ping.playerName }} · {{ ping.label }}</div>
     </div>
+    <div
+      v-for="hint in renderedStoryHints"
+      :key="hint.id"
+      class="story-tile-hint"
+      :style="hint.style"
+      @pointerup.stop.prevent="handleStoryHintPointerUp(hint)"
+    >
+      <div class="story-tile-hint-ring"></div>
+      <div class="story-tile-hint-label">{{ hint.label }}</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
-import {ensureTileExists, tileIndex} from '../core/world';
+import {ensureTileExists, tileIndex, worldVersion} from '../core/world';
 import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
@@ -62,16 +72,22 @@ import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
 import {requestHeroClaim, sendCoopPing} from '../core/coopService';
 import {currentPlayerId} from '../core/socket';
 import {getAvailableTasks} from "../shared/tasks/tasks";
+import { getTaskDefinition } from '../shared/tasks/taskRegistry.ts';
+import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
 import {PathService} from "../core/PathService";
 import type {Tile} from "../core/types/Tile.ts";
 import type {Hero} from "../core/types/Hero.ts";
 import type { Settler } from '../core/types/Settler.ts';
+import type { TaskInstance } from '../core/types/Task.ts';
 import type {TaskDefinition} from "../core/types/Task.ts";
 import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/gameFeel';
 import {addNotification} from '../store/notificationStore';
 import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
 import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOtherPlayer} from '../store/playerStore';
 import {populationVersion} from '../store/clientPopulationStore';
+import {runSnapshot, runVersion} from '../store/runStore';
+import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
+import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
 import {
   computeControlledTileIds,
   isPositionControlled,
@@ -117,6 +133,8 @@ let lastGlobalReachComputeMs = 0;
 const service = new HexMapService();
 const pathService = new PathService();
 const useCanvasDropShadow = shouldUseCanvasDropShadow();
+const FOREST_DISCOVERY_HINT_ID = 'story:forest-nearby';
+const WATER_DISCOVERY_HINT_ID = 'story:water-nearby';
 const renderedPings = computed(() => {
   const cameraPx = axialToPixel(camera.q, camera.r);
   const { width, height } = containerSize.value;
@@ -133,6 +151,68 @@ const renderedPings = computed(() => {
     };
   });
 });
+
+const storyHintTiles = computed(() => (
+  getActiveStoryTileHints.value
+    .map((hint) => tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r))
+));
+
+const renderedStoryHints = computed(() => {
+  const cameraPx = axialToPixel(camera.q, camera.r);
+  const { width, height } = containerSize.value;
+
+  return getActiveStoryTileHints.value.map((hint) => {
+    const tilePx = axialToPixel(hint.q, hint.r);
+
+    return {
+      ...hint,
+      style: {
+        left: `${tilePx.x - cameraPx.x + (width / 2)}px`,
+        top: `${tilePx.y - cameraPx.y + (height / 2)}px`,
+      },
+    };
+  });
+});
+
+function hasBuiltHouse() {
+  return Object.values(tileIndex).some((tile) => getBuildingDefinitionForTile(tile)?.key === 'house');
+}
+
+function setStoryTerrainHint(id: string, kind: 'forest' | 'water', label: string, target: Tile) {
+  setStoryTileHint({
+    id,
+    kind,
+    q: target.q,
+    r: target.r,
+    label,
+    createdAt: Date.now(),
+  });
+}
+
+function syncStoryDiscoveryHint() {
+  if (!runSnapshot.value) {
+    clearStoryTileHint(FOREST_DISCOVERY_HINT_ID);
+    clearStoryTileHint(WATER_DISCOVERY_HINT_ID);
+    return;
+  }
+
+  const forestTarget = getForestDiscoveryHintTile();
+  if (forestTarget) {
+    clearStoryTileHint(WATER_DISCOVERY_HINT_ID);
+    setStoryTerrainHint(FOREST_DISCOVERY_HINT_ID, 'forest', 'Forest nearby', forestTarget);
+    return;
+  }
+
+  clearStoryTileHint(FOREST_DISCOVERY_HINT_ID);
+
+  const waterTarget = hasBuiltHouse() ? getWaterDiscoveryHintTile() : null;
+  if (waterTarget) {
+    setStoryTerrainHint(WATER_DISCOVERY_HINT_ID, 'water', 'Water nearby', waterTarget);
+    return;
+  }
+
+  clearStoryTileHint(WATER_DISCOVERY_HINT_ID);
+}
 
 function onWindowResize() {
   service.resize();
@@ -195,6 +275,106 @@ function setPathPreview(path: { q: number; r: number }[], hero: Hero, tile: Tile
   lastPathPreviewComputeMs = nowMs;
 }
 
+function getControlledUndiscoveredHintStep(target: Tile, hero: Hero): Tile | null {
+  const controlledIds = computeControlledTileIds();
+  let best: { tile: Tile; distanceToTarget: number; distanceFromHero: number } | null = null;
+
+  for (const tileId of controlledIds) {
+    const sep = tileId.indexOf(',');
+    if (sep < 0) continue;
+
+    const q = Number(tileId.substring(0, sep));
+    const r = Number(tileId.substring(sep + 1));
+    if (!Number.isFinite(q) || !Number.isFinite(r)) continue;
+
+    const candidate = tileIndex[tileId] ?? ensureTileExists(q, r);
+    if (candidate.discovered) continue;
+
+    const accessTile = findNearestTaskAccessTile('explore', candidate, hero.q, hero.r);
+    if (!accessTile) continue;
+
+    const canReachAccess = accessTile.q === hero.q && accessTile.r === hero.r
+      || pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
+    if (!canReachAccess) continue;
+
+    const distanceToTarget = pathService.axialDistance(candidate.q, candidate.r, target.q, target.r);
+    const distanceFromHero = pathService.axialDistance(hero.q, hero.r, candidate.q, candidate.r);
+    if (
+      !best
+      || distanceToTarget < best.distanceToTarget
+      || (distanceToTarget === best.distanceToTarget && distanceFromHero < best.distanceFromHero)
+      || (distanceToTarget === best.distanceToTarget && distanceFromHero === best.distanceFromHero && candidate.id.localeCompare(best.tile.id) < 0)
+    ) {
+      best = { tile: candidate, distanceToTarget, distanceFromHero };
+    }
+  }
+
+  return best?.tile ?? null;
+}
+
+function getStoryHintExplorationRoute(target: Tile, hero: Hero) {
+  if (target.discovered) {
+    return null;
+  }
+
+  const taskTile = isPositionControlled(target.q, target.r)
+    ? target
+    : getControlledUndiscoveredHintStep(target, hero);
+  if (!taskTile) {
+    return null;
+  }
+
+  const accessTile = findNearestTaskAccessTile('explore', taskTile, hero.q, hero.r) ?? taskTile;
+  const path = (accessTile.q === hero.q && accessTile.r === hero.r)
+    ? []
+    : pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r);
+
+  if (accessTile.q !== hero.q || accessTile.r !== hero.r) {
+    if (!path.length) {
+      return null;
+    }
+  }
+
+  return { taskTile, accessTile, path };
+}
+
+function requestSelectedHeroExploreStoryHint(target: Tile) {
+  const selHero = getSelectedHero();
+  if (!selHero || !canControlHero(selHero.id, currentPlayerId.value)) {
+    return false;
+  }
+
+  const route = getStoryHintExplorationRoute(target, selHero);
+  if (!route) {
+    return false;
+  }
+
+  if (showTaskMenu.value) {
+    showTaskMenu.value = false;
+    taskMenuTile.value = null;
+    closeWindow(WINDOW_IDS.TASK_MENU);
+  }
+  closeTownCenterPanel();
+
+  setPathPreview(route.path, selHero, target);
+  const exploreTarget = { q: target.q, r: target.r };
+  if (route.accessTile.q === selHero.q && route.accessTile.r === selHero.r) {
+    startTaskRequest(selHero.id, 'explore', { q: route.taskTile.q, r: route.taskTile.r }, exploreTarget);
+  } else {
+    detachHeroFromCurrentTask(selHero);
+    requestHeroMovement(selHero.id, route.path, route.accessTile, 'explore', route.taskTile, exploreTarget);
+  }
+  clearPathPreview();
+  hoveredTile.value = target;
+  return true;
+}
+
+function handleStoryHintPointerUp(hint: { q: number; r: number }) {
+  if (isPaused() || dragged) return;
+  const target = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
+  requestSelectedHeroExploreStoryHint(target);
+}
+
 function handlePointerMoveEvent(ev: Event) {
   const pointerEvent = ev as PointerEvent;
   lastPointerClient = { x: pointerEvent.clientX, y: pointerEvent.clientY };
@@ -255,6 +435,7 @@ function animationLoop() {
       clusterTileIds: clusterTiles.value,
       globalReachBoundary: globalReachBoundary.value,
       globalReachTileIds: globalReachTileIds.value,
+      storyHintTiles: storyHintTiles.value,
       showSupportOverlay: showSupportOverlay.value,
       hoveredTileInReach: hoveredTile.value
         ? (hoveredTile.value.discovered
@@ -303,6 +484,12 @@ function updatePath(force = false, nowMs: number = Date.now()) {
   }
 
   if (!hoveredTile.value.discovered) {
+    const storyHintRoute = getStoryHintExplorationRoute(hoveredTile.value, hero);
+    if (storyHintRoute) {
+      setPathPreview(storyHintRoute.path, hero, hoveredTile.value, nowMs);
+      return;
+    }
+
     const accessTile = findNearestTaskAccessTile('explore', hoveredTile.value, hero.q, hero.r) ?? hoveredTile.value;
     const previewPath = (accessTile.q === hero.q && accessTile.r === hero.r)
       ? []
@@ -326,8 +513,12 @@ function handleTaskMenuClose() {
   // The TaskMenu overlay stops pointer-event propagation, so the second click
   // of a double-click never reaches handleClick.  Detect the pattern here
   // instead: if the menu was closed very quickly after opening, the user
-  // intended a "go here" double-click, not a task selection.
+  // intended a quick tile action, not a task selection.
   if (closedTile && closedTile.discovered && timeSinceOpen < 400) {
+    if (requestSelectedHeroJoinActiveTask(closedTile)) {
+      return;
+    }
+
     const selHero = getSelectedHero();
     if (selHero && canControlHero(selHero.id, currentPlayerId.value)) {
       const goalTile = findNearestTaskAccessTile(null, closedTile, selHero.q, selHero.r);
@@ -362,6 +553,57 @@ async function openJobSiteDetailFromTile(tile: Tile) {
   townCenterPanel.value?.openStandaloneBuildingDetail(tile.id);
 }
 
+function getJoinableActiveTask(tile: Tile, hero: Hero): TaskInstance | null {
+  const tileTasks = taskStore.tasksByTile[tile.id];
+  if (!tileTasks) return null;
+
+  return Object.values(tileTasks)
+    .map((taskId) => taskStore.taskIndex[taskId])
+    .filter((task): task is TaskInstance => {
+      if (!task || !task.active || task.completedMs) return false;
+      const definition = getTaskDefinition(task.type);
+      return canStartTaskDefinition(definition, tile, hero);
+    })
+    .sort((a, b) => a.createdMs - b.createdMs || a.type.localeCompare(b.type))
+    [0] ?? null;
+}
+
+function requestSelectedHeroJoinActiveTask(tile: Tile) {
+  const selHero = getSelectedHero();
+  if (!selHero || !tile.discovered || !canControlHero(selHero.id, currentPlayerId.value)) {
+    return false;
+  }
+
+  const task = getJoinableActiveTask(tile, selHero);
+  if (!task) {
+    return false;
+  }
+
+  const accessTile = findNearestTaskAccessTile(task.type, tile, selHero.q, selHero.r) ?? tile;
+  const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
+    ? []
+    : pathService.findWalkablePath(selHero.q, selHero.r, accessTile.q, accessTile.r);
+
+  if (accessTile.q !== selHero.q || accessTile.r !== selHero.r) {
+    if (!path.length) {
+      return false;
+    }
+  }
+
+  if (showTaskMenu.value) {
+    showTaskMenu.value = false;
+    taskMenuTile.value = null;
+    closeWindow(WINDOW_IDS.TASK_MENU);
+  }
+  closeTownCenterPanel();
+  detachHeroFromCurrentTask(selHero);
+  requestHeroMovement(selHero.id, path, accessTile, task.type, tile);
+  clearPathPreview();
+  hoveredTile.value = tile;
+  emit('tile-doubleclick', tile);
+  return true;
+}
+
 function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
   if (isPaused()) return;
@@ -376,6 +618,12 @@ function handleClick(e: PointerEvent) {
   if (isDoubleClick && dblTile) {
     lastClickTime = 0; // consume
     cancelPendingMenu();
+    if (requestSelectedHeroExploreStoryHint(dblTile)) {
+      return;
+    }
+    if (requestSelectedHeroJoinActiveTask(dblTile)) {
+      return;
+    }
     const selHero = getSelectedHero();
     if (selHero && dblTile.discovered
       && canControlHero(selHero.id, currentPlayerId.value)) {
@@ -445,6 +693,10 @@ function handleClick(e: PointerEvent) {
   lastClickTime = nowTs;
   hoveredTile.value = tile;
   emit('tile-click', tile);
+
+  if (requestSelectedHeroExploreStoryHint(tile)) {
+    return;
+  }
 
   // Town center click — toggle the info panel or drop off goods
   if (tile.terrain === 'towncenter') {
@@ -527,6 +779,8 @@ function handleClick(e: PointerEvent) {
       clearPathPreview();
       return;
     }
+
+    clearPathPreview();
     return;
   }
 
@@ -716,6 +970,10 @@ watch([taskMenuTile, hoveredTask], () => {
   computeTerrainCluster(taskMenuTile.value);
 });
 
+watch([runVersion, worldVersion], () => {
+  syncStoryDiscoveryHint();
+}, { immediate: true });
+
 function handleTaskHover(task: TaskDefinition | null) {
   hoveredTask.value = task;
 }
@@ -861,15 +1119,26 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.coop-ping {
+.coop-ping,
+.story-tile-hint {
   position: absolute;
-  transform: translate(-50%, -130%);
+  transform: translate(-50%, -50%);
   pointer-events: none;
-  z-index: 45;
+  z-index: 30;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
   gap: 0.45rem;
+}
+
+.story-tile-hint {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.coop-ping {
+  transform: translate(-50%, -130%);
 }
 
 .coop-ping-ring {
@@ -893,6 +1162,29 @@ onBeforeUnmount(() => {
   letter-spacing: 0.04em;
 }
 
+.story-tile-hint-ring {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(125, 211, 252, 0.98);
+  background: rgba(8, 47, 73, 0.58);
+  box-shadow: 0 0 0 0 rgba(125, 211, 252, 0.58);
+  animation: story-hint-pulse 1.05s ease-out infinite;
+}
+
+.story-tile-hint-label {
+  white-space: nowrap;
+  padding: 0.22rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(8, 47, 73, 0.9);
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  color: rgb(224, 242, 254);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  position: absolute;
+  bottom: calc(100% + 0.45rem);
+}
+
 @keyframes coop-ping-pulse {
   0% {
     transform: scale(0.9);
@@ -905,6 +1197,21 @@ onBeforeUnmount(() => {
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(103, 232, 249, 0);
+  }
+}
+
+@keyframes story-hint-pulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(125, 211, 252, 0.58);
+  }
+  70% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 18px rgba(125, 211, 252, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(125, 211, 252, 0);
   }
 }
 </style>

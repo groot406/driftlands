@@ -1,6 +1,9 @@
 import { axialToPixel } from '../../camera';
 import type { Settler } from '../../types/Settler';
 import { tileIndex } from '../../../shared/game/world';
+import { getSettlerMovementStepIndex } from './settlerFacing';
+
+export { getSettlerRenderFacing } from './settlerFacing';
 
 export function isSettlerHiddenInHouse(settler: Settler) {
     return settler.activity === 'sleeping'
@@ -30,14 +33,14 @@ export function getSettlerInterpolatedPixelPosition(settler: Settler, now: numbe
     const movement = settler.movement;
     const elapsed = now - movement.startMs;
     if (elapsed < 0) return axialToPixel(movement.origin.q, movement.origin.r);
+    if (!movement.path.length || !movement.cumulative.length) {
+        return axialToPixel(settler.q, settler.r);
+    }
 
     const total = movement.cumulative[movement.cumulative.length - 1]!;
     if (elapsed >= total) return axialToPixel(movement.target.q, movement.target.r);
 
-    let stepIndex = 0;
-    while (stepIndex < movement.cumulative.length && elapsed >= movement.cumulative[stepIndex]!) {
-        stepIndex++;
-    }
+    const stepIndex = getSettlerMovementStepIndex(movement, elapsed) ?? 0;
 
     const prevEnd = stepIndex === 0 ? 0 : movement.cumulative[stepIndex - 1]!;
     const stepElapsed = elapsed - prevEnd;

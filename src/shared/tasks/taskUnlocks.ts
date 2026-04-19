@@ -1,6 +1,7 @@
 import type { TaskType } from '../../core/types/Task.ts';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry.ts';
 import { getUpgradeDefinitionByTaskKey } from '../buildings/upgrades.ts';
+import { isContentUnlockedByStudies } from '../../store/studyStore.ts';
 import { getStoryProgressionState, isStoryTaskUnlocked } from '../story/progressionState.ts';
 import {
   getUnlockingNodeSnapshotForContent,
@@ -62,9 +63,13 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   const progression = getStoryProgressionState();
   const content = resolveContentForTask(taskKey);
   const lockingNode = getUnlockingNodeSnapshotForContent(progression, content.kind, content.key);
-  const unlocked = content.kind === 'task'
+  const storyUnlocked = content.kind === 'task'
     ? isStoryTaskUnlocked(taskKey as TaskType)
     : !!lockingNode?.unlocked;
+  const studyUnlocked = content.kind === 'task' || content.kind === 'building' || content.kind === 'upgrade'
+    ? isContentUnlockedByStudies(content)
+    : false;
+  const unlocked = storyUnlocked || studyUnlocked;
 
   return {
     unlocked,

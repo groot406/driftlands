@@ -14,6 +14,7 @@ import type { TaskDefinition, TaskInstance, TaskType } from '../../core/types/Ta
 import type { TileUpdatedMessage } from '../protocol.ts';
 import { broadcastGameMessage as broadcast } from '../game/runtime';
 import { getMineOrePerCycle } from './mine.ts';
+import { STUDY_WORK_CYCLE_MS } from '../studies/studies.ts';
 
 export interface BuildingDefinition {
     key: string;
@@ -36,6 +37,7 @@ export interface BuildingDefinition {
     consumes?: ResourceAmount[];
     produces?: ResourceAmount[];
     jobLabel?: string;
+    jobKind?: 'production' | 'study';
     jobPresentation?: 'indoor' | 'outdoor' | 'field';
     repairResources?: ResourceAmount[];
     maintenanceDecayPerMinute?: number;
@@ -650,6 +652,54 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'plains_workshop', { stagger: false, respectBiome: false });
             } else if (tile.terrain === 'dirt') {
                 applyVariant(tile, 'dirt_workshop', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'library',
+        label: 'Library',
+        summary: 'Lets settlers on duty study long-form subjects that unlock colony buffs and advanced work.',
+        categoryLabel: 'Knowledge',
+        buildTaskKey: 'buildLibrary',
+        buildTaskLabel: 'Build Library',
+        sortOrder: 39,
+        requiredPopulation: 5,
+        variantKeys: ['plains_library', 'dirt_library'],
+        overlayAssetKey: 'building_library_overlay',
+        maxIncomingRoads: 1,
+        jobSlots: 2,
+        cycleMs: STUDY_WORK_CYCLE_MS,
+        jobLabel: 'Scholar',
+        jobKind: 'study',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.5,
+        getJobResources() {
+            return {
+                produces: [],
+            };
+        },
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 5200;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 18 },
+                { type: 'stone', amount: 6 },
+                { type: 'tools', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_library', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_library', { stagger: false, respectBiome: false });
             }
         },
     },

@@ -6,13 +6,45 @@ import { loadWorld } from '../world';
 import { worldHandler } from './worldHandler';
 import { populationState, resetClientPopulationState } from '../../store/clientPopulationStore';
 import { resetClientWorkforceState, workforceState } from '../../store/clientJobStore';
+import { resetClientStudyState } from '../../store/clientStudyStore';
 import { resetSettlerState, settlers } from '../../store/settlerStore';
+import {
+  depositResourceToStorage,
+  getStorageResourceAmount,
+  resetResourceState,
+  resourceInventory,
+} from '../../store/resourceStore';
+import type { Tile } from '../types/Tile';
+
+function createTowncenterTile(id: string, q: number, r: number): Tile {
+  return {
+    id,
+    q,
+    r,
+    biome: 'plains',
+    terrain: 'towncenter',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    variant: null,
+  };
+}
+
+function emptyStudies() {
+  return {
+    activeStudyKey: null,
+    completedStudyKeys: [],
+    studies: [],
+  };
+}
 
 test.afterEach(() => {
   loadWorld([]);
   resetClientPopulationState();
   resetClientWorkforceState();
+  resetClientStudyState();
   resetSettlerState();
+  resetResourceState();
 });
 
 test('world snapshots and jobs updates hydrate workforce state', () => {
@@ -69,6 +101,7 @@ test('world snapshots and jobs updates hydrate workforce state', () => {
         },
       ],
     },
+    studies: emptyStudies(),
   });
 
   assert.equal(populationState.current, 2);
@@ -105,4 +138,51 @@ test('world snapshots and jobs updates hydrate workforce state', () => {
   assert.equal(workforceState.idleWorkers, 1);
   assert.equal(workforceState.sites[1]?.buildingKey, 'bakery');
   assert.equal(workforceState.sites[1]?.status, 'missing_input');
+});
+
+test('world snapshots keep per-storage inventory hydrated when legacy aggregate resources are also present', () => {
+  worldHandler.init();
+
+  clientMessageRouter.route({
+    type: 'world:snapshot',
+    tiles: [createTowncenterTile('0,0', 0, 0)],
+    heroes: [],
+    settlers: [],
+    tasks: [],
+    resources: { wood: 25 },
+    storages: [
+      {
+        tileId: '0,0',
+        kind: 'towncenter',
+        capacity: 240,
+        resources: { wood: 25 },
+      },
+    ],
+    population: {
+      current: 0,
+      max: 0,
+      beds: 0,
+      hungerMs: 0,
+      supportCapacity: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      pressureState: 'stable',
+      settlements: [],
+    },
+    jobs: {
+      availableWorkers: 0,
+      assignedWorkers: 0,
+      idleWorkers: 0,
+      sites: [],
+    },
+    studies: emptyStudies(),
+  });
+
+  assert.equal(resourceInventory.wood, 25);
+  assert.equal(getStorageResourceAmount('0,0', 'wood'), 25);
+
+  depositResourceToStorage('0,0', 'wood', 1);
+
+  assert.equal(resourceInventory.wood, 26);
+  assert.equal(getStorageResourceAmount('0,0', 'wood'), 26);
 });

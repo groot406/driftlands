@@ -27,6 +27,7 @@ interface DrawOptionsLike {
     clusterTileIds?: Set<string>;
     globalReachBoundary?: Array<{ q: number; r: number }>;
     globalReachTileIds?: Set<string>;
+    storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean;
 }
@@ -132,6 +133,7 @@ export class OverlayRenderer {
         deps.drawGameplayWorldImpacts(underlay.ctx, frame.effectNowMs, false);
         deps.drawSupportOverlay(underlay.ctx, frame.visibleTiles, false, opts.showSupportOverlay === true);
         this.drawActiveTaskHighlights(underlay.ctx, frame.visibleTiles, frame.effectNowMs, deps);
+        this.drawStoryHintHighlights(underlay.ctx, opts.storyHintTiles ?? [], frame.effectNowMs, deps);
 
         const selectedHero = selectedHeroId.value ? heroes.find((hero) => hero.id === selectedHeroId.value) || null : null;
         const selectedHeroIdle = selectedHero ? deps.isHeroIdle(selectedHero, frame.movementNowMs) : false;
@@ -296,6 +298,31 @@ export class OverlayRenderer {
         this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, deps);
         this.drawTaskIndicators(overlay.ctx, frame.visibleTiles, false, opts.hoveredTile, deps);
         overlay.ctx.restore();
+    }
+
+    private drawStoryHintHighlights(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        nowMs: number,
+        deps: OverlayRendererDependencies,
+    ) {
+        for (const tile of tiles) {
+            if (hexDistance(camera, tile) > camera.radius + 1) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+            const pulse = (Math.sin(nowMs / 320) + 1) / 2;
+            deps.drawHexHighlight(
+                ctx,
+                tile.q,
+                tile.r,
+                'rgba(45, 212, 191, 0.05)',
+                'rgba(125, 211, 252, 1)',
+                fade * (0.6 + pulse * 0.35),
+            );
+        }
     }
 
     private drawScreen(

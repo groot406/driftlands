@@ -1,7 +1,7 @@
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import type { SettlerBlockerReason } from '../core/types/Settler';
 
-export type JobSiteStatus = 'staffed' | 'unstaffed' | 'offline' | 'paused' | 'missing_input' | 'storage_full' | 'depleted';
+export type JobSiteStatus = 'staffed' | 'unstaffed' | 'offline' | 'paused' | 'missing_input' | 'storage_full' | 'depleted' | 'complete';
 
 export interface JobSiteSnapshot {
     tileId: string;

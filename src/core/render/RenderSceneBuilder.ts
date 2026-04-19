@@ -2,7 +2,7 @@ import type { Hero } from '../types/Hero';
 import type { Settler } from '../types/Settler';
 import { DEFAULT_RENDER_CONFIG, type RenderConfig } from './RenderConfig';
 import { EntitySortService } from './entities/EntitySortService';
-import { isSettlerVisibleOnMap } from './entities/settlerRender';
+import { getSettlerRenderFacing, isSettlerVisibleOnMap } from './entities/settlerRender';
 import { HexProjection } from './math/HexProjection';
 import { filterAxialItemsToViewport } from './math/VisibilityMath';
 import { createTerrainChunkKey, getTerrainChunkBounds, getTerrainChunkCoordForTile } from './terrain/TerrainChunkKey';
@@ -57,7 +57,12 @@ export class RenderSceneBuilder {
         const visibleChunks = this.buildVisibleChunks(visibleTiles);
         const heroCandidates = input.candidateHeroes ?? [];
         const settlerCandidates = input.candidateSettlers ?? [];
-        const visibleEntities = this.buildVisibleEntities(heroCandidates, settlerCandidates, input.viewport);
+        const visibleEntities = this.buildVisibleEntities(
+            heroCandidates,
+            settlerCandidates,
+            input.viewport,
+            input.frameTimes.movementNowMs,
+        );
         const overlays = this.buildOverlays(input.drawOptions);
 
         return {
@@ -157,6 +162,7 @@ export class RenderSceneBuilder {
         candidateHeroes: readonly Hero[],
         candidateSettlers: readonly Settler[],
         viewport: ViewportSnapshot,
+        movementNowMs: number,
     ) {
         const heroEntities = filterAxialItemsToViewport(candidateHeroes, viewport, Math.max(this.config.tileDrawSize * 1.5, 72), this.config)
             .map((hero): EntityRenderItem => {
@@ -216,7 +222,7 @@ export class RenderSceneBuilder {
                         heightFactor: 0.12,
                         yOffset: 0.08,
                     },
-                    facing: settler.facing,
+                    facing: getSettlerRenderFacing(settler, movementNowMs),
                     movement: settler.movement,
                     carryingPayload: settler.carryingPayload,
                 };
@@ -269,6 +275,17 @@ export class RenderSceneBuilder {
                 r: coord.r,
                 styleKey: 'reach:global',
                 intensity: 0.45,
+            });
+        }
+
+        for (const coord of drawOptions.storyHintTiles ?? []) {
+            overlays.push({
+                type: 'marker',
+                layer: 'underlay',
+                q: coord.q,
+                r: coord.r,
+                styleKey: 'story-hint:tile',
+                intensity: 1,
             });
         }
 

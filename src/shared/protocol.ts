@@ -8,6 +8,7 @@ import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
 import type {PopulationSnapshot} from "../store/populationStore.ts";
 import type { WorkforceSnapshot } from '../store/jobStore.ts';
+import type { StudyStateSnapshot } from '../store/studyStore.ts';
 import type { Settler } from '../core/types/Settler.ts';
 
 export interface BaseMessage {
@@ -104,6 +105,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
+    studies: StudyStateSnapshot;
 }
 
 export interface WorldSnapshotStartMessage extends BaseMessage {
@@ -118,6 +120,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
+    studies: StudyStateSnapshot;
 }
 
 export interface WorldSnapshotChunkMessage extends BaseMessage {
@@ -148,6 +151,7 @@ export interface MoveRequestMessage extends BaseMessage {
     path?: { q: number; r: number }[];
     task?: TaskType;
     taskLocation?: { q: number; r: number };
+    exploreTarget?: { q: number; r: number };
 }
 
 export interface PathUpdateMessage extends BaseMessage {
@@ -162,6 +166,7 @@ export interface PathUpdateMessage extends BaseMessage {
     cumulative: number[]; // cumulative end times
     task?: TaskType;
     taskLocation?: { q: number; r: number };
+    exploreTarget?: { q: number; r: number };
 }
 
 // Hero state updates
@@ -177,6 +182,7 @@ export interface StartTaskRequestMessage extends BaseMessage {
     heroId: string;
     task: TaskType;
     location: { q: number; r: number };
+    exploreTarget?: { q: number; r: number };
 }
 
 export interface JoinTaskRequestMessage {
@@ -272,6 +278,11 @@ export interface JobsUpdateMessage extends BaseMessage {
     sites: WorkforceSnapshot['sites'];
 }
 
+export interface StudiesUpdateMessage extends BaseMessage {
+    type: 'studies:update';
+    studies: StudyStateSnapshot;
+}
+
 export interface SettlersUpdateMessage extends BaseMessage {
     type: 'settlers:update';
     settlers: Settler[];
@@ -318,4 +329,5 @@ export type ServerMessage =
     | RunUpdateMessage
     | PopulationUpdateMessage
     | JobsUpdateMessage
+    | StudiesUpdateMessage
     | SettlersUpdateMessage;

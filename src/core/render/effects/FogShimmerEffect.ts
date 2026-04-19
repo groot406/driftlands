@@ -22,6 +22,7 @@ export class FogShimmerEffect implements WorldEffect {
         reachDim: number,
         drawHexPath: (ctx: CanvasRenderingContext2D, x: number, y: number) => void,
     ) {
+        
         const shimmerSeed = ((q * 374761393) ^ (r * 668265263)) >>> 0;
         const shimmerX = ((shimmerSeed % 100) / 100) * tileDrawSize * 0.4 + tileDrawSize * 0.2;
         const shimmerY = (((shimmerSeed >> 8) % 100) / 100) * tileDrawSize * 0.4 + tileDrawSize * 0.2;

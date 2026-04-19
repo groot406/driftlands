@@ -15,6 +15,7 @@ export type BuildingKey =
   | 'granary'
   | 'bakery'
   | 'workshop'
+  | 'library'
   | 'mine'
   | 'quarry'
   | 'house'
@@ -205,6 +206,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Workshop',
     description: 'Turns ore into tools for expansion and advanced upgrades.',
     taskKey: 'buildWorkshop',
+  },
+  library: {
+    label: 'Library',
+    description: 'Gives settlers a place to study long subjects that unlock colony knowledge.',
+    taskKey: 'buildLibrary',
   },
   mine: {
     label: 'Mine',
@@ -547,6 +553,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'hero', key: 'h4' },
       { kind: 'building', key: 'supplyDepot' },
+      { kind: 'building', key: 'library' },
     ],
   },
   {

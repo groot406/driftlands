@@ -20,6 +20,7 @@ function mergeHeroState(
         movement: nextHero.movement,
         currentTaskId: nextHero.currentTaskId,
         pendingTask: nextHero.pendingTask,
+        pendingExploreTarget: nextHero.pendingExploreTarget,
         carryingPayload: nextHero.carryingPayload,
         pendingChain: nextHero.pendingChain,
         returnPos: nextHero.returnPos,

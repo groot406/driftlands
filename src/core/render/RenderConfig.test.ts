@@ -15,6 +15,7 @@ function resetRenderFeatureOverrides() {
     renderFeatureOverrideStore.reachGlow = 'auto';
     renderFeatureOverrideStore.heroAuras = 'auto';
     renderFeatureOverrideStore.fogShimmer = 'auto';
+    renderFeatureOverrideStore.tileRelief = 'auto';
     renderFeatureOverrideStore.manualShadowComposite = 'auto';
 }
 
@@ -70,4 +71,15 @@ test('getResolvedRenderQualityProfile enables clouds for high quality and respec
     const disabledProfile = getResolvedRenderQualityProfile(0, makeEnvironment());
     assert.equal(disabledProfile.enableClouds, false);
     assert.equal(disabledProfile.cloudsEnabled, false);
+});
+
+test('getResolvedRenderQualityProfile exposes tile relief as a feature override', () => {
+    resetRenderFeatureOverrides();
+
+    const profile = getResolvedRenderQualityProfile(0, makeEnvironment());
+    assert.equal(profile.enableTileRelief, true);
+
+    renderFeatureOverrideStore.tileRelief = 'off';
+    const disabledProfile = getResolvedRenderQualityProfile(0, makeEnvironment());
+    assert.equal(disabledProfile.enableTileRelief, false);
 });

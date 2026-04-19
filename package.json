@@ -14,7 +14,10 @@
     "preview": "vite preview",
     "start:server": "tsx server/src/index.ts",
     "test": "tsx --test src/**/*.test.ts server/**/*.test.ts",
-    "typecheck:server": "tsc --noEmit --project tsconfig.server.json"
+    "typecheck:server": "tsc --noEmit --project tsconfig.server.json",
+    "art:prompts": "python3 scripts/building_art_pipeline.py prompts",
+    "art:process": "python3 scripts/building_art_pipeline.py",
+    "art:sheet": "python3 scripts/building_art_pipeline.py contact-sheet"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",

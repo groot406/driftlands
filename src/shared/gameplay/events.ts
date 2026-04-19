@@ -22,6 +22,10 @@ export type GameplayEvent =
       participantIds: string[];
     }
   | {
+      type: 'study:completed';
+      studyKey: string;
+    }
+  | {
       type: 'tile:restored';
       tileId: string;
       q: number;

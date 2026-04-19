@@ -27,7 +27,8 @@ export class ServerMovementHandler {
         path: { q: number; r: number }[];
         stepDurations: number[];
         totalDuration: number;
-        task?: TaskType
+        task?: TaskType;
+        exploreTarget?: { q: number; r: number };
     }> = new Map();
 
     constructor() {
@@ -97,6 +98,7 @@ export class ServerMovementHandler {
         const logicalTaskTarget = message.taskLocation ?? target;
         const logicalTaskTile = getTile(logicalTaskTarget);
         const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
+        const exploreTarget = normalizeExploreTarget(message.task, message.exploreTarget);
         if (!isWalkablePosition(target.q, target.r) && targetTile.discovered && !canUseTaskTarget) return;
 
         let path: { q: number; r: number }[] = [];
@@ -132,6 +134,7 @@ export class ServerMovementHandler {
         hero.pendingTask = message.task
             ? { tileId: logicalTaskTile?.id ?? targetTile.id, taskType: message.task }
             : undefined;
+        hero.pendingExploreTarget = exploreTarget;
         detachHeroFromCurrentTask(hero);
         hero.delayedMovementTimer = undefined;
         this.registerMovement(
@@ -144,6 +147,7 @@ export class ServerMovementHandler {
             message.task,
             message.id,
             message.task ? (logicalTaskTile?.id ?? targetTile.id) : undefined,
+            exploreTarget,
         );
 
         const startDelayMs = Math.max(0, startAt - now);
@@ -162,6 +166,7 @@ export class ServerMovementHandler {
             cumulative,
             task: message.task,
             taskLocation: message.task ? logicalTaskTarget : undefined,
+            exploreTarget,
         };
         broadcast(update);
 
@@ -181,6 +186,9 @@ export class ServerMovementHandler {
 
         const logicalTaskTarget = taskLocation ?? target;
         const logicalTaskTile = getTile(logicalTaskTarget);
+        const exploreTarget = task === 'explore' && hero.pendingExploreTarget
+            ? { ...hero.pendingExploreTarget }
+            : undefined;
 
         if (hero.q === target.q && hero.r === target.r) {
             if (task && logicalTaskTile && isHeroAtTaskAccess(hero, task, logicalTaskTile)) {
@@ -223,6 +231,7 @@ export class ServerMovementHandler {
             task,
             undefined,
             task ? (logicalTaskTile?.id ?? targetTile.id) : undefined,
+            exploreTarget,
         );
         broadcast({
             type: 'hero:path_update',
@@ -236,6 +245,7 @@ export class ServerMovementHandler {
             cumulative,
             task,
             taskLocation: task ? logicalTaskTarget : undefined,
+            exploreTarget,
         } as PathUpdateMessage)
 
         updateActiveTasks(heroes);
@@ -258,6 +268,7 @@ export class ServerMovementHandler {
         task?: TaskType,
         requestId?: string,
         pendingTaskTileId?: string,
+        exploreTarget?: { q: number; r: number },
     ): void {
         const totalDuration = durations.reduce((a, b) => a + b, 0);
 
@@ -269,7 +280,8 @@ export class ServerMovementHandler {
             path,
             stepDurations: durations,
             totalDuration,
-            task
+            task,
+            exploreTarget,
         });
 
         const cumulative: number[] = [];
@@ -287,6 +299,9 @@ export class ServerMovementHandler {
                 taskType: task,
             };
         }
+        heroLocal.pendingExploreTarget = task === 'explore' && exploreTarget
+            ? { ...exploreTarget }
+            : undefined;
         heroLocal.movement = {
             path: path.slice(),
             origin,
@@ -394,4 +409,19 @@ function sanitizePath(path: Array<{ q: number; r: number }>, origin: { q: number
     }
 
     return normalized;
+}
+
+function normalizeExploreTarget(task: TaskType | undefined, target: { q: number; r: number } | undefined) {
+    if (task !== 'explore' || !target) {
+        return undefined;
+    }
+
+    if (!Number.isFinite(target.q) || !Number.isFinite(target.r)) {
+        return undefined;
+    }
+
+    return {
+        q: Math.trunc(target.q),
+        r: Math.trunc(target.r),
+    };
 }

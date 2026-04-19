@@ -3,6 +3,7 @@ import { heroes, loadHeroes } from "../../src/shared/game/state/heroStore";
 import { loadTasks, taskStore } from "../../src/shared/game/state/taskStore";
 import { depositResourceToStorage, listStorageSnapshots, resetResourceState, resourceInventory } from "../../src/shared/game/state/resourceStore";
 import { getWorkforceSnapshot, resetWorkforceState } from '../../src/shared/game/state/jobStore';
+import { getStudySnapshot, resetStudyState } from '../../src/store/studyStore';
 import { getPopulationSnapshot, getPopulationState, initializePopulation, resetPopulationState } from "../../src/shared/game/state/populationStore";
 import { getSettlerSnapshot, loadSettlers, resetSettlerState } from '../../src/shared/game/state/settlerStore';
 import { recalculateSettlementSupport, resetSettlementSupportState } from '../../src/shared/game/state/settlementSupportStore';
@@ -15,6 +16,7 @@ import type { ResourceType } from "../../src/shared/game/types/Resource";
 import type { StorageSnapshot } from '../../src/shared/game/storage';
 import type { PopulationSnapshot } from '../../src/store/populationStore';
 import type { WorkforceSnapshot } from '../../src/store/jobStore';
+import type { StudyStateSnapshot } from '../../src/store/studyStore';
 import { runState } from "./state/runState";
 import { resetMineReserveState } from './state/mineReserveState';
 import { resetStoryProgression } from '../../src/shared/story/progressionState';
@@ -104,6 +106,7 @@ function serializeHero(hero: Hero): Hero {
       : undefined,
     currentTaskId: hero.currentTaskId,
     pendingTask: hero.pendingTask ? { ...hero.pendingTask } : undefined,
+    pendingExploreTarget: hero.pendingExploreTarget ? { ...hero.pendingExploreTarget } : undefined,
     carryingPayload: hero.carryingPayload ? { ...hero.carryingPayload } : undefined,
     pendingChain: hero.pendingChain ? { ...hero.pendingChain } : undefined,
     returnPos: hero.returnPos ? { ...hero.returnPos } : undefined,
@@ -177,6 +180,7 @@ class WorldState {
     this.activeSeed = resolvedSeed;
     resetResourceState();
     resetWorkforceState();
+    resetStudyState();
     resetPopulationState();
     resetSettlerState();
     resetSettlementSupportState();
@@ -201,7 +205,7 @@ class WorldState {
     return this.activeSeed;
   }
 
-  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot } {
+  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot } {
     const resources: Partial<Record<ResourceType, number>> = {};
     for (const [k, v] of Object.entries(resourceInventory)) {
       (resources as any)[k] = v as number;
@@ -210,6 +214,7 @@ class WorldState {
     const storages = listStorageSnapshots();
     const population = getPopulationSnapshot();
     const jobs = getWorkforceSnapshot();
+    const studies = getStudySnapshot();
     const settlers = getSettlerSnapshot();
 
     return {
@@ -221,6 +226,7 @@ class WorldState {
       storages,
       population,
       jobs,
+      studies,
     };
   }
 }

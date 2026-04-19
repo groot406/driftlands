@@ -87,7 +87,8 @@ const terrainBufferStatus = computed(() => {
   return `rebuild:${renderDebugState.staticTerrainReason}`;
 });
 
-const features = computed(() => ([
+const features = computed(() => {
+  const featureEntries: Array<{ key: RenderFeatureKey; label: string; on: boolean }> = [
   { key: 'backdropGlows', label: 'backdrop', on: renderDebugState.backdropGlowsEnabled },
   { key: 'motionBlur', label: 'blur', on: renderDebugState.motionBlurEnabled },
   { key: 'bloom', label: 'bloom', on: renderDebugState.bloomEnabled },
@@ -98,11 +99,15 @@ const features = computed(() => ([
   { key: 'reachGlow', label: 'reach', on: renderDebugState.reachGlowEnabled },
   { key: 'heroAuras', label: 'auras', on: renderDebugState.heroAurasEnabled },
   { key: 'fogShimmer', label: 'fog', on: renderDebugState.fogShimmerEnabled },
+  { key: 'tileRelief', label: 'relief', on: renderDebugState.tileReliefEnabled },
   { key: 'manualShadowComposite', label: 'shadow', on: renderDebugState.manualShadowComposite },
-].map((feature) => ({
-  ...feature,
-  mode: renderFeatureOverrideStore[feature.key],
-}))));
+  ];
+
+  return featureEntries.map((feature) => ({
+    ...feature,
+    mode: renderFeatureOverrideStore[feature.key],
+  }));
+});
 
 const passTimingSummary = computed(() => {
   const entries = Object.entries(renderDebugState.passTimingsMs)

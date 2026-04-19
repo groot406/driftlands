@@ -128,6 +128,34 @@ function buildHeroSources(): Record<string, string> {
     return sources;
 }
 
+function buildToolSources(): Record<string, string> {
+    const toolImageModules = import.meta.glob('../assets/tools/*.png', { eager: true });
+    const sources: Record<string, string> = {};
+    for (const path in toolImageModules) {
+        const mod: any = toolImageModules[path];
+        const url: string = mod.default || mod;
+        const nameMatch = path.match(/([^/]+)\.png$/);
+        if (!nameMatch) continue;
+        const key = nameMatch[1]!;
+        sources[key] = url;
+    }
+    return sources;
+}
+
+function buildSettlerSources(): Record<string, string> {
+    const settlerImageModules = import.meta.glob('../assets/settlers/*.png', { eager: true });
+    const sources: Record<string, string> = {};
+    for (const path in settlerImageModules) {
+        const mod: any = settlerImageModules[path];
+        const url: string = mod.default || mod;
+        const nameMatch = path.match(/([^/]+)\.png$/);
+        if (!nameMatch) continue;
+        const key = nameMatch[1]!;
+        sources[key] = url;
+    }
+    return sources;
+}
+
 interface DrawOptions {
     hoveredTile: Tile | null;
     hoveredHero: Hero | null;
@@ -138,6 +166,7 @@ interface DrawOptions {
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
     globalReachBoundary?: Array<{q: number; r: number}>; // always-visible reach outline (all TCs, dimmed)
     globalReachTileIds?: Set<string>;
+    storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
 }
@@ -387,6 +416,10 @@ export class HexMapService {
     private _heroImages: Record<string, HTMLImageElement> = {};
     private _pendingHeroImageLoads = new Map<string, Promise<void>>();
     private _heroImagesLoaded = false;
+    private _toolImages: Record<string, HTMLImageElement> = {};
+    private _toolImagesLoaded = false;
+    private _settlerImages: Record<string, HTMLImageElement> = {};
+    private _settlerImagesLoaded = false;
 
     private _heroLayouts: Map<string, Record<string, { x: number; y: number }>> = new Map();
 
@@ -429,6 +462,8 @@ export class HexMapService {
     // Asset sources
     private readonly tileImgSources: Record<string, string> = buildTileSources();
     private readonly heroImgSources: Record<string, string> = buildHeroSources();
+    private readonly toolImgSources: Record<string, string> = buildToolSources();
+    private readonly settlerImgSources: Record<string, string> = buildSettlerSources();
 
     constructor() {
         this.ensureRenderArchitecture();
@@ -445,6 +480,8 @@ export class HexMapService {
         this.setupCanvas();
         await this.loadTileImages();
         await this.ensureHeroAssets();
+        await this.loadToolImages();
+        await this.loadSettlerImages();
         this.resize();
         stopCameraAnimation();
         animateCamera();
@@ -878,6 +915,10 @@ export class HexMapService {
                             queueMissingHeroAssets: () => this.queueMissingHeroAssets(),
                             heroImagesLoaded: this._heroImagesLoaded,
                             heroImages: this._heroImages,
+                            toolImagesLoaded: this._toolImagesLoaded,
+                            toolImages: this._toolImages,
+                            settlerImagesLoaded: this._settlerImagesLoaded,
+                            settlerImages: this._settlerImages,
                             heroLayouts: this._heroLayouts,
                             setHeroLayouts: (next) => {
                                 this._heroLayouts = next;
@@ -1065,6 +1106,7 @@ export class HexMapService {
             clusterTileIds: opts.clusterTileIds,
             globalReachBoundary: opts.globalReachBoundary,
             globalReachTileIds: opts.globalReachTileIds,
+            storyHintTiles: opts.storyHintTiles?.map((tile) => ({ q: tile.q, r: tile.r })),
             showSupportOverlay: opts.showSupportOverlay,
             hoveredTileInReach: opts.hoveredTileInReach,
         };
@@ -1117,6 +1159,7 @@ export class HexMapService {
             reachGlowEnabled: frame.quality.enableReachGlow,
             heroAurasEnabled: frame.quality.enableHeroAuras,
             fogShimmerEnabled: frame.quality.enableFogShimmer,
+            tileReliefEnabled: frame.quality.enableTileRelief,
             manualShadowComposite: frame.quality.enableManualShadowComposite,
             particleCount: particleCounts.total,
             birdParticleCount: particleCounts.birds,
@@ -1162,6 +1205,9 @@ export class HexMapService {
         const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
         const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
         const quality = this.getRenderQualityProfile(stressTier);
+        if (quality.enableTileRelief !== this._currentRenderQuality.enableTileRelief) {
+            this._terrainChunkCache.markAllDirty();
+        }
         this._currentCameraFx = cameraFx;
         this._currentRenderQuality = quality;
         this.applyPendingCameraNudges(cameraFx);
@@ -1969,6 +2015,7 @@ export class HexMapService {
         includeDiscoveredTerrain: boolean = true,
         suppressWorldUi: boolean = false,
     ) {
+        return ;
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = this.getSupportAwareTileOpacity(t, this.getTileOpacity(dist, applyCameraFade));
@@ -3390,11 +3437,16 @@ export class HexMapService {
         return !!this.getTileOverlayKey(tile);
     }
 
+    private isTileReliefEnabled() {
+        return this._currentRenderQuality.enableTileRelief;
+    }
+
     private getTileShaderCacheKey(tile: Tile, key: string) {
         const terrain = tile.terrain ?? 'plains';
         const variant = this.getTileShaderVariant(tile, key);
         const reliefMode = this.shouldUseOverlaySafeTileShader(tile) ? 'overlay-safe' : 'full';
-        return `v${HexMapService.TILE_SHADER_VERSION}:${terrain}:${key}:${reliefMode}:r${variant.regionBucket}:a${variant.accentBucket}`;
+        const reliefState = this.isTileReliefEnabled() ? reliefMode : 'off';
+        return `v${HexMapService.TILE_SHADER_VERSION}:${terrain}:${key}:${reliefState}:r${variant.regionBucket}:a${variant.accentBucket}`;
     }
 
     private getTileShaderTone(terrain: string, key: string, regionBucket: number) {
@@ -3813,6 +3865,10 @@ export class HexMapService {
     }
 
     private buildTileShaderCanvas(tile: Tile, key: string): HTMLCanvasElement | null {
+        if (!this.isTileReliefEnabled()) {
+            return null;
+        }
+
         const cacheKey = this.getTileShaderCacheKey(tile, key);
         const cached = this.getCachedCanvas(this._tileShaderCache, cacheKey);
         if (cached) {
@@ -3921,8 +3977,21 @@ export class HexMapService {
             return;
         }
 
-        ctx.globalAlpha = state.opacity;
-        ctx.drawImage(shaderCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
+        this.drawTileShaderCanvas(ctx, shaderCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE, state.opacity);
+    }
+
+    private drawTileShaderCanvas(
+        ctx: CanvasRenderingContext2D,
+        shaderCanvas: HTMLCanvasElement,
+        x: number,
+        y: number,
+        opacity: number,
+    ) {
+        ctx.save();
+        ctx.globalAlpha = opacity * 0.82;
+        ctx.globalCompositeOperation = 'soft-light'
+        ctx.drawImage(shaderCanvas, x, y);
+        ctx.restore();
     }
 
     private shouldRenderWaterReflections(tile: Tile) {
@@ -4010,7 +4079,7 @@ export class HexMapService {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(baseCanvas, 0, 0);
         if (shaderCanvas) {
-            ctx.drawImage(shaderCanvas, 0, 0);
+            this.drawTileShaderCanvas(ctx, shaderCanvas, 0, 0, 1);
         }
         if (roadCanvas) {
             ctx.drawImage(roadCanvas, 0, 0);
@@ -4476,7 +4545,7 @@ export class HexMapService {
     private static readonly MASKED_TILE_CANVAS_CACHE_MAX = 384;
     private static readonly TILE_COLOR_VARIANT_VERSION = 7;
     private static readonly TILE_COLOR_VARIANT_CACHE_MAX = 2048;
-    private static readonly TILE_SHADER_VERSION = 3;
+    private static readonly TILE_SHADER_VERSION = 4;
     private static readonly TILE_SHADER_CACHE_MAX = 192;
     private static readonly TILE_SHORELINE_VERSION = 4;
     private static readonly TILE_SHORELINE_CACHE_MAX = 1024;
@@ -4875,6 +4944,26 @@ export class HexMapService {
         }
         this._maskedImages = canvasCache;
         this._imagesLoaded = true;
+    }
+
+    private async loadToolImages() {
+        for (const [key, src] of Object.entries(this.toolImgSources)) {
+            const img = new Image();
+            img.src = src;
+            await img.decode().catch(() => {});
+            this._toolImages[key] = img;
+        }
+        this._toolImagesLoaded = true;
+    }
+
+    private async loadSettlerImages() {
+        for (const [key, src] of Object.entries(this.settlerImgSources)) {
+            const img = new Image();
+            img.src = src;
+            await img.decode().catch(() => {});
+            this._settlerImages[key] = img;
+        }
+        this._settlerImagesLoaded = true;
     }
 
     private buildHeroMasks(img: HTMLImageElement, avatar: string) {

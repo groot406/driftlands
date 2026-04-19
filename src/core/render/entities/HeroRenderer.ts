@@ -6,12 +6,14 @@ import { heroAnimationSet, heroAnimName, resolveActivity, shouldFlip } from '../
 import { taskStore } from '../../../store/taskStore';
 import { isHeroWorkingTask } from '../../../shared/game/heroTaskState';
 import { camera, hexDistance } from '../../camera';
+import { SETTLER_FRAME_SIZE, settlerAnimationSet, settlerAnimName } from '../../settlerSprite';
 import type { Hero } from '../../types/Hero';
 import type { Settler } from '../../types/Settler';
 import { getSettlerDisplayName } from '../../../shared/game/settlerNames.ts';
 import {
     computeTileSettlerOffsets,
     getSettlerRenderCoords,
+    getSettlerRenderFacing,
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './settlerRender';
@@ -23,6 +25,41 @@ const SETTLER_PALETTES = [
     { cloak: '#8a5a74', trim: '#f0c0c8', cap: '#5e3e56' },
     { cloak: '#4d7a74', trim: '#d6efe5', cap: '#31524f' },
 ];
+
+const TOOL_FRAME_SIZE = 48;
+const SETTLER_SPRITE_ZOOM = 2;
+type HeroWorkTool = 'axe' | 'fishing_rod';
+type FacingOffsetMap = Record<Hero['facing'], { x: number; y: number }>;
+
+const TOOL_ANCHOR_OFFSET_BY_TOOL: Record<HeroWorkTool, FacingOffsetMap> = {
+    axe: {
+        right: { x: 0, y: 10 },
+        left: { x: 0, y: 10 },
+        up: { x: 0, y: 10 },
+        down: { x: 0, y: 10 },
+    },
+    fishing_rod: {
+        right: { x: 0, y: 0 },
+        left: { x: 0, y: 0 },
+        up: { x: 0, y: 0 },
+        down: { x: 0, y: 0 },
+    },
+};
+const AXE_WORK_TASKS = new Set([
+    'breakDirtRock',
+    'buildBridge',
+    'buildRoad',
+    'buildTunnel',
+    'chopWood',
+    'clearRocks',
+    'convertToGrass',
+    'dig',
+    'dismantle',
+    'gatherTimber',
+    'mineOre',
+    'removeTrunks',
+    'tillLand',
+]);
 
 function getSettlerPalette(seed: number) {
     return SETTLER_PALETTES[Math.abs(seed) % SETTLER_PALETTES.length] ?? SETTLER_PALETTES[0]!;
@@ -53,6 +90,10 @@ interface HeroRendererDependencies {
     queueMissingHeroAssets(): void;
     heroImagesLoaded: boolean;
     heroImages: Record<string, HTMLImageElement>;
+    toolImagesLoaded: boolean;
+    toolImages: Record<string, HTMLImageElement>;
+    settlerImagesLoaded: boolean;
+    settlerImages: Record<string, HTMLImageElement>;
     heroLayouts: Map<string, Record<string, { x: number; y: number }>>;
     setHeroLayouts(next: Map<string, Record<string, { x: number; y: number }>>): void;
     setSortedHeroes(next: Hero[]): void;
@@ -168,6 +209,7 @@ export class HeroRenderer {
             opacity: number;
             animRow: number;
             frameIndex: number;
+            workTool: HeroWorkTool | null;
         }> = [];
         const settlerRecords: Array<{
             settler: Settler;
@@ -194,9 +236,18 @@ export class HeroRenderer {
             const movementStarted = deps.hasMovementStarted(hero, now);
             let remaining = movementStarted && hero.movement ? hero.movement.path.length : 0;
             let activity = resolveActivity(remaining);
+            let workTool: HeroWorkTool | null = null;
             if (!hero.movement && hero.currentTaskId) {
                 const inst = taskStore.taskIndex[hero.currentTaskId];
-                if (isHeroWorkingTask(hero, inst)) activity = 'attack';
+                if (inst && isHeroWorkingTask(hero, inst)) {
+                    if (inst.type === 'fishAtDock') {
+                        activity = 'idle';
+                        workTool = 'fishing_rod';
+                    } else {
+                        activity = 'attack';
+                        workTool = AXE_WORK_TASKS.has(inst.type) ? 'axe' : null;
+                    }
+                }
             }
 
             const animName = heroAnimName(activity, hero.facing);
@@ -220,6 +271,7 @@ export class HeroRenderer {
                 opacity,
                 animRow: anim.row,
                 frameIndex,
+                workTool,
             });
         }
 
@@ -330,16 +382,17 @@ export class HeroRenderer {
                 const walking = isSettlerWalking(settler);
                 const working = settler.activity === 'working' || settler.activity === 'repairing';
                 const idling = !walking && !working;
+                const renderFacing = getSettlerRenderFacing(settler, now);
                 const phase = (now + settler.appearanceSeed) / 95;
                 const walkBeat = walking ? Math.sin(phase) : 0;
                 const walkBounce = walking ? Math.cos(phase * 2) : 0;
                 const workBeat = working ? Math.sin(phase * 1.55) : 0;
                 const idleBeat = idling ? Math.sin(phase * 0.38) : 0;
                 const idleDrift = idling ? Math.cos(phase * 0.23) : 0;
-                const sideSign = settler.facing === 'left' ? -1 : settler.facing === 'right' ? 1 : 0;
+                const sideSign = renderFacing === 'left' ? -1 : renderFacing === 'right' ? 1 : 0;
                 const sideFacing = sideSign !== 0;
-                const facingUp = settler.facing === 'up';
-                const facingDown = settler.facing === 'down';
+                const facingUp = renderFacing === 'up';
+                const facingDown = renderFacing === 'down';
                 const bodyWidth = sideFacing ? 8 : 9;
                 const bodyHeight = 5;
                 const bodyBob = walking
@@ -402,6 +455,91 @@ export class HeroRenderer {
                     ? (sideSign > 0 ? bodyX + bodyWidth : bodyX - 3)
                     : bodyX + bodyWidth - 1;
                 const payloadY = bodyY + 8 - frontArmLift;
+                const settlerSprite = deps.settlerImagesLoaded ? deps.settlerImages.default : undefined;
+
+                if (settlerSprite) {
+                    const activity = walking ? 'walk' : working ? 'attack' : 'idle';
+                    const animName = settlerAnimName(activity, renderFacing);
+                    const anim = settlerAnimationSet.get(animName) || settlerAnimationSet.get('idleDown')!;
+                    const elapsed = now + settler.appearanceSeed - deps.heroAnimStart;
+                    const frames = anim.frames;
+                    const frameDuration = anim.frameDuration;
+                    const cycle = frames * frameDuration + (anim.cooldown || 0);
+                    const inCycle = elapsed % cycle;
+                    const frameIndex = frames <= 1 ? 0 : (inCycle >= frames * frameDuration ? frames - 1 : Math.floor(inCycle / frameDuration));
+                    const spriteWidth = SETTLER_FRAME_SIZE * SETTLER_SPRITE_ZOOM;
+                    const spriteHeight = SETTLER_FRAME_SIZE * SETTLER_SPRITE_ZOOM;
+                    const spriteX = groundX - (spriteWidth / 2);
+                    const spriteY = groundY - 42;
+                    const sx = frameIndex * SETTLER_FRAME_SIZE;
+                    const sy = anim.row * SETTLER_FRAME_SIZE;
+
+                    ctx.save();
+                    ctx.globalAlpha = opacity * 0.38;
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    ctx.beginPath();
+                    ctx.ellipse(
+                        groundX,
+                        shadowY,
+                        walking ? 4.2 : working ? 4.55 : 5.05,
+                        walking ? 1.4 : working ? 1.6 : 1.9,
+                        0,
+                        0,
+                        Math.PI * 2,
+                    );
+                    ctx.fill();
+                    ctx.restore();
+
+                    if (hoverAlpha > 0.01) {
+                        ctx.save();
+                        ctx.globalAlpha = opacity * hoverAlpha * 0.95;
+                        ctx.beginPath();
+                        ctx.ellipse(groundX, shadowY - 1, 6.1 + (hoverAlpha * 0.7), 2.45 + (hoverAlpha * 0.35), 0, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+                        ctx.fill();
+                        ctx.lineWidth = 1.5;
+                        ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
+                        ctx.stroke();
+
+                        const label = getSettlerDisplayName(settler.id);
+                        ctx.font = '600 9px system-ui, sans-serif';
+                        const textWidth = ctx.measureText(label).width;
+                        const labelWidth = Math.ceil(textWidth) + 10;
+                        const labelHeight = 14;
+                        const labelX = Math.round(groundX - (labelWidth / 2));
+                        const labelY = Math.round(spriteY + 8 - (hoverAlpha * 4));
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+                        ctx.beginPath();
+                        ctx.roundRect(labelX, labelY, labelWidth, labelHeight, 7);
+                        ctx.fill();
+                        ctx.strokeStyle = 'rgba(125, 211, 252, 0.55)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        ctx.fillStyle = '#e0f2fe';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(label, groundX, labelY + (labelHeight / 2) + 0.5);
+                        ctx.restore();
+                    }
+
+                    ctx.save();
+                    ctx.globalAlpha = opacity;
+                    ctx.imageSmoothingEnabled = false;
+                    if (shouldFlip(renderFacing)) {
+                        ctx.translate(spriteX + spriteWidth, spriteY);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(settlerSprite, sx, sy, SETTLER_FRAME_SIZE, SETTLER_FRAME_SIZE, 0, 0, spriteWidth, spriteHeight);
+                    } else {
+                        ctx.drawImage(settlerSprite, sx, sy, SETTLER_FRAME_SIZE, SETTLER_FRAME_SIZE, spriteX, spriteY, spriteWidth, spriteHeight);
+                    }
+
+                    if (settler.carryingKind) {
+                        ctx.fillStyle = settler.carryingKind === 'output' ? '#f4d35e' : '#8ec07c';
+                        ctx.fillRect(groundX + (sideFacing && sideSign < 0 ? -11 : 8), groundY - 16, 4, 4);
+                    }
+                    ctx.restore();
+                    continue;
+                }
 
                 ctx.save();
                 ctx.globalAlpha = opacity * 0.38;
@@ -511,7 +649,7 @@ export class HeroRenderer {
                 continue;
             }
 
-            const { hero, img, pos, interp, destX, destY, opacity, frameIndex, animRow } = layer.rec;
+            const { hero, img, pos, interp, destX, destY, opacity, frameIndex, animRow, workTool } = layer.rec;
             const x = interp.x;
             const y = interp.y;
 
@@ -557,6 +695,29 @@ export class HeroRenderer {
                 ctx.restore();
             } else {
                 ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * deps.heroZoom, frameSize * deps.heroZoom);
+            }
+
+            const toolImage = workTool && deps.toolImagesLoaded ? deps.toolImages[workTool] : undefined;
+            if (toolImage) {
+                const toolSx = Math.min(frameIndex, 4) * TOOL_FRAME_SIZE;
+                const toolSy = animRow * TOOL_FRAME_SIZE;
+                const toolWidth = TOOL_FRAME_SIZE * deps.heroZoom;
+                const toolHeight = TOOL_FRAME_SIZE * deps.heroZoom;
+                const anchorOffset = TOOL_ANCHOR_OFFSET_BY_TOOL[workTool][hero.facing];
+                const toolDestX = x - toolWidth / 2 + pos.x - (deps.heroFrameSize / 2) + (anchorOffset.x * deps.heroZoom);
+                const toolDestY = y - (TOOL_FRAME_SIZE * deps.heroZoom) + (deps.heroFrameSize / 2) + pos.y + (anchorOffset.y * deps.heroZoom);
+
+                ctx.save();
+                ctx.globalAlpha = opacity;
+                ctx.imageSmoothingEnabled = false;
+                if (shouldFlip(hero.facing)) {
+                    ctx.translate(toolDestX + toolWidth, toolDestY);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(toolImage, toolSx, toolSy, TOOL_FRAME_SIZE, TOOL_FRAME_SIZE, 0, 0, toolWidth, toolHeight);
+                } else {
+                    ctx.drawImage(toolImage, toolSx, toolSy, TOOL_FRAME_SIZE, TOOL_FRAME_SIZE, toolDestX, toolDestY, toolWidth, toolHeight);
+                }
+                ctx.restore();
             }
 
             if (hero.carryingPayload) {

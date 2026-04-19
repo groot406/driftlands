@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+__pycache__/
+*.pyc
+output/art_candidates/
+output/art_review/
 
 # Editor directories and files
 .vscode/*

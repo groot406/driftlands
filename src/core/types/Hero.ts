@@ -37,6 +37,7 @@ export interface Hero {
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)
     pendingTask?: HeroPendingTaskIntent; // task to start or rejoin when arriving at its tile
+    pendingExploreTarget?: { q: number; r: number }; // optional far tile to steer chained exploration toward
     carryingPayload?: ResourceAmount; // new payload model for carried resources
     pendingChain?: { sourceTileId: string; taskType: string }; // defer auto-chain until after delivery
     returnPos?: { q: number; r: number }; // restore optional original position for return flows

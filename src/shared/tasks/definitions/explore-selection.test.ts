@@ -92,6 +92,78 @@ test('explore chaining chooses a random eligible neighbor instead of the closest
   assert.deepEqual(moveCalls, [{ q: 2, r: 0, task: 'explore' }]);
 });
 
+test('explore chaining steers toward a pending far target when one is set', async () => {
+  const townCenter = createDiscoveredTile({
+    id: '0,0',
+    q: 0,
+    r: 0,
+    terrain: 'towncenter',
+  });
+  const frontierTile = createDiscoveredTile({
+    id: '1,0',
+    q: 1,
+    r: 0,
+    terrain: 'plains',
+  });
+
+  loadWorld([
+    townCenter,
+    frontierTile,
+    createDiscoveredTile({ id: '1,-1', q: 1, r: -1, terrain: 'plains' }),
+    createDiscoveredTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains' }),
+    createDiscoveredTile({ id: '1,1', q: 1, r: 1, terrain: 'plains' }),
+  ]);
+
+  const moveCalls: Array<{ q: number; r: number; task?: string; taskLocation?: { q: number; r: number } }> = [];
+  configureGameRuntime({
+    moveHero: (_hero, target, task, taskLocation) => {
+      moveCalls.push({ q: target.q, r: target.r, task, taskLocation });
+    },
+  });
+
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Scout',
+    avatar: 'santa',
+    q: frontierTile.q,
+    r: frontierTile.r,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    pendingExploreTarget: { q: -2, r: 3 },
+  };
+
+  const exploreTask = getTaskDefinition('explore');
+  assert.ok(exploreTask?.onComplete);
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.99;
+
+  try {
+    exploreTask.onComplete!(frontierTile, {
+      id: 'task-explore-directed',
+      type: 'explore',
+      tileId: frontierTile.id,
+      progressXp: 0,
+      requiredXp: 1,
+      createdMs: 0,
+      lastUpdateMs: 0,
+      participants: {},
+      active: true,
+    }, [hero]);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.deepEqual(moveCalls, [{
+    q: 0,
+    r: 1,
+    task: 'explore',
+    taskLocation: undefined,
+  }]);
+});
+
 test('shore exploration reveals a small connected patch of water without sending heroes onto the water', async () => {
   const shore = createDiscoveredTile({
     id: '0,0',

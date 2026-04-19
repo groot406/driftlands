@@ -74,6 +74,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         enableReachGlow: true,
         enableHeroAuras: false,
         enableFogShimmer: false,
+        enableTileRelief: false,
         enableManualShadowComposite: true,
         particleBudgetScale: 0.25,
         overlaySoftness: 0,
@@ -103,6 +104,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         enableReachGlow: true,
         enableHeroAuras: true,
         enableFogShimmer: false,
+        enableTileRelief: true,
         enableManualShadowComposite: true,
         particleBudgetScale: 0.62,
         overlaySoftness: 0.35,
@@ -132,6 +134,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         enableReachGlow: true,
         enableHeroAuras: true,
         enableFogShimmer: true,
+        enableTileRelief: true,
         enableManualShadowComposite: true,
         particleBudgetScale: 1,
         overlaySoftness: 0.8,
@@ -233,6 +236,7 @@ export function applyRenderFeatureOverrides(profile: RenderQualityProfile): Rend
         auraEnabled: resolveRenderFeatureEnabled('heroAuras', profile.auraEnabled),
         enableFogShimmer: resolveRenderFeatureEnabled('fogShimmer', profile.enableFogShimmer),
         fogShimmerEnabled: resolveRenderFeatureEnabled('fogShimmer', profile.fogShimmerEnabled),
+        enableTileRelief: resolveRenderFeatureEnabled('tileRelief', profile.enableTileRelief),
         enableManualShadowComposite: resolveRenderFeatureEnabled('manualShadowComposite', profile.enableManualShadowComposite),
         particleBudgetScale: enableParticles
             ? Math.max(profile.particleBudgetScale, isRenderFeatureForcedOn('particles') ? 0.35 : 0)
