@@ -297,6 +297,17 @@ function isBuildingPriorityTile(tile: Tile | null | undefined) {
     return BUILDING_VARIANT_KEYS.has(tile.variant) || isInfrastructureTile(tile);
 }
 
+function isSupportCountedTile(tile: Tile | null | undefined): tile is Tile {
+    return !!tile?.discovered
+        && !!tile.terrain
+        && tile.terrain !== 'towncenter'
+        && tile.terrain !== 'water';
+}
+
+function getSupportTileCost(tile: Tile | null | undefined) {
+    return isSupportCountedTile(tile) ? ACTIVE_TILE_COST : 0;
+}
+
 function compareTileIds(a: string, b: string) {
     return a.localeCompare(b);
 }
@@ -479,12 +490,13 @@ function selectActiveTiles(
         .sort((a, b) => compareActivationPriority(a, b, townCenterBySettlementId, ownerByTileId));
 
     for (const tile of candidates) {
-        if (remainingCapacity < ACTIVE_TILE_COST) {
-            break;
+        const tileCost = getSupportTileCost(tile);
+        if (tileCost > remainingCapacity) {
+            continue;
         }
 
         activeNonTowncenterIds.add(tile.id);
-        remainingCapacity -= ACTIVE_TILE_COST;
+        remainingCapacity -= tileCost;
 
         if (isWatchtowerTile(tile)) {
             activeWatchtowerIds.add(tile.id);
@@ -547,7 +559,7 @@ function buildSupportSnapshot(
     const countsBySettlementId = new Map<string, SettlementSupportCounts>();
 
     for (const tile of getOwnedDiscoveredTiles()) {
-        if (tile.terrain === 'towncenter') continue;
+        if (!isSupportCountedTile(tile)) continue;
 
         const ownerSettlementId = ownerByTileId.get(tile.id);
         if (!ownerSettlementId) continue;
@@ -722,7 +734,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
     const extraCampfireActiveTileIds = new Set<string>();
 
     for (const tileId of campfireSupportedTileIds) {
-        if (!activeNonTowncenterIds.has(tileId)) {
+        if (!activeNonTowncenterIds.has(tileId) && isSupportCountedTile(tileIndex[tileId])) {
             extraCampfireActiveTileIds.add(tileId);
         }
         activeNonTowncenterIds.add(tileId);
@@ -736,7 +748,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
     const extraInfrastructureActiveTileIds = new Set<string>();
 
     for (const [tileId, settlementId] of infrastructureSupportedTileAssignments.entries()) {
-        if (!activeNonTowncenterIds.has(tileId)) {
+        if (!activeNonTowncenterIds.has(tileId) && isSupportCountedTile(tileIndex[tileId])) {
             extraInfrastructureActiveTileIds.add(tileId);
         }
         activeNonTowncenterIds.add(tileId);
@@ -754,7 +766,7 @@ export function recalculateSettlementSupport(populationCurrent: number, hungerMs
     for (const tileId of baseSelection.activeNonTowncenterIds) {
         const tile = tileIndex[tileId];
         const ownerSettlementId = ownerByTileId.get(tileId);
-        if (!tile || !ownerSettlementId) continue;
+        if (!tile || !ownerSettlementId || !isSupportCountedTile(tile)) continue;
 
         const tiles = activeBySettlementId.get(ownerSettlementId) ?? [];
         tiles.push(tile);

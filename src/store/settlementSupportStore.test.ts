@@ -158,9 +158,52 @@ test('campfires temporarily keep nearby controlled frontier tiles online beyond 
 
   const result = recalculateSettlementSupport(0, 0);
 
-  assert.equal(result.snapshot.supportCapacity, 85);
-  assert.equal(result.snapshot.activeTileCount, 85);
+  assert.equal(result.snapshot.supportCapacity, 84);
+  assert.equal(result.snapshot.activeTileCount, 84);
   assert.equal(tileIndex['8,-1']?.activationState, 'active');
+});
+
+test('water tiles stay active without consuming online tile capacity', () => {
+  const reserved = new Set(['1,-1']);
+  const frontier: Tile[] = [];
+  const coords = createSortedFrontierCoords(reserved);
+
+  for (const coord of coords.slice(0, 84)) {
+    frontier.push({
+      id: `${coord.q},${coord.r}`,
+      q: coord.q,
+      r: coord.r,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    });
+  }
+
+  loadWorld([
+    createTowncenterTile(),
+    ...frontier,
+    {
+      id: '1,-1',
+      q: 1,
+      r: -1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const result = recalculateSettlementSupport(0, 0);
+
+  assert.equal(result.snapshot.supportCapacity, 84);
+  assert.equal(result.snapshot.activeTileCount, 84);
+  assert.equal(result.snapshot.inactiveTileCount, 0);
+  assert.equal(tileIndex['1,-1']?.activationState, 'active');
 });
 
 test('road networks chain support into neighboring frontier tiles beyond base reach', () => {
@@ -277,8 +320,8 @@ test('bridges keep adjacent shore tiles active beyond town-center reach', () => 
 
   const result = recalculateSettlementSupport(0, 0);
 
-  assert.equal(result.snapshot.supportCapacity, 85);
-  assert.equal(result.snapshot.activeTileCount, 85);
+  assert.equal(result.snapshot.supportCapacity, 84);
+  assert.equal(result.snapshot.activeTileCount, 84);
   assert.equal(tileIndex['10,0']?.activationState, 'active');
   assert.equal(tileIndex['10,0']?.controlledBySettlementId, '0,0');
 });

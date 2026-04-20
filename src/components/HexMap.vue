@@ -34,6 +34,7 @@
       :key="hint.id"
       class="story-tile-hint"
       :style="hint.style"
+      @pointerdown.stop.prevent="handleStoryHintPointerDown"
       @pointerup.stop.prevent="handleStoryHintPointerUp(hint)"
     >
       <div class="story-tile-hint-ring"></div>
@@ -62,6 +63,7 @@ import {
   isKeyboardNavigating,
   keyDown,
   keyUp,
+  resetCameraPointerState,
   stopCameraAnimation
 } from '../core/camera';
 import {getSelectedHero, isPaused, openSettlerModal, selectedHeroId, selectHero,} from '../store/uiStore';
@@ -89,6 +91,7 @@ import {runSnapshot, runVersion} from '../store/runStore';
 import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
 import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
 import { isUndiscoveredFrontierTile, listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
+import { getScoutCancelMovementPathOptions } from '../shared/game/scoutResources';
 import {
   computeControlledTileIds,
   isPositionControlled,
@@ -136,6 +139,16 @@ const pathService = new PathService();
 const useCanvasDropShadow = shouldUseCanvasDropShadow();
 const FOREST_DISCOVERY_HINT_ID = 'story:forest-nearby';
 const WATER_DISCOVERY_HINT_ID = 'story:water-nearby';
+
+function findMovementPathForHero(hero: Hero, target: { q: number; r: number }, taskType?: string | null) {
+  return pathService.findWalkablePath(
+    hero.q,
+    hero.r,
+    target.q,
+    target.r,
+    getScoutCancelMovementPathOptions(hero, taskType),
+  );
+}
 const renderedPings = computed(() => {
   const cameraPx = axialToPixel(camera.q, camera.r);
   const { width, height } = containerSize.value;
@@ -299,7 +312,7 @@ function getControlledUndiscoveredHintStep(target: Tile, hero: Hero): Tile | nul
     }
 
     const canReachAccess = accessTile.q === hero.q && accessTile.r === hero.r
-      || pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
+      || findMovementPathForHero(hero, accessTile, 'explore').length > 0;
     if (!canReachAccess) {
       continue;
     }
@@ -326,7 +339,7 @@ function buildStoryHintExplorationRoute(
   const accessTile = findNearestTaskAccessTile('explore', taskTile, hero.q, hero.r) ?? taskTile;
   const path = (accessTile.q === hero.q && accessTile.r === hero.r)
     ? []
-    : pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r);
+    : findMovementPathForHero(hero, accessTile, 'explore');
 
   if (accessTile.q !== hero.q || accessTile.r !== hero.r) {
     if (!path.length) {
@@ -416,12 +429,21 @@ function requestSelectedHeroExploreStoryHint(target: Tile, source = 'map-click')
   return true;
 }
 
-function handleStoryHintPointerUp(hint: { q: number; r: number }) {
-  if (isPaused() || dragged) {
+function handleStoryHintPointerDown() {
+  resetCameraPointerState(mouseDown);
+}
+
+function handleStoryHintPointerUp(hint: { id: string; kind: string; q: number; r: number }) {
+  const wasCameraDrag = mouseDown.value && dragging;
+  resetCameraPointerState(mouseDown);
+  if (isPaused() || wasCameraDrag) {
     return;
   }
   const target = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
-  requestSelectedHeroExploreStoryHint(target, 'story-hint');
+  const requested = requestSelectedHeroExploreStoryHint(target, 'story-hint');
+  if (requested && hint.kind === 'scout') {
+    clearStoryTileHint(hint.id);
+  }
 }
 
 function handlePointerMoveEvent(ev: Event) {
@@ -549,12 +571,12 @@ function updatePath(force = false, nowMs: number = Date.now()) {
     const accessTile = findNearestTaskAccessTile('explore', hoveredTile.value, hero.q, hero.r) ?? hoveredTile.value;
     const previewPath = (accessTile.q === hero.q && accessTile.r === hero.r)
       ? []
-      : pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r);
+      : findMovementPathForHero(hero, accessTile, 'explore');
     setPathPreview(previewPath, hero, hoveredTile.value, nowMs);
     return;
   }
 
-  setPathPreview(pathService.updatePath(hero, hoveredTile.value), hero, hoveredTile.value, nowMs);
+  setPathPreview(findMovementPathForHero(hero, hoveredTile.value), hero, hoveredTile.value, nowMs);
 }
 
 function handleTaskMenuClose() {
@@ -580,7 +602,7 @@ function handleTaskMenuClose() {
       const goalTile = findNearestTaskAccessTile(null, closedTile, selHero.q, selHero.r);
       if (goalTile) {
         closeTownCenterPanel();
-        const path = pathService.findWalkablePath(selHero.q, selHero.r, goalTile.q, goalTile.r);
+        const path = findMovementPathForHero(selHero, goalTile);
         if (path.length) {
           detachHeroFromCurrentTask(selHero);
           requestHeroMovement(selHero.id, path, goalTile);
@@ -638,7 +660,7 @@ function requestSelectedHeroJoinActiveTask(tile: Tile) {
   const accessTile = findNearestTaskAccessTile(task.type, tile, selHero.q, selHero.r) ?? tile;
   const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
     ? []
-    : pathService.findWalkablePath(selHero.q, selHero.r, accessTile.q, accessTile.r);
+    : findMovementPathForHero(selHero, accessTile, task.type);
 
   if (accessTile.q !== selHero.q || accessTile.r !== selHero.r) {
     if (!path.length) {
@@ -692,7 +714,7 @@ function handleClick(e: PointerEvent) {
           closeWindow(WINDOW_IDS.TASK_MENU);
         }
         closeTownCenterPanel();
-        const path = pathService.findWalkablePath(selHero.q, selHero.r, goalTile.q, goalTile.r);
+        const path = findMovementPathForHero(selHero, goalTile);
         if (path.length) {
           detachHeroFromCurrentTask(selHero);
           requestHeroMovement(selHero.id, path, goalTile);
@@ -761,7 +783,7 @@ function handleClick(e: PointerEvent) {
     const isCarrying = selHero && selHero.carryingPayload && selHero.carryingPayload.amount > 0;
 
     if (selHero && isCarrying && !isWorking) {
-      const path = pathService.updatePath(selHero, tile).slice();
+      const path = findMovementPathForHero(selHero, tile).slice();
       if (path.length > 0) {
         setPathPreview(path, selHero, tile);
         requestHeroMovement(selHero.id, path, tile);
@@ -829,7 +851,7 @@ function handleClick(e: PointerEvent) {
     const accessTile = findNearestTaskAccessTile('explore', tile, selHero.q, selHero.r) ?? tile;
     const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
       ? []
-      : pathService.findWalkablePath(selHero.q, selHero.r, accessTile.q, accessTile.r);
+      : findMovementPathForHero(selHero, accessTile, 'explore');
     setPathPreview(path, selHero, tile);
 
     if (accessTile.q === selHero.q && accessTile.r === selHero.r) {
@@ -887,7 +909,7 @@ function handleClick(e: PointerEvent) {
 
   const path = canReusePreviewPath
     ? pathCoords.value.slice()
-    : pathService.findWalkablePath(selHero.q, selHero.r, tile.q, tile.r);
+    : findMovementPathForHero(selHero, tile);
 
   if (path.length) {
     requestHeroMovement(selHero.id, path, tile, !tile.discovered ? 'explore' : undefined);

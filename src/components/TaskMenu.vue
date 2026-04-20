@@ -263,6 +263,7 @@ import { canStartTaskWhileCarrying } from '../store/taskStore.ts';
 import { isTileWalkable } from '../shared/game/navigation';
 import { getStorageCapacity } from '../shared/game/storage.ts';
 import { getStoryTaskDescriptor } from '../shared/story/progression';
+import { getScoutCancelMovementPathOptions } from '../shared/game/scoutResources';
 
 interface Props {
   tile: Tile | null;
@@ -900,14 +901,25 @@ function selectTask(def: TaskDefinition) {
     return;
   }
 
+  const movementTaskType = def.key === 'walk' ? undefined : def.key;
+
   if (accessTile && hero.q === accessTile.q && hero.r === accessTile.r) {
     if (def.key !== 'walk') {
       startTaskRequest(hero.id, def.key, { q: props.tile.q, r: props.tile.r });
       emit('started', def.key, props.tile);
+    } else {
+      requestHeroMovement(hero.id, [], accessTile);
+      emit('started', def.key, props.tile);
     }
   } else {
     const path = accessTile
-      ? pathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r)
+      ? pathService.findWalkablePath(
+        hero.q,
+        hero.r,
+        accessTile.q,
+        accessTile.r,
+        getScoutCancelMovementPathOptions(hero, movementTaskType),
+      )
       : [];
     if (path.length) {
       detachHeroFromCurrentTask(hero);
@@ -915,8 +927,8 @@ function selectTask(def: TaskDefinition) {
         hero.id,
         path,
         accessTile ?? props.tile,
-        def.key,
-        accessMode !== 'tile' ? props.tile : undefined,
+        movementTaskType,
+        movementTaskType && accessMode !== 'tile' ? props.tile : undefined,
       );
       emit('started', def.key, props.tile);
     }

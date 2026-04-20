@@ -12,6 +12,7 @@ import type { ResourceType } from '../../types/Resource';
 import type { TaskInstance } from '../../types/Task';
 import type { Tile } from '../../types/Tile';
 import type { RenderPassContext } from '../RenderPassContext';
+import { GROWTH_HYBRID_STYLE } from '../visualStyle';
 
 interface CameraCompositeStateLike {
     offsetX: number;
@@ -76,6 +77,11 @@ interface OverlayRendererDependencies {
         nowMs: number,
         applyCameraFade: boolean,
     ): void;
+    drawGrowthTileMotion(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        nowMs: number,
+    ): void;
     drawReachOutline(
         ctx: CanvasRenderingContext2D,
         boundary: Array<{ q: number; r: number }>,
@@ -133,6 +139,7 @@ export class OverlayRenderer {
 
         deps.drawGameplayWorldImpacts(underlay.ctx, frame.effectNowMs, false);
         deps.drawSupportOverlay(underlay.ctx, frame.visibleTiles, false, opts.showSupportOverlay === true);
+        deps.drawGrowthTileMotion(underlay.ctx, frame.visibleTiles, frame.effectNowMs);
         this.drawActiveTaskHighlights(underlay.ctx, frame.visibleTiles, frame.effectNowMs, deps);
         this.drawStoryHintHighlights(underlay.ctx, opts.storyHintTiles ?? [], frame.effectNowMs, deps);
 
@@ -158,8 +165,8 @@ export class OverlayRenderer {
                     underlay.ctx,
                     pc.q,
                     pc.r,
-                    last ? 'rgba(216,244,255,0.0)' : 'rgba(250,253,255,0.0)',
-                    last ? '#dbedff' : '#daf0ff',
+                    last ? 'rgba(255,244,206,0.03)' : 'rgba(226,250,255,0.02)',
+                    last ? GROWTH_HYBRID_STYLE.outlines.pathTarget : GROWTH_HYBRID_STYLE.outlines.path,
                     opacity,
                 );
             }
@@ -183,8 +190,8 @@ export class OverlayRenderer {
                         underlay.ctx,
                         pc.q,
                         pc.r,
-                        'rgba(132,196,255,0.0)',
-                        i === remaining.length - 1 ? '#6fb8ff' : '#9fd8ff',
+                        'rgba(226,250,255,0.02)',
+                        i === remaining.length - 1 ? GROWTH_HYBRID_STYLE.outlines.pathTarget : GROWTH_HYBRID_STYLE.outlines.path,
                         opacity,
                     );
                 }
@@ -196,7 +203,7 @@ export class OverlayRenderer {
                         const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
                         return fade * fade;
                     })();
-                    deps.drawHexHighlight(underlay.ctx, target.q, target.r, 'rgba(132,196,255,0.0)', '#9fd8ff', opacity);
+                    deps.drawHexHighlight(underlay.ctx, target.q, target.r, 'rgba(226,250,255,0.02)', GROWTH_HYBRID_STYLE.outlines.path, opacity);
                 }
             }
         }
@@ -212,9 +219,9 @@ export class OverlayRenderer {
                 underlay.ctx,
                 opts.hoveredTile.q,
                 opts.hoveredTile.r,
-                inReach ? 'rgba(255, 227, 122, 0)' : 'rgba(100, 60, 60, 0)',
-                inReach ? '#d0b23d' : '#6a4a4a',
-                opacity,
+                inReach ? 'rgba(255, 239, 177, 0.025)' : 'rgba(138, 102, 102, 0.03)',
+                inReach ? GROWTH_HYBRID_STYLE.outlines.hover : GROWTH_HYBRID_STYLE.outlines.unreachable,
+                opacity * (0.72 + (((Math.sin(frame.effectNowMs / 360) + 1) / 2) * 0.2)),
             );
         }
 
@@ -252,8 +259,8 @@ export class OverlayRenderer {
                     underlay.ctx.beginPath();
                     underlay.ctx.moveTo(p1[0], p1[1]);
                     underlay.ctx.lineTo(p2[0], p2[1]);
-                    underlay.ctx.strokeStyle = 'rgba(255,201,77,0.95)';
-                    underlay.ctx.lineWidth = 3;
+                    underlay.ctx.strokeStyle = GROWTH_HYBRID_STYLE.outlines.cluster;
+                    underlay.ctx.lineWidth = 2.2;
                     underlay.ctx.lineJoin = 'round';
                     underlay.ctx.stroke();
                     underlay.ctx.restore();
@@ -267,7 +274,14 @@ export class OverlayRenderer {
                 const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
                 return fade * fade;
             })();
-            deps.drawHexHighlight(underlay.ctx, opts.taskMenuTile.q, opts.taskMenuTile.r, 'rgba(163,255,61,0.00)', '#91fa31', opacity);
+            deps.drawHexHighlight(
+                underlay.ctx,
+                opts.taskMenuTile.q,
+                opts.taskMenuTile.r,
+                'rgba(187,248,146,0.025)',
+                GROWTH_HYBRID_STYLE.outlines.selected,
+                opacity,
+            );
         }
 
         underlay.ctx.restore();
@@ -319,8 +333,8 @@ export class OverlayRenderer {
                 ctx,
                 tile.q,
                 tile.r,
-                'rgba(45, 212, 191, 0.05)',
-                'rgba(125, 211, 252, 1)',
+                'rgba(180, 240, 255, 0.05)',
+                GROWTH_HYBRID_STYLE.outlines.story,
                 fade * (0.6 + pulse * 0.35),
             );
         }
@@ -359,8 +373,8 @@ export class OverlayRenderer {
                 tile.q,
                 tile.r,
                 null,
-                chosenTask ? 'rgba(0, 225, 255, 1)' : 'rgba(244, 114, 182, 1)',
-                opacity * (0.5 + 0.4 * pulse),
+                chosenTask ? GROWTH_HYBRID_STYLE.outlines.task : GROWTH_HYBRID_STYLE.outlines.scout,
+                opacity * (0.36 + 0.28 * pulse),
             );
         }
     }
@@ -379,7 +393,7 @@ export class OverlayRenderer {
             const dist = hexDistance(camera, tile);
             const opacity = deps.getTileOpacity(dist, false);
             if (scoutProgress !== null && (!chosenTask || scoutProgress < 1)) {
-                this.drawProgressBar(ctx, tile, scoutProgress, 'rgba(244,114,182,0.92)', opacity, deps);
+                this.drawProgressBar(ctx, tile, scoutProgress, 'rgba(148,163,184,0.86)', opacity, deps);
             } else if (chosenTask?.active) {
                 const progressRatio = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
                 this.drawProgressBar(ctx, tile, Math.min(1, Math.max(0, progressRatio)), 'rgba(255,223,12,0.9)', opacity, deps);

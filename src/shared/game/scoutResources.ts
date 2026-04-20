@@ -2,7 +2,7 @@ import type { Hero } from '../../core/types/Hero';
 import type { ResourceType } from '../../core/types/Resource';
 import { SIDE_NAMES, type Terrain, type Tile, type TileSide } from '../../core/types/Tile';
 import { terrainPositions } from '../../core/terrainRegistry';
-import { ensureTileExists } from '../../core/world';
+import { ensureTileExists, tileIndex } from '../../core/world';
 import { resolveWorldTile } from '../../core/worldGeneration';
 import type { CoopPingMessage, HeroScoutResourceUpdateMessage, TileUpdatedMessage } from '../protocol';
 import { axialDistanceCoords } from './hex';
@@ -41,6 +41,22 @@ const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
 
 const scoutPathService = new PathService();
 const scoutPathOptions = { allowScouted: true };
+
+export function shouldStopScoutResourceForMovement(
+    hero: Pick<Hero, 'scoutResourceIntent'>,
+    taskType?: string | null,
+) {
+    return !!hero.scoutResourceIntent && taskType !== SCOUT_RESOURCE_TASK_TYPE;
+}
+
+export function getScoutCancelMovementPathOptions(
+    hero: Pick<Hero, 'scoutResourceIntent'>,
+    taskType?: string | null,
+) {
+    return shouldStopScoutResourceForMovement(hero, taskType)
+        ? scoutPathOptions
+        : {};
+}
 
 export function isScoutableResourceType(resourceType: string): resourceType is ScoutableResourceType {
     return SCOUTABLE_RESOURCE_SET.has(resourceType as ResourceType);
@@ -112,7 +128,7 @@ export function stopScoutResourceSearch(hero: Hero, options: { returnToTowncente
     broadcastHeroScoutResourceUpdate(hero);
 
     if (shouldReturnToTowncenter) {
-        returnHeroToNearestOnlineTowncenter(hero);
+        returnHeroToKnownGround(hero);
     }
 }
 
@@ -158,8 +174,7 @@ export function handleScoutResourceArrival(hero: Hero, tile: Tile) {
     hero.pendingExploreTarget = undefined;
 
     if (!intent) {
-        hero.pendingTask = undefined;
-        hero.movement = undefined;
+        stopScoutResourceSearch(hero, { returnToTowncenter: true });
         return;
     }
 
@@ -216,7 +231,7 @@ function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: Reso
     hero.pendingTask = undefined;
 
     if (!intent || intent.resourceType !== resourceType) {
-        hero.movement = undefined;
+        stopScoutResourceSearch(hero, { returnToTowncenter: true });
         return;
     }
 
@@ -325,12 +340,63 @@ function returnHeroToNearestOnlineTowncenter(hero: Hero) {
     return true;
 }
 
+function returnHeroToKnownGround(hero: Hero) {
+    if (isHeroOnDiscoveredWalkableTile(hero)) {
+        return true;
+    }
+
+    return returnHeroToNearestOnlineTowncenter(hero)
+        || returnHeroToNearestReachableDiscoveredWalkableTile(hero);
+}
+
+function returnHeroToNearestReachableDiscoveredWalkableTile(hero: Hero) {
+    const target = findNearestReachableDiscoveredWalkableTile(hero);
+    if (!target || (hero.q === target.q && hero.r === target.r)) {
+        return false;
+    }
+
+    moveHeroWithRuntime(hero, target, undefined, undefined, scoutPathOptions);
+    return true;
+}
+
 function findNearestReachableOnlineTowncenter(hero: Hero) {
     let best: { tile: Tile; pathLength: number; distance: number } | null = null;
 
     for (const tileId of terrainPositions.towncenter) {
         const tile = ensureTileExistsFromIndex(tileId);
         if (!isOnlineTowncenter(tile)) {
+            continue;
+        }
+
+        const atTile = hero.q === tile.q && hero.r === tile.r;
+        const path = atTile
+            ? []
+            : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, scoutPathOptions);
+
+        if (!atTile && !path.length) {
+            continue;
+        }
+
+        const pathLength = atTile ? 0 : path.length;
+        const distance = axialDistanceCoords(hero.q, hero.r, tile.q, tile.r);
+        if (
+            !best
+            || pathLength < best.pathLength
+            || (pathLength === best.pathLength && distance < best.distance)
+            || (pathLength === best.pathLength && distance === best.distance && tile.id.localeCompare(best.tile.id) < 0)
+        ) {
+            best = { tile, pathLength, distance };
+        }
+    }
+
+    return best?.tile ?? null;
+}
+
+function findNearestReachableDiscoveredWalkableTile(hero: Hero) {
+    let best: { tile: Tile; pathLength: number; distance: number } | null = null;
+
+    for (const tile of Object.values(tileIndex)) {
+        if (!isDiscoveredWalkableTile(tile)) {
             continue;
         }
 
@@ -367,6 +433,16 @@ function ensureTileExistsFromIndex(tileId: string) {
     }
 
     return ensureTileExists(q, r);
+}
+
+function isHeroOnDiscoveredWalkableTile(hero: Hero) {
+    return isDiscoveredWalkableTile(tileIndex[`${hero.q},${hero.r}`]);
+}
+
+function isDiscoveredWalkableTile(tile: Tile | null | undefined): tile is Tile {
+    return !!tile
+        && tile.discovered
+        && isTileWalkable(tile);
 }
 
 function isOnlineTowncenter(tile: Tile | null | undefined): tile is Tile {

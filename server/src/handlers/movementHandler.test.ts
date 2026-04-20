@@ -206,6 +206,130 @@ test('scouted fog can only be crossed by scout movement requests', () => {
   assert.deepEqual(heroes[0]?.pendingTask, { tileId: '2,0', taskType: SCOUT_RESOURCE_TASK_TYPE });
 });
 
+test('go here cancels scouting and can route back through scouted fog', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.q = 2;
+  hero.r = 0;
+  hero.scoutResourceIntent = { resourceType: 'wood', playerId: 'socket-1', playerName: 'Player' };
+  hero.pendingTask = { tileId: '2,0', taskType: SCOUT_RESOURCE_TASK_TYPE };
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'socket-1' } as any, 'Player');
+
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'socket-1' }, {
+    type: 'hero:move_request',
+    id: 'go-here-through-scouted-fog',
+    heroId: 'shore-scout',
+    origin: { q: 2, r: 0 },
+    target: { q: 0, r: 0 },
+    startAt: Date.now(),
+    path: [{ q: 1, r: 0 }, { q: 0, r: 0 }],
+  });
+
+  const movedHero = heroes[0]!;
+  assert.equal(handler.activeMovements.size, 1);
+  assert.equal(movedHero.scoutResourceIntent, undefined);
+  assert.equal(movedHero.pendingTask, undefined);
+  assert.deepEqual(movedHero.movement?.target, { q: 0, r: 0 });
+});
+
+test('go here on current tile cancels scout surveying without needing a path', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.scoutResourceIntent = { resourceType: 'wood', playerId: 'socket-1', playerName: 'Player' };
+  hero.pendingTask = { tileId: '0,0', taskType: SCOUT_RESOURCE_TASK_TYPE };
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'socket-1' } as any, 'Player');
+
+  const handler = ServerMovementHandler.getInstance();
+  handler.activeMovements.set(hero.id, {
+    heroId: hero.id,
+    origin: { q: 0, r: 0 },
+    startedAt: Date.now(),
+    target: { q: 0, r: 0 },
+    path: [],
+    stepDurations: [],
+    totalDuration: 0,
+    task: SCOUT_RESOURCE_TASK_TYPE,
+  });
+
+  (handler as any).handleMoveRequest({ id: 'socket-1' }, {
+    type: 'hero:move_request',
+    id: 'stop-scouting-here',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 0, r: 0 },
+    startAt: Date.now(),
+    path: [],
+  });
+
+  const stoppedHero = heroes[0]!;
+  assert.equal(handler.activeMovements.size, 0);
+  assert.equal(stoppedHero.scoutResourceIntent, undefined);
+  assert.equal(stoppedHero.pendingTask, undefined);
+});
+
 test('internal return movement can cross scouted fog without assigning a task', () => {
   setIo({ emit() {} });
 

@@ -26,7 +26,7 @@ test.afterEach(() => {
   resetSettlementSupportState();
 });
 
-test('explore chaining chooses a random eligible neighbor instead of the closest one', async () => {
+test('explore without a pending far target stops after the finished task', async () => {
   const townCenter = createDiscoveredTile({
     id: '0,0',
     q: 0,
@@ -68,28 +68,21 @@ test('explore chaining chooses a random eligible neighbor instead of the closest
   const exploreTask = getTaskDefinition('explore');
   assert.ok(exploreTask?.onComplete);
 
-  const originalRandom = Math.random;
-  Math.random = () => 0.99;
+  exploreTask.onComplete!(frontierTile, {
+    id: 'task-explore',
+    type: 'explore',
+    tileId: frontierTile.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
 
-  try {
-    exploreTask.onComplete!(frontierTile, {
-      id: 'task-explore',
-      type: 'explore',
-      tileId: frontierTile.id,
-      progressXp: 0,
-      requiredXp: 1,
-      createdMs: 0,
-      lastUpdateMs: 0,
-      participants: {},
-      active: true,
-    }, [hero]);
+  await new Promise((resolve) => setTimeout(resolve, 150));
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  } finally {
-    Math.random = originalRandom;
-  }
-
-  assert.deepEqual(moveCalls, [{ q: 2, r: 0, task: 'explore' }]);
+  assert.deepEqual(moveCalls, []);
 });
 
 test('explore chaining steers toward a pending far target when one is set', async () => {

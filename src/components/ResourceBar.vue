@@ -2,7 +2,7 @@
   <div class="noscrollbar flex flex-row items-center flex-wrap gap-1.5 max-w-full overflow-x-auto pointer-events-auto">
     <button class="pop-bubble" type="button" title="Open settler overview" @click="openPopulationModal()">
       <span class="text-xs leading-none">&#x1F465;</span>
-      <span class="text-[11px] font-mono leading-none text-slate-200">{{ populationState.current }}/{{ populationState.max }}</span>
+      <span class="text-[11px] font-mono leading-none text-emerald-50">{{ populationState.current }}/{{ populationState.max }}</span>
     </button>
     <ResourceBubble
       v-for="r in resources"
@@ -59,16 +59,17 @@ export default {name: 'ResourceBar'};
 
 <style scoped>
 .pop-bubble {
-  @apply flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2 py-1.5 shadow-lg backdrop-blur-sm;
-  background: rgba(2, 6, 23, 0.82);
+  @apply flex items-center gap-1.5 rounded-lg border px-2 py-1.5 shadow-md;
+  background: rgba(35, 83, 46, 0.78);
+  border-color: rgba(196, 228, 151, 0.34);
   appearance: none;
   transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
 }
 
 .pop-bubble:hover {
   transform: translateY(-1px);
-  border-color: rgba(251, 191, 36, 0.45);
-  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(252, 211, 77, 0.56);
+  background: rgba(65, 103, 49, 0.9);
 }
 
 .pop-bubble:focus-visible {

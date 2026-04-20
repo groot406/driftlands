@@ -1,5 +1,6 @@
 import type {Hero} from './types/Hero';
 import type {ResourceType} from './types/Resource';
+import {GROWTH_HYBRID_STYLE} from './render/visualStyle';
 
 export type GameplayImpactKind = 'deposit' | 'handin' | 'work' | 'complete';
 
@@ -81,10 +82,10 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
 };
 
 const hitStopByKind: Record<GameplayImpactKind, number> = {
-    deposit: 42,
-    handin: 52,
+    deposit: 18,
+    handin: 24,
     work: 0,
-    complete: 82,
+    complete: 54,
 };
 
 let nextEffectId = 1;
@@ -119,14 +120,14 @@ function getImpactPalette(kind: GameplayImpactKind, resourceType?: ResourceType)
     }
 
     if (kind === 'complete') {
-        return {icon: '', color: '#ffe08a'};
+        return {icon: '', color: GROWTH_HYBRID_STYLE.text.rewardGold};
     }
 
     if (kind === 'work') {
-        return {icon: '', color: '#d6f2ff'};
+        return {icon: '', color: GROWTH_HYBRID_STYLE.text.rewardAqua};
     }
 
-    return {icon: '', color: kind === 'deposit' ? '#8fc8ff' : '#9ee37d'};
+    return {icon: '', color: kind === 'deposit' ? GROWTH_HYBRID_STYLE.text.rewardAqua : GROWTH_HYBRID_STYLE.text.rewardGreen};
 }
 
 export function triggerHitStop(durationMs: number) {
@@ -194,7 +195,7 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
     const nowMs = getGameFeelNow();
     const palette = getImpactPalette(options.kind, options.resourceType);
     const baseAmount = Math.max(1, options.amount ?? 1);
-    const ringStrength = options.kind === 'complete' ? 1.4 : options.kind === 'handin' ? 1.1 : options.kind === 'work' ? 0.85 : 0.95;
+    const ringStrength = options.kind === 'complete' ? 1.15 : options.kind === 'handin' ? 0.9 : options.kind === 'work' ? 0.65 : 0.78;
     const isWorkImpact = options.kind === 'work';
 
     impactRings.push({
@@ -203,11 +204,11 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
         r: options.r,
         color: palette.color,
         startedMs: nowMs,
-        durationMs: options.kind === 'complete' ? 520 : options.kind === 'work' ? 170 : 360,
+        durationMs: options.kind === 'complete' ? 430 : options.kind === 'work' ? 150 : 300,
         startRadius: 12,
-        endRadius: options.kind === 'complete' ? 70 : options.kind === 'work' ? 28 : 52,
-        lineWidth: options.kind === 'work' ? 2 : 2 + ringStrength,
-        maxAlpha: options.kind === 'complete' ? 0.48 : options.kind === 'work' ? 0.16 : 0.35,
+        endRadius: options.kind === 'complete' ? 58 : options.kind === 'work' ? 23 : 42,
+        lineWidth: options.kind === 'work' ? 1.35 : 1.45 + ringStrength,
+        maxAlpha: options.kind === 'complete' ? 0.36 : options.kind === 'work' ? 0.11 : 0.24,
     });
 
     tileFlashes.push({
@@ -216,8 +217,8 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
         r: options.r,
         color: palette.color,
         startedMs: nowMs,
-        durationMs: options.kind === 'complete' ? 260 : options.kind === 'work' ? 100 : 180,
-        maxAlpha: options.kind === 'complete' ? 0.36 : options.kind === 'work' ? 0.1 : 0.22,
+        durationMs: options.kind === 'complete' ? 220 : options.kind === 'work' ? 90 : 150,
+        maxAlpha: options.kind === 'complete' ? 0.24 : options.kind === 'work' ? 0.06 : 0.14,
     });
 
     if (options.resourceType) {
@@ -242,10 +243,10 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
         heroImpacts.push({
             id: makeId(),
             heroId,
-            intensity: options.kind === 'complete' ? 9 : options.kind === 'handin' ? 6.5 : options.kind === 'work' ? 2.6 : 5.5,
+            intensity: options.kind === 'complete' ? 6.4 : options.kind === 'handin' ? 4 : options.kind === 'work' ? 1.6 : 3.2,
             kind: options.kind,
             startedMs: nowMs,
-            durationMs: options.kind === 'complete' ? 280 : options.kind === 'work' ? 140 : 220,
+            durationMs: options.kind === 'complete' ? 240 : options.kind === 'work' ? 130 : 190,
         });
     }
 
@@ -255,7 +256,7 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
         r: options.r,
         terrain: options.terrain,
         kind: options.kind,
-        intensity: options.kind === 'complete' ? 1.25 : options.kind === 'handin' ? 1.05 : options.kind === 'work' ? 0.78 : 0.95,
+        intensity: options.kind === 'complete' ? 1 : options.kind === 'handin' ? 0.78 : options.kind === 'work' ? 0.55 : 0.7,
     });
 
     if (!isWorkImpact) {
@@ -263,7 +264,7 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
             id: makeId(),
             q: options.q,
             r: options.r,
-            strength: options.kind === 'complete' ? 1 : 0.75,
+            strength: options.kind === 'complete' ? 0.72 : 0.45,
         });
     }
 

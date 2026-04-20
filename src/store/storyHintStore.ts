@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 
-export type StoryTileHintKind = 'forest' | 'water';
+export type StoryTileHintKind = 'forest' | 'water' | 'scout';
 
 export interface StoryTileHint {
   id: string;

@@ -131,22 +131,24 @@ onBeforeUnmount(() => {
 }
 
 .menu-shortcut-btn {
-  @apply self-end rounded-2xl border border-slate-700/80 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-slate-100 shadow-xl backdrop-blur-md transition-colors hover:border-amber-300/40;
-  background-color: rgb(2 6 23 / 0.78);
+  @apply self-end rounded-lg border px-4 py-3 text-[10px] uppercase tracking-normal text-emerald-50 shadow-md transition-colors hover:border-amber-200/60;
+  background-color: rgb(35 83 46 / 0.76);
+  border-color: rgb(196 228 151 / 0.36);
+  letter-spacing: 0;
 }
 
 .menu-shortcut-btn:hover {
-  background-color: rgb(15 23 42 / 0.9);
+  background-color: rgb(49 103 56 / 0.86);
 }
 
 .conversation-recall-btn {
-  @apply flex items-center justify-center rounded-2xl border border-amber-400/30 px-3 py-3 text-sm shadow-xl backdrop-blur-md transition-all hover:border-amber-300/50 hover:scale-105;
-  background-color: rgb(2 6 23 / 0.78);
+  @apply flex items-center justify-center rounded-lg border border-amber-200/40 px-3 py-3 text-sm shadow-md transition-all hover:border-amber-200/70 hover:scale-105;
+  background-color: rgb(35 83 46 / 0.74);
   line-height: 1;
 }
 
 .conversation-recall-btn:hover {
-  background-color: rgb(15 23 42 / 0.9);
+  background-color: rgb(80 103 49 / 0.84);
 }
 
 .goals-toggle-btn {
@@ -156,31 +158,31 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 42px;
   height: 42px;
-  border-radius: 16px;
-  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  border: 1px solid rgba(252, 211, 77, 0.34);
   background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.2), transparent 42%),
-    rgba(2, 6, 23, 0.78);
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.22), transparent 44%),
+    rgba(35, 83, 46, 0.76);
   color: rgb(253 230 138);
-  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.28);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 18px rgba(20, 42, 28, 0.2);
+  backdrop-filter: blur(8px);
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .goals-toggle-btn:hover {
   transform: translateY(-1px);
-  border-color: rgba(245, 158, 11, 0.48);
+  border-color: rgba(252, 211, 77, 0.58);
   background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.28), transparent 42%),
-    rgba(15, 23, 42, 0.92);
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.3), transparent 44%),
+    rgba(65, 103, 49, 0.9);
 }
 
 .goals-toggle-btn--active {
   transform: translateY(-1px);
-  border-color: rgba(245, 158, 11, 0.48);
+  border-color: rgba(252, 211, 77, 0.58);
   background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.28), transparent 42%),
-    rgba(15, 23, 42, 0.92);
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.3), transparent 44%),
+    rgba(65, 103, 49, 0.9);
 }
 
 .goals-toggle-badge {

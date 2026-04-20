@@ -5,6 +5,7 @@ import {depositResourceToStorage, withdrawResourceFromStorage} from "../../store
 import {playPositionalSound} from "../../store/soundStore.ts";
 import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
+import {addTextIndicator} from "../textIndicators.ts";
 
 class ClientResourceHandler {
     private initialized = false;
@@ -42,15 +43,16 @@ class ClientResourceHandler {
             amount: message.resource.amount,
             heroIds: [hero.id],
         });
+        addTextIndicator(hero, `+${message.resource.amount}`, '#fff1a8', 1300);
         triggerCameraShake({
             q: hero.q,
             r: hero.r,
-            intensity: Math.min(9, 3.2 + (message.resource.amount * 0.85)),
-            durationMs: 170,
-            falloffRadius: 7,
-            frequency: 13,
+            intensity: Math.min(4.8, 1.7 + (message.resource.amount * 0.42)),
+            durationMs: 130,
+            falloffRadius: 6,
+            frequency: 10,
             directional: true,
-            pushScale: 0.5,
+            pushScale: 0.34,
         });
     }
 

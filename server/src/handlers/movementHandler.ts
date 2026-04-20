@@ -15,7 +15,11 @@ import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { canStartTaskDefinition } from '../../../src/shared/tasks/taskAvailability';
 import { coopState } from '../state/coopState';
-import { SCOUT_RESOURCE_TASK_TYPE } from '../../../src/shared/game/scoutResources';
+import {
+    SCOUT_RESOURCE_TASK_TYPE,
+    shouldStopScoutResourceForMovement,
+    stopScoutResourceSearch,
+} from '../../../src/shared/game/scoutResources';
 import type { MoveHeroRuntimeOptions } from '../../../src/shared/game/runtime';
 
 export class ServerMovementHandler {
@@ -100,9 +104,16 @@ export class ServerMovementHandler {
         const logicalTaskTarget = message.taskLocation ?? target;
         const logicalTaskTile = getTileForTaskPosition(logicalTaskTarget, message.task);
         const isScoutMovement = message.task === SCOUT_RESOURCE_TASK_TYPE;
+        const stopsScouting = shouldStopScoutResourceForMovement(hero, message.task);
+        const staysAtCurrentPosition = origin.q === target.q && origin.r === target.r;
         const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
         const exploreTarget = normalizeExploreTarget(message.task, message.exploreTarget);
-        if (!isMovementWalkablePosition(target.q, target.r, message.task) && !canUseTaskTarget && !isScoutMovement) return;
+        if (
+            !isMovementWalkablePosition(target.q, target.r, message.task)
+            && !canUseTaskTarget
+            && !isScoutMovement
+            && !(stopsScouting && staysAtCurrentPosition)
+        ) return;
 
         let path: { q: number; r: number }[] = [];
         if (clientPath && Array.isArray(clientPath) && clientPath.length) {
@@ -112,7 +123,7 @@ export class ServerMovementHandler {
             for (const step of sanitizedClientPath) {
                 const isNeighbor = isAxialNeighbor(prev, step);
                 const isTarget = (step.q === target.q && step.r === target.r);
-                if (!isNeighbor || (!isTarget && !isMovementWalkablePosition(step.q, step.r, message.task))) {
+                if (!isNeighbor || (!isTarget && !isMovementWalkablePosition(step.q, step.r, message.task, stopsScouting))) {
                     valid = false;
                     break;
                 }
@@ -124,10 +135,17 @@ export class ServerMovementHandler {
         }
 
         if (!path.length) {
-            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r, getMovementPathOptions(message.task));
+            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r, getMovementPathOptions(message.task, undefined, stopsScouting));
         }
 
-        if (!path.length) return;
+        if (!path.length) {
+            if (stopsScouting && staysAtCurrentPosition) {
+                stopScoutResourceSearch(hero);
+                this.activeMovements.delete(heroId);
+                updateActiveTasks(heroes);
+            }
+            return;
+        }
 
         const now = Date.now();
         const startAt = clampMovementStart(message.startAt, now);
@@ -138,6 +156,9 @@ export class ServerMovementHandler {
             ? { tileId: logicalTaskTile?.id ?? targetTile.id, taskType: message.task }
             : undefined;
         hero.pendingExploreTarget = exploreTarget;
+        if (stopsScouting) {
+            stopScoutResourceSearch(hero);
+        }
         detachHeroFromCurrentTask(hero);
         hero.delayedMovementTimer = undefined;
         this.registerMovement(
@@ -207,7 +228,8 @@ export class ServerMovementHandler {
             return;
         }
 
-        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r, getMovementPathOptions(task, options));
+        const stopsScouting = shouldStopScoutResourceForMovement(hero, task);
+        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r, getMovementPathOptions(task, options, stopsScouting));
 
         if (!path || !path.length) {
             return;
@@ -223,6 +245,9 @@ export class ServerMovementHandler {
                 tileId: logicalTaskTile?.id ?? targetTile.id,
                 taskType: task,
             };
+        }
+        if (stopsScouting) {
+            stopScoutResourceSearch(hero);
         }
         detachHeroFromCurrentTask(hero);
         this.registerMovement(
@@ -430,14 +455,14 @@ function normalizeExploreTarget(task: TaskType | undefined, target: { q: number;
     };
 }
 
-function getMovementPathOptions(task: TaskType | undefined, options?: MoveHeroRuntimeOptions) {
-    return task === SCOUT_RESOURCE_TASK_TYPE || options?.allowScouted
+function getMovementPathOptions(task: TaskType | undefined, options?: MoveHeroRuntimeOptions, allowScoutedForScoutCancel = false) {
+    return task === SCOUT_RESOURCE_TASK_TYPE || options?.allowScouted || allowScoutedForScoutCancel
         ? { allowScouted: true }
         : {};
 }
 
-function isMovementWalkablePosition(q: number, r: number, task: TaskType | undefined) {
-    if (task === SCOUT_RESOURCE_TASK_TYPE) {
+function isMovementWalkablePosition(q: number, r: number, task: TaskType | undefined, allowScoutedForScoutCancel = false) {
+    if (task === SCOUT_RESOURCE_TASK_TYPE || allowScoutedForScoutCancel) {
         return isTileScoutWalkable(getTile({ q, r }));
     }
 

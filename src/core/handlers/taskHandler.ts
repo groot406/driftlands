@@ -11,6 +11,7 @@ import {playPositionalSound} from "../../store/soundStore.ts";
 import {rewardStat, startHeroMovement} from "../heroService.ts";
 import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
+import {addTextIndicator} from "../textIndicators.ts";
 import { PathService } from "../PathService.ts";
 import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity } from "../../shared/buildings/storage.ts";
 import type { Hero } from "../types/Hero.ts";
@@ -110,17 +111,24 @@ class ClientTaskHandler {
                         const previousAmount = previousByType.get(collected.type) ?? 0;
                         const addedAmount = collected.amount - previousAmount;
                         if (addedAmount <= 0) continue;
+
+                        const indicatorHero = impactedHeroIds
+                            .map((heroId) => getHero(heroId))
+                            .find((hero): hero is Hero => !!hero);
+                        if (indicatorHero) {
+                            addTextIndicator(indicatorHero, `+${addedAmount}`, '#fff1a8', 1250);
+                        }
                     }
 
                     triggerCameraShake({
                         q: tile.q,
                         r: tile.r,
-                        intensity: Math.min(8.5, 2.8 + (deliveredAmount * 1.1)),
-                        durationMs: 150,
-                        falloffRadius: 6,
-                        frequency: 14,
+                        intensity: Math.min(4.4, 1.4 + (deliveredAmount * 0.45)),
+                        durationMs: 120,
+                        falloffRadius: 5.5,
+                        frequency: 10,
                         directional: true,
-                        pushScale: 0.42,
+                        pushScale: 0.32,
                     });
                 }
             }
@@ -181,12 +189,12 @@ class ClientTaskHandler {
                 triggerCameraShake({
                     q: tile.q,
                     r: tile.r,
-                    intensity: Math.min(12, 5 + (Object.keys(task.participants).length * 1.25)),
-                    durationMs: 240,
-                    falloffRadius: 8,
-                    frequency: 11,
+                    intensity: Math.min(7.2, 3.4 + (Object.keys(task.participants).length * 0.75)),
+                    durationMs: 190,
+                    falloffRadius: 7,
+                    frequency: 9.5,
                     directional: true,
-                    pushScale: 0.56,
+                    pushScale: 0.42,
                 });
             }
 

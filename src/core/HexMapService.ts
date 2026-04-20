@@ -93,6 +93,7 @@ import { MotionBlurEffect } from './render/effects/MotionBlurEffect';
 import { ResourceFlightEffect } from './render/effects/ResourceFlightEffect';
 import { DebugRenderer } from './render/debug/DebugRenderer';
 import { DEFAULT_DEBUG_FLAGS } from './render/debug/DebugFlags';
+import { GROWTH_HYBRID_STYLE, type TerrainToneFamily } from './render/visualStyle';
 import {
     computeTileSettlerOffsets,
     getSettlerRenderCoords,
@@ -101,9 +102,9 @@ import {
 } from './render/entities/settlerRender';
 
 const SCOUTED_TILE_STYLE = {
-    fill: 'rgba(236, 72, 153, 0.14)',
-    stroke: 'rgba(244, 114, 182, 0.82)',
-    foundStroke: 'rgba(251, 207, 232, 0.96)',
+    fill: 'rgba(100, 116, 139, 0.13)',
+    stroke: 'rgba(203, 213, 225, 0.46)',
+    foundStroke: 'rgba(125, 211, 252, 0.82)',
 };
 
 type GlowColor = readonly [number, number, number];
@@ -278,6 +279,13 @@ interface WaterReflectionSample {
     alpha: number;
 }
 
+interface TileRevealAnimation {
+    startedMs: number;
+    durationMs: number;
+    intensity: number;
+    terrain: string | null;
+}
+
 interface Particle {
     x: number;
     y: number;
@@ -443,6 +451,7 @@ export class HexMapService {
     private _nextBirdFlockSpawnMs = 0;
     private _heroTrailEmitMs = new Map<string, number>();
     private _taskParticleEmitMs = new Map<string, number>();
+    private _tileRevealAnimations = new Map<string, TileRevealAnimation>();
     private _cameraFx: CameraCompositeRuntimeState = {
         ...DEFAULT_CAMERA_COMPOSITE_STATE,
         pulse: 0,
@@ -524,6 +533,7 @@ export class HexMapService {
         this._nextBirdFlockSpawnMs = 0;
         this._heroTrailEmitMs.clear();
         this._taskParticleEmitMs.clear();
+        this._tileRevealAnimations.clear();
         this._pendingHeroImageLoads.clear();
         this._fogTileCanvas = null;
         this._proceduralRoadCache.clear();
@@ -876,6 +886,9 @@ export class HexMapService {
                         drawGameplayWorldImpacts: (ctx, nowMs, applyCameraFade) => {
                             this.drawGameplayWorldImpacts(ctx, nowMs, applyCameraFade);
                         },
+                        drawGrowthTileMotion: (ctx, tiles, nowMs) => {
+                            this.drawGrowthTileMotion(ctx, tiles, nowMs);
+                        },
                         drawReachOutline: (ctx, boundary, reachSet, alpha, hovered) => {
                             this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered);
                         },
@@ -1211,7 +1224,8 @@ export class HexMapService {
             .filter((tile) => isVisibleExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
         const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
-        const dirtyChunkKeys = getDirtyChunkKeysForTiles(consumePendingRenderDirtyTiles(), this._renderConfig.terrainChunkSize);
+        const dirtyTiles = consumePendingRenderDirtyTiles();
+        const dirtyChunkKeys = getDirtyChunkKeysForTiles(dirtyTiles, this._renderConfig.terrainChunkSize);
         const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
         const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
         const quality = this.getRenderQualityProfile(stressTier);
@@ -1220,6 +1234,7 @@ export class HexMapService {
         }
         this._currentCameraFx = cameraFx;
         this._currentRenderQuality = quality;
+        this.registerTileRevealAnimations(dirtyTiles, effectNowMs);
         this.applyPendingCameraNudges(cameraFx);
         const scene = this._sceneBuilder.build({
             viewport,
@@ -1508,6 +1523,192 @@ export class HexMapService {
         }
     }
 
+    private registerTileRevealAnimations(dirtyTiles: readonly Tile[], nowMs: number) {
+        if (!dirtyTiles.length) {
+            return;
+        }
+
+        let sparkleBursts = 0;
+        const sparkleBurstCap = 24;
+        for (const tile of dirtyTiles) {
+            if (!tile.discovered || !tile.terrain) {
+                continue;
+            }
+
+            const existing = this._tileRevealAnimations.get(tile.id);
+            if (existing && (nowMs - existing.startedMs) < GROWTH_HYBRID_STYLE.tileReveal.minIntervalMs) {
+                continue;
+            }
+
+            const intensity = tile.terrain === 'water' ? 0.74 : tile.terrain === 'towncenter' ? 0.9 : 1;
+            this._tileRevealAnimations.set(tile.id, {
+                startedMs: nowMs,
+                durationMs: GROWTH_HYBRID_STYLE.tileReveal.durationMs,
+                intensity,
+                terrain: tile.terrain,
+            });
+
+            if (
+                this._currentRenderQuality.enableParticles
+                && sparkleBursts < sparkleBurstCap
+            ) {
+                this.emitTileRevealSparkles(tile, nowMs, intensity);
+                sparkleBursts += 1;
+            }
+        }
+    }
+
+    private drawGrowthTileMotion(ctx: CanvasRenderingContext2D, tiles: Tile[], nowMs: number) {
+        if (!tiles.length) {
+            return;
+        }
+
+        const lowQuality = this._currentRenderQuality.name === 'low';
+        for (const tile of tiles) {
+            if (!tile.discovered || !tile.terrain) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            if (dist > camera.radius + 1) {
+                continue;
+            }
+            const fade = this.computeFade(dist, camera.innerRadius, camera.radius);
+            const opacity = fade * fade;
+            if (opacity <= 0.04) {
+                continue;
+            }
+
+            if (!lowQuality && this.isGrowthWaterTile(tile)) {
+                this.drawWaterTileShimmer(ctx, tile, nowMs, opacity);
+            }
+
+            const reveal = this._tileRevealAnimations.get(tile.id);
+            if (!reveal) {
+                continue;
+            }
+
+            const age = nowMs - reveal.startedMs;
+            if (age >= reveal.durationMs) {
+                this._tileRevealAnimations.delete(tile.id);
+                continue;
+            }
+
+            this.drawTileRevealPulse(ctx, tile, reveal, nowMs, opacity);
+        }
+    }
+
+    private emitTileRevealSparkles(tile: Tile, nowMs: number, intensity: number) {
+        const origin = axialToPixel(tile.q, tile.r);
+        const count = Math.round(this.randomBetween(3, 6) * intensity);
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i / Math.max(1, count)) + this.randomBetween(-0.24, 0.24);
+            const speed = this.randomBetween(14, 34) * intensity;
+            this.emitParticle({
+                x: origin.x + this.randomBetween(-12, 12),
+                y: origin.y + this.randomBetween(-8, 8),
+                vx: Math.cos(angle) * speed,
+                vy: (Math.sin(angle) * speed) - this.randomBetween(8, 22),
+                size: this.randomBetween(1.1, 1.9),
+                bornMs: nowMs,
+                lifeMs: this.randomBetween(420, 760),
+                alpha: this.randomBetween(0.16, 0.28) * intensity,
+                glow: this.randomBetween(1.8, 2.6),
+                color: this.pickGlow(GROWTH_HYBRID_STYLE.tileReveal.sparkleColors),
+                gravity: 14,
+                drag: 1.6,
+                twinkle: this.randomBetween(0, 1000),
+                shape: Math.random() > 0.38 ? 'diamond' : 'circle',
+                layer: 'overlay',
+            });
+        }
+    }
+
+    private drawTileRevealPulse(
+        ctx: CanvasRenderingContext2D,
+        tile: Tile,
+        reveal: TileRevealAnimation,
+        nowMs: number,
+        opacity: number,
+    ) {
+        const progress = Math.max(0, Math.min(1, (nowMs - reveal.startedMs) / reveal.durationMs));
+        const pop = Math.sin(progress * Math.PI);
+        const fade = (1 - progress) * (1 - progress);
+        const { x, y } = axialToPixel(tile.q, tile.r);
+        const scale = 1 + ((GROWTH_HYBRID_STYLE.tileReveal.scale - 1) * pop * reveal.intensity);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.translate(-x, -y);
+        this.drawTile(tile, nowMs, ctx, Math.min(0.34, 0.22 * pop * reveal.intensity) * opacity);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = opacity * fade * reveal.intensity;
+        this.traceHexClipPath(ctx, x, y);
+        ctx.fillStyle = GROWTH_HYBRID_STYLE.tileReveal.fill;
+        ctx.fill();
+        ctx.strokeStyle = GROWTH_HYBRID_STYLE.tileReveal.stroke;
+        ctx.lineWidth = 1.4 + (pop * 1.2);
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    private drawWaterTileShimmer(ctx: CanvasRenderingContext2D, tile: Tile, nowMs: number, opacity: number) {
+        const { x, y } = axialToPixel(tile.q, tile.r);
+        const seed = this.seedFromString(`${tile.id}:water-shimmer`);
+        const phase = (((nowMs * 0.00018) + ((seed % 997) / 997)) % 1);
+        const sweepY = y - (this.TILE_DRAW_SIZE * 0.26) + (this.TILE_DRAW_SIZE * 0.52 * phase);
+        const wave = Math.sin((nowMs * 0.0012) + seed) * 2.2;
+
+        ctx.save();
+        this.traceHexClipPath(ctx, x, y);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(185, 249, 255, 0.18)';
+
+        const shimmer = ctx.createLinearGradient(x - this.HEX_SIZE, sweepY, x + this.HEX_SIZE, sweepY + 8);
+        shimmer.addColorStop(0, 'rgba(255,255,255,0)');
+        shimmer.addColorStop(0.5, `rgba(230, 255, 255, ${0.13 * opacity})`);
+        shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = shimmer;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x - 18, sweepY + wave);
+        ctx.quadraticCurveTo(x, sweepY - 5 - wave, x + 18, sweepY + wave * 0.5);
+        ctx.stroke();
+
+        ctx.globalAlpha = opacity * 0.12;
+        ctx.strokeStyle = 'rgba(206, 255, 255, 0.72)';
+        ctx.lineWidth = 0.9;
+        for (let i = 0; i < 2; i++) {
+            const linePhase = (phase + (i * 0.46)) % 1;
+            const lineY = y - 13 + (linePhase * 26);
+            ctx.beginPath();
+            ctx.moveTo(x - 13, lineY);
+            ctx.quadraticCurveTo(x - 2, lineY - 2.5, x + 13, lineY + 1.2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    private isGrowthWaterTile(tile: Tile) {
+        if (tile.terrain !== 'water') {
+            return false;
+        }
+        if (isBridgeTile(tile)) {
+            return false;
+        }
+        return !(typeof tile.variant === 'string' && tile.variant.startsWith('water_dock_'));
+    }
+
     private screenToWorld(x: number, y: number) {
         return HexProjection.screenToWorld(x, y, this.getCurrentViewportSnapshot());
     }
@@ -1538,7 +1739,7 @@ export class HexMapService {
             ctx.fill();
         }
         if (stroke) {
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1.65;
             ctx.strokeStyle = stroke;
             ctx.stroke();
         }
@@ -1706,8 +1907,8 @@ export class HexMapService {
                 ctx.globalAlpha = alpha * 0.9;
                 ctx.shadowBlur = 0;
                 ctx.shadowColor = 'transparent';
-                ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.72)' : 'rgba(210,190,70,0.58)';
-                ctx.lineWidth = hovered ? 2.4 : 1.4;
+                ctx.strokeStyle = hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach;
+                ctx.lineWidth = hovered ? 2.1 : 1.25;
                 this.strokeSmoothLoop(ctx, expandedLoop);
                 continue;
             }
@@ -1726,18 +1927,18 @@ export class HexMapService {
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
             ctx.globalAlpha = alpha;
-            ctx.shadowColor = hovered ? 'rgba(220,200,60,0.7)' : 'rgba(180,160,50,0.6)';
-            ctx.shadowBlur = hovered ? 24 : 18;
-            ctx.strokeStyle = hovered ? 'rgba(220,200,60,0.5)' : 'rgba(180,160,50,0.4)';
-            ctx.lineWidth = hovered ? 7 : 5;
+            ctx.shadowColor = hovered ? 'rgba(255,241,166,0.42)' : 'rgba(235,224,174,0.32)';
+            ctx.shadowBlur = hovered ? 18 : 13;
+            ctx.strokeStyle = hovered ? 'rgba(255,241,166,0.32)' : 'rgba(235,224,174,0.24)';
+            ctx.lineWidth = hovered ? 5.4 : 4;
             this.strokeSmoothLoop(ctx, expandedLoop);
 
             // Core line — bright and crisp
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
             ctx.globalAlpha = alpha * 0.85;
-            ctx.strokeStyle = hovered ? 'rgba(255,230,80,0.6)' : 'rgba(210,190,70,0.5)';
-            ctx.lineWidth = hovered ? 2.5 : 1.5;
+            ctx.strokeStyle = hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach;
+            ctx.lineWidth = hovered ? 2.1 : 1.25;
             this.strokeSmoothLoop(ctx, expandedLoop);
         }
         ctx.restore();
@@ -2145,9 +2346,9 @@ export class HexMapService {
             }
             if (!activeTasksForTile && scoutSurveyProgress !== null) {
                 const pulse = (Math.sin(now / 400) + 1) / 2;
-                this.drawHexHighlight(ctx, t.q, t.r, null, 'rgba(244, 114, 182, 1)', opacity * (0.5 + 0.4 * pulse));
+                this.drawHexHighlight(ctx, t.q, t.r, null, 'rgba(148, 163, 184, 0.86)', opacity * (0.42 + 0.28 * pulse));
                 if (opacity > 0.05) {
-                    this.drawProgressBar(ctx, t, scoutSurveyProgress, 'rgba(244,114,182,0.92)', opacity);
+                    this.drawProgressBar(ctx, t, scoutSurveyProgress, 'rgba(148,163,184,0.86)', opacity);
                 }
             }
         }
@@ -2505,8 +2706,8 @@ export class HexMapService {
             const terrain = burst.terrain ?? tileIndex[axialKey(burst.q, burst.r)]?.terrain ?? null;
             const origin = axialToPixel(burst.q, burst.r);
             const intensity = burst.intensity;
-            const count = burst.kind === 'complete' ? 10 : 6;
-            const glowScale = burst.kind === 'complete' ? 3.4 : 2.7;
+            const count = burst.kind === 'complete' ? 8 : 4;
+            const glowScale = burst.kind === 'complete' ? 2.8 : 2.1;
             let colors: GlowColor[] = [[210, 230, 255], [148, 210, 255], [255, 235, 180]];
 
             if (terrain === 'forest' || terrain === 'plains' || terrain === 'grain') {
@@ -2523,16 +2724,16 @@ export class HexMapService {
 
             for (let i = 0; i < count; i++) {
                 const angle = (Math.PI * 2 * i) / count + this.randomBetween(-0.2, 0.2);
-                const speed = this.randomBetween(34, 72) * intensity;
+                const speed = this.randomBetween(22, 50) * intensity;
                 this.emitParticle({
                     x: origin.x + this.randomBetween(-8, 8),
                     y: origin.y + this.randomBetween(-8, 8),
                     vx: Math.cos(angle) * speed,
-                    vy: (Math.sin(angle) * speed) - this.randomBetween(14, 34),
-                    size: this.randomBetween(1.5, 2.8) * Math.min(1.5, intensity),
+                    vy: (Math.sin(angle) * speed) - this.randomBetween(10, 26),
+                    size: this.randomBetween(1.2, 2.2) * Math.min(1.35, intensity),
                     bornMs: now,
-                    lifeMs: this.randomBetween(440, 860),
-                    alpha: this.randomBetween(0.18, 0.34) * Math.min(1.3, intensity),
+                    lifeMs: this.randomBetween(520, 920),
+                    alpha: this.randomBetween(0.12, 0.26) * Math.min(1.2, intensity),
                     glow: this.randomBetween(glowScale - 0.5, glowScale + 0.45),
                     color: this.pickGlow(colors),
                     gravity: 22,
@@ -2676,43 +2877,43 @@ export class HexMapService {
         const key = this.getTileImageKey(tile) ?? tile.terrain ?? '';
 
         if (tile.terrain === 'water' || key.startsWith('water')) {
-            if (!this.shouldSpawnAmbientParticle(0.42)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.waterRippleChance)) return;
             const colors: GlowColor[] = [[208, 247, 255], [165, 230, 255], [130, 210, 255]];
             this.emitParticle({
                 x: x + this.randomBetween(-18, 18),
                 y: y + this.randomBetween(-10, 10),
                 vx: 0,
                 vy: 0,
-                size: this.randomBetween(1.05, 1.75),
+                size: this.randomBetween(0.8, 1.25),
                 bornMs: now,
-                lifeMs: this.randomBetween(1400, 2400),
-                alpha: this.randomBetween(0.28, 0.46),
-                glow: 1.35,
+                lifeMs: this.randomBetween(1700, 2900),
+                alpha: this.randomBetween(0.12, 0.24),
+                glow: 1.05,
                 color: this.pickGlow(colors),
                 gravity: 0,
                 drag: 0,
                 twinkle: this.randomBetween(0, 1000),
                 shape: 'ring',
-                growth: this.randomBetween(3.5, 5.5),
+                growth: this.randomBetween(2.8, 4.2),
             });
             return;
         }
 
         if (tile.terrain === 'towncenter') {
-            if (!this.shouldSpawnAmbientParticle(0.46)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.townSparkChance)) return;
             const colors: GlowColor[] = [[255, 228, 168], [255, 188, 112], [188, 247, 218]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
                 y: y + this.randomBetween(-8, 6),
-                vx: this.randomBetween(-6, 6),
-                vy: this.randomBetween(-20, -6),
-                size: this.randomBetween(1.3, 2.2),
+                vx: this.randomBetween(-4, 4),
+                vy: this.randomBetween(-12, -4),
+                size: this.randomBetween(1.05, 1.75),
                 bornMs: now,
-                lifeMs: this.randomBetween(900, 1600),
-                alpha: this.randomBetween(0.16, 0.3),
-                glow: this.randomBetween(2.3, 3.4),
+                lifeMs: this.randomBetween(1100, 1900),
+                alpha: this.randomBetween(0.12, 0.22),
+                glow: this.randomBetween(1.8, 2.6),
                 color: this.pickGlow(colors),
-                gravity: -4,
+                gravity: -2,
                 drag: 0.9,
                 twinkle: this.randomBetween(0, 900),
                 shape: Math.random() > 0.4 ? 'diamond' : 'circle',
@@ -2726,18 +2927,18 @@ export class HexMapService {
         }
 
         if (tile.terrain === 'snow' || key.startsWith('snow')) {
-            if (!this.shouldSpawnAmbientParticle(0.42)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.snowChance)) return;
             const colors: GlowColor[] = [[255, 255, 255], [216, 239, 255], [196, 228, 255]];
             this.emitParticle({
                 x: x + this.randomBetween(-20, 20),
                 y: y - this.randomBetween(6, 26),
-                vx: this.randomBetween(-8, 8),
-                vy: this.randomBetween(8, 18),
-                size: this.randomBetween(1.4, 2.2),
+                vx: this.randomBetween(-5, 5),
+                vy: this.randomBetween(5, 12),
+                size: this.randomBetween(1.0, 1.7),
                 bornMs: now,
-                lifeMs: this.randomBetween(1500, 2400),
-                alpha: this.randomBetween(0.18, 0.34),
-                glow: this.randomBetween(2.1, 3.2),
+                lifeMs: this.randomBetween(1800, 2800),
+                alpha: this.randomBetween(0.12, 0.24),
+                glow: this.randomBetween(1.5, 2.2),
                 color: this.pickGlow(colors),
                 gravity: 6,
                 drag: 0.45,
@@ -2748,18 +2949,18 @@ export class HexMapService {
         }
 
         if (key === 'grain_bloom') {
-            if (!this.shouldSpawnAmbientParticle(0.35)) return;
+            if (!this.shouldSpawnAmbientParticle(0.26)) return;
             const colors: GlowColor[] = [[255, 236, 168], [255, 222, 120], [214, 246, 161]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
                 y: y + this.randomBetween(-8, 10),
-                vx: this.randomBetween(-7, 7),
-                vy: this.randomBetween(-18, -6),
-                size: this.randomBetween(1.3, 2.1),
+                vx: this.randomBetween(-4, 4),
+                vy: this.randomBetween(-12, -4),
+                size: this.randomBetween(1.0, 1.6),
                 bornMs: now,
                 lifeMs: this.randomBetween(1100, 1800),
-                alpha: this.randomBetween(0.18, 0.34),
-                glow: this.randomBetween(2.4, 3.4),
+                alpha: this.randomBetween(0.12, 0.24),
+                glow: this.randomBetween(1.9, 2.6),
                 color: this.pickGlow(colors),
                 gravity: -3,
                 drag: 0.9,
@@ -2771,18 +2972,18 @@ export class HexMapService {
 
         // Forest: drifting leaves
         if (tile.terrain === 'forest' || key.startsWith('forest')) {
-            if (!this.shouldSpawnAmbientParticle(0.55)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.forestLeafChance)) return;
             const colors: GlowColor[] = [[110, 190, 75], [145, 200, 65], [85, 155, 55], [180, 160, 60]];
             this.emitParticle({
                 x: x + this.randomBetween(-16, 16),
                 y: y + this.randomBetween(-14, 4),
-                vx: this.randomBetween(-12, 12),
-                vy: this.randomBetween(4, 14),
-                size: this.randomBetween(1.35, 2.2),
+                vx: this.randomBetween(-7, 7),
+                vy: this.randomBetween(2, 9),
+                size: this.randomBetween(1.0, 1.7),
                 bornMs: now,
-                lifeMs: this.randomBetween(1800, 3200),
-                alpha: this.randomBetween(0.44, 0.62),
-                glow: this.randomBetween(1.45, 1.9),
+                lifeMs: this.randomBetween(2400, 4200),
+                alpha: this.randomBetween(0.22, 0.38),
+                glow: this.randomBetween(1.05, 1.45),
                 color: this.pickGlow(colors),
                 gravity: 3,
                 drag: 0.35,
@@ -2794,18 +2995,18 @@ export class HexMapService {
 
         // Grain (non-bloom): gentle golden pollen
         if (tile.terrain === 'grain' || key.startsWith('grain')) {
-            if (!this.shouldSpawnAmbientParticle(0.6)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.grainPollenChance)) return;
             const colors: GlowColor[] = [[255, 228, 140], [240, 210, 110], [255, 242, 180]];
             this.emitParticle({
                 x: x + this.randomBetween(-14, 14),
                 y: y + this.randomBetween(-6, 8),
-                vx: this.randomBetween(-5, 5),
-                vy: this.randomBetween(-14, -4),
-                size: this.randomBetween(1.0, 1.7),
+                vx: this.randomBetween(-3, 3),
+                vy: this.randomBetween(-10, -3),
+                size: this.randomBetween(0.8, 1.35),
                 bornMs: now,
                 lifeMs: this.randomBetween(1200, 2000),
-                alpha: this.randomBetween(0.12, 0.24),
-                glow: this.randomBetween(2.0, 2.8),
+                alpha: this.randomBetween(0.1, 0.2),
+                glow: this.randomBetween(1.5, 2.1),
                 color: this.pickGlow(colors),
                 gravity: -2,
                 drag: 0.7,
@@ -2817,18 +3018,18 @@ export class HexMapService {
 
         // Dessert: wind-blown sand particles
         if (tile.terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') {
-            if (!this.shouldSpawnAmbientParticle(0.52)) return;
+            if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.sandChance)) return;
             const colors: GlowColor[] = [[210, 185, 140], [190, 165, 120], [225, 200, 155]];
             this.emitParticle({
                 x: x + this.randomBetween(-18, 18),
                 y: y + this.randomBetween(-4, 12),
-                vx: this.randomBetween(6, 22),
-                vy: this.randomBetween(-6, 4),
-                size: this.randomBetween(1.0, 1.8),
+                vx: this.randomBetween(4, 14),
+                vy: this.randomBetween(-4, 3),
+                size: this.randomBetween(0.8, 1.4),
                 bornMs: now,
                 lifeMs: this.randomBetween(600, 1100),
-                alpha: this.randomBetween(0.1, 0.2),
-                glow: this.randomBetween(1.6, 2.4),
+                alpha: this.randomBetween(0.08, 0.16),
+                glow: this.randomBetween(1.2, 1.8),
                 color: this.pickGlow(colors),
                 gravity: 4,
                 drag: 1.1,
@@ -2839,7 +3040,7 @@ export class HexMapService {
     }
 
     private spawnVolcanoAmbientParticles(x: number, y: number, now: number) {
-        if (!this.shouldSpawnAmbientParticle(0.16)) {
+        if (!this.shouldSpawnAmbientParticle(GROWTH_HYBRID_STYLE.particles.volcanoSmokeChance)) {
             return;
         }
 
@@ -2855,7 +3056,7 @@ export class HexMapService {
                 size: this.randomBetween(4.6, 7.4),
                 bornMs: now,
                 lifeMs: this.randomBetween(2400, 4200),
-                alpha: this.randomBetween(0.14, 0.24),
+                alpha: this.randomBetween(0.1, 0.18),
                 glow: this.randomBetween(0.55, 1.2),
                 color: this.pickGlow(smokeColors),
                 gravity: -0.18,
@@ -2867,7 +3068,7 @@ export class HexMapService {
             });
         }
 
-        if (!this.shouldSpawnAmbientParticle(0.28)) {
+        if (!this.shouldSpawnAmbientParticle(0.18)) {
             return;
         }
 
@@ -2880,8 +3081,8 @@ export class HexMapService {
             size: this.randomBetween(1.7, 2.8),
             bornMs: now,
             lifeMs: this.randomBetween(700, 1200),
-            alpha: this.randomBetween(0.26, 0.48),
-            glow: this.randomBetween(2.8, 4.1),
+            alpha: this.randomBetween(0.18, 0.34),
+            glow: this.randomBetween(2.2, 3.2),
             color: this.pickGlow(emberColors),
             gravity: -8,
             drag: 1.2,
@@ -2901,7 +3102,7 @@ export class HexMapService {
 
             if (!task.active) continue;
 
-            const interval = 360;
+            const interval = 460;
             const lastEmit = this._taskParticleEmitMs.get(tile.id) ?? 0;
             if ((now - lastEmit) < interval) continue;
 
@@ -2912,13 +3113,13 @@ export class HexMapService {
                 this.emitParticle({
                     x: x + this.randomBetween(-10, 10),
                     y: y + this.randomBetween(-10, 6),
-                    vx: this.randomBetween(-9, 9),
-                    vy: this.randomBetween(-22, -8),
-                    size: this.randomBetween(1.5, 2.2),
+                    vx: this.randomBetween(-5, 5),
+                    vy: this.randomBetween(-15, -5),
+                    size: this.randomBetween(1.15, 1.75),
                     bornMs: now,
-                    lifeMs: this.randomBetween(700, 1050),
-                    alpha: this.randomBetween(0.24, 0.4),
-                    glow: this.randomBetween(2.4, 3.2),
+                    lifeMs: this.randomBetween(820, 1220),
+                    alpha: this.randomBetween(0.15, 0.28),
+                    glow: this.randomBetween(1.8, 2.5),
                     color: this.pickGlow(colors),
                     gravity: -8,
                     drag: 1.35,
@@ -3039,7 +3240,7 @@ export class HexMapService {
             const puffY = baseY - (pulse * 2.5);
             const puffWidth = 6 + (pulse * 9);
             const puffHeight = 2.5 + (pulse * 4);
-            const puffAlpha = opacity * (0.08 + (pulse * 0.16));
+            const puffAlpha = opacity * (0.045 + (pulse * 0.095));
 
             const shadowGradient = ctx.createRadialGradient(puffX, puffY + 1, 0, puffX, puffY + 1, puffWidth);
             shadowGradient.addColorStop(0, this.toRgba(shadowColor, puffAlpha * 0.55));
@@ -3184,7 +3385,7 @@ export class HexMapService {
         return Math.round(getEffectiveParticleBudget() * this._currentRenderQuality.particleBudgetScale);
     }
 
-    private pickGlow(colors: GlowColor[]): GlowColor {
+    private pickGlow(colors: readonly GlowColor[]): GlowColor {
         return colors[Math.floor(Math.random() * colors.length)]!;
     }
 
@@ -3384,9 +3585,11 @@ export class HexMapService {
         );
 
         return {
-            hueDeg: hueBlend * 12.5,
-            saturate: 0.75 + (saturationBlend * 0.75),
-            brightness: 1 - (brightnessBlend * 0.25),
+            hueDeg: hueBlend * GROWTH_HYBRID_STYLE.terrainColor.hueRangeDeg,
+            saturate: GROWTH_HYBRID_STYLE.terrainColor.minSaturate
+                + (saturationBlend * GROWTH_HYBRID_STYLE.terrainColor.saturateRange),
+            brightness: GROWTH_HYBRID_STYLE.terrainColor.maxBrightness
+                - (brightnessBlend * GROWTH_HYBRID_STYLE.terrainColor.brightnessRange),
         };
     }
 
@@ -3406,9 +3609,18 @@ export class HexMapService {
     }
 
     private getTileColorFilter(adjustment: TileColorAdjustment) {
-        const hue = Math.max(-12.5, Math.min(12.5, adjustment.hueDeg));
-        const saturate = Math.max(0.75, Math.min(1.5, adjustment.saturate));
-        const brightness = Math.max(0.75, Math.min(1, adjustment.brightness));
+        const hue = Math.max(-GROWTH_HYBRID_STYLE.terrainColor.hueRangeDeg, Math.min(GROWTH_HYBRID_STYLE.terrainColor.hueRangeDeg, adjustment.hueDeg));
+        const saturate = Math.max(
+            GROWTH_HYBRID_STYLE.terrainColor.minSaturate,
+            Math.min(
+                GROWTH_HYBRID_STYLE.terrainColor.minSaturate + GROWTH_HYBRID_STYLE.terrainColor.saturateRange,
+                adjustment.saturate,
+            ),
+        );
+        const brightness = Math.max(
+            GROWTH_HYBRID_STYLE.terrainColor.minBrightness,
+            Math.min(GROWTH_HYBRID_STYLE.terrainColor.maxBrightness, adjustment.brightness),
+        );
 
         return `hue-rotate(${hue.toFixed(2)}deg) saturate(${(saturate * 100).toFixed(1)}%) brightness(${(brightness * 100).toFixed(1)}%)`;
     }
@@ -3484,7 +3696,24 @@ export class HexMapService {
         return `v${HexMapService.TILE_SHADER_VERSION}:${terrain}:${key}:${reliefState}:r${variant.regionBucket}:a${variant.accentBucket}`;
     }
 
+    private getGrowthTerrainToneFamily(terrain: string, key: string): TerrainToneFamily {
+        if (terrain === 'water' || key.startsWith('water')) return 'water';
+        if (terrain === 'forest' || key.startsWith('forest')) return 'forest';
+        if (terrain === 'grain' || key.startsWith('grain')) return 'grain';
+        if (terrain === 'snow' || key.startsWith('snow')) return 'snow';
+        if (terrain === 'mountain' || key.startsWith('mountain')) return 'mountain';
+        if (terrain === 'vulcano' || key.startsWith('vulcano')) return 'volcano';
+        if (terrain === 'towncenter' || key.startsWith('towncenter') || key === 'house') return 'towncenter';
+        if (terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') return 'desert';
+        if (terrain === 'dirt' || key.startsWith('dirt')) return 'dirt';
+        return 'plains';
+    }
+
     private getTileShaderTone(terrain: string, key: string, regionBucket: number) {
+        const family = this.getGrowthTerrainToneFamily(terrain, key);
+        const tones = GROWTH_HYBRID_STYLE.tileTones[family];
+        return tones[regionBucket % tones.length]!;
+
         if (terrain === 'water' || key.startsWith('water')) {
             return [
                 {
@@ -4342,6 +4571,57 @@ export class HexMapService {
         }
     }
 
+    private drawTileGrowthRimStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+        if (state.opacity <= 0.04) {
+            return;
+        }
+
+        const vertices = this.getHexVertices(state.x, state.y);
+        const drawEdge = (
+            startIndex: number,
+            endIndex: number,
+            strokeStyle: string,
+            lineWidth: number,
+            alpha: number,
+        ) => {
+            const start = vertices[startIndex];
+            const end = vertices[endIndex];
+            if (!start || !end) return;
+            ctx.globalAlpha = state.opacity * alpha;
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+            ctx.stroke();
+        };
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowBlur = 0;
+        drawEdge(5, 0, GROWTH_HYBRID_STYLE.tileRim.topLightSoft, 3.2, 0.72);
+        drawEdge(0, 1, GROWTH_HYBRID_STYLE.tileRim.topLight, 1.4, 0.86);
+        drawEdge(4, 5, GROWTH_HYBRID_STYLE.tileRim.topLightSoft, 1.1, 0.46);
+        drawEdge(2, 3, GROWTH_HYBRID_STYLE.tileRim.lowerShadow, 1.7, 0.8);
+        drawEdge(3, 4, GROWTH_HYBRID_STYLE.tileRim.lowerShadowSoft, 2.4, 0.62);
+
+        if (this.isGrowthWaterTile(state.tile)) {
+            ctx.shadowBlur = 7;
+            ctx.shadowColor = GROWTH_HYBRID_STYLE.tileRim.waterEdgeGlow;
+            for (const side of SIDE_NAMES) {
+                const neighbor = state.tile.neighbors?.[side];
+                if (!neighbor?.discovered || !neighbor.terrain || neighbor.terrain === 'water') {
+                    continue;
+                }
+                const [startIndex, endIndex] = this.getWaterReflectionEdgeVertexIndexes(side);
+                drawEdge(startIndex, endIndex, GROWTH_HYBRID_STYLE.tileRim.waterEdge, 1.55, 0.85);
+            }
+        }
+
+        ctx.restore();
+    }
+
     private ensureTileCompositeScratchSurface() {
         if (!this._tileCompositeScratchCanvas) {
             this._tileCompositeScratchCanvas = this.createTileSizedCanvas();
@@ -4381,6 +4661,7 @@ export class HexMapService {
         this.drawTileShaderStage(scratch.ctx, localState);
         this.drawTileWaterReflectionStage(scratch.ctx, localState);
         this.drawTileProceduralStage(scratch.ctx, localState);
+        this.drawTileGrowthRimStage(scratch.ctx, localState);
         if (includeTerrainOverlay) {
             this.drawTileTerrainOverlayStage(scratch.ctx, localState);
         }
@@ -4404,6 +4685,7 @@ export class HexMapService {
         this.drawTileShaderStage(ctx, state);
         this.drawTileWaterReflectionStage(ctx, state);
         this.drawTileProceduralStage(ctx, state);
+        this.drawTileGrowthRimStage(ctx, state);
         if (inlineTerrainOverlay) {
             this.drawTileTerrainOverlayStage(ctx, state);
         }
@@ -4578,14 +4860,14 @@ export class HexMapService {
     private static readonly PROCEDURAL_ROAD_CACHE_MAX = 768;
     private static readonly PROCEDURAL_BRIDGE_CACHE_MAX = 512;
     private static readonly MASKED_TILE_CANVAS_CACHE_MAX = 384;
-    private static readonly TILE_COLOR_VARIANT_VERSION = 7;
+    private static readonly TILE_COLOR_VARIANT_VERSION = 8;
     private static readonly TILE_COLOR_VARIANT_CACHE_MAX = 2048;
-    private static readonly TILE_SHADER_VERSION = 4;
+    private static readonly TILE_SHADER_VERSION = 5;
     private static readonly TILE_SHADER_CACHE_MAX = 192;
-    private static readonly TILE_SHORELINE_VERSION = 4;
+    private static readonly TILE_SHORELINE_VERSION = 5;
     private static readonly TILE_SHORELINE_CACHE_MAX = 1024;
     private static readonly TILE_OVERLAY_SHADER_CACHE_MAX = 1024;
-    private static readonly TILE_OVERLAY_SHADER_VERSION = 10;
+    private static readonly TILE_OVERLAY_SHADER_VERSION = 11;
 
     private ensureFogTileCanvas(): HTMLCanvasElement {
         if (this._fogTileCanvas) return this._fogTileCanvas;
@@ -4608,11 +4890,11 @@ export class HexMapService {
         g.closePath();
         g.clip();
 
-        // Dark atmospheric base
+        // Soft atmospheric base
         const baseFill = g.createLinearGradient(0, 0, w, h);
-        baseFill.addColorStop(0, '#2d3a52');
-        baseFill.addColorStop(0.5, '#323e58');
-        baseFill.addColorStop(1, '#283248');
+        baseFill.addColorStop(0, '#56666f');
+        baseFill.addColorStop(0.5, '#4d5e68');
+        baseFill.addColorStop(1, '#43535d');
         g.fillStyle = baseFill;
         g.fillRect(0, 0, w, h);
 
@@ -4625,9 +4907,9 @@ export class HexMapService {
         ];
         for (const spot of fogSpots) {
             const grad = g.createRadialGradient(spot.cx, spot.cy, 0, spot.cx, spot.cy, spot.r);
-            grad.addColorStop(0, `rgba(140, 160, 200, ${spot.a})`);
-            grad.addColorStop(0.6, `rgba(100, 120, 160, ${spot.a * 0.5})`);
-            grad.addColorStop(1, `rgba(80, 100, 140, 0)`);
+            grad.addColorStop(0, `rgba(190, 218, 222, ${spot.a * 1.08})`);
+            grad.addColorStop(0.6, `rgba(142, 170, 182, ${spot.a * 0.5})`);
+            grad.addColorStop(1, `rgba(92, 112, 126, 0)`);
             g.fillStyle = grad;
             g.beginPath();
             g.arc(spot.cx, spot.cy, spot.r, 0, Math.PI * 2);
@@ -4637,14 +4919,14 @@ export class HexMapService {
         // Inner edge darkening vignette
         const vignette = g.createRadialGradient(w * 0.5, h * 0.5, w * 0.15, w * 0.5, h * 0.5, w * 0.55);
         vignette.addColorStop(0, 'rgba(0,0,0,0)');
-        vignette.addColorStop(1, 'rgba(10,14,24,0.28)');
+        vignette.addColorStop(1, 'rgba(30,44,52,0.2)');
         g.fillStyle = vignette;
         g.fillRect(0, 0, w, h);
 
         g.restore();
 
         // Subtle hex border
-        g.strokeStyle = 'rgba(90, 110, 145, 0.25)';
+        g.strokeStyle = 'rgba(196, 222, 220, 0.24)';
         g.lineWidth = 1;
         g.beginPath();
         g.moveTo(0.5 * w, 0.5);
@@ -5124,8 +5406,8 @@ export class HexMapService {
         const h = this._container.clientHeight;
         const diag = Math.min(w, h);
         const tilePixelSpan = this.HEX_SIZE * 2;
-        const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * 1.25)));
-        const inner = Math.max(3, Math.round(targetRadius * 0.33));
+        const targetRadius = Math.max(8, Math.min(64, Math.round(diag / tilePixelSpan * GROWTH_HYBRID_STYLE.camera.adaptiveRadiusScale)));
+        const inner = Math.max(3, Math.round(targetRadius * GROWTH_HYBRID_STYLE.camera.innerRadiusRatio));
         updateCameraRadius(targetRadius, inner);
     }
 

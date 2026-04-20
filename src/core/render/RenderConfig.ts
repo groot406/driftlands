@@ -9,6 +9,7 @@ import {
 } from '../../store/graphicsStore';
 import { isRenderFeatureForcedOn, resolveRenderFeatureEnabled } from '../../store/renderFeatureStore';
 import type { DebugQualityLabel, RenderQualityName, RenderQualityProfile, RenderStressTier } from './RenderTypes';
+import { GROWTH_HYBRID_STYLE } from './visualStyle';
 
 export interface RenderQualityEnvironment {
     particlesEnabled: boolean;
@@ -47,7 +48,7 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     heroZoom: 2,
     heroOffsetSpacing: 14,
     staticTerrainPaddingPx: TILE_DRAW_SIZE * 7,
-    ambientParticleDensity: 0.58,
+    ambientParticleDensity: GROWTH_HYBRID_STYLE.particles.ambientDensity,
     hexXFactor: (HEX_SIZE + (HEX_SIZE * 0.155)) * SQRT3,
     hexYFactor: HEX_SIZE * 3 / 2,
 };
@@ -86,7 +87,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
     medium: {
         name: 'medium',
         particlesEnabled: true,
-        maxParticles: 220,
+        maxParticles: 190,
         bloomEnabled: true,
         cloudsEnabled: true,
         vignetteEnabled: true,
@@ -96,7 +97,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         debugEnabledByDefault: false,
         enableBackdropGlows: true,
         enableMotionBlur: true,
-        motionBlurStrength: 0.72,
+        motionBlurStrength: 0.52,
         enableBloom: true,
         enableClouds: true,
         enableParticles: true,
@@ -106,7 +107,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         enableFogShimmer: false,
         enableTileRelief: true,
         enableManualShadowComposite: true,
-        particleBudgetScale: 0.62,
+        particleBudgetScale: 0.48,
         overlaySoftness: 0.35,
         expensiveAtmosphere: false,
         useOffscreenCanvas: false,
@@ -116,7 +117,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
     high: {
         name: 'high',
         particlesEnabled: true,
-        maxParticles: browserGraphicsProfile.safariOptimized ? 180 : 420,
+        maxParticles: browserGraphicsProfile.safariOptimized ? 170 : 330,
         bloomEnabled: true,
         cloudsEnabled: true,
         vignetteEnabled: true,
@@ -126,7 +127,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         debugEnabledByDefault: false,
         enableBackdropGlows: true,
         enableMotionBlur: true,
-        motionBlurStrength: 1.18,
+        motionBlurStrength: 0.82,
         enableBloom: true,
         enableClouds: true,
         enableParticles: true,
@@ -136,7 +137,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
         enableFogShimmer: true,
         enableTileRelief: true,
         enableManualShadowComposite: true,
-        particleBudgetScale: 1,
+        particleBudgetScale: 0.72,
         overlaySoftness: 0.8,
         expensiveAtmosphere: true,
         useOffscreenCanvas: false,

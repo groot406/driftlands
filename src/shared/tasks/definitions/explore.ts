@@ -106,20 +106,17 @@ function moveHeroToExploreTile(hero: Hero, tile: Tile) {
     );
 }
 
-function pickNextExploreTile(tile: Tile, hero: Hero): Tile | null {
+function pickNextExploreTile(_tile: Tile, hero: Hero): Tile | null {
     const target = hero.pendingExploreTarget;
-    if (target) {
-        if (isPendingExploreTargetReached(hero, target)) {
-            return null;
-        }
-
-        const directed = pickDirectedControlledUndiscoveredTile(hero, target);
-        if (directed) {
-            return directed;
-        }
+    if (!target) {
+        return null;
     }
 
-    return pickRandomControlledUndiscoveredNeighbor(tile, hero);
+    if (isPendingExploreTargetReached(hero, target)) {
+        return null;
+    }
+
+    return pickDirectedControlledUndiscoveredTile(hero, target);
 }
 
 function isPendingExploreTargetReached(hero: Hero, target: { q: number; r: number }) {
@@ -152,15 +149,6 @@ function pickDirectedControlledUndiscoveredTile(hero: Hero, target: { q: number;
         })[0] ?? null;
 }
 
-function pickRandomControlledUndiscoveredNeighbor(tile: Tile, hero: Hero): Tile | null {
-    const candidates = listReachableControlledUndiscoveredNeighbors(tile, hero);
-    if (!candidates.length) {
-        return null;
-    }
-
-    return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
-}
-
 function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
     const candidates: Tile[] = [];
 
@@ -171,12 +159,6 @@ function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
     }
 
     return candidates;
-}
-
-function listReachableControlledUndiscoveredNeighbors(tile: Tile, hero: Hero): Tile[] {
-    return SIDE_NAMES
-        .map((side) => tile.neighbors?.[side] ?? null)
-        .filter((neighbor): neighbor is Tile => !!neighbor && isReachableControlledUndiscoveredTile(neighbor, hero));
 }
 
 function isReachableControlledUndiscoveredTile(tile: Tile, hero: Hero): boolean {

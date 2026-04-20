@@ -11,7 +11,7 @@ import {addTextIndicator} from "./textIndicators.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
 import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../shared/game/movementBalance';
-import { SCOUT_RESOURCE_TASK_TYPE } from '../shared/game/scoutResources';
+import { SCOUT_RESOURCE_TASK_TYPE, shouldStopScoutResourceForMovement } from '../shared/game/scoutResources';
 
 type AxialCoord = { q: number; r: number };
 
@@ -259,9 +259,31 @@ export function requestHeroMovement(
 
     const origin = { q: hero.q, r: hero.r };
     const normalizedPath = sanitizeMovementPath(path, origin);
+    const stopsScouting = shouldStopScoutResourceForMovement(hero, taskType);
+    if (stopsScouting) {
+        hero.scoutResourceIntent = undefined;
+        hero.pendingExploreTarget = undefined;
+        if (hero.pendingTask?.taskType === SCOUT_RESOURCE_TASK_TYPE) {
+            hero.pendingTask = undefined;
+        }
+    }
 
     // If there is no path (hero already at target), request immediate task start
     if (!normalizedPath.length) {
+        if (stopsScouting && !taskType) {
+            const startAt = Date.now();
+            const requestId = createMovementRequestId(heroId);
+            sendMessage({
+                type: 'hero:move_request',
+                id: requestId,
+                heroId,
+                origin,
+                target,
+                startAt,
+                path: [],
+            } as MoveRequestMessage);
+            return;
+        }
         if (taskType) startTaskRequest(heroId, taskType, taskLocation ?? target, exploreTarget);
         return;
     }

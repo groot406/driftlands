@@ -178,6 +178,19 @@ export let dragged = false;
 let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0;
 const samples: { t: number; x: number; y: number }[] = [];
 
+export function resetCameraPointerState(mouseDownRef?: { value: boolean }, options: { stopThrow?: boolean } = {}) {
+    dragging = false;
+    dragged = false;
+    samples.length = 0;
+    if (mouseDownRef) {
+        mouseDownRef.value = false;
+    }
+    if (options.stopThrow) {
+        camera.velQ = 0;
+        camera.velR = 0;
+    }
+}
+
 async function clampCameraTargets() {
     const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
     if (maxRad < 0) {
@@ -250,6 +263,10 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 
     function pointerMove(e: PointerEvent) {
         if (isPaused()) return;
+        if (e.pointerType === 'mouse' && e.buttons === 0) {
+            resetCameraPointerState(mouseDownRef);
+            return;
+        }
         if (!mouseDownRef.value) return;
 
         const dx = e.clientX - lastX;
@@ -279,11 +296,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
 
     function pointerUp() {
         if (isPaused()) {
-            dragging = false;
-            samples.length = 0;
-            mouseDownRef.value = false;
-            camera.velQ = 0;
-            camera.velR = 0;
+            resetCameraPointerState(mouseDownRef, {stopThrow: true});
             return;
         }
         if (dragging) computeThrowVelocity();
@@ -294,12 +307,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
     }
 
     function pointerCancel() {
-        // When paused treat as cancel
-        dragging = false;
-        samples.length = 0;
-        camera.velQ = 0;
-        camera.velR = 0;
-        mouseDownRef.value = false;
+        resetCameraPointerState(mouseDownRef, {stopThrow: true});
     }
 
     return {pointerDown, pointerMove, pointerUp, pointerCancel};

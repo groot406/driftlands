@@ -3,6 +3,7 @@ import { clientMessageRouter } from '../messageRouter';
 import { addCoopPing, replacePartyState } from '../../store/playerStore';
 import { addNotification } from '../../store/notificationStore';
 import { currentPlayerId } from '../socket';
+import { setStoryTileHint } from '../../store/storyHintStore';
 
 class ClientCoopHandler {
   private initialized = false;
@@ -22,6 +23,18 @@ class ClientCoopHandler {
   }
 
   private handlePing(message: CoopPingMessage): void {
+    if (message.ping.kind === 'scout' && message.ping.label.startsWith('Found ')) {
+      setStoryTileHint({
+        id: `scout:${message.ping.id}`,
+        kind: 'scout',
+        q: message.ping.q,
+        r: message.ping.r,
+        label: message.ping.label,
+        createdAt: message.ping.createdAt,
+      });
+      return;
+    }
+
     addCoopPing(message.ping);
 
     if (message.ping.playerId === currentPlayerId.value) {

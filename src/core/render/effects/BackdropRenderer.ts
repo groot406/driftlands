@@ -1,5 +1,6 @@
 import { getClimateProfile } from '../../worldVariation';
 import type { RenderQualityProfile, ViewportSnapshot } from '../RenderTypes';
+import { GROWTH_HYBRID_STYLE } from '../visualStyle';
 import { drawGlow, type GlowColor, toRgba } from './EffectUtils';
 
 interface BackdropTileLike {
@@ -52,25 +53,25 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
         );
         const pulse = 0.78 + (Math.sin(frame.effectNowMs / 2600) * 0.06);
 
-        const topColor: GlowColor = [
-            Math.round(20 + (weights.warm * 94) + (weights.ember * 118) + (weights.lush * 34)),
-            Math.round(28 + (weights.lush * 94) + (weights.water * 52) + (weights.warm * 34)),
-            Math.round(46 + (weights.water * 122) + (weights.cold * 96) + (weights.stone * 32)),
-        ];
-        const bottomColor: GlowColor = [
-            Math.round(8 + (weights.stone * 64) + (weights.ember * 40) + (weights.warm * 22)),
-            Math.round(12 + (weights.water * 22) + (weights.lush * 26) + (weights.stone * 34)),
-            Math.round(20 + (weights.water * 68) + (weights.cold * 72) + (weights.stone * 56)),
-        ];
+        const topColor = this.clampColor([
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washTop[0] + (weights.warm * 34) + (weights.ember * 62) + (weights.stone * 14)),
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washTop[1] + (weights.lush * 32) + (weights.water * 18) + (weights.warm * 12)),
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washTop[2] + (weights.water * 30) + (weights.cold * 32) + (weights.stone * 16)),
+        ]);
+        const bottomColor = this.clampColor([
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washBottom[0] + (weights.warm * 24) + (weights.ember * 34) + (weights.stone * 18)),
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washBottom[1] + (weights.lush * 22) + (weights.water * 18) + (weights.stone * 10)),
+            Math.round(GROWTH_HYBRID_STYLE.backdrop.washBottom[2] + (weights.water * 28) + (weights.cold * 28) + (weights.stone * 18)),
+        ]);
 
         const ctx = frame.finalCtx;
         ctx.save();
         ctx.imageSmoothingEnabled = true;
 
         const wash = ctx.createLinearGradient(0, 0, width, height);
-        wash.addColorStop(0, toRgba(topColor, 0.18));
-        wash.addColorStop(0.52, toRgba(topColor, 0.08));
-        wash.addColorStop(1, toRgba(bottomColor, 0.26));
+        wash.addColorStop(0, toRgba(topColor, 0.34));
+        wash.addColorStop(0.52, toRgba(topColor, 0.18));
+        wash.addColorStop(1, toRgba(bottomColor, 0.42));
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
@@ -81,24 +82,24 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
                 (width * 0.26) + (frame.cameraFx.vignetteBiasX * 0.1),
                 (height * 0.3) + (frame.cameraFx.vignetteBiasY * 0.08),
                 Math.min(width, height) * (0.34 + (weights.lush * 0.08)),
-                [120, 188, 144],
-                (0.03 + (weights.lush * 0.11)) * pulse,
+                GROWTH_HYBRID_STYLE.backdrop.meadowGlow,
+                (0.035 + (weights.lush * 0.075)) * pulse,
             );
             drawGlow(
                 ctx,
                 (width * 0.34) - (frame.cameraFx.vignetteBiasX * 0.06),
                 height * 0.26,
                 Math.min(width, height) * (0.28 + (weights.water * 0.08)),
-                [96, 182, 226],
-                (0.03 + (weights.water * 0.12) + (weights.cold * 0.02)) * pulse,
+                GROWTH_HYBRID_STYLE.backdrop.skyGlow,
+                (0.035 + (weights.water * 0.08) + (weights.cold * 0.018)) * pulse,
             );
             drawGlow(
                 ctx,
                 width * 0.74,
                 (height * 0.22) + (frame.cameraFx.vignetteBiasY * 0.06),
                 Math.min(width, height) * (0.24 + (weights.warm * 0.06)),
-                [255, 191, 122],
-                (0.025 + (weights.warm * 0.09) + (weights.ember * 0.05)) * pulse,
+                GROWTH_HYBRID_STYLE.backdrop.warmGlow,
+                (0.02 + (weights.warm * 0.06) + (weights.ember * 0.035)) * pulse,
             );
             if (weights.ember > 0.02) {
                 drawGlow(
@@ -115,8 +116,8 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
         ctx.globalCompositeOperation = 'multiply';
         const floorShadow = ctx.createLinearGradient(0, height * 0.18, 0, height);
         floorShadow.addColorStop(0, 'rgba(5, 8, 14, 0)');
-        floorShadow.addColorStop(0.64, 'rgba(5, 8, 14, 0.1)');
-        floorShadow.addColorStop(1, 'rgba(5, 8, 14, 0.22)');
+        floorShadow.addColorStop(0.64, 'rgba(26, 42, 36, 0.045)');
+        floorShadow.addColorStop(1, 'rgba(26, 42, 36, 0.11)');
         ctx.fillStyle = floorShadow;
         ctx.fillRect(0, 0, width, height);
 
@@ -141,6 +142,14 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
             weights,
         };
         return weights;
+    }
+
+    private clampColor(color: GlowColor): GlowColor {
+        return [
+            Math.max(0, Math.min(255, color[0])),
+            Math.max(0, Math.min(255, color[1])),
+            Math.max(0, Math.min(255, color[2])),
+        ];
     }
 
     private sampleBackdropPalette(tiles: readonly TTile[]): BackdropPaletteWeights {

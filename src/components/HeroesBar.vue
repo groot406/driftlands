@@ -5,7 +5,7 @@
         <div
           v-for="hero in heroes"
           :key="hero.id"
-          class="text-white flex-shrink-0 flex flex-col gap-1 p-2 transition-all backdrop-blur rounded-xl hover:bg-slate-600/40 cursor-pointer select-none pointer-events-auto"
+          class="text-white flex-shrink-0 flex flex-col gap-1 p-2 transition-all rounded-lg hover:bg-emerald-950/42 cursor-pointer select-none pointer-events-auto"
           :class="cardClass(hero.id)"
           @click="select(hero)"
         >
@@ -181,8 +181,8 @@ function statusClass(heroId: string) {
 function cardClass(heroId: string) {
   const isSelected = selectedHeroId.value === heroId;
   const base = isSelected
-    ? 'bg-slate-700/30 border border-yellow-400 shadow-[0_0_0_2px_rgba(255,216,107,0.4)]'
-    : 'bg-slate-800/20 border border-white/10';
+    ? 'bg-emerald-950/48 border border-amber-200/70 shadow-[0_0_0_2px_rgba(255,232,166,0.32)]'
+    : 'bg-emerald-950/24 border border-emerald-100/18 shadow-md';
 
   if (isHeroClaimedByOtherPlayer(heroId, currentPlayerId.value)) {
     return `${base} opacity-80`;
@@ -278,6 +278,7 @@ onBeforeUnmount(() => {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   scrollbar-width: none; /* Firefox */
+  background: linear-gradient(to top, rgba(21, 51, 35, 0.22), rgba(21, 51, 35, 0));
 }
 
 .heroes-avatar-strip::-webkit-scrollbar {
@@ -289,7 +290,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.25rem;
   padding-top: 0.25rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(225, 244, 190, 0.16);
 }
 
 .scout-button {
@@ -301,16 +302,16 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(225, 244, 190, 0.18);
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.58);
-  color: rgba(226, 232, 240, 0.92);
+  background: rgba(35, 83, 46, 0.52);
+  color: rgba(236, 253, 245, 0.92);
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .scout-button:hover:not(:disabled) {
   border-color: var(--scout-color);
-  background: rgba(15, 23, 42, 0.78);
+  background: rgba(65, 103, 49, 0.78);
   transform: translateY(-1px);
 }
 

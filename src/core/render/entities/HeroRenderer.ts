@@ -681,6 +681,8 @@ export class HeroRenderer {
 
             const selected = selectedHeroId.value === hero.id;
             const hovered = hoveredHero?.id === hero.id;
+            const selectedBob = selected ? -0.8 + (Math.sin(now / 360) * 1.2) : 0;
+            const heroDestY = destY + selectedBob;
             if (selected || (deps.currentRenderQuality.enableHeroAuras && hovered)) {
                 deps.drawHeroSelectionAura(ctx, interp, pos, opacity, selected, now);
             }
@@ -692,12 +694,12 @@ export class HeroRenderer {
             const sy = animRow * frameSize;
             if (shouldFlip(hero.facing)) {
                 ctx.save();
-                ctx.translate(destX + frameSize * deps.heroZoom, destY);
+                ctx.translate(destX + frameSize * deps.heroZoom, heroDestY);
                 ctx.scale(-1, 1);
                 ctx.drawImage(img, sx, sy, frameSize, frameSize, 0, 0, frameSize * deps.heroZoom, frameSize * deps.heroZoom);
                 ctx.restore();
             } else {
-                ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, destY, frameSize * deps.heroZoom, frameSize * deps.heroZoom);
+                ctx.drawImage(img, sx, sy, frameSize, frameSize, destX, heroDestY, frameSize * deps.heroZoom, frameSize * deps.heroZoom);
             }
 
             const toolImage = workTool && deps.toolImagesLoaded ? deps.toolImages[workTool] : undefined;
@@ -708,7 +710,7 @@ export class HeroRenderer {
                 const toolHeight = TOOL_FRAME_SIZE * deps.heroZoom;
                 const anchorOffset = TOOL_ANCHOR_OFFSET_BY_TOOL[workTool][hero.facing];
                 const toolDestX = x - toolWidth / 2 + pos.x - (deps.heroFrameSize / 2) + (anchorOffset.x * deps.heroZoom);
-                const toolDestY = y - (TOOL_FRAME_SIZE * deps.heroZoom) + (deps.heroFrameSize / 2) + pos.y + (anchorOffset.y * deps.heroZoom);
+                const toolDestY = y - (TOOL_FRAME_SIZE * deps.heroZoom) + (deps.heroFrameSize / 2) + pos.y + (anchorOffset.y * deps.heroZoom) + selectedBob;
 
                 ctx.save();
                 ctx.globalAlpha = opacity;
@@ -726,7 +728,7 @@ export class HeroRenderer {
             if (hero.carryingPayload) {
                 ctx.save();
                 ctx.globalAlpha = opacity;
-                const iconY = destY;
+                const iconY = heroDestY;
                 const iconX = destX + (deps.heroFrameSize * deps.heroZoom) / 2;
                 ctx.beginPath();
                 ctx.arc(iconX, iconY, 14, 0, Math.PI * 2);

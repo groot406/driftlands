@@ -187,6 +187,52 @@ test('scouted hidden tiles are only walkable for scout routing', () => {
   ]);
 });
 
+test('stale scout arrivals on hidden tiles return the hero to known walkable ground', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'hero-scout',
+    name: 'Scout',
+    avatar: 'santa',
+    q: 1,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+  const moves: Array<{ q: number; r: number; task?: string; options?: { allowScouted?: boolean } }> = [];
+
+  configureGameRuntime({
+    moveHero: (_hero, target, task, _taskLocation, options) => moves.push({ q: target.q, r: target.r, task, options }),
+  });
+
+  handleScoutResourceArrival(hero, tileIndex['1,0']!);
+
+  assert.equal(hero.scoutResourceIntent, undefined);
+  assert.deepEqual(moves, [{ q: 0, r: 0, task: undefined, options: { allowScouted: true } }]);
+});
+
 test('scouting a matching hidden tile pings the find, stops the scout intent, and returns home', async () => {
   startWorldGeneration(1, 8675309);
   const resourceType: ResourceType = 'wood';
