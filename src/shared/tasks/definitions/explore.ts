@@ -12,7 +12,7 @@ import { listUndiscoveredFrontierTiles } from '../../game/explorationFrontier';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
 const EXPLORE_BASE_REQUIRED_XP = 795;
-const EXPLORE_DISTANCE_XP_RATE = 0.08;
+const EXPLORE_DISTANCE_XP_RATE = 0.5;
 const EXPLORE_REWARDED_XP = 1;
 const EXPLORE_SCOUTING_RATE = 24;
 const EXPLORE_WATER_SURVEY_RADIUS = 2;
