@@ -2,11 +2,15 @@ import {axialKey, tileIndex} from './world';
 import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import { axialDistanceCoords } from '../shared/game/hex';
-import { getTileMoveCost, isEdgeBlocked, isTileWalkable } from '../shared/game/navigation';
+import { getTileMoveCost, isEdgeBlocked, isTileScoutWalkable, isTileWalkable } from '../shared/game/navigation';
 
 export interface PathCoord {
     q: number;
     r: number;
+}
+
+export interface PathFindOptions {
+    allowScouted?: boolean;
 }
 
 interface PathNode {
@@ -107,7 +111,7 @@ export class PathService {
     }
 
     // expose pathfinding for external movement start
-    public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number): PathCoord[] {
+    public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number, options: PathFindOptions = {}): PathCoord[] {
         const directDistance = this.axialDistance(startQ, startR, goalQ, goalR);
         if (directDistance === 0) return [];
         const searchProfile = this.buildSearchProfile(directDistance);
@@ -161,7 +165,7 @@ export class PathService {
 
                 const nextTile = tileIndex[key];
                 if (isEdgeBlocked(currTile, nextTile, side)) continue;
-                if (!this.isWalkable(nq, nr) && !(nq === goalQ && nr === goalR)) continue;
+                if (!this.isWalkable(nq, nr, options) && !(nq === goalQ && nr === goalR)) continue;
                 const stepCost = costFor(nq, nr);
                 const tentativeG = current.g + stepCost;
                 if (tentativeG >= (bestCosts.get(key) ?? Number.POSITIVE_INFINITY)) continue;
@@ -185,8 +189,11 @@ export class PathService {
         return axialDistanceCoords(aQ, aR, bQ, bR);
     }
 
-    private isWalkable(q: number, r: number) {
-        return isTileWalkable(tileIndex[axialKey(q, r)] ?? null);
+    private isWalkable(q: number, r: number, options: PathFindOptions = {}) {
+        const tile = tileIndex[axialKey(q, r)] ?? null;
+        return options.allowScouted
+            ? isTileScoutWalkable(tile)
+            : isTileWalkable(tile);
     }
 
     private isHeroIdle(hero: Hero): boolean {

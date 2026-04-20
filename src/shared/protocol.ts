@@ -1,6 +1,6 @@
 // Shared protocol definitions for client-server communication
 import type {Tile} from "../core/types/Tile.ts";
-import type {Hero, HeroStats} from "../core/types/Hero.ts";
+import type {Hero, HeroScoutResourceIntent, HeroStats} from "../core/types/Hero.ts";
 import type {TaskInstance, TaskType} from "../core/types/Task.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/types.ts";
@@ -169,6 +169,18 @@ export interface PathUpdateMessage extends BaseMessage {
     exploreTarget?: { q: number; r: number };
 }
 
+export interface HeroScoutResourceRequestMessage extends BaseMessage {
+    type: 'hero:scout_resource_request';
+    heroId: string;
+    resourceType: ResourceType;
+}
+
+export interface HeroScoutResourceUpdateMessage extends BaseMessage {
+    type: 'hero:scout_resource_update';
+    heroId: string;
+    intent: HeroScoutResourceIntent | null;
+}
+
 // Hero state updates
 export interface HeroPayloadUpdateMessage extends BaseMessage {
     type: 'hero:payload_update';
@@ -300,6 +312,7 @@ export type ClientMessage =
     | WorldRestartMessage
     | SetJobSiteEnabledMessage
     | MoveRequestMessage
+    | HeroScoutResourceRequestMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
     | LeaveTaskRequestMessage
@@ -325,6 +338,7 @@ export type ServerMessage =
     | ResourceDepositMessage
     | ResourceWithdrawMessage
     | HeroPayloadUpdateMessage
+    | HeroScoutResourceUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
     | PopulationUpdateMessage

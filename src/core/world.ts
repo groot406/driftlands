@@ -47,12 +47,15 @@ export function hexDistance(q: number, r: number): number {
 }
 
 function markTileAndNeighborsRenderDirty(tile: Tile) {
-    if (tile.discovered) {
+    if (tile.discovered || tile.scouted) {
         pendingRenderDirtyTileIds.add(tile.id);
     }
     for (const [dq, dr] of AXIAL_NEIGHBOR_DELTAS) {
         const neighbor = tileIndex[axialKey(tile.q + dq, tile.r + dr)];
-        if (neighbor?.discovered) {
+        if (!neighbor) {
+            continue;
+        }
+        if (tile.discovered || tile.scouted || neighbor.discovered || neighbor.scouted) {
             pendingRenderDirtyTileIds.add(neighbor.id);
         }
     }

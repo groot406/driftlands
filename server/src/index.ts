@@ -71,8 +71,8 @@ const io = new Server(httpServer, {
 setIo(io);
 configureGameRuntime({
   broadcast,
-  moveHero: (hero, target, task, taskLocation) => {
-    ServerMovementHandler.getInstance().moveHero(hero, target, task, taskLocation);
+  moveHero: (hero, target, task, taskLocation, options) => {
+    ServerMovementHandler.getInstance().moveHero(hero, target, task, taskLocation, options);
   }
 });
 configureGameplayEventRuntime((event) => {

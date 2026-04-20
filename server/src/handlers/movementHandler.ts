@@ -8,13 +8,15 @@ import { detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask, updateAc
 import { PathService } from "../../../src/shared/game/PathService";
 import type {TaskType} from "../../../src/shared/game/types/Task";
 import type {Hero} from "../../../src/shared/game/types/Hero";
-import { computePathTimings, isWalkablePosition } from '../../../src/shared/game/navigation';
+import { computePathTimings, isTileScoutWalkable, isWalkablePosition } from '../../../src/shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBalance';
 import { isAxialNeighbor } from '../../../src/shared/game/hex';
 import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { canStartTaskDefinition } from '../../../src/shared/tasks/taskAvailability';
 import { coopState } from '../state/coopState';
+import { SCOUT_RESOURCE_TASK_TYPE } from '../../../src/shared/game/scoutResources';
+import type { MoveHeroRuntimeOptions } from '../../../src/shared/game/runtime';
 
 export class ServerMovementHandler {
     private initialized = false;
@@ -97,9 +99,10 @@ export class ServerMovementHandler {
 
         const logicalTaskTarget = message.taskLocation ?? target;
         const logicalTaskTile = getTileForTaskPosition(logicalTaskTarget, message.task);
+        const isScoutMovement = message.task === SCOUT_RESOURCE_TASK_TYPE;
         const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
         const exploreTarget = normalizeExploreTarget(message.task, message.exploreTarget);
-        if (!isWalkablePosition(target.q, target.r) && targetTile.discovered && !canUseTaskTarget) return;
+        if (!isMovementWalkablePosition(target.q, target.r, message.task) && !canUseTaskTarget && !isScoutMovement) return;
 
         let path: { q: number; r: number }[] = [];
         if (clientPath && Array.isArray(clientPath) && clientPath.length) {
@@ -109,7 +112,7 @@ export class ServerMovementHandler {
             for (const step of sanitizedClientPath) {
                 const isNeighbor = isAxialNeighbor(prev, step);
                 const isTarget = (step.q === target.q && step.r === target.r);
-                if (!isNeighbor || (!isTarget && !isWalkablePosition(step.q, step.r))) {
+                if (!isNeighbor || (!isTarget && !isMovementWalkablePosition(step.q, step.r, message.task))) {
                     valid = false;
                     break;
                 }
@@ -121,7 +124,7 @@ export class ServerMovementHandler {
         }
 
         if (!path.length) {
-            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r);
+            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r, getMovementPathOptions(message.task));
         }
 
         if (!path.length) return;
@@ -178,6 +181,7 @@ export class ServerMovementHandler {
         target: { q: number, r: number },
         task ?: TaskType,
         taskLocation?: { q: number; r: number },
+        options?: MoveHeroRuntimeOptions,
     ) {
         const targetTile = getTile(target);
         if (!targetTile) {
@@ -203,7 +207,7 @@ export class ServerMovementHandler {
             return;
         }
 
-        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r);
+        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r, getMovementPathOptions(task, options));
 
         if (!path || !path.length) {
             return;
@@ -426,12 +430,26 @@ function normalizeExploreTarget(task: TaskType | undefined, target: { q: number;
     };
 }
 
+function getMovementPathOptions(task: TaskType | undefined, options?: MoveHeroRuntimeOptions) {
+    return task === SCOUT_RESOURCE_TASK_TYPE || options?.allowScouted
+        ? { allowScouted: true }
+        : {};
+}
+
+function isMovementWalkablePosition(q: number, r: number, task: TaskType | undefined) {
+    if (task === SCOUT_RESOURCE_TASK_TYPE) {
+        return isTileScoutWalkable(getTile({ q, r }));
+    }
+
+    return isWalkablePosition(q, r);
+}
+
 function getTileForTaskPosition(position: { q: number; r: number }, task: TaskType | undefined) {
     if (!Number.isFinite(position.q) || !Number.isFinite(position.r)) {
         return null;
     }
 
-    if (task === 'explore') {
+    if (task === 'explore' || task === SCOUT_RESOURCE_TASK_TYPE) {
         return ensureTileExists(Math.trunc(position.q), Math.trunc(position.r));
     }
 

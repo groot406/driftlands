@@ -23,8 +23,19 @@ export function isUndiscoveredFrontierTile(tile: Tile | null | undefined) {
     return SIDE_NAMES.some((side) => getNeighbor(tile, side)?.discovered === true);
 }
 
+export function isScoutingFrontierTile(tile: Tile | null | undefined) {
+    if (!tile || tile.discovered || tile.scouted) {
+        return false;
+    }
+
+    return SIDE_NAMES.some((side) => {
+        const neighbor = getNeighbor(tile, side);
+        return neighbor?.discovered === true || neighbor?.scouted === true;
+    });
+}
+
 export function isVisibleExplorationTile(tile: Tile | null | undefined) {
-    return !!tile && (tile.discovered || isUndiscoveredFrontierTile(tile));
+    return !!tile && (tile.discovered || tile.scouted || isUndiscoveredFrontierTile(tile) || isScoutingFrontierTile(tile));
 }
 
 export function listUndiscoveredFrontierTiles() {
@@ -32,6 +43,28 @@ export function listUndiscoveredFrontierTiles() {
 
     for (const tile of Object.values(tileIndex)) {
         if (!tile.discovered) {
+            continue;
+        }
+
+        for (const side of SIDE_NAMES) {
+            const neighbor = getNeighbor(tile, side);
+            if (neighbor && !neighbor.discovered) {
+                frontierIds.add(neighbor.id);
+            }
+        }
+    }
+
+    return Array.from(frontierIds)
+        .map((tileId) => tileIndex[tileId])
+        .filter((tile): tile is Tile => !!tile)
+        .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function listScoutingFrontierTiles() {
+    const frontierIds = new Set<string>();
+
+    for (const tile of Object.values(tileIndex)) {
+        if (!tile.discovered && !tile.scouted) {
             continue;
         }
 

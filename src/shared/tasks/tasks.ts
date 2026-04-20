@@ -32,6 +32,7 @@ import { getDistanceToNearestTowncenter } from '../game/worldQueries';
 import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from './taskAvailability.ts';
 import { isTaskUnlockedForUse } from './taskUnlocks.ts';
+import { handleScoutResourceArrival, SCOUT_RESOURCE_TASK_TYPE } from '../game/scoutResources';
 
 const MAX_CARRY_AMOUNT = 10;
 
@@ -118,6 +119,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     const isAtPendingTaskAccess = !!arrivalTask
         && !!pendingTaskTile
         && isHeroAtTaskAccess(hero, arrivalTask.taskType, pendingTaskTile);
+
+    if (arrivalTask?.taskType === SCOUT_RESOURCE_TASK_TYPE && pendingTaskTile) {
+        handleScoutResourceArrival(hero, pendingTaskTile);
+        return;
+    }
 
     // Handle resource fetch: if hero is fetching a resource and arrived at source
     if (isFetching(hero)) {

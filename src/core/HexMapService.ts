@@ -46,6 +46,7 @@ import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/building
 import { getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
 import { isVisibleExplorationTile } from '../shared/game/explorationFrontier';
+import { getScoutSurveyProgress, isHeroSurveyingScoutResource } from '../shared/game/scoutResources';
 import {
     consumePendingCameraNudges,
     consumePendingTerrainBursts,
@@ -98,6 +99,12 @@ import {
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './render/entities/settlerRender';
+
+const SCOUTED_TILE_STYLE = {
+    fill: 'rgba(236, 72, 153, 0.14)',
+    stroke: 'rgba(244, 114, 182, 0.82)',
+    foundStroke: 'rgba(251, 207, 232, 0.96)',
+};
 
 type GlowColor = readonly [number, number, number];
 
@@ -2097,6 +2104,7 @@ export class HexMapService {
 
             // active task highlight overlay (after drawing base tile)
             const activeTasksForTile = suppressWorldUi ? null : taskStore.tasksByTile[t.id];
+            const scoutSurveyProgress = suppressWorldUi ? null : this.getScoutSurveyProgressForTile(t, now);
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
                 let chosenTask: TaskInstance | null = null; // for progress bar
@@ -2135,7 +2143,29 @@ export class HexMapService {
                     }
                 }
             }
+            if (!activeTasksForTile && scoutSurveyProgress !== null) {
+                const pulse = (Math.sin(now / 400) + 1) / 2;
+                this.drawHexHighlight(ctx, t.q, t.r, null, 'rgba(244, 114, 182, 1)', opacity * (0.5 + 0.4 * pulse));
+                if (opacity > 0.05) {
+                    this.drawProgressBar(ctx, t, scoutSurveyProgress, 'rgba(244,114,182,0.92)', opacity);
+                }
+            }
         }
+    }
+
+    private getScoutSurveyProgressForTile(tile: Tile, now: number) {
+        let bestProgress: number | null = null;
+
+        for (const hero of heroes) {
+            const progress = getScoutSurveyProgress(hero, tile.id, now);
+            if (progress === null) {
+                continue;
+            }
+
+            bestProgress = bestProgress === null ? progress : Math.max(bestProgress, progress);
+        }
+
+        return bestProgress;
     }
 
     private drawProgressBar(ctx: CanvasRenderingContext2D, t: Tile, progressRatio: number, fillStyle: string, opacity: number) {
@@ -4652,6 +4682,17 @@ export class HexMapService {
             );
         }
 
+        if (t.scouted) {
+            this.drawHexHighlight(
+                ctx,
+                t.q,
+                t.r,
+                SCOUTED_TILE_STYLE.fill,
+                t.scoutFoundResource ? SCOUTED_TILE_STYLE.foundStroke : SCOUTED_TILE_STYLE.stroke,
+                opacity * (t.scoutFoundResource ? 0.78 : 0.55) * reachDim,
+            );
+        }
+
         // Distance label with glow
         const centerDist = getDistanceToNearestTowncenter(t.q, t.r);
         ctx.save();
@@ -4731,6 +4772,8 @@ export class HexMapService {
             if (!h.movement && h.currentTaskId) {
                 const inst = taskStore.taskIndex[h.currentTaskId];
                 if (isHeroWorkingTask(h, inst)) activity = 'attack';
+            } else if (!h.movement && isHeroSurveyingScoutResource(h, now)) {
+                activity = 'attack';
             }
             const animName = heroAnimName(activity, h.facing);
             const anim = heroAnimationSet.get(animName) || heroAnimationSet.get('idleDown')!;
@@ -5154,6 +5197,7 @@ export class HexMapService {
             const inst = taskStore.taskIndex[hero.currentTaskId];
             if (isHeroWorkingTask(hero, inst)) return false;
         }
+        if (isHeroSurveyingScoutResource(hero, now)) return false;
         return true;
     }
 

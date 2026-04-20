@@ -88,7 +88,7 @@ import {populationVersion} from '../store/clientPopulationStore';
 import {runSnapshot, runVersion} from '../store/runStore';
 import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
 import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
-import { listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
+import { isUndiscoveredFrontierTile, listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
 import {
   computeControlledTileIds,
   isPositionControlled,
@@ -265,6 +265,10 @@ function hasMatchingPathPreview(hero: Hero, tile: Tile) {
     && pathPreviewState.value.sourceKey === getPreviewSourceKey(hero);
 }
 
+function isActiveStoryHintTile(tile: Tile) {
+  return getActiveStoryTileHints.value.some((hint) => hint.q === tile.q && hint.r === tile.r);
+}
+
 function setPathPreview(path: { q: number; r: number }[], hero: Hero, tile: Tile, nowMs: number = Date.now()) {
   pathCoords.value = path;
   pathPreviewState.value = {
@@ -357,6 +361,10 @@ function requestSelectedHeroExploreStoryHint(target: Tile, source = 'map-click')
   const isStoryHintSource = source === 'story-hint';
   const selHero = getSelectedHero();
   const selectedHeroControllable = selHero ? canControlHero(selHero.id, currentPlayerId.value) : false;
+
+  if (!isStoryHintSource && !isActiveStoryHintTile(target)) {
+    return false;
+  }
 
   if (!selHero) {
     return false;
@@ -525,9 +533,16 @@ function updatePath(force = false, nowMs: number = Date.now()) {
   }
 
   if (!hoveredTile.value.discovered) {
-    const storyHintRoute = getStoryHintExplorationRoute(hoveredTile.value, hero);
+    const storyHintRoute = isActiveStoryHintTile(hoveredTile.value)
+      ? getStoryHintExplorationRoute(hoveredTile.value, hero)
+      : null;
     if (storyHintRoute) {
       setPathPreview(storyHintRoute.path, hero, hoveredTile.value, nowMs);
+      return;
+    }
+
+    if (!isUndiscoveredFrontierTile(hoveredTile.value)) {
+      setPathPreview([], hero, hoveredTile.value, nowMs);
       return;
     }
 
@@ -797,6 +812,14 @@ function handleClick(e: PointerEvent) {
   }
 
   if (!tile.discovered) {
+    if (!isUndiscoveredFrontierTile(tile)) {
+      if (requestSelectedHeroExploreStoryHint(tile)) {
+        return;
+      }
+      clearPathPreview();
+      return;
+    }
+
     // Block actions on tiles outside reach
     if (!isPositionControlled(tile.q, tile.r)) {
       clearPathPreview();

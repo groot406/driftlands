@@ -6,10 +6,12 @@ import {sendMessage} from "./socket.ts";
 import type {MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
 import type {Hero, HeroPendingTaskIntent, HeroStats} from "./types/Hero.ts";
+import type { ResourceType } from './types/Resource.ts';
 import {addTextIndicator} from "./textIndicators.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
 import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../shared/game/movementBalance';
+import { SCOUT_RESOURCE_TASK_TYPE } from '../shared/game/scoutResources';
 
 type AxialCoord = { q: number; r: number };
 
@@ -181,7 +183,6 @@ function actuallyStartHeroMovement(
     taskType?: string,
     options?: StartHeroMovementOptions
 ) {
-    void taskType; // suppress unused parameter warning
     if (hero.delayedMovementTimer) {
         clearTimeout(hero.delayedMovementTimer);
         hero.delayedMovementTimer = undefined;
@@ -189,16 +190,21 @@ function actuallyStartHeroMovement(
 
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
+    const isScoutMovement = taskType === SCOUT_RESOURCE_TASK_TYPE;
     const service = new PathService();
-    if (!originTile.discovered && !targetTile.discovered) {
+    if (!isScoutMovement && !originTile.discovered && !targetTile.discovered) {
+        return;
+    }
+
+    if (isScoutMovement && !originTile.discovered && !originTile.scouted && !targetTile.discovered && !targetTile.scouted) {
         // Closest discovered & walkable tile to hero's current position
         let allow = false;
 
         const neighbors = getTilesInRadius(originTile.q, originTile.r, 1);
         for (const neighborIdx in neighbors) {
             const neighbor = neighbors[neighborIdx];
-            if (neighbor && neighbor.discovered && isTileWalkable(neighbor)) {
-                const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r);
+            if (neighbor && (neighbor.discovered || neighbor.scouted)) {
+                const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r, { allowScouted: true });
                 if (p.length > 0) {
                     allow = true;
                     break;
@@ -276,6 +282,21 @@ export function requestHeroMovement(
         exploreTarget,
     };
     sendMessage(msg as any);
+}
+
+export function requestHeroScoutResource(heroId: string, resourceType: ResourceType) {
+    const hero = heroes.find(h => h.id === heroId);
+    if (hero) {
+        hero.scoutResourceIntent = { resourceType };
+        hero.pendingExploreTarget = undefined;
+    }
+
+    sendMessage({
+        type: 'hero:scout_resource_request',
+        heroId,
+        resourceType,
+        timestamp: Date.now(),
+    });
 }
 
 export function focusHero(hero: Hero) {

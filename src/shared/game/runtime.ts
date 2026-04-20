@@ -4,9 +4,19 @@ import type { TaskType } from '../../core/types/Task';
 type RuntimeMessage = { type: string };
 type TargetPosition = { q: number; r: number };
 
+export interface MoveHeroRuntimeOptions {
+  allowScouted?: boolean;
+}
+
 export interface GameRuntime {
   broadcast: <T extends RuntimeMessage>(message: T) => void;
-  moveHero: (hero: Hero, target: TargetPosition, task?: TaskType, taskLocation?: TargetPosition) => void;
+  moveHero: (
+    hero: Hero,
+    target: TargetPosition,
+    task?: TaskType,
+    taskLocation?: TargetPosition,
+    options?: MoveHeroRuntimeOptions,
+  ) => void;
 }
 
 const defaultRuntime: GameRuntime = {
@@ -31,6 +41,12 @@ export function broadcastGameMessage<T extends RuntimeMessage>(message: T) {
   runtime.broadcast(message);
 }
 
-export function moveHeroWithRuntime(hero: Hero, target: TargetPosition, task?: TaskType, taskLocation?: TargetPosition) {
-  runtime.moveHero(hero, target, task, taskLocation);
+export function moveHeroWithRuntime(
+  hero: Hero,
+  target: TargetPosition,
+  task?: TaskType,
+  taskLocation?: TargetPosition,
+  options?: MoveHeroRuntimeOptions,
+) {
+  runtime.moveHero(hero, target, task, taskLocation, options);
 }

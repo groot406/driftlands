@@ -25,6 +25,10 @@ export function isTileWalkable(tile: Tile | null | undefined): boolean {
   return !!TERRAIN_DEFS[tile.terrain]?.walkable;
 }
 
+export function isTileScoutWalkable(tile: Tile | null | undefined): boolean {
+  return (!!tile?.scouted && !tile.discovered) || isTileWalkable(tile);
+}
+
 export function isWalkablePosition(q: number, r: number): boolean {
   return isTileWalkable(getTile({ q, r }));
 }

@@ -1,4 +1,5 @@
 import type {TerrainKey} from '../terrainDefs';
+import type {ResourceType} from './Resource';
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
 export type Terrain = TerrainKey;
 export type TileActivationState = 'active' | 'inactive';
@@ -17,6 +18,10 @@ export interface Tile {
     biome: string | null;
     terrain: Terrain | null;
     discovered: boolean;
+    scouted?: boolean;
+    scoutedForResource?: ResourceType | null;
+    scoutedResourceTypes?: ResourceType[];
+    scoutFoundResource?: ResourceType | null;
     // Functional terrain state such as crops, docks, rocks, or mines. Purely decorative art is resolved separately.
     isBaseTile: boolean; // whether tile is a base tile (or decorative variant) for terrain generation and task logic
     variant?: string | null;

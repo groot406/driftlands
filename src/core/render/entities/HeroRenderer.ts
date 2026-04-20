@@ -5,6 +5,7 @@ import { selectedHeroId } from '../../../store/uiStore';
 import { heroAnimationSet, heroAnimName, resolveActivity, shouldFlip } from '../../heroSprite';
 import { taskStore } from '../../../store/taskStore';
 import { isHeroWorkingTask } from '../../../shared/game/heroTaskState';
+import { isHeroSurveyingScoutResource } from '../../../shared/game/scoutResources';
 import { camera, hexDistance } from '../../camera';
 import { SETTLER_FRAME_SIZE, settlerAnimationSet, settlerAnimName } from '../../settlerSprite';
 import type { Hero } from '../../types/Hero';
@@ -248,6 +249,8 @@ export class HeroRenderer {
                         workTool = AXE_WORK_TASKS.has(inst.type) ? 'axe' : null;
                     }
                 }
+            } else if (!hero.movement && isHeroSurveyingScoutResource(hero, now)) {
+                activity = 'attack';
             }
 
             const animName = heroAnimName(activity, hero.facing);

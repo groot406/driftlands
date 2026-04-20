@@ -3,6 +3,7 @@ import { heroes } from '../../../store/heroStore';
 import { selectedHeroId } from '../../../store/uiStore';
 import { taskStore } from '../../../store/taskStore';
 import { getStorageCapacity } from '../../../shared/game/storage';
+import { getScoutSurveyProgress } from '../../../shared/game/scoutResources';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../../../shared/buildings/storage';
 import { camera, axialToPixel, hexDistance } from '../../camera';
 import { getTextIndicators } from '../../textIndicators';
@@ -295,7 +296,7 @@ export class OverlayRenderer {
             deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false);
         }
 
-        this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, deps);
+        this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);
         this.drawTaskIndicators(overlay.ctx, frame.visibleTiles, false, opts.hoveredTile, deps);
         overlay.ctx.restore();
     }
@@ -347,30 +348,42 @@ export class OverlayRenderer {
     ) {
         for (const tile of tiles) {
             const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            if (!chosenTask) continue;
+            const scoutProgress = this.getScoutSurveyProgressForTile(tile, nowMs);
+            if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
             const opacity = deps.getTileOpacity(dist, false);
             const pulse = (Math.sin(nowMs / 400) + 1) / 2;
-            deps.drawHexHighlight(ctx, tile.q, tile.r, null, 'rgba(0, 225, 255, 1)', opacity * (0.5 + 0.4 * pulse));
+            deps.drawHexHighlight(
+                ctx,
+                tile.q,
+                tile.r,
+                null,
+                chosenTask ? 'rgba(0, 225, 255, 1)' : 'rgba(244, 114, 182, 1)',
+                opacity * (0.5 + 0.4 * pulse),
+            );
         }
     }
 
     private drawTaskProgressBars(
         ctx: CanvasRenderingContext2D,
         tiles: Tile[],
+        nowMs: number,
         deps: OverlayRendererDependencies,
     ) {
         for (const tile of tiles) {
             const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            if (!chosenTask) continue;
+            const scoutProgress = this.getScoutSurveyProgressForTile(tile, nowMs);
+            if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
             const opacity = deps.getTileOpacity(dist, false);
-            if (chosenTask.active) {
+            if (scoutProgress !== null && (!chosenTask || scoutProgress < 1)) {
+                this.drawProgressBar(ctx, tile, scoutProgress, 'rgba(244,114,182,0.92)', opacity, deps);
+            } else if (chosenTask?.active) {
                 const progressRatio = chosenTask.requiredXp > 0 ? (chosenTask.progressXp / chosenTask.requiredXp) : 0;
                 this.drawProgressBar(ctx, tile, Math.min(1, Math.max(0, progressRatio)), 'rgba(255,223,12,0.9)', opacity, deps);
-            } else {
+            } else if (chosenTask) {
                 const totalRequired = chosenTask.requiredResources?.reduce((sum, req) => sum + req.amount, 0) || 0;
                 const totalCollected = chosenTask.collectedResources?.reduce((sum, resource) => sum + resource.amount, 0) || 0;
                 const progressRatio = totalRequired > 0 ? (totalCollected / totalRequired) : 0;
@@ -401,6 +414,21 @@ export class OverlayRenderer {
         }
 
         return chosenTask;
+    }
+
+    private getScoutSurveyProgressForTile(tile: Tile, nowMs: number = Date.now()) {
+        let bestProgress: number | null = null;
+
+        for (const hero of heroes) {
+            const progress = getScoutSurveyProgress(hero, tile.id, nowMs);
+            if (progress === null) {
+                continue;
+            }
+
+            bestProgress = bestProgress === null ? progress : Math.max(bestProgress, progress);
+        }
+
+        return bestProgress;
     }
 
     private drawProgressBar(

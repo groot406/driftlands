@@ -21,6 +21,7 @@ function mergeHeroState(
         currentTaskId: nextHero.currentTaskId,
         pendingTask: nextHero.pendingTask,
         pendingExploreTarget: nextHero.pendingExploreTarget,
+        scoutResourceIntent: nextHero.scoutResourceIntent,
         carryingPayload: nextHero.carryingPayload,
         pendingChain: nextHero.pendingChain,
         returnPos: nextHero.returnPos,
