@@ -4,6 +4,7 @@ import { getHero } from '../../../src/shared/game/state/heroStore';
 import { detachHeroFromCurrentTask } from '../../../src/shared/game/state/taskStore';
 import {
   broadcastHeroScoutResourceUpdate,
+  isScoutResourceUnlocked,
   isScoutableResourceType,
   startScoutResourceSearch,
 } from '../../../src/shared/game/scoutResources';
@@ -27,7 +28,7 @@ export class ServerScoutHandler {
       return;
     }
 
-    if (!isScoutableResourceType(message.resourceType)) {
+    if (!isScoutableResourceType(message.resourceType) || !isScoutResourceUnlocked(message.resourceType)) {
       return;
     }
 

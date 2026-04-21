@@ -61,6 +61,10 @@ function seedFromString(value: string) {
     return hash >>> 0;
 }
 
+function createSettlerNameSeed(id: string, now: number) {
+    return seedFromString(`${id}:${now}:${Math.random()}`);
+}
+
 function getHomeFallbackTile(settlementId?: string | null) {
     const townCenters = Object.values(tileIndex)
         .filter((tile): tile is Tile => tile.discovered && tile.terrain === 'towncenter');
@@ -84,6 +88,7 @@ function createSettler(now: number): Settler {
 
     return {
         id,
+        nameSeed: createSettlerNameSeed(id, now),
         q: fallback?.q ?? 0,
         r: fallback?.r ?? 0,
         facing: 'down',
@@ -102,6 +107,18 @@ function createSettler(now: number): Settler {
         workProgressMs: 0,
         carryingKind: null,
     };
+}
+
+function ensureSettlerNameSeeds(now: number) {
+    let changed = false;
+    for (const settler of settlers) {
+        if (typeof settler.nameSeed !== 'number') {
+            settler.nameSeed = createSettlerNameSeed(settler.id, now);
+            changed = true;
+        }
+    }
+
+    return changed;
 }
 
 function refreshSettlerIdCounter() {
@@ -496,6 +513,7 @@ export function syncSettlerPopulation(now: number) {
     refreshSettlerIdCounter();
     const target = Math.max(0, getPopulationState().current);
     const originalLength = settlers.length;
+    const changed = ensureSettlerNameSeeds(now);
 
     while (settlers.length < target) {
         settlers.push(createSettler(now));
@@ -505,7 +523,7 @@ export function syncSettlerPopulation(now: number) {
         settlers.pop();
     }
 
-    return settlers.length !== originalLength;
+    return changed || settlers.length !== originalLength;
 }
 
 function buildHomeSlots() {

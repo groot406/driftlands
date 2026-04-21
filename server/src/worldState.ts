@@ -91,6 +91,8 @@ function serializeTile(tile: Tile): Tile {
     specialActivated: tile.specialActivated ?? false,
     conditionStabilizedUntilMs: tile.conditionStabilizedUntilMs ?? null,
     nextProductionBoostMultiplier: tile.nextProductionBoostMultiplier ?? null,
+    nextProductionBoostCyclesRemaining: tile.nextProductionBoostCyclesRemaining ?? null,
+    nextProductionBoostInputReduction: tile.nextProductionBoostInputReduction ?? null,
   };
 }
 
@@ -105,6 +107,9 @@ function serializeHero(hero: Hero): Hero {
     xpChargeProgress: hero.xpChargeProgress ?? 0,
     abilityCharges: hero.abilityCharges ?? 0,
     abilityChargesEarned: hero.abilityChargesEarned ?? 0,
+    skillPoints: hero.skillPoints ?? 0,
+    skillPointsEarned: hero.skillPointsEarned ?? 0,
+    skills: { ...(hero.skills ?? {}) },
     facing: hero.facing,
     movement: hero.movement
       ? {
@@ -150,6 +155,7 @@ function serializeTask(task: TaskInstance): TaskInstance {
 function serializeSettler(settler: Settler): Settler {
   return {
     id: settler.id,
+    nameSeed: settler.nameSeed,
     q: settler.q,
     r: settler.r,
     facing: settler.facing,

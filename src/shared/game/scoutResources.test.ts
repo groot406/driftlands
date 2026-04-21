@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Hero } from '../../core/types/Hero';
-import type { ResourceType } from '../../core/types/Resource';
+import type { ScoutTargetType } from '../../core/types/Scout';
 import { SIDE_NAMES, type Terrain, type Tile, type TileSide } from '../../core/types/Tile';
 import { resolveWorldTile } from '../../core/worldGeneration';
 import { configureGameRuntime, resetGameRuntime } from './runtime';
-import { ensureTileExists, loadWorld, startWorldGeneration, tileIndex } from './world';
+import { ensureTileExists, loadWorld, resolveGeneratedTileVariant, startWorldGeneration, tileIndex } from './world';
 import { isTileScoutWalkable, isTileWalkable } from './navigation';
 import { PathService } from './PathService';
 import {
@@ -27,7 +27,7 @@ const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
   f: [-1, 0],
 };
 
-function createHero(q: number, r: number, resourceType: ResourceType): Hero {
+function createHero(q: number, r: number, resourceType: ScoutTargetType): Hero {
   return {
     id: 'hero-scout',
     name: 'Scout',
@@ -58,6 +58,28 @@ function findHiddenGeneratedTile(predicate: (terrain: Terrain) => boolean) {
   }
 
   throw new Error('Unable to find generated tile for scout resource test.');
+}
+
+function findHiddenGeneratedTileWithVariant(predicate: (terrain: Terrain, variant: string | null) => boolean) {
+  for (let radius = 2; radius <= 18; radius++) {
+    for (let q = -radius; q <= radius; q++) {
+      for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
+        const distance = Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r));
+        if (distance !== radius) {
+          continue;
+        }
+
+        const tile = ensureTileExists(q, r);
+        const generated = resolveWorldTile(q, r);
+        const variant = resolveGeneratedTileVariant(tile, generated.terrain);
+        if (predicate(generated.terrain, variant)) {
+          return tile;
+        }
+      }
+    }
+  }
+
+  throw new Error('Unable to find generated variant tile for scout resource test.');
 }
 
 function findNonMatchingResource(terrain: Terrain) {
@@ -235,7 +257,7 @@ test('stale scout arrivals on hidden tiles return the hero to known walkable gro
 
 test('scouting a matching hidden tile pings the find, stops the scout intent, and returns home', async () => {
   startWorldGeneration(1, 8675309);
-  const resourceType: ResourceType = 'wood';
+  const resourceType: ScoutTargetType = 'wood';
   const tile = findHiddenGeneratedTile((terrain) => doesScoutResourceMatchTerrain(resourceType, terrain));
   const hero = createHero(tile.q, tile.r, resourceType);
   const broadcasts: any[] = [];
@@ -259,7 +281,34 @@ test('scouting a matching hidden tile pings the find, stops the scout intent, an
   assert.equal(tile.scoutFoundResource, resourceType);
   assert.equal(hero.scoutResourceIntent, undefined);
   assert.deepEqual(moves[0], { q: 0, r: 0, task: undefined, options: { allowScouted: true } });
-  assert.ok(broadcasts.some((message) => message.type === 'coop:ping' && message.ping.label === 'Found Wood'));
+  assert.ok(broadcasts.some((message) => message.type === 'coop:ping' && message.ping.label === 'Found Forest'));
+});
+
+test('scouting for rocks matches generated dirt rocks instead of mountains', async () => {
+  startWorldGeneration(1, 202404);
+  const resourceType: ScoutTargetType = 'stone';
+  const tile = findHiddenGeneratedTileWithVariant((terrain, variant) => terrain === 'dirt' && variant === 'dirt_rocks');
+  const hero = createHero(tile.q, tile.r, resourceType);
+  const broadcasts: any[] = [];
+  const moves: Array<{ q: number; r: number; task?: string; options?: { allowScouted?: boolean } }> = [];
+
+  configureGameRuntime({
+    broadcast: (message) => broadcasts.push(message),
+    moveHero: (_hero, target, task, _taskLocation, options) => moves.push({ q: target.q, r: target.r, task, options }),
+  });
+
+  markScoutedReturnCorridorToOrigin(tile);
+  handleScoutResourceArrival(hero, tile);
+
+  await wait(getScoutSurveyMs(hero) + 20);
+
+  assert.equal(tile.discovered, false);
+  assert.equal(tile.terrain, null);
+  assert.equal(tile.scouted, true);
+  assert.equal(tile.scoutFoundResource, resourceType);
+  assert.equal(hero.scoutResourceIntent, undefined);
+  assert.deepEqual(moves[0], { q: 0, r: 0, task: undefined, options: { allowScouted: true } });
+  assert.ok(broadcasts.some((message) => message.type === 'coop:ping' && message.ping.label === 'Found Rocks'));
 });
 
 test('scout target selection chooses a random reachable local neighbor instead of the nearest one', () => {

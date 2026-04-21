@@ -28,10 +28,13 @@ import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/ta
 import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/taskAvailability';
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { addHeroAbilityProgress } from '../shared/heroes/heroAbilities.ts';
+import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
 const TASK_PROGRESS_MULTIPLIER = 1.2;
+const HERO_ABILITY_PROGRESS_TASK_XP_DIVISOR = 250;
+const HERO_ABILITY_PROGRESS_MIN_PER_COMPLETED_TASK = 1;
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -618,20 +621,20 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
 
     if (!def) return rewardedStats;
 
-    if (!def.totalRewardedStats) return rewardedStats;
-
     const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedStats;
 
-    const rewards = def.totalRewardedStats(getTaskEconomyDistance());
+    const rewards = getTaskRewardedStats(def, getTaskEconomyDistance());
     for (const hero of participants) {
         rewardedStats[hero.id] = {}
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
         const statKeys: (keyof HeroStats)[] = ['xp', 'hp', 'atk', 'spd'];
         for (const stat of statKeys) {
-            const statReward = rewards[stat];
+            const statReward = rewards[stat] ?? 0;
+            if (statReward <= 0) continue;
+
             const rewardAmount = Math.ceil(statReward * share);
             hero.stats[stat] += rewardAmount;
 
@@ -649,7 +652,10 @@ function rewardAbilityProgressToParticipants(instance: TaskInstance, participant
     for (const hero of participants) {
         const contrib = instance.participants[hero.id] || 0;
         const share = contrib / totalContrib;
-        const progress = Math.max(10, Math.round((instance.requiredXp * share) / 100));
+        const progress = Math.max(
+            HERO_ABILITY_PROGRESS_MIN_PER_COMPLETED_TASK,
+            Math.round((instance.requiredXp * share) / HERO_ABILITY_PROGRESS_TASK_XP_DIVISOR),
+        );
         addHeroAbilityProgress(hero, progress);
     }
 }

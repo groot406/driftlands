@@ -3,16 +3,17 @@ import {moveCamera} from './camera.ts';
 import {ensureTileExists, getTilesInRadius} from './world.ts';
 import {handleHeroArrival} from '../shared/tasks/tasks';
 import {sendMessage} from "./socket.ts";
-import type {HeroAbilityUseMessage, MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
+import type {HeroAbilityUseMessage, HeroSkillSelectMessage, MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
 import type {Hero, HeroPendingTaskIntent, HeroStats} from "./types/Hero.ts";
-import type { ResourceType } from './types/Resource.ts';
+import type { ScoutTargetType } from './types/Scout.ts';
 import {addTextIndicator} from "./textIndicators.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
 import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../shared/game/movementBalance';
 import { SCOUT_RESOURCE_TASK_TYPE, shouldStopScoutResourceForMovement } from '../shared/game/scoutResources';
 import type { HeroAbilityKey } from '../shared/heroes/heroAbilities.ts';
+import type { HeroSkillKey } from '../shared/heroes/heroSkills.ts';
 
 type AxialCoord = { q: number; r: number };
 
@@ -193,7 +194,7 @@ function actuallyStartHeroMovement(
     const targetTile = ensureTileExists(target.q, target.r);
     const isScoutMovement = taskType === SCOUT_RESOURCE_TASK_TYPE;
     const service = new PathService();
-    if (!isScoutMovement && !originTile.discovered && !targetTile.discovered) {
+    if (!options?.authoritative && !isScoutMovement && !originTile.discovered && !targetTile.discovered) {
         return;
     }
 
@@ -307,7 +308,7 @@ export function requestHeroMovement(
     sendMessage(msg as any);
 }
 
-export function requestHeroScoutResource(heroId: string, resourceType: ResourceType) {
+export function requestHeroScoutResource(heroId: string, resourceType: ScoutTargetType) {
     const hero = heroes.find(h => h.id === heroId);
     if (hero) {
         hero.scoutResourceIntent = { resourceType };
@@ -339,6 +340,17 @@ export function requestHeroAbilityUse(
     sendMessage(message);
 }
 
+export function requestHeroSkillSelect(heroId: string, skill: HeroSkillKey) {
+    const message: HeroSkillSelectMessage = {
+        type: 'hero:skill_select',
+        heroId,
+        skill,
+        timestamp: Date.now(),
+    };
+
+    sendMessage(message);
+}
+
 export function focusHero(hero: Hero) {
     moveCamera(hero.q, hero.r);
 }
@@ -351,7 +363,8 @@ export function rewardStat(hero: Hero, stat: keyof Hero['stats'], amount: number
     hero.stats[stat] += amount;
 
     setTimeout(() => {
-        addTextIndicator(hero, `+${amount}`, STAT_COLOR_MAP[stat], 1800);
+        const label = stat === 'xp' ? `+${amount} XP` : `+${amount}`;
+        addTextIndicator(hero, label, STAT_COLOR_MAP[stat], 1800);
     }, Math.random() * 300);
 
     playPositionalSound(

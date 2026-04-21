@@ -118,6 +118,26 @@
         <!-- RIGHT: scrollable detail pane -->
         <div class="task-detail-pane">
           <div class="task-detail-scroll">
+            <section v-if="showTileSurveyPanel" class="task-detail-block tile-survey-block">
+              <div class="tile-survey-heading">
+                <p class="task-detail-block__label">Tile Survey</p>
+                <span class="tile-survey-status" :class="tileSurveyStatusClass">
+                  {{ tileSurveyStatusLabel }}
+                </span>
+              </div>
+              <div class="tile-survey-list">
+                <div
+                  v-for="trait in tileSurveyTraits"
+                  :key="`${trait.kind}:${trait.label}`"
+                  class="tile-survey-trait"
+                  :class="`tile-survey-trait--${trait.tone}`"
+                >
+                  <span class="tile-survey-trait__label">{{ trait.label }}</span>
+                  <span class="tile-survey-trait__effect">{{ trait.effect }}</span>
+                </div>
+              </div>
+            </section>
+
             <template v-if="selectedTask">
               <!-- Detail header -->
               <div class="task-detail-top">
@@ -248,7 +268,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { Tile } from '../core/types/Tile';
+import type { Tile, TileModifierKey, TileSpecialKey } from '../core/types/Tile';
 import { requestHeroAbilityUse, requestHeroMovement, startTaskRequest } from '../core/heroService';
 import { canStartTaskWhileCarrying, detachHeroFromCurrentTask, taskStore } from '../store/taskStore';
 import { PathService } from '../core/PathService';
@@ -370,6 +390,124 @@ const sortedTasks = computed(() => {
 });
 const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
 const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
+
+interface TileSurveyTrait {
+  kind: 'status' | 'modifier' | 'special';
+  label: string;
+  effect: string;
+  tone: 'unknown' | 'known' | 'empty';
+}
+
+const tileModifierMeta: Record<TileModifierKey, { label: string; effect: string }> = {
+  rich_soil: {
+    label: 'Rich Soil',
+    effect: '+1 grain from harvests and granary work here.',
+  },
+  rocky_ground: {
+    label: 'Rocky Ground',
+    effect: '+1 stone from quarry work; farming is blocked here.',
+  },
+  dense_forest: {
+    label: 'Dense Forest',
+    effect: '+1 wood for lumber camps here or beside this forest.',
+  },
+  sand_rich: {
+    label: 'Sand Rich',
+    effect: '+1 sand when gathering sand here.',
+  },
+};
+
+const tileSpecialMeta: Record<TileSpecialKey, { label: string; effect: string }> = {
+  fertile_basin: {
+    label: 'Fertile Basin',
+    effect: '+1 output for adjacent farms and grain sites.',
+  },
+  ancient_ruins: {
+    label: 'Ancient Ruins',
+    effect: 'Can be activated once for study progress.',
+  },
+  natural_crossing: {
+    label: 'Natural Crossing',
+    effect: 'Reduces bridge cost on this crossing or nearby shore.',
+  },
+  rich_ore_vein: {
+    label: 'Rich Ore Vein',
+    effect: '+1 ore from a mine on this mountain.',
+  },
+};
+
+const showTileSurveyPanel = computed(() => props.tile?.discovered === true);
+
+const tileSurveyTraits = computed<TileSurveyTrait[]>(() => {
+  const tile = props.tile;
+  if (!tile?.discovered) {
+    return [];
+  }
+
+  if (tile.surveyed !== true) {
+    return [{
+      kind: 'status',
+      label: 'Unsurveyed',
+      effect: 'Hidden terrain traits unknown.',
+      tone: 'unknown',
+    }];
+  }
+
+  const traits: TileSurveyTrait[] = [];
+
+  if (tile.modifier && tile.modifierRevealed === true) {
+    const meta = tileModifierMeta[tile.modifier];
+    traits.push({
+      kind: 'modifier',
+      label: meta.label,
+      effect: meta.effect,
+      tone: 'known',
+    });
+  }
+
+  if (tile.special && tile.specialRevealed === true) {
+    const meta = tileSpecialMeta[tile.special];
+    traits.push({
+      kind: 'special',
+      label: meta.label,
+      effect: meta.effect,
+      tone: 'known',
+    });
+  }
+
+  if (!traits.length) {
+    traits.push({
+      kind: 'status',
+      label: 'Surveyed',
+      effect: 'No hidden traits found.',
+      tone: 'empty',
+    });
+  }
+
+  return traits;
+});
+
+const tileSurveyStatusLabel = computed(() => {
+  const tile = props.tile;
+  if (!tile?.discovered || tile.surveyed !== true) {
+    return 'Unsurveyed';
+  }
+
+  return tileSurveyTraits.value.some((trait) => trait.tone === 'known')
+    ? 'Trait Found'
+    : 'Clear';
+});
+
+const tileSurveyStatusClass = computed(() => {
+  const tile = props.tile;
+  if (!tile?.discovered || tile.surveyed !== true) {
+    return 'tile-survey-status--unknown';
+  }
+
+  return tileSurveyTraits.value.some((trait) => trait.tone === 'known')
+    ? 'tile-survey-status--known'
+    : 'tile-survey-status--empty';
+});
 
 // The "selected" task is the one shown in the detail pane.
 // On desktop: hovering selects; on mobile: tapping selects.
@@ -1661,6 +1799,88 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.55;
   color: rgba(226, 232, 240, 0.84);
+}
+
+.tile-survey-block {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.58), rgba(15, 23, 42, 0.72)),
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.1), transparent 46%);
+}
+
+.tile-survey-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tile-survey-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tile-survey-status--unknown {
+  background: rgba(51, 65, 85, 0.72);
+  color: rgba(203, 213, 225, 0.9);
+}
+
+.tile-survey-status--known {
+  border-color: rgba(45, 212, 191, 0.32);
+  background: rgba(13, 148, 136, 0.24);
+  color: rgba(153, 246, 228, 0.96);
+}
+
+.tile-survey-status--empty {
+  background: rgba(30, 41, 59, 0.72);
+  color: rgba(186, 230, 253, 0.88);
+}
+
+.tile-survey-list {
+  display: grid;
+  gap: 6px;
+}
+
+.tile-survey-trait {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.tile-survey-trait--known {
+  border-color: rgba(45, 212, 191, 0.24);
+  background: rgba(15, 118, 110, 0.16);
+}
+
+.tile-survey-trait--unknown {
+  border-style: dashed;
+}
+
+.tile-survey-trait--empty {
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.tile-survey-trait__label {
+  color: rgba(241, 245, 249, 0.94);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tile-survey-trait__effect {
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .task-costs {

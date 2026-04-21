@@ -9,6 +9,11 @@ import type { Tile } from '../../core/types/Tile.ts';
 import { getBuildingDefinitionByKey, resolveBuildingJobResources } from '../buildings/registry.ts';
 import { getUpgradeDefinitionByKey } from '../buildings/upgrades.ts';
 import { resetStudyState } from '../../store/studyStore.ts';
+import {
+  consumeTileProductionBoost,
+  getTileProductionBoostInputReduction,
+  getTileProductionBoostMultiplier,
+} from '../game/tileFeatures.ts';
 
 const hero: Hero = {
   id: 'h-test',
@@ -125,4 +130,21 @@ test('glass house upgrade raises house beds to six', () => {
 
   assert.equal(upgrade.resolveToVariant(tile({ variant: 'plains_stone_house' })), 'plains_glass_house');
   assert.deepEqual(upgrade.effects, [{ kind: 'house_beds_total', value: 6 }]);
+});
+
+test('production boosts can last multiple cycles and reduce boosted inputs', () => {
+  const boosted = tile({
+    nextProductionBoostMultiplier: 1.75,
+    nextProductionBoostCyclesRemaining: 2,
+    nextProductionBoostInputReduction: 1,
+  });
+
+  assert.equal(getTileProductionBoostMultiplier(boosted), 1.75);
+  assert.equal(getTileProductionBoostInputReduction(boosted), 1);
+  assert.equal(consumeTileProductionBoost(boosted), true);
+  assert.equal(boosted.nextProductionBoostCyclesRemaining, 1);
+  assert.equal(getTileProductionBoostMultiplier(boosted), 1.75);
+  assert.equal(consumeTileProductionBoost(boosted), true);
+  assert.equal(boosted.nextProductionBoostMultiplier, null);
+  assert.equal(boosted.nextProductionBoostInputReduction, null);
 });

@@ -38,6 +38,10 @@ export function isVisibleExplorationTile(tile: Tile | null | undefined) {
     return !!tile && (tile.discovered || tile.scouted || isUndiscoveredFrontierTile(tile) || isScoutingFrontierTile(tile));
 }
 
+export function isRenderableExplorationTile(tile: Tile | null | undefined) {
+    return !!tile && (tile.discovered || tile.scouted || isUndiscoveredFrontierTile(tile));
+}
+
 export function listUndiscoveredFrontierTiles() {
     const frontierIds = new Set<string>();
 

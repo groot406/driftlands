@@ -47,7 +47,7 @@
               @click="inspectSettler(settler)"
             >
               <div>
-                <p class="population-settler-name">{{ getSettlerName(settler.id) }}</p>
+                <p class="population-settler-name">{{ getSettlerName(settler) }}</p>
                 <p class="population-settler-meta">{{ formatActivity(settler.activity) }} · {{ getSettlerLocation(settler) }}</p>
               </div>
               <span class="population-chip">{{ getCargoLabel(settler) }}</span>
@@ -82,8 +82,8 @@ function formatActivity(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getSettlerName(id: string) {
-  return getSettlerDisplayName(id);
+function getSettlerName(settler: Settler) {
+  return getSettlerDisplayName(settler.id, settler.nameSeed);
 }
 
 function getTileLabel(tileId: string | null | undefined) {

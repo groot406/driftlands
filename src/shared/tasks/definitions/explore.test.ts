@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 
 import { getExploreHeroRate, getExploreRequiredXp, getExploreRewardedXp } from './explore';
 
-test('explore required xp stays flat regardless of distance', () => {
-  assert.equal(getExploreRequiredXp(0), 795);
-  assert.equal(getExploreRequiredXp(1), 795);
-  assert.equal(getExploreRequiredXp(5), 795);
-  assert.equal(getExploreRequiredXp(10), 795);
-  assert.equal(getExploreRequiredXp(20), 795);
+test('explore required xp scales with distance', () => {
+  assert.equal(getExploreRequiredXp(0), 640);
+  assert.equal(getExploreRequiredXp(1), 845);
+  assert.equal(getExploreRequiredXp(5), 1664);
+  assert.equal(getExploreRequiredXp(10), 2688);
+  assert.equal(getExploreRequiredXp(20), 4736);
 });
 
-test('explore hero rate grows sublinearly from xp and still values speed', () => {
+test('explore hero rate ignores legacy xp and still values speed', () => {
   const noviceRate = getExploreHeroRate({
     stats: { xp: 10, hp: 100, atk: 10, spd: 1 },
   });
@@ -22,16 +22,16 @@ test('explore hero rate grows sublinearly from xp and still values speed', () =>
     stats: { xp: 10, hp: 100, atk: 10, spd: 3 },
   });
 
-  assert.equal(noviceRate, 248);
-  assert.equal(veteranRate, 576);
-  assert.equal(fastScoutRate, 440);
-  assert.ok(veteranRate < (noviceRate * 3));
+  assert.equal(noviceRate, 180);
+  assert.equal(veteranRate, 180);
+  assert.equal(fastScoutRate, 420);
+  assert.equal(veteranRate, noviceRate);
   assert.ok(fastScoutRate > noviceRate);
 });
 
-test('explore xp rewards stay flat regardless of distance', () => {
-  assert.equal(getExploreRewardedXp(1), 1);
-  assert.equal(getExploreRewardedXp(4), 1);
-  assert.equal(getExploreRewardedXp(8), 1);
-  assert.equal(getExploreRewardedXp(12), 1);
+test('explore rewards a small amount of hero xp for durable discovery', () => {
+  assert.equal(getExploreRewardedXp(1), 3);
+  assert.equal(getExploreRewardedXp(4), 3);
+  assert.equal(getExploreRewardedXp(8), 3);
+  assert.equal(getExploreRewardedXp(12), 3);
 });

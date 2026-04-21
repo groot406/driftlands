@@ -24,6 +24,8 @@ interface CompositeRendererDependencies {
 }
 
 export class CompositeRenderer<TFrame extends CompositeFrameLike> {
+    private scratchCompositeFrame: TFrame | null = null;
+
     renderEffects(
         context: RenderPassContext,
         frame: TFrame,
@@ -31,14 +33,14 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
     ) {
         const surface = frame.effectSurface;
         surface.ctx.clearRect(0, 0, surface.canvas.width, surface.canvas.height);
-        this.buildScratchWorldComposite(frame);
+        this.ensureScratchWorldComposite(frame);
 
         deps.applyEffectPipeline(context);
         return context.runtime.motionBlur ?? null;
     }
 
     compositeToFinal(frame: TFrame) {
-        this.buildScratchWorldComposite(frame);
+        this.ensureScratchWorldComposite(frame);
         const ctx = frame.finalCtx;
         ctx.globalAlpha = 1;
         ctx.filter = 'none';
@@ -66,6 +68,15 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
         }
 
         ctx.drawImage(frame.effectSurface.canvas, 0, 0);
+    }
+
+    private ensureScratchWorldComposite(frame: TFrame) {
+        if (this.scratchCompositeFrame === frame) {
+            return;
+        }
+
+        this.buildScratchWorldComposite(frame);
+        this.scratchCompositeFrame = frame;
     }
 
     private buildScratchWorldComposite(frame: TFrame) {

@@ -6,11 +6,11 @@ import type { RenderPassContext } from '../RenderPassContext';
 import { EntityRenderer } from './EntityRenderer';
 
 type MockCanvasContext = CanvasRenderingContext2D & {
-    calls: Record<string, number>;
+    calls: Record<'clearRect' | 'drawImage' | 'restore' | 'save' | 'scale', number>;
 };
 
 function createMockContext(): MockCanvasContext {
-    const calls: Record<string, number> = {
+    const calls: Record<'clearRect' | 'drawImage' | 'restore' | 'save' | 'scale', number> = {
         clearRect: 0,
         drawImage: 0,
         restore: 0,
@@ -154,6 +154,7 @@ function createDependencies(capturedOverlayCounts: number[]) {
             drawHeroes: (
                 _ctx: CanvasRenderingContext2D,
                 _hoveredHero: null,
+                _hoveredSettler: null,
                 overlayRecords: ReadonlyArray<unknown>,
             ) => {
                 capturedOverlayCounts.push(overlayRecords.length);

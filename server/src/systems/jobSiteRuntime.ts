@@ -4,6 +4,7 @@ import {
     type BuildingDefinition,
 } from '../../../src/shared/buildings/registry';
 import { getBuildingOutputMultiplier } from '../../../src/shared/buildings/state.ts';
+import { getTileProductionBoostInputReduction, getVolcanicProductionMultiplier } from '../../../src/shared/game/tileFeatures.ts';
 import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
@@ -103,10 +104,17 @@ function capSiteOutputs(site: ResolvedJobSite, outputs: ResourceAmount[]) {
 
 export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: number = 1) {
     const resolved = resolveBuildingJobResources(site.building, site.tile, assignedWorkers);
-    const outputMultiplier = getBuildingOutputMultiplier(site.tile);
+    const outputMultiplier = getBuildingOutputMultiplier(site.tile) * getVolcanicProductionMultiplier(site.tile);
+    const inputReduction = getTileProductionBoostInputReduction(site.tile);
+    const consumes = resolved.consumes
+        .map((resource, index) => ({
+            ...resource,
+            amount: index === 0 ? Math.max(0, resource.amount - inputReduction) : resource.amount,
+        }))
+        .filter((resource) => resource.amount > 0);
 
     return {
-        consumes: resolved.consumes,
+        consumes,
         produces: capSiteOutputs(site, resolved.produces.map((resource) => ({
             ...resource,
             amount: Math.max(0, Math.round(resource.amount * outputMultiplier * 100) / 100),

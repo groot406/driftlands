@@ -44,11 +44,12 @@ function hashString(value: string) {
     return hash >>> 0;
 }
 
-export function getSettlerIdentity(id: string) {
-    const gender: SettlerGender = (hashString(`${id}:gender`) % 2) === 0 ? 'male' : 'female';
+export function getSettlerIdentity(id: string, nameSeed?: number) {
+    const seed = nameSeed ?? id;
+    const gender: SettlerGender = (hashString(`${seed}:gender`) % 2) === 0 ? 'male' : 'female';
     const firstNames = gender === 'male' ? MALE_FIRST_NAMES : FEMALE_FIRST_NAMES;
-    const firstName = firstNames[hashString(`${id}:first`) % firstNames.length]!;
-    const familyName = FAMILY_NAMES[hashString(`${id}:family`) % FAMILY_NAMES.length]!;
+    const firstName = firstNames[hashString(`${seed}:first`) % firstNames.length]!;
+    const familyName = FAMILY_NAMES[hashString(`${seed}:family`) % FAMILY_NAMES.length]!;
 
     return {
         gender,
@@ -58,6 +59,6 @@ export function getSettlerIdentity(id: string) {
     };
 }
 
-export function getSettlerDisplayName(id: string) {
-    return getSettlerIdentity(id).fullName;
+export function getSettlerDisplayName(id: string, nameSeed?: number) {
+    return getSettlerIdentity(id, nameSeed).fullName;
 }

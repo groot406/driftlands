@@ -181,6 +181,57 @@ export function getNeighborTerrains(tile: Tile, radius: number = 1): Terrain[] {
     return neighbors;
 }
 
+export function resolveGeneratedTileVariant(tile: Tile, terrain: TerrainKey): string | null {
+    const def = TERRAIN_DEFS[terrain];
+    const variations = def?.variations;
+    if (!variations?.length) {
+        return null;
+    }
+
+    const nm = tile.neighbors ?? ensureTileNeighbors(tile);
+    const valid: { key: string; weight: number }[] = [];
+    for (const v of variations) {
+        let ok = true;
+        if (v.constraints?.length) {
+            for (const c of v.constraints) {
+                const sideTile = nm[c.side];
+                if (!sideTile) {
+                    ok = false;
+                    break;
+                }
+                const neighborTerrain = sideTile.discovered ? sideTile.terrain : null;
+                const terrainOk = neighborTerrain && c.anyOf.includes(neighborTerrain);
+                const undiscoveredOk = !neighborTerrain && c.allowUndiscovered;
+                if (!(terrainOk || undiscoveredOk)) {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if (ok) valid.push({ key: v.key, weight: Math.max(0, v.weight ?? (def.baseWeight / variations.length)) });
+    }
+
+    if (!valid.length) {
+        return null;
+    }
+
+    const total = def.baseWeight + valid.reduce((a, b) => a + (b.weight ?? (def.baseWeight / variations.length)), 0);
+    let roll = worldNoise01(tile.q, tile.r, 1701 + terrain.length) * total;
+    if (roll <= def.baseWeight) {
+        return null;
+    }
+
+    roll -= def.baseWeight;
+    for (const v of valid) {
+        if (roll < v.weight) {
+            return v.key;
+        }
+        roll -= v.weight;
+    }
+
+    return null;
+}
+
 export function discoverTile(tile: Tile) {
     if (tile.discovered && tile.terrain) return;
     if (tile.q === 0 && tile.r === 0) {
@@ -224,47 +275,9 @@ export function discoverTile(tile: Tile) {
         terrain: tile.terrain,
     });
 
-    // --- Variation selection ---
-    tile.variant = null;
-    if (tile.terrain) {
-        const def = TERRAIN_DEFS[tile.terrain];
-        const variations = def?.variations;
-        if (variations && variations.length) {
-            const nm = tile.neighbors ?? ensureTileNeighbors(tile);
-
-            // Build valid variants list based on constraints
-            const valid: { key: string; weight: number }[] = [];
-            for (const v of variations) {
-                let ok = true;
-                if (v.constraints && v.constraints.length) {
-                    for (const c of v.constraints) {
-                        const sideTile = nm[c.side];
-                        if (!sideTile) { ok = false; break; }
-                        const neighborTerrain = sideTile.discovered ? sideTile.terrain : null;
-                        const terrainOk = neighborTerrain && c.anyOf.includes(neighborTerrain);
-                        const undiscoveredOk = (!neighborTerrain && c.allowUndiscovered);
-                        if (!(terrainOk || undiscoveredOk)) { ok = false; break; }
-                    }
-                }
-                if (ok) valid.push({ key: v.key, weight: Math.max(0, v.weight ?? (def.baseWeight/variations.length)) });
-            }
-            if (valid.length) {
-                const baseWeight = def.baseWeight;
-                const total = baseWeight + valid.reduce((a, b) => a + (b.weight ?? (def.baseWeight/variations.length)), 0);
-                let roll = worldNoise01(tile.q, tile.r, 1701 + tile.terrain.length) * total;
-                if (roll > baseWeight) {
-                    roll -= baseWeight;
-                    for (const v of valid) {
-                        if (roll < v.weight) { tile.variant = v.key; break; }
-                        roll -= v.weight;
-                    }
-                }
-            }
-            // If selected variant has growth config, record timestamp and track aging
-            if (tile.variant) {
-                applyVariant(tile, tile.variant, { stagger: true, respectBiome: true });
-            }
-        }
+    tile.variant = tile.terrain ? resolveGeneratedTileVariant(tile, tile.terrain) : null;
+    if (tile.variant) {
+        applyVariant(tile, tile.variant, { stagger: true, respectBiome: true });
     }
 
     if(!generating) {

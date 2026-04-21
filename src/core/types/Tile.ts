@@ -1,5 +1,5 @@
 import type {TerrainKey} from '../terrainDefs';
-import type {ResourceType} from './Resource';
+import type { ScoutTargetType } from './Scout';
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
 export type Terrain = TerrainKey;
 export type TileActivationState = 'active' | 'inactive';
@@ -21,9 +21,9 @@ export interface Tile {
     terrain: Terrain | null;
     discovered: boolean;
     scouted?: boolean;
-    scoutedForResource?: ResourceType | null;
-    scoutedResourceTypes?: ResourceType[];
-    scoutFoundResource?: ResourceType | null;
+    scoutedForResource?: ScoutTargetType | null;
+    scoutedResourceTypes?: ScoutTargetType[];
+    scoutFoundResource?: ScoutTargetType | null;
     // Functional terrain state such as crops, docks, rocks, or mines. Purely decorative art is resolved separately.
     isBaseTile: boolean; // whether tile is a base tile (or decorative variant) for terrain generation and task logic
     variant?: string | null;
@@ -51,4 +51,6 @@ export interface Tile {
     specialActivated?: boolean;
     conditionStabilizedUntilMs?: number | null;
     nextProductionBoostMultiplier?: number | null;
+    nextProductionBoostCyclesRemaining?: number | null;
+    nextProductionBoostInputReduction?: number | null;
 }

@@ -18,6 +18,40 @@ import type { Hero } from "../types/Hero.ts";
 
 const rewardDeliveryPathService = new PathService();
 
+interface CompletionFeedback {
+    text: string;
+    color: string;
+    soundPath?: string;
+    baseVolume?: number;
+}
+
+const TASK_COMPLETION_FEEDBACK: Record<string, CompletionFeedback> = {
+    explore: { text: 'Discovered', color: '#bfdbfe', soundPath: 'success.mp3', baseVolume: 0.24 },
+    activateRuins: { text: 'Study notes', color: '#c4b5fd', soundPath: 'success.mp3', baseVolume: 0.42 },
+    surveyTile: { text: 'Surveyed', color: '#bae6fd', soundPath: 'success.mp3', baseVolume: 0.32 },
+
+    plantTrees: { text: 'Saplings planted', color: '#86efac', soundPath: 'success.mp3', baseVolume: 0.34 },
+    tillLand: { text: 'Soil ready', color: '#facc15', soundPath: 'drop.mp3', baseVolume: 0.28 },
+    irregateDirtTask: { text: 'Watered', color: '#7dd3fc', soundPath: 'splash.mp3', baseVolume: 0.34 },
+    seedGrain: { text: 'Field seeded', color: '#fde68a', soundPath: 'success.mp3', baseVolume: 0.32 },
+    convertToGrass: { text: 'Grass restored', color: '#86efac', soundPath: 'success.mp3', baseVolume: 0.34 },
+    placeWaterLilies: { text: 'Lilies placed', color: '#a7f3d0', soundPath: 'splash.mp3', baseVolume: 0.32 },
+
+    buildRoad: { text: 'Road built', color: '#fef3c7', soundPath: 'drop.mp3', baseVolume: 0.34 },
+    buildBridge: { text: 'Bridge built', color: '#bfdbfe', soundPath: 'splash.mp3', baseVolume: 0.36 },
+    buildTunnel: { text: 'Tunnel opened', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.3 },
+
+    campfireRations: { text: 'Rations cooked', color: '#fed7aa', soundPath: 'success.mp3', baseVolume: 0.28 },
+    fishAtDock: { text: 'Fresh catch', color: '#bfdbfe', soundPath: 'splash.mp3', baseVolume: 0.28 },
+    harvestGrain: { text: 'Grain harvested', color: '#fde68a', soundPath: 'take.mp3', baseVolume: 0.26 },
+    harvestWaterLilies: { text: 'Lilies gathered', color: '#a7f3d0', soundPath: 'splash.mp3', baseVolume: 0.24 },
+    gatherSand: { text: 'Sand gathered', color: '#fef3c7', soundPath: 'take.mp3', baseVolume: 0.24 },
+    clearRocks: { text: 'Rocks cleared', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.24 },
+    breakDirtRock: { text: 'Rock cracked', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.28 },
+    dig: { text: 'Dug out', color: '#d6d3d1', soundPath: 'mining.mp3', baseVolume: 0.24 },
+    removeTrunks: { text: 'Cleared', color: '#bbf7d0', soundPath: 'chopping.wav', baseVolume: 0.24 },
+};
+
 class ClientTaskHandler {
     private initialized = false;
     private readonly lastWorkImpactMsByTaskId = new Map<string, number>();
@@ -205,6 +239,7 @@ class ClientTaskHandler {
                 return;
             }
 
+            let playedCompletionSound = false;
             // Play completion sound if defined
             if (def.getSoundOnComplete) {
                 if(!tile) {
@@ -227,8 +262,11 @@ class ClientTaskHandler {
                     ).catch(error => {
                         console.warn(`Failed to play completion sound for ${task.type}:`, error);
                     });
+                    playedCompletionSound = true;
                 }
             }
+
+            this.playCompletionFeedback(task, def.label, message.rewards.map((reward) => reward.heroId), playedCompletionSound);
         }
 
         // Handle rewards for each hero
@@ -256,6 +294,68 @@ class ClientTaskHandler {
                 }
             }
         }
+    }
+
+    private playCompletionFeedback(task: TaskInstance, taskLabel: string, heroIds: string[], skipSound: boolean): void {
+        const tile = tileIndex[task.tileId];
+        if (!tile) {
+            return;
+        }
+
+        const feedback = this.getCompletionFeedback(task.type, taskLabel);
+        if (!feedback) {
+            return;
+        }
+
+        const indicatorSource = heroIds
+            .map((heroId) => getHero(heroId))
+            .find((hero): hero is Hero => !!hero)
+            ?? tile;
+
+        addTextIndicator(indicatorSource, feedback.text, feedback.color, 1650);
+
+        if (skipSound || !feedback.soundPath) {
+            return;
+        }
+
+        void playPositionalSound(
+            `${task.type}-feedback-${tile.q}-${tile.r}`,
+            feedback.soundPath,
+            tile.q,
+            tile.r,
+            {
+                baseVolume: feedback.baseVolume ?? 0.3,
+                maxDistance: 11,
+                loop: false,
+            },
+        );
+    }
+
+    private getCompletionFeedback(taskType: string, taskLabel: string): CompletionFeedback | null {
+        const configured = TASK_COMPLETION_FEEDBACK[taskType];
+        if (configured) {
+            return configured;
+        }
+
+        if (taskType.startsWith('build')) {
+            return {
+                text: taskLabel.replace(/^Build\s+/i, '').replace(/^Found\s+/i, '') + ' built',
+                color: '#bbf7d0',
+                soundPath: 'success.mp3',
+                baseVolume: 0.34,
+            };
+        }
+
+        if (taskType.startsWith('upgrade')) {
+            return {
+                text: 'Upgraded',
+                color: '#fde68a',
+                soundPath: 'success.mp3',
+                baseVolume: 0.36,
+            };
+        }
+
+        return null;
     }
 
     private startLocalRewardDelivery(hero: Hero): void {

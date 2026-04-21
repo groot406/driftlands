@@ -1,4 +1,6 @@
-import type {ResourceAmount, ResourceType} from "./Resource";
+import type {ResourceAmount} from "./Resource";
+import type { ScoutTargetType } from './Scout';
+import type { HeroSkillKey } from '../../shared/heroes/heroSkills.ts';
 
 export interface HeroStats {
     xp: number; // experience points
@@ -27,7 +29,7 @@ export interface HeroPendingTaskIntent {
 }
 
 export interface HeroScoutResourceIntent {
-    resourceType: ResourceType;
+    resourceType: ScoutTargetType;
     playerId?: string;
     playerName?: string;
     surveyTileId?: string;
@@ -45,6 +47,9 @@ export interface Hero {
     xpChargeProgress?: number;
     abilityCharges?: number;
     abilityChargesEarned?: number;
+    skillPoints?: number;
+    skillPointsEarned?: number;
+    skills?: Partial<Record<HeroSkillKey, number>>;
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)

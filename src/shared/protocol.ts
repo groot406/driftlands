@@ -3,6 +3,7 @@ import type {Tile} from "../core/types/Tile.ts";
 import type {Hero, HeroScoutResourceIntent, HeroStats} from "../core/types/Hero.ts";
 import type {TaskInstance, TaskType} from "../core/types/Task.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
+import type { ScoutTargetType } from '../core/types/Scout.ts';
 import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/types.ts";
 import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
@@ -11,6 +12,7 @@ import type { WorkforceSnapshot } from '../store/jobStore.ts';
 import type { StudyStateSnapshot } from '../store/studyStore.ts';
 import type { Settler } from '../core/types/Settler.ts';
 import type { HeroAbilityKey } from './heroes/heroAbilities.ts';
+import type { HeroSkillKey } from './heroes/heroSkills.ts';
 
 export interface BaseMessage {
     type: string;
@@ -178,7 +180,7 @@ export interface PathUpdateMessage extends BaseMessage {
 export interface HeroScoutResourceRequestMessage extends BaseMessage {
     type: 'hero:scout_resource_request';
     heroId: string;
-    resourceType: ResourceType;
+    resourceType: ScoutTargetType;
 }
 
 export interface HeroScoutResourceUpdateMessage extends BaseMessage {
@@ -195,12 +197,21 @@ export interface HeroAbilityUseMessage extends BaseMessage {
     taskId?: string;
 }
 
+export interface HeroSkillSelectMessage extends BaseMessage {
+    type: 'hero:skill_select';
+    heroId: string;
+    skill: HeroSkillKey;
+}
+
 export interface HeroAbilityUpdateMessage extends BaseMessage {
     type: 'hero:ability_update';
     heroId: string;
     abilityCharges: number;
     xpChargeProgress: number;
     abilityChargesEarned: number;
+    skillPoints: number;
+    skillPointsEarned: number;
+    skills: Partial<Record<HeroSkillKey, number>>;
 }
 
 // Hero state updates
@@ -337,6 +348,7 @@ export type ClientMessage =
     | MoveRequestMessage
     | HeroScoutResourceRequestMessage
     | HeroAbilityUseMessage
+    | HeroSkillSelectMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
     | LeaveTaskRequestMessage;

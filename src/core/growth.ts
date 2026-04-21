@@ -4,6 +4,7 @@ import {TERRAIN_DEFS} from './terrainDefs';
 import {BIOME_DEFS} from './biomes';
 import { updateTileVariantIndex } from './terrainRegistry';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
+import { getVolcanicGrowthDurationMultiplier } from '../shared/game/tileFeatures.ts';
 
 // Track tiles with aging variants
 const agingTiles = new Set<string>();
@@ -68,7 +69,7 @@ export function getEffectiveAgeMs(
         return baseAge;
     }
 
-    return Math.round(baseAge * getGrowthMultiplier(tile));
+    return Math.round(baseAge * getGrowthMultiplier(tile) * getVolcanicGrowthDurationMultiplier(tile));
 }
 
 export function resolveTileGrowthDurationMs(

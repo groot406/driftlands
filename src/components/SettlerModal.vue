@@ -102,8 +102,10 @@ function formatTileLabel(tileId: string | null | undefined) {
 }
 
 const settlerName = computed(() => {
-  const id = settler.value?.id ?? 'Settler';
-  return getSettlerDisplayName(id);
+  const currentSettler = settler.value;
+  return currentSettler
+    ? getSettlerDisplayName(currentSettler.id, currentSettler.nameSeed)
+    : getSettlerDisplayName('Settler');
 });
 
 const activityLabel = computed(() => settler.value ? formatTitleCase(settler.value.activity) : 'Unknown');

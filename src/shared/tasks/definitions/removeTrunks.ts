@@ -17,12 +17,10 @@ const removeTrunksTask: TaskDefinition = {
         return 1000;
     },
     heroRate(hero: Hero) {
-        // Use a mix of base + scaled by hero XP & ATK so experienced heroes replant faster.
-        return 5 + hero.stats.xp * 2 + hero.stats.atk;
+        return 5 + hero.stats.atk * 2;
     },
     totalRewardedStats(_distance: number) {
-        // Modest XP reward for ecological effort.
-        return {xp: 5, hp: 0, atk: 5, spd: 0};
+        return {xp: 2, hp: 0, atk: 5, spd: 0};
     },
     onStart(tile) {
         // Guard: If tile changed before start, abort implicitly by leaving logic minimal.

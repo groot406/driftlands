@@ -108,6 +108,50 @@ test('growthSystem advances fixed-duration tilled soil into draught state', () =
   assert.equal(tile.variantAgeMs, undefined);
 });
 
+test('active adjacent volcanoes reduce nearby growth duration', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'dessert',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      activationState: 'active',
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'mountain',
+      terrain: 'vulcano',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      activationState: 'active',
+    } satisfies Tile,
+  ]);
+
+  const tile = tileIndex['0,0']!;
+  withCapturedBroadcasts();
+
+  applyVariant(tile, 'dirt_tilled', { stagger: false, respectBiome: true });
+
+  assert.equal(tile.variant, 'dirt_tilled');
+  assert.equal(tile.variantAgeMs, 135000);
+
+  growthSystem.tick({
+    now: tile.variantSetMs! + tile.variantAgeMs!,
+    dt: tile.variantAgeMs!,
+    tick: 1,
+    rng: {} as never,
+  });
+
+  assert.equal(tile.variant, 'dirt_tilled_draught');
+});
+
 test('growthSystem lets campfires burn out after their timed support window', () => {
   loadWorld([
     {

@@ -128,6 +128,8 @@ function indicatorClass(type: NotificationType) {
       return 'bg-blue-400';
     case 'goal_completed':
       return 'bg-emerald-400';
+    case 'hero_skill':
+      return 'bg-yellow-300';
     case 'run_state':
       return 'bg-amber-300';
     case 'coop_ping':

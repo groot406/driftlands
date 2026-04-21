@@ -283,3 +283,29 @@ test('the early frontier always includes a small pond with plains shoreline acro
 
   setWorldGenerationSeed(123456789);
 });
+
+test('harsh frontier terrain includes snow and rare volcanoes across representative seeds', () => {
+  const seeds = [1, 7, 42, 99, 123456789, 987654321, 20260405, 0xdecafbad];
+
+  for (const seed of seeds) {
+    setWorldGenerationSeed(seed);
+    let snowCount = 0;
+    let volcanoCount = 0;
+
+    for (let q = -20; q <= 20; q++) {
+      for (let r = Math.max(-20, -q - 20); r <= Math.min(20, -q + 20); r++) {
+        const tile = resolveWorldTile(q, r);
+        if (tile.terrain === 'snow') {
+          snowCount++;
+        } else if (tile.terrain === 'vulcano') {
+          volcanoCount++;
+        }
+      }
+    }
+
+    assert.ok(snowCount > 0, `expected snow within radius 20 for seed ${seed}`);
+    assert.ok(volcanoCount > 0, `expected volcano within radius 20 for seed ${seed}`);
+  }
+
+  setWorldGenerationSeed(123456789);
+});

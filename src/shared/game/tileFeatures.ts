@@ -4,6 +4,8 @@ import { SIDE_NAMES, type Tile, type TileModifierKey, type TileSpecialKey } from
 
 const MODIFIER_ROLL_SALT = 9121;
 const SPECIAL_ROLL_SALT = 9149;
+export const VOLCANIC_PRODUCTION_OUTPUT_MULTIPLIER = 1.25;
+export const VOLCANIC_GROWTH_DURATION_MULTIPLIER = 0.75;
 
 export function resolveGeneratedTileModifier(q: number, r: number, terrain: TerrainKey): TileModifierKey | null {
   const value = worldNoise01(q, r, MODIFIER_ROLL_SALT);
@@ -104,9 +106,34 @@ export function countActiveAdjacentRevealedSpecial(tile: Tile | null | undefined
   return listAdjacentTiles(tile).filter((neighbor) => isFeatureTileActive(neighbor) && hasRevealedSpecial(neighbor, special)).length;
 }
 
+export function countActiveAdjacentTerrain(tile: Tile | null | undefined, terrain: TerrainKey) {
+  return listAdjacentTiles(tile).filter((neighbor) => isFeatureTileActive(neighbor) && neighbor.terrain === terrain).length;
+}
+
+export function hasActiveAdjacentVolcano(tile: Tile | null | undefined) {
+  return countActiveAdjacentTerrain(tile, 'vulcano') > 0;
+}
+
+export function getVolcanicProductionMultiplier(tile: Tile | null | undefined) {
+  return hasActiveAdjacentVolcano(tile) ? VOLCANIC_PRODUCTION_OUTPUT_MULTIPLIER : 1;
+}
+
+export function getVolcanicGrowthDurationMultiplier(tile: Tile | null | undefined) {
+  return hasActiveAdjacentVolcano(tile) ? VOLCANIC_GROWTH_DURATION_MULTIPLIER : 1;
+}
+
 export function getTileProductionBoostMultiplier(tile: Tile | null | undefined) {
   const multiplier = tile?.nextProductionBoostMultiplier;
-  return typeof multiplier === 'number' && multiplier > 1 ? multiplier : 1;
+  const cycles = tile?.nextProductionBoostCyclesRemaining;
+  const hasCycles = cycles === undefined || cycles === null || cycles > 0;
+  return hasCycles && typeof multiplier === 'number' && multiplier > 1 ? multiplier : 1;
+}
+
+export function getTileProductionBoostInputReduction(tile: Tile | null | undefined) {
+  const cycles = tile?.nextProductionBoostCyclesRemaining;
+  const hasCycles = cycles === undefined || cycles === null || cycles > 0;
+  const reduction = tile?.nextProductionBoostInputReduction;
+  return hasCycles && typeof reduction === 'number' && reduction > 0 ? Math.floor(reduction) : 0;
 }
 
 export function consumeTileProductionBoost(tile: Tile | null | undefined) {
@@ -114,6 +141,14 @@ export function consumeTileProductionBoost(tile: Tile | null | undefined) {
     return false;
   }
 
+  const remainingCycles = Math.max(1, Math.floor(tile.nextProductionBoostCyclesRemaining ?? 1)) - 1;
+  if (remainingCycles > 0) {
+    tile.nextProductionBoostCyclesRemaining = remainingCycles;
+    return true;
+  }
+
   tile.nextProductionBoostMultiplier = null;
+  tile.nextProductionBoostCyclesRemaining = null;
+  tile.nextProductionBoostInputReduction = null;
   return true;
 }

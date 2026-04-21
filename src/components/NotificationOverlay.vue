@@ -30,6 +30,10 @@
               class="w-2 h-2 bg-emerald-400 rounded-full"
             ></div>
             <div
+              v-else-if="notification.type === 'hero_skill'"
+              class="w-2 h-2 bg-yellow-300 rounded-full"
+            ></div>
+            <div
               v-else-if="notification.type === 'run_state'"
               class="w-2 h-2 bg-amber-300 rounded-full"
             ></div>
@@ -75,6 +79,8 @@ function getNotificationStyles(type: string) {
       return 'border-blue-500/30';
     case 'goal_completed':
       return 'border-emerald-500/30';
+    case 'hero_skill':
+      return 'border-yellow-300/40 bg-yellow-300/10';
     case 'run_state':
       return 'border-amber-400/30';
     case 'coop_ping':

@@ -45,7 +45,7 @@ import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/buildings/storage';
 import { getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
-import { isVisibleExplorationTile } from '../shared/game/explorationFrontier';
+import { isRenderableExplorationTile } from '../shared/game/explorationFrontier';
 import { getScoutSurveyProgress, isHeroSurveyingScoutResource } from '../shared/game/scoutResources';
 import {
     consumePendingCameraNudges,
@@ -543,6 +543,8 @@ export class HexMapService {
         this._tileShorelineCache.clear();
         this._tileOverlayShaderCache.clear();
         this._tileOverlayAlphaBoundsCache.clear();
+        this._undiscoveredTileCanvasCache.clear();
+        this._waterShimmerCanvasCache.clear();
         this._tileCompositeScratchCanvas = null;
         this._tileCompositeScratchCtx = null;
         this._renderStress = {
@@ -1221,7 +1223,7 @@ export class HexMapService {
         const cr = Math.round(camera.r);
         const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
         const radiusTiles = getTilesInRadius(cq, cr, camera.radius)
-            .filter((tile) => isVisibleExplorationTile(tile) || storyHintTileIds.has(tile.id));
+            .filter((tile) => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
         const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
         const dirtyTiles = consumePendingRenderDirtyTiles();
@@ -1564,6 +1566,8 @@ export class HexMapService {
         }
 
         const lowQuality = this._currentRenderQuality.name === 'low';
+        const waterShimmerLimit = this.getWaterShimmerTileLimit();
+        let waterShimmerDrawn = 0;
         for (const tile of tiles) {
             if (!tile.discovered || !tile.terrain) {
                 continue;
@@ -1579,8 +1583,9 @@ export class HexMapService {
                 continue;
             }
 
-            if (!lowQuality && this.isGrowthWaterTile(tile)) {
+            if (!lowQuality && this.isGrowthWaterTile(tile) && waterShimmerDrawn < waterShimmerLimit) {
                 this.drawWaterTileShimmer(ctx, tile, nowMs, opacity);
+                waterShimmerDrawn += 1;
             }
 
             const reveal = this._tileRevealAnimations.get(tile.id);
@@ -1661,13 +1666,63 @@ export class HexMapService {
         const { x, y } = axialToPixel(tile.q, tile.r);
         const seed = this.seedFromString(`${tile.id}:water-shimmer`);
         const phase = (((nowMs * 0.00018) + ((seed % 997) / 997)) % 1);
-        const sweepY = y - (this.TILE_DRAW_SIZE * 0.26) + (this.TILE_DRAW_SIZE * 0.52 * phase);
         const wave = Math.sin((nowMs * 0.0012) + seed) * 2.2;
+        const shimmerCanvas = this.getWaterShimmerCanvas(phase, wave);
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.drawImage(shimmerCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
+        ctx.restore();
+    }
+
+    private getWaterShimmerTileLimit() {
+        if (this._currentRenderQuality.name === 'low') {
+            return 0;
+        }
+
+        if (this._currentRenderQuality.name === 'medium') {
+            return 36;
+        }
+
+        return 72;
+    }
+
+    private getWaterShimmerCanvas(phase: number, wave: number) {
+        const phaseBucket = Math.floor(Math.max(0, Math.min(0.9999, phase)) * HexMapService.WATER_SHIMMER_PHASE_BUCKETS);
+        const waveNorm = Math.max(0, Math.min(0.9999, (wave + 2.2) / 4.4));
+        const waveBucket = Math.floor(waveNorm * HexMapService.WATER_SHIMMER_WAVE_BUCKETS);
+        const cacheKey = `${phaseBucket}:${waveBucket}`;
+        const cached = this.getCachedCanvas(this._waterShimmerCanvasCache, cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return canvas;
+        }
+
+        const localPhase = (phaseBucket + 0.5) / HexMapService.WATER_SHIMMER_PHASE_BUCKETS;
+        const localWave = -2.2 + (((waveBucket + 0.5) / HexMapService.WATER_SHIMMER_WAVE_BUCKETS) * 4.4);
+        this.drawWaterShimmerSprite(ctx, localPhase, localWave);
+        return this.storeCachedCanvas(
+            this._waterShimmerCanvasCache,
+            cacheKey,
+            canvas,
+            HexMapService.WATER_SHIMMER_CACHE_MAX,
+        );
+    }
+
+    private drawWaterShimmerSprite(ctx: CanvasRenderingContext2D, phase: number, wave: number) {
+        const x = this.HEX_SIZE;
+        const y = this.HEX_SIZE;
+        const sweepY = y - (this.TILE_DRAW_SIZE * 0.26) + (this.TILE_DRAW_SIZE * 0.52 * phase);
 
         ctx.save();
         this.traceHexClipPath(ctx, x, y);
         ctx.clip();
-        ctx.globalCompositeOperation = 'screen';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.shadowBlur = 8;
@@ -1675,7 +1730,7 @@ export class HexMapService {
 
         const shimmer = ctx.createLinearGradient(x - this.HEX_SIZE, sweepY, x + this.HEX_SIZE, sweepY + 8);
         shimmer.addColorStop(0, 'rgba(255,255,255,0)');
-        shimmer.addColorStop(0.5, `rgba(230, 255, 255, ${0.13 * opacity})`);
+        shimmer.addColorStop(0.5, 'rgba(230, 255, 255, 0.13)');
         shimmer.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.strokeStyle = shimmer;
         ctx.lineWidth = 1.5;
@@ -1684,7 +1739,7 @@ export class HexMapService {
         ctx.quadraticCurveTo(x, sweepY - 5 - wave, x + 18, sweepY + wave * 0.5);
         ctx.stroke();
 
-        ctx.globalAlpha = opacity * 0.12;
+        ctx.globalAlpha = 0.12;
         ctx.strokeStyle = 'rgba(206, 255, 255, 0.72)';
         ctx.lineWidth = 0.9;
         for (let i = 0; i < 2; i++) {
@@ -2031,7 +2086,7 @@ export class HexMapService {
         const cr = Math.round(camera.r);
         const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
         const visibleTiles = precomputedVisibleTiles ?? getTilesInRadius(cq, cr, camera.radius)
-            .filter((tile) => isVisibleExplorationTile(tile) || storyHintTileIds.has(tile.id));
+            .filter((tile) => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const allowInteractiveHighlights = !forMotionBlur;
         const allowPersistentWorldUi = allowInteractiveHighlights && !suppressWorldUi;
         ctx.save();
@@ -4855,6 +4910,8 @@ export class HexMapService {
         );
     }
     private _fogTileCanvas: HTMLCanvasElement | null = null;
+    private _undiscoveredTileCanvasCache = new Map<string, HTMLCanvasElement>();
+    private _waterShimmerCanvasCache = new Map<string, HTMLCanvasElement>();
     private _proceduralRoadCache = new Map<string, HTMLCanvasElement>();
     private _proceduralBridgeCache = new Map<string, HTMLCanvasElement>();
     private static readonly PROCEDURAL_ROAD_CACHE_MAX = 768;
@@ -4868,6 +4925,10 @@ export class HexMapService {
     private static readonly TILE_SHORELINE_CACHE_MAX = 1024;
     private static readonly TILE_OVERLAY_SHADER_CACHE_MAX = 1024;
     private static readonly TILE_OVERLAY_SHADER_VERSION = 11;
+    private static readonly UNDISCOVERED_TILE_CANVAS_CACHE_MAX = 2048;
+    private static readonly WATER_SHIMMER_PHASE_BUCKETS = 24;
+    private static readonly WATER_SHIMMER_WAVE_BUCKETS = 8;
+    private static readonly WATER_SHIMMER_CACHE_MAX = HexMapService.WATER_SHIMMER_PHASE_BUCKETS * HexMapService.WATER_SHIMMER_WAVE_BUCKETS;
 
     private ensureFogTileCanvas(): HTMLCanvasElement {
         if (this._fogTileCanvas) return this._fogTileCanvas;
@@ -4942,11 +5003,94 @@ export class HexMapService {
         return c;
     }
 
-    private drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, t: Tile, inReach: boolean = true) {
-        const {x, y} = axialToPixel(t.q, t.r);
+    private getUndiscoveredTileCanvasCacheKey(t: Tile, inReach: boolean) {
+        const centerDist = getDistanceToNearestTowncenter(t.q, t.r);
+        return [
+            t.q,
+            t.r,
+            centerDist,
+            inReach ? 'reach' : 'dim',
+            t.scouted ? 'scouted' : 'hidden',
+            t.scoutFoundResource ? `found:${t.scoutFoundResource}` : 'found:-',
+        ].join(':');
+    }
+
+    private drawUndiscoveredTileStatic(
+        ctx: CanvasRenderingContext2D,
+        t: Tile,
+        inReach: boolean,
+    ) {
         const fogCanvas = this.ensureFogTileCanvas();
         const reachDim = inReach ? 1 : 0.35;
+        const centerX = this.HEX_SIZE;
+        const centerY = this.HEX_SIZE;
 
+        ctx.globalAlpha = 0.85 * reachDim;
+        ctx.drawImage(fogCanvas, 0, 0);
+
+        if (t.scouted) {
+            ctx.globalAlpha = (t.scoutFoundResource ? 0.78 : 0.55) * reachDim;
+            ctx.beginPath();
+            this.drawHexPath(ctx, centerX, centerY);
+            ctx.fillStyle = SCOUTED_TILE_STYLE.fill;
+            ctx.fill();
+            ctx.lineWidth = 1.65;
+            ctx.strokeStyle = t.scoutFoundResource ? SCOUTED_TILE_STYLE.foundStroke : SCOUTED_TILE_STYLE.stroke;
+            ctx.stroke();
+        }
+
+        const centerDist = getDistanceToNearestTowncenter(t.q, t.r);
+        ctx.save();
+        ctx.font = '600 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(80, 130, 200, 0.5)';
+        ctx.shadowBlur = 4;
+        ctx.globalAlpha = 0.42 * reachDim;
+        ctx.fillStyle = 'rgba(180, 200, 240, 0.9)';
+        ctx.fillText(String(centerDist), centerX, centerY);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+    }
+
+    private getUndiscoveredTileCanvas(t: Tile, inReach: boolean) {
+        const cacheKey = this.getUndiscoveredTileCanvasCacheKey(t, inReach);
+        const cached = this.getCachedCanvas(this._undiscoveredTileCanvasCache, cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+
+        ctx.imageSmoothingEnabled = false;
+        this.drawUndiscoveredTileStatic(ctx, t, inReach);
+        return this.storeCachedCanvas(
+            this._undiscoveredTileCanvasCache,
+            cacheKey,
+            canvas,
+            HexMapService.UNDISCOVERED_TILE_CANVAS_CACHE_MAX,
+        );
+    }
+
+    private drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, t: Tile, inReach: boolean = true) {
+        const {x, y} = axialToPixel(t.q, t.r);
+        const reachDim = inReach ? 1 : 0.35;
+
+        if (!this._currentRenderQuality.enableFogShimmer) {
+            const cachedTile = this.getUndiscoveredTileCanvas(t, inReach);
+            if (cachedTile) {
+                ctx.globalAlpha = opacity;
+                ctx.drawImage(cachedTile, x - this.HEX_SIZE, y - this.HEX_SIZE);
+                ctx.globalAlpha = 1;
+                return;
+            }
+        }
+
+        const fogCanvas = this.ensureFogTileCanvas();
         ctx.globalAlpha = opacity * 0.85 * reachDim;
         ctx.drawImage(fogCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
 

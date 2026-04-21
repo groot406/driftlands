@@ -32,6 +32,7 @@ export interface SettlerBlockerReason {
 
 export interface Settler {
     id: string;
+    nameSeed?: number;
     q: number;
     r: number;
     facing: 'up' | 'down' | 'left' | 'right';

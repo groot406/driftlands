@@ -227,7 +227,7 @@ export function resolveBiomeFamily(q: number, r: number): BiomeKey {
     }
 
     const alpineScore = getAlpineScore(q, r);
-    if (distance >= 15 && climate.temperature < 0.34 && alpineScore > 0.58) {
+    if (distance >= 10 && climate.temperature < 0.4 && alpineScore > 0.55) {
         return 'snow';
     }
     if (distance >= 6 && alpineScore > 0.68) {
@@ -254,7 +254,7 @@ export function resolveBiomeFamily(q: number, r: number): BiomeKey {
 
 function shouldSpawnVolcano(q: number, r: number) {
     const distance = axialDistanceFromOrigin(q, r);
-    if (distance < 7) return false;
+    if (distance < 9) return false;
 
     const climate = getClimateProfile(q, r);
     const score = (climate.weirdness * 0.54)
@@ -262,7 +262,7 @@ function shouldSpawnVolcano(q: number, r: number) {
         + (climate.temperature * 0.18)
         - (climate.moisture * 0.16);
 
-    if (score < 0.82) {
+    if (score < 0.58 || climate.temperature < 0.36 || climate.moisture > 0.6) {
         return false;
     }
 
@@ -284,6 +284,10 @@ function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey): TerrainK
     const climate = getClimateProfile(q, r);
     const distance = axialDistanceFromOrigin(q, r);
 
+    if ((biome === 'mountain' || biome === 'dessert') && shouldSpawnVolcano(q, r)) {
+        return 'vulcano';
+    }
+
     switch (biome) {
         case 'lake':
             return 'water';
@@ -292,14 +296,7 @@ function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey): TerrainK
             return 'snow';
 
         case 'mountain':
-            if (
-                shouldSpawnVolcano(q, r)
-                && climate.temperature > 0.54
-                && climate.moisture < 0.42
-            ) {
-                return 'vulcano';
-            }
-            if (distance >= 15 && climate.temperature < 0.32 && climate.peaks > 0.62) {
+            if (distance >= 12 && climate.temperature < 0.38 && climate.peaks > 0.58) {
                 return 'snow';
             }
             return 'mountain';

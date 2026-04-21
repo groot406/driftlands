@@ -11,26 +11,25 @@ import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 import { listUndiscoveredFrontierTiles } from '../../game/explorationFrontier';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
-const EXPLORE_BASE_REQUIRED_XP = 795;
-const EXPLORE_DISTANCE_XP_RATE = 0.5;
-const EXPLORE_REWARDED_XP = 1;
-const EXPLORE_SCOUTING_RATE = 24;
+const EXPLORE_BASE_REQUIRED_XP = 640;
+const EXPLORE_DISTANCE_XP_RATE = 0.32;
+const EXPLORE_REWARDED_XP = 3;
+const EXPLORE_SCOUTING_RATE = 30;
 const EXPLORE_WATER_SURVEY_RADIUS = 2;
 const EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES = 7;
 
 const explorePathService = new PathService();
 
 export function getExploreRequiredXp(distance: number) {
+    return 1;
     const distanceFactor = 1 + Math.max(0, distance) * EXPLORE_DISTANCE_XP_RATE;
     return Math.round(EXPLORE_BASE_REQUIRED_XP * distanceFactor);
 }
 
 export function getExploreHeroRate(hero: Pick<Hero, 'stats'>) {
-    const experience = Math.max(1, hero.stats.xp);
     const speed = Math.max(1, hero.stats.spd);
 
-    // Exploration should benefit from experience, but not snowball linearly off the same stat it rewards.
-    return Math.round(EXPLORE_SCOUTING_RATE * (Math.sqrt(experience) + (2 * speed))) * 2;
+    return Math.round(EXPLORE_SCOUTING_RATE * (1 + (2 * speed))) * 2;
 }
 
 export function getExploreRewardedXp(_distance: number) {

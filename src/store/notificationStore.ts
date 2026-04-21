@@ -5,6 +5,7 @@ export type NotificationType =
   | 'player_leave'
   | 'chat'
   | 'goal_completed'
+  | 'hero_skill'
   | 'run_state'
   | 'coop_ping'
   | 'coop_state';

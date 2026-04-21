@@ -504,7 +504,7 @@ export class HeroRenderer {
                         ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
                         ctx.stroke();
 
-                        const label = getSettlerDisplayName(settler.id);
+                        const label = getSettlerDisplayName(settler.id, settler.nameSeed);
                         ctx.font = '600 9px system-ui, sans-serif';
                         const textWidth = ctx.measureText(label).width;
                         const labelWidth = Math.ceil(textWidth) + 10;
@@ -571,7 +571,7 @@ export class HeroRenderer {
                     ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
                     ctx.stroke();
 
-                    const label = getSettlerDisplayName(settler.id);
+                    const label = getSettlerDisplayName(settler.id, settler.nameSeed);
                     ctx.font = '600 9px system-ui, sans-serif';
                     const textWidth = ctx.measureText(label).width;
                     const labelWidth = Math.ceil(textWidth) + 10;

@@ -1,10 +1,11 @@
 import type { Hero } from '../../core/types/Hero';
-import type { ResourceType } from '../../core/types/Resource';
+import type { ScoutTargetType } from '../../core/types/Scout';
 import { SIDE_NAMES, type Terrain, type Tile, type TileSide } from '../../core/types/Tile';
 import { terrainPositions } from '../../core/terrainRegistry';
-import { ensureTileExists, tileIndex } from '../../core/world';
+import { ensureTileExists, resolveGeneratedTileVariant, tileIndex } from '../../core/world';
 import { resolveWorldTile } from '../../core/worldGeneration';
 import type { CoopPingMessage, HeroScoutResourceUpdateMessage, TileUpdatedMessage } from '../protocol';
+import { isStoryTerrainUnlocked } from '../story/progressionState';
 import { axialDistanceCoords } from './hex';
 import { PathService } from './PathService';
 import { listScoutingFrontierTiles } from './explorationFrontier';
@@ -17,19 +18,67 @@ export const SCOUT_RESOURCE_TASK_TYPE = 'scoutResource';
 export const SCOUT_PING_DURATION_MS = 30000;
 export const SCOUT_TILE_SURVEY_MS = 1200;
 
+interface ScoutTargetDefinition {
+    type: ScoutTargetType;
+    label: string;
+    unlockTerrain: Terrain;
+    summary: string;
+}
+
+export const SCOUT_TARGET_DEFINITIONS = [
+    {
+        type: 'wood',
+        label: 'Forest',
+        unlockTerrain: 'forest',
+        summary: 'Timber stands',
+    },
+    {
+        type: 'water',
+        label: 'Water',
+        unlockTerrain: 'water',
+        summary: 'Shorelines and ponds',
+    },
+    {
+        type: 'stone',
+        label: 'Rocks',
+        unlockTerrain: 'mountain',
+        summary: 'Rocky dirt patches',
+    },
+    {
+        type: 'ore',
+        label: 'Mountains',
+        unlockTerrain: 'mountain',
+        summary: 'Mountain ridges',
+    },
+    {
+        type: 'sand',
+        label: 'Desert',
+        unlockTerrain: 'dessert',
+        summary: 'Desert ground',
+    },
+    {
+        type: 'snow',
+        label: 'Snow',
+        unlockTerrain: 'snow',
+        summary: 'Snowfields',
+    },
+] as const satisfies readonly ScoutTargetDefinition[];
+
 export const SCOUTABLE_RESOURCE_TYPES = [
     'wood',
     'water',
-    'grain',
     'stone',
     'ore',
-    'crystal',
     'sand',
-] as const satisfies readonly ResourceType[];
+    'snow',
+] as const satisfies readonly ScoutTargetType[];
 
 export type ScoutableResourceType = typeof SCOUTABLE_RESOURCE_TYPES[number];
 
-const SCOUTABLE_RESOURCE_SET = new Set<ResourceType>(SCOUTABLE_RESOURCE_TYPES);
+const SCOUTABLE_RESOURCE_SET = new Set<ScoutTargetType>(SCOUTABLE_RESOURCE_TYPES);
+const SCOUT_TARGET_DEFINITION_BY_TYPE = new Map<ScoutTargetType, ScoutTargetDefinition>(
+    SCOUT_TARGET_DEFINITIONS.map((definition) => [definition.type, definition]),
+);
 
 const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
     a: [0, -1],
@@ -60,53 +109,57 @@ export function getScoutCancelMovementPathOptions(
 }
 
 export function isScoutableResourceType(resourceType: string): resourceType is ScoutableResourceType {
-    return SCOUTABLE_RESOURCE_SET.has(resourceType as ResourceType);
+    return SCOUTABLE_RESOURCE_SET.has(resourceType as ScoutTargetType);
 }
 
-export function getScoutResourceLabel(resourceType: ResourceType) {
-    switch (resourceType) {
-        case 'wood':
-            return 'Wood';
-        case 'water':
-            return 'Water';
-        case 'grain':
-            return 'Grain';
-        case 'stone':
-            return 'Stone';
-        case 'ore':
-            return 'Ore';
-        case 'crystal':
-            return 'Crystal';
-        case 'sand':
-            return 'Sand';
-        case 'water_lily':
-            return 'Water Lilies';
-        default:
-            return resourceType.charAt(0).toUpperCase() + resourceType.slice(1);
-    }
+export function getScoutResourceLabel(resourceType: ScoutTargetType) {
+    return SCOUT_TARGET_DEFINITION_BY_TYPE.get(resourceType)?.label
+        ?? resourceType.charAt(0).toUpperCase() + resourceType.slice(1);
 }
 
-export function doesScoutResourceMatchTerrain(resourceType: ResourceType, terrain: Terrain | null | undefined) {
+export function getScoutTargetDefinition(resourceType: ScoutTargetType) {
+    return SCOUT_TARGET_DEFINITION_BY_TYPE.get(resourceType) ?? null;
+}
+
+export function isScoutResourceUnlocked(resourceType: ScoutTargetType) {
+    const definition = getScoutTargetDefinition(resourceType);
+    return !!definition && isStoryTerrainUnlocked(definition.unlockTerrain);
+}
+
+export function doesScoutResourceMatchTerrain(
+    resourceType: ScoutTargetType,
+    terrain: Terrain | null | undefined,
+    variant?: string | null,
+) {
     switch (resourceType) {
         case 'wood':
             return terrain === 'forest';
         case 'water':
             return terrain === 'water';
-        case 'grain':
-            return terrain === 'grain';
         case 'stone':
+            return terrain === 'dirt' && variant === 'dirt_rocks';
         case 'ore':
             return terrain === 'mountain';
-        case 'crystal':
-            return terrain === 'vulcano';
         case 'sand':
             return terrain === 'dessert';
+        case 'snow':
+            return terrain === 'snow';
         default:
             return false;
     }
 }
 
-export function hasTileBeenScoutedForResource(tile: Tile, resourceType: ResourceType) {
+export function doesScoutResourceMatchTile(resourceType: ScoutTargetType, tile: Tile) {
+    if (tile.discovered) {
+        return doesScoutResourceMatchTerrain(resourceType, tile.terrain, tile.variant);
+    }
+
+    const generated = resolveWorldTile(tile.q, tile.r);
+    const variant = resolveGeneratedTileVariant(tile, generated.terrain);
+    return doesScoutResourceMatchTerrain(resourceType, generated.terrain, variant);
+}
+
+export function hasTileBeenScoutedForResource(tile: Tile, resourceType: ScoutTargetType) {
     return tile.scoutedResourceTypes?.includes(resourceType)
         || tile.scoutedForResource === resourceType
         || tile.scoutFoundResource === resourceType;
@@ -231,7 +284,7 @@ export function isHeroSurveyingScoutResource(hero: Pick<Hero, 'movement' | 'scou
     return progress !== null && progress < 1;
 }
 
-function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: ResourceType) {
+function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: ScoutTargetType) {
     const intent = hero.scoutResourceIntent;
     hero.pendingTask = undefined;
 
@@ -246,8 +299,7 @@ function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: Reso
     }
 
     if (!tile.discovered && !hasTileBeenScoutedForResource(tile, intent.resourceType)) {
-        const generated = resolveWorldTile(tile.q, tile.r);
-        const found = doesScoutResourceMatchTerrain(intent.resourceType, generated.terrain);
+        const found = doesScoutResourceMatchTile(intent.resourceType, tile);
         const ensuredNeighbors = markTileScouted(tile, intent.resourceType, found);
         broadcastScoutedTileUpdates(tile, ensuredNeighbors);
 
@@ -263,7 +315,7 @@ function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: Reso
     }
 }
 
-export function pickNextScoutTile(hero: Hero, resourceType: ResourceType) {
+export function pickNextScoutTile(hero: Hero, resourceType: ScoutTargetType) {
     const localTile = pickRandomReachableScoutingNeighbor(hero, resourceType);
     if (localTile) {
         return localTile;
@@ -290,7 +342,7 @@ interface ScoutCandidate {
     townDistance: number;
 }
 
-function pickRandomReachableScoutingNeighbor(hero: Hero, resourceType: ResourceType) {
+function pickRandomReachableScoutingNeighbor(hero: Hero, resourceType: ScoutTargetType) {
     const currentTile = ensureTileExists(hero.q, hero.r);
     const candidates = SIDE_NAMES
         .map((side) => getScoutNeighbor(currentTile, side))
@@ -305,7 +357,7 @@ function getScoutNeighbor(tile: Tile, side: TileSide) {
     return tile.neighbors?.[side] ?? ensureTileExists(tile.q + dq, tile.r + dr);
 }
 
-function createReachableScoutCandidate(hero: Hero, tile: Tile, resourceType: ResourceType): ScoutCandidate | null {
+function createReachableScoutCandidate(hero: Hero, tile: Tile, resourceType: ScoutTargetType): ScoutCandidate | null {
     if (tile.discovered || hasTileBeenScoutedForResource(tile, resourceType)) {
         return null;
     }
@@ -458,7 +510,7 @@ function isOnlineTowncenter(tile: Tile | null | undefined): tile is Tile {
         && isTileActive(tile);
 }
 
-function markTileScouted(tile: Tile, resourceType: ResourceType, found: boolean) {
+function markTileScouted(tile: Tile, resourceType: ScoutTargetType, found: boolean) {
     tile.scouted = true;
     tile.scoutedForResource = resourceType;
     tile.scoutedResourceTypes = tile.scoutedResourceTypes
@@ -509,7 +561,7 @@ function broadcastScoutedTileUpdates(tile: Tile, neighbors: Tile[]) {
     broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
 }
 
-function broadcastScoutFoundPing(hero: Hero, tile: Tile, resourceType: ResourceType) {
+function broadcastScoutFoundPing(hero: Hero, tile: Tile, resourceType: ScoutTargetType) {
     const now = Date.now();
     const intent = hero.scoutResourceIntent;
     const label = `Found ${getScoutResourceLabel(resourceType)}`;
