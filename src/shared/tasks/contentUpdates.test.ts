@@ -124,6 +124,24 @@ test('oven consumes sand and wood to produce glass', () => {
   assert.deepEqual(resources.produces, [{ type: 'glass', amount: 1 }]);
 });
 
+test('hunter hut builds on forest and produces steady food', () => {
+  const buildHunterHut = getTaskDefinition('buildHuntersHut');
+  const huntersHut = getBuildingDefinitionByKey('huntersHut');
+  assert.ok(buildHunterHut);
+  assert.ok(huntersHut);
+
+  const forest = tile({ terrain: 'forest' });
+  assert.equal(buildHunterHut.canStart(forest, hero), true);
+  assert.equal(buildHunterHut.canStart(tile({ terrain: 'plains' }), hero), false);
+
+  const resources = resolveBuildingJobResources(
+    huntersHut,
+    tile({ terrain: 'forest', variant: 'forest_hunters_hut' }),
+    1,
+  );
+  assert.deepEqual(resources.produces, [{ type: 'food', amount: 1 }]);
+});
+
 test('glass house upgrade raises house beds to six', () => {
   const upgrade = getUpgradeDefinitionByKey('glass_house_upgrade');
   assert.ok(upgrade);

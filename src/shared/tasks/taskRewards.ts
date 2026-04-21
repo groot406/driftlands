@@ -38,6 +38,7 @@ export const TASK_COMPLETION_XP_REWARDS: Partial<Record<TaskType, number>> = {
     buildSupplyDepot: 10,
     buildDock: 10,
     buildLumberCamp: 8,
+    buildHuntersHut: 8,
     buildGranary: 10,
     buildBakery: 9,
     buildOven: 9,

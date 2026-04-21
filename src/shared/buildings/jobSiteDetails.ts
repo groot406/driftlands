@@ -144,6 +144,7 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
         || (building.produces ?? []).some((resource) => resource.type === 'grain');
     const buildingProducesFood = building.key === 'bakery'
         || building.key === 'dock'
+        || building.key === 'huntersHut'
         || (building.produces ?? []).some((resource) => resource.type === 'food');
     const buildingProducesStone = building.key === 'quarry'
         || (building.produces ?? []).some((resource) => resource.type === 'stone');
@@ -225,6 +226,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Granaries scale with the grain tile they sit on plus each adjacent active grain field, so dense farms pay off fast.');
             } else if (building.key === 'lumberCamp') {
                 pushAdvice(advice, 'Lumber camps scale with their own forest tile plus adjacent active woods, so place them in thicker stands when you can.');
+            } else if (building.key === 'huntersHut') {
+                pushAdvice(advice, 'Hunter huts scale with their own forest tile plus adjacent active woods, so thicker stands can carry more mouths.');
             } else if (building.key === 'quarry') {
                 pushAdvice(advice, 'Quarries scale with their own mountain plus adjacent active ridge tiles, so broad mountain clusters produce the best stone flow.');
             } else if (building.key === 'dock') {

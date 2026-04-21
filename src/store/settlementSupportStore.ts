@@ -94,6 +94,7 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'dirt_glass_house',
     'forest_lumber_camp',
     'forest_sawmill',
+    'forest_hunters_hut',
     'grain_granary',
     'mountains_with_mine',
     'mountains_reinforced_mine',

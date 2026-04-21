@@ -539,6 +539,51 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'huntersHut',
+        label: 'Hunter Hut',
+        summary: 'Claims a forest tile as a permanent hunting site whose food output scales with nearby woods.',
+        categoryLabel: 'Food',
+        buildTaskKey: 'buildHuntersHut',
+        buildTaskLabel: 'Build Hunter Hut',
+        sortOrder: 31,
+        requiredPopulation: 3,
+        variantKeys: ['forest_hunters_hut'],
+        overlayAssetKey: 'building_lumber_camp_overlay',
+        jobSlots: 1,
+        cycleMs: 60_000,
+        produces: [{ type: 'food', amount: 1 }],
+        jobLabel: 'Hunter',
+        jobPresentation: 'field',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.4,
+        getJobResources(tile, assignedWorkers) {
+            const denseForestBonus = hasRevealedModifier(tile, 'dense_forest')
+                || countActiveAdjacentRevealedModifier(tile, 'dense_forest') > 0
+                ? 1
+                : 0;
+            return {
+                produces: [{ type: 'food', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
+            };
+        },
+        canPlace(tile, _hero) {
+            return tile.terrain === 'forest' && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 6 }];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'forest') {
+                applyVariant(tile, 'forest_hunters_hut', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
         key: 'granary',
         label: 'Granary',
         summary: 'Secures a grain tile as a grain store whose output scales with nearby fields.',

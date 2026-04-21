@@ -12,6 +12,7 @@ export type BuildingKey =
   | 'supplyDepot'
   | 'dock'
   | 'lumberCamp'
+  | 'huntersHut'
   | 'granary'
   | 'bakery'
   | 'workshop'
@@ -203,6 +204,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Lumber Camp',
     description: 'Turns a forest tile into a permanent timber site.',
     taskKey: 'buildLumberCamp',
+  },
+  huntersHut: {
+    label: 'Hunter Hut',
+    description: 'Turns a forest tile into a staffed source of steady food.',
+    taskKey: 'buildHuntersHut',
   },
   granary: {
     label: 'Granary',
@@ -526,6 +532,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 50,
     unlocks: [
       { kind: 'building', key: 'granary' },
+      { kind: 'building', key: 'huntersHut' },
     ],
   },
   {
@@ -662,7 +669,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     requirements: [
       { kind: 'terrain_discovered', terrainKey: 'dessert' },
       { kind: 'population_at_least', amount: 6 },
-      { kind: 'building_operational_at_least', buildingKey: 'supplyDepot', amount: 1 },
+      { kind: 'building_count_at_least', buildingKey: 'supplyDepot', amount: 1 },
       { kind: 'resource_stock_at_least', resourceType: 'wood', amount: 10 },
     ],
     sortOrder: 122,

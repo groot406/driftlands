@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import type { Tile } from '../../core/types/Tile.ts';
 import {
   getTileConditionState,
+  getTileMaintenanceDecayPerMinute,
   initializeBuildingCondition,
+  MAINTENANCE_DECAY_RATE_MULTIPLIER,
   updateTileCondition,
 } from './maintenance.ts';
 
@@ -42,4 +44,9 @@ test('condition state reflects degraded maintained buildings', () => {
   assert.equal(getTileConditionState(65), 'worn');
   assert.equal(getTileConditionState(35), 'damaged');
   assert.equal(getTileConditionState(15), 'offline');
+});
+
+test('maintenance decay is tuned through the global pacing multiplier', () => {
+  const tile = createMaintainedTile();
+  assert.equal(getTileMaintenanceDecayPerMinute(tile), 2.1 * MAINTENANCE_DECAY_RATE_MULTIPLIER);
 });

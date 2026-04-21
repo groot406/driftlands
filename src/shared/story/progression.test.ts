@@ -90,8 +90,10 @@ test('food economy chain unlocks irrigation, stores, and baking from real colony
   assert.ok(progression.unlocked.heroes.includes('h3'));
   assert.ok(progression.unlocked.buildings.includes('well'));
   assert.ok(progression.unlocked.buildings.includes('granary'));
+  assert.ok(progression.unlocked.buildings.includes('huntersHut'));
   assert.ok(progression.unlocked.buildings.includes('bakery'));
   assert.ok(taskKeys.includes('buildWell'));
+  assert.ok(taskKeys.includes('buildHuntersHut'));
   assert.ok(taskKeys.includes('buildBakery'));
 });
 
@@ -182,7 +184,7 @@ test('desert industry unlocks sand, ovens, and glass housing after harsh frontie
     resourceStock: {
       wood: 10,
     },
-    operationalBuildingCounts: {
+    buildingCounts: {
       supplyDepot: 1,
     },
   }), previous.unlockedNodeKeys);

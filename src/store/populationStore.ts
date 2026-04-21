@@ -15,7 +15,7 @@ import {
 // --- Constants ---
 
 /** Base population provided by each town center. */
-export const TC_BASE_POPULATION = 10;
+export const TC_BASE_POPULATION = 15;
 
 /** Additional population provided by each starter house within a town center's reach. */
 export const HOUSE_POPULATION_BONUS = 2;

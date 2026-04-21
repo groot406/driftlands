@@ -107,6 +107,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'young_forest', weight: 2, growth: {next: null, ageMsRange: [600000, 2000000]}, overlayAssetKey: false},
             {key: 'forest_lumber_camp', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},
             {key: 'forest_sawmill', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},
+            {key: 'forest_hunters_hut', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},
             { key: 'forest_mushrooms', weight: 1, minMoisture: 0.62, maxTemperature: 0.72, maxRuggedness: 0.48, decorative: true },
         ],
         decorativeBaseWeight: 34,

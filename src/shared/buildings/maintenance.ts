@@ -10,6 +10,7 @@ export const OFFLINE_CONDITION_THRESHOLD = 15;
 export const REPAIR_DISPATCH_THRESHOLD = 10;
 export const REPAIR_RESTORE_AMOUNT = 35;
 export const REPAIR_CYCLE_MS = 30_000;
+export const MAINTENANCE_DECAY_RATE_MULTIPLIER = 0.6;
 
 export function clampBuildingCondition(value: number | null | undefined) {
     if (!Number.isFinite(value)) {
@@ -44,7 +45,7 @@ export function getTileRepairResources(tile: Tile | null | undefined): ResourceA
 }
 
 export function getTileMaintenanceDecayPerMinute(tile: Tile | null | undefined) {
-    return getBuildingDefinitionForTile(tile)?.maintenanceDecayPerMinute ?? 0;
+    return (getBuildingDefinitionForTile(tile)?.maintenanceDecayPerMinute ?? 0) * MAINTENANCE_DECAY_RATE_MULTIPLIER;
 }
 
 export function getTileJobPresentation(tile: Tile | null | undefined) {
