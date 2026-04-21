@@ -14,6 +14,8 @@ import type { Tile } from '../../types/Tile';
 import type { RenderPassContext } from '../RenderPassContext';
 import { GROWTH_HYBRID_STYLE } from '../visualStyle';
 
+const TEXT_INDICATOR_STACK_GAP_PX = 18;
+
 interface CameraCompositeStateLike {
     offsetX: number;
     offsetY: number;
@@ -684,7 +686,8 @@ export class OverlayRenderer {
 
             const progress = Math.min(1, (nowMs - indicator.created) / indicator.duration);
             const anchor = deps.projectWorldToScreenPixels(worldAnchor.x, worldAnchor.y, cameraFx);
-            const floatY = anchor.y - (progress * 28);
+            const stackOffsetY = (indicator.stackIndex ?? 0) * TEXT_INDICATOR_STACK_GAP_PX;
+            const floatY = anchor.y - stackOffsetY - (progress * 28);
             const alpha = 1 - progress;
 
             if (deps.canvas) {

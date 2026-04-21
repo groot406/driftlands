@@ -9,7 +9,7 @@ function resetIndicators() {
     indicators.splice(0, indicators.length);
 }
 
-test('addTextIndicator captures a static world anchor from the spawn position', () => {
+test('addTextIndicator captures a stable tile anchor from the spawn position', () => {
     resetIndicators();
 
     const source = {
@@ -37,6 +37,22 @@ test('addTextIndicator captures a static world anchor from the spawn position', 
         x: base.x + 6 - 8,
         y: base.y - 3 - 32,
     });
+
+    resetIndicators();
+});
+
+test('getTextIndicators stacks messages that share the same snapped anchor', () => {
+    resetIndicators();
+
+    addTextIndicator({ q: 2, r: 1, currentOffset: { x: 6, y: -3 } }, 'Discovered', '#bfdbfe', 1800);
+    addTextIndicator({ q: 2, r: 1, currentOffset: { x: 6, y: -3 } }, '+3 XP', '#ffd700', 1800);
+    addTextIndicator({ q: 2, r: 1, currentOffset: { x: 32, y: 0 } }, '+1 XP', '#ffd700', 1800);
+
+    const indicators = getTextIndicators();
+    assert.equal(indicators.length, 3);
+    assert.equal(indicators[0]?.stackIndex, 0);
+    assert.equal(indicators[1]?.stackIndex, 1);
+    assert.equal(indicators[2]?.stackIndex, 0);
 
     resetIndicators();
 });

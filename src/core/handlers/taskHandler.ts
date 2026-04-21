@@ -134,24 +134,12 @@ class ClientTaskHandler {
                 const nextCollectedTotal = message.collectedResources.reduce((sum: number, resource: { amount: number }) => sum + resource.amount, 0);
                 const deliveredAmount = nextCollectedTotal - previousCollectedTotal;
                 if (deliveredAmount > 0 && tile) {
-                    const nearbyHeroIds = Object.keys(message.participants)
-                        .filter((heroId) => {
-                            const hero = getHero(heroId);
-                            return !!hero && hero.q === tile.q && hero.r === tile.r;
-                        });
-                    const impactedHeroIds = nearbyHeroIds.length ? nearbyHeroIds : Object.keys(message.participants).slice(0, 1);
-
                     for (const collected of message.collectedResources) {
                         const previousAmount = previousByType.get(collected.type) ?? 0;
                         const addedAmount = collected.amount - previousAmount;
                         if (addedAmount <= 0) continue;
 
-                        const indicatorHero = impactedHeroIds
-                            .map((heroId) => getHero(heroId))
-                            .find((hero): hero is Hero => !!hero);
-                        if (indicatorHero) {
-                            addTextIndicator(indicatorHero, `+${addedAmount}`, '#fff1a8', 1250);
-                        }
+                        addTextIndicator(tile, `+${addedAmount}`, '#fff1a8', 1250);
                     }
 
                     triggerCameraShake({
@@ -307,12 +295,11 @@ class ClientTaskHandler {
             return;
         }
 
-        const indicatorSource = heroIds
+        const heroAnchor = heroIds
             .map((heroId) => getHero(heroId))
-            .find((hero): hero is Hero => !!hero)
-            ?? tile;
+            .find((hero): hero is Hero => !!hero && hero.q === tile.q && hero.r === tile.r);
 
-        addTextIndicator(indicatorSource, feedback.text, feedback.color, 1650);
+        addTextIndicator(heroAnchor ?? tile, feedback.text, feedback.color, 1650);
 
         if (skipSound || !feedback.soundPath) {
             return;

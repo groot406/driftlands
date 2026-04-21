@@ -11,7 +11,7 @@ import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 import { listUndiscoveredFrontierTiles } from '../../game/explorationFrontier';
 
 const EXPLORE_CHAIN_DELAY_MS = 60;
-const EXPLORE_BASE_REQUIRED_XP = 640;
+const EXPLORE_BASE_REQUIRED_XP = 350;
 const EXPLORE_DISTANCE_XP_RATE = 0.32;
 const EXPLORE_REWARDED_XP = 3;
 const EXPLORE_SCOUTING_RATE = 30;
@@ -21,7 +21,6 @@ const EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES = 7;
 const explorePathService = new PathService();
 
 export function getExploreRequiredXp(distance: number) {
-    return 1;
     const distanceFactor = 1 + Math.max(0, distance) * EXPLORE_DISTANCE_XP_RATE;
     return Math.round(EXPLORE_BASE_REQUIRED_XP * distanceFactor);
 }

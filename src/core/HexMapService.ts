@@ -101,6 +101,8 @@ import {
     isSettlerVisibleOnMap,
 } from './render/entities/settlerRender';
 
+const TEXT_INDICATOR_STACK_GAP_PX = 18;
+
 const SCOUTED_TILE_STYLE = {
     fill: 'rgba(100, 116, 139, 0.13)',
     stroke: 'rgba(203, 213, 225, 0.46)',
@@ -5519,7 +5521,8 @@ export class HexMapService {
                 ? this.projectWorldToScreenPixels(worldAnchor.x, worldAnchor.y, cameraFx)
                 : null;
             if (!anchor) continue;
-            const floatY = anchor.y - (progress * 28);
+            const stackOffsetY = (ind.stackIndex ?? 0) * TEXT_INDICATOR_STACK_GAP_PX;
+            const floatY = anchor.y - stackOffsetY - (progress * 28);
             const alpha = 1 - progress;
             if (this._canvas) {
                 const width = this._canvas.width / this._dpr;

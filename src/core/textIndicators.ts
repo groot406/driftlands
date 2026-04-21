@@ -1,10 +1,10 @@
 import {reactive} from 'vue';
 import { axialToPixel } from './camera';
-import { getHeroImpactOffset } from './gameFeel';
 import { DEFAULT_RENDER_CONFIG } from './render/RenderConfig';
 import type { Hero } from './types/Hero';
 
-type TextIndicatorSource = Pick<Hero, 'q' | 'r' | 'currentOffset'>
+type TextIndicatorSource = Pick<Hero, 'q' | 'r'>
+    & Partial<Pick<Hero, 'currentOffset'>>
     & Partial<Pick<Hero, 'id' | 'facing' | 'movement'>>;
 
 export interface TextIndicator {
@@ -21,10 +21,12 @@ export interface TextIndicator {
     color: string;
     created: number;
     duration: number;
+    stackIndex?: number;
 }
 
 // Reactive registry of loaders
 const _indicators = reactive<TextIndicator[]>([]);
+const TEXT_INDICATOR_STACK_ANCHOR_PRECISION = 0.5;
 
 function resolveSourceWorldPosition(position: TextIndicatorSource, nowMs: number) {
     if (!position.movement) {
@@ -74,14 +76,43 @@ function resolveSourceWorldPosition(position: TextIndicatorSource, nowMs: number
 function resolveWorldAnchor(position: TextIndicatorSource, nowMs: number) {
     const base = resolveSourceWorldPosition(position, nowMs);
     const offset = position.currentOffset ?? {x: 0, y: 0};
-    const impact = position.id && position.facing
-        ? getHeroImpactOffset(position.id, position.facing, nowMs)
-        : {x: 0, y: 0};
 
     return {
-        x: base.x + impact.x + offset.x - (DEFAULT_RENDER_CONFIG.heroFrameSize / 2),
-        y: base.y + impact.y + offset.y - (DEFAULT_RENDER_CONFIG.heroFrameSize * 1.5) - 8,
+        x: base.x + offset.x - (DEFAULT_RENDER_CONFIG.heroFrameSize / 2),
+        y: base.y + offset.y - (DEFAULT_RENDER_CONFIG.heroFrameSize * 1.5) - 8,
     };
+}
+
+function getStackAnchorKey(indicator: TextIndicator) {
+    const anchor = indicator.worldAnchor;
+    if (anchor) {
+        const x = Math.round(anchor.x / TEXT_INDICATOR_STACK_ANCHOR_PRECISION);
+        const y = Math.round(anchor.y / TEXT_INDICATOR_STACK_ANCHOR_PRECISION);
+        return `${x},${y}`;
+    }
+
+    const offset = indicator.position.currentOffset ?? {x: 0, y: 0};
+    return `${indicator.position.q},${indicator.position.r},${offset.x},${offset.y}`;
+}
+
+function updateStackIndices() {
+    const groups = new Map<string, TextIndicator[]>();
+
+    for (const indicator of _indicators) {
+        const key = getStackAnchorKey(indicator);
+        let group = groups.get(key);
+        if (!group) {
+            group = [];
+            groups.set(key, group);
+        }
+        group.push(indicator);
+    }
+
+    for (const group of groups.values()) {
+        group.forEach((indicator, index) => {
+            indicator.stackIndex = index;
+        });
+    }
 }
 
 export function addTextIndicator(
@@ -119,5 +150,7 @@ export function getTextIndicators(): TextIndicator[] {
             _indicators.splice(i, 1);
         }
     }
+
+    updateStackIndices();
     return _indicators;
 }

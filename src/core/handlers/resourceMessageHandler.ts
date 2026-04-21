@@ -6,6 +6,7 @@ import {playPositionalSound} from "../../store/soundStore.ts";
 import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
 import {addTextIndicator} from "../textIndicators.ts";
+import {tileIndex} from "../world.ts";
 
 class ClientResourceHandler {
     private initialized = false;
@@ -43,7 +44,8 @@ class ClientResourceHandler {
             amount: message.resource.amount,
             heroIds: [hero.id],
         });
-        addTextIndicator(hero, `+${message.resource.amount}`, '#fff1a8', 1300);
+        const storageTile = tileIndex[message.storageTileId];
+        addTextIndicator(storageTile ?? hero, `+${message.resource.amount}`, '#fff1a8', 1300);
         triggerCameraShake({
             q: hero.q,
             r: hero.r,
