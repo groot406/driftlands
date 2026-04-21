@@ -6,6 +6,7 @@ import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
+import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
 
 export class ServerTaskHandler {
     constructor(_io: Server) {
@@ -28,6 +29,7 @@ export class ServerTaskHandler {
         if (!tile) return;
 
         if (!isHeroAtTaskAccess(hero, task, tile)) return;
+        if (!isTaskUnlockedForUse(task)) return;
 
         hero.pendingExploreTarget = normalizeExploreTarget(task, message.exploreTarget);
 

@@ -10,6 +10,7 @@ import type {PopulationSnapshot} from "../store/populationStore.ts";
 import type { WorkforceSnapshot } from '../store/jobStore.ts';
 import type { StudyStateSnapshot } from '../store/studyStore.ts';
 import type { Settler } from '../core/types/Settler.ts';
+import type { HeroAbilityKey } from './heroes/heroAbilities.ts';
 
 export interface BaseMessage {
     type: string;
@@ -93,6 +94,11 @@ export interface SetJobSiteEnabledMessage extends BaseMessage {
     type: 'jobs:set_site_enabled';
     tileId: string;
     enabled: boolean;
+}
+
+export interface SetActiveStudyMessage extends BaseMessage {
+    type: 'studies:set_active';
+    studyKey: string;
 }
 
 export interface WorldSnapshotMessage extends BaseMessage {
@@ -179,6 +185,22 @@ export interface HeroScoutResourceUpdateMessage extends BaseMessage {
     type: 'hero:scout_resource_update';
     heroId: string;
     intent: HeroScoutResourceIntent | null;
+}
+
+export interface HeroAbilityUseMessage extends BaseMessage {
+    type: 'hero:ability_use';
+    heroId: string;
+    ability: HeroAbilityKey;
+    tileId?: string;
+    taskId?: string;
+}
+
+export interface HeroAbilityUpdateMessage extends BaseMessage {
+    type: 'hero:ability_update';
+    heroId: string;
+    abilityCharges: number;
+    xpChargeProgress: number;
+    abilityChargesEarned: number;
 }
 
 // Hero state updates
@@ -311,11 +333,13 @@ export type ClientMessage =
     | WorldRequestMessage
     | WorldRestartMessage
     | SetJobSiteEnabledMessage
+    | SetActiveStudyMessage
     | MoveRequestMessage
     | HeroScoutResourceRequestMessage
+    | HeroAbilityUseMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
-    | LeaveTaskRequestMessage
+    | LeaveTaskRequestMessage;
 
 export type ServerMessage =
     | PlayerJoinMessage
@@ -339,6 +363,7 @@ export type ServerMessage =
     | ResourceWithdrawMessage
     | HeroPayloadUpdateMessage
     | HeroScoutResourceUpdateMessage
+    | HeroAbilityUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
     | PopulationUpdateMessage

@@ -5193,12 +5193,14 @@ export class HexMapService {
         ore: '⛏️',
         stone: '🪨',
         tools: '🛠️',
-        food: '🍎',
+        food: '🍖',
         crystal: '🔮',
         artifact: '🗿',
         water: '💧',
         grain: '🌾',
         water_lily: '🪷',
+        sand: '⌁',
+        glass: '🥛',
     };
 
     private getTileOverlayKey(t: Tile): string | null {

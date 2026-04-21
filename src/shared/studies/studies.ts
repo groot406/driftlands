@@ -1,7 +1,13 @@
 import type { TaskType } from '../../core/types/Task.ts';
 import type { BuildingKey, UpgradeKey } from '../story/progression.ts';
 
-export type StudyKey = 'field_notebooks' | 'masonry_treatises' | 'warehouse_ledgers';
+export type StudyKey =
+  | 'field_notebooks'
+  | 'masonry_treatises'
+  | 'warehouse_ledgers'
+  | 'crew_rosters'
+  | 'tool_maintenance'
+  | 'frontier_almanacs';
 
 export type StudyUnlockKind = 'task' | 'building' | 'upgrade' | 'buff';
 
@@ -73,6 +79,57 @@ const STUDY_DEFINITIONS: readonly StudyDefinition[] = [
       },
     ],
     effects: [],
+  },
+  {
+    key: 'crew_rosters',
+    label: 'Crew Rosters',
+    summary: 'Foremen compare shift notes until every staffed site can hand work between settlers with less waste.',
+    requiredProgressMs: 8 * STUDY_WORK_CYCLE_MS,
+    unlocks: [
+      {
+        kind: 'buff',
+        key: 'crew_rosters_output',
+        label: 'Crew Rosters',
+        description: 'Staffed production sites produce 5% more output.',
+      },
+    ],
+    effects: [
+      { kind: 'job_output_multiplier', multiplier: 1.05 },
+    ],
+  },
+  {
+    key: 'tool_maintenance',
+    label: 'Tool Maintenance',
+    summary: 'Settlers standardize sharpening, haft repairs, and safe storage so each work cycle lands cleaner.',
+    requiredProgressMs: 10 * STUDY_WORK_CYCLE_MS,
+    unlocks: [
+      {
+        kind: 'buff',
+        key: 'tool_maintenance_output',
+        label: 'Tool Maintenance',
+        description: 'Staffed production sites produce 10% more output.',
+      },
+    ],
+    effects: [
+      { kind: 'job_output_multiplier', multiplier: 1.1 },
+    ],
+  },
+  {
+    key: 'frontier_almanacs',
+    label: 'Frontier Almanacs',
+    summary: 'Weather, soil, shoreline, and ridge notes become seasonal calendars that keep production crews prepared.',
+    requiredProgressMs: 14 * STUDY_WORK_CYCLE_MS,
+    unlocks: [
+      {
+        kind: 'buff',
+        key: 'frontier_almanacs_output',
+        label: 'Frontier Almanacs',
+        description: 'Staffed production sites produce 5% more output.',
+      },
+    ],
+    effects: [
+      { kind: 'job_output_multiplier', multiplier: 1.05 },
+    ],
   },
 ];
 

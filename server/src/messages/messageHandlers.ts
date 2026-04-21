@@ -6,6 +6,8 @@ import { ServerJobHandler } from '../handlers/jobHandler';
 import { ServerTaskHandler } from '../handlers/taskHandler';
 import { ServerCoopHandler } from '../handlers/coopHandler';
 import { ServerScoutHandler } from '../handlers/scoutHandler';
+import { ServerStudyHandler } from '../handlers/studyHandler';
+import { ServerHeroAbilityHandler } from '../handlers/heroAbilityHandler';
 
 // Initialize all server handlers
 export function initializeServerHandlers(io: Server) {
@@ -24,11 +26,17 @@ export function initializeServerHandlers(io: Server) {
   const jobHandler = new ServerJobHandler(io);
   jobHandler.init();
 
+  const studyHandler = new ServerStudyHandler(io);
+  studyHandler.init();
+
+  const heroAbilityHandler = new ServerHeroAbilityHandler(io);
+  heroAbilityHandler.init();
+
   const coopHandler = new ServerCoopHandler(io);
   coopHandler.init();
 
   const scoutHandler = new ServerScoutHandler(io);
   scoutHandler.init();
 
-  return { playerHandler, gameStateHandler, movementHandler, taskHandler, jobHandler, coopHandler, scoutHandler };
+  return { playerHandler, gameStateHandler, movementHandler, taskHandler, jobHandler, studyHandler, heroAbilityHandler, coopHandler, scoutHandler };
 }

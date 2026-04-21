@@ -160,6 +160,20 @@ export function addStudyProgress(progressMs: number) {
   return activeStudy;
 }
 
+export function selectActiveStudy(studyKey: string | null | undefined) {
+  const study = getStudyDefinition(studyKey);
+  if (!study || state.completedStudyKeys.includes(study.key)) {
+    return false;
+  }
+
+  if (state.activeStudyKey === study.key) {
+    return true;
+  }
+
+  state.activeStudyKey = study.key;
+  return true;
+}
+
 export function isContentUnlockedByStudies(content: Parameters<typeof studyUnlocksContent>[1]) {
   return state.completedStudyKeys.some((studyKey) => {
     const study = getStudyDefinition(studyKey);

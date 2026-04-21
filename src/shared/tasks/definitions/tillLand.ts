@@ -4,6 +4,7 @@ import { applyVariant } from '../../../core/variants';
 import type {Tile} from "../../../core/types/Tile";
 import type {Hero} from "../../../core/types/Hero";
 import { hasAdjacentWaterSource } from '../../buildings/water';
+import { hasRevealedModifier } from '../../game/tileFeatures.ts';
 
 const tillLandTask: TaskDefinition = {
     key: 'tillLand',
@@ -11,7 +12,7 @@ const tillLandTask: TaskDefinition = {
     chainAdjacentSameTerrain: (tile: Tile) => tile.terrain === 'dirt',
 
     canStart(tile, _hero) {
-        return (tile.terrain === 'dirt' && tile.isBaseTile);
+        return tile.terrain === 'dirt' && tile.isBaseTile && !hasRevealedModifier(tile, 'rocky_ground');
     },
 
     requiredXp(_distance: number) {

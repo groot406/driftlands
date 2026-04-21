@@ -113,7 +113,7 @@ function getSettlerLocation(settler: Settler) {
 
 function getCargoLabel(settler: Settler) {
   if (!settler.carryingPayload) return 'Empty';
-  return `${settler.carryingPayload.amount} ${settler.carryingPayload.type.replace(/_/g, ' ')}`;
+  return `${Math.floor(settler.carryingPayload.amount)} ${settler.carryingPayload.type.replace(/_/g, ' ')}`;
 }
 
 function inspectSettler(settler: Settler) {

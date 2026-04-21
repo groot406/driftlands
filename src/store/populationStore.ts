@@ -31,13 +31,15 @@ export const MIN_POPULATION = 1;
 
 // --- House variant keys (must match terrainDefs) ---
 
-export const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'] as const;
+export const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'] as const;
 
 const HOUSE_BED_CAPACITY_BY_VARIANT: Record<(typeof HOUSE_VARIANT_KEYS)[number], number> = {
     plains_house: 2,
     dirt_house: 2,
     plains_stone_house: 4,
     dirt_stone_house: 4,
+    plains_glass_house: 6,
+    dirt_glass_house: 6,
 };
 
 // --- State ---

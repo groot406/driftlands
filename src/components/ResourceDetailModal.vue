@@ -4,9 +4,9 @@
       <section class="resource-detail-panel smooth-modal-surface" @click.stop>
         <header class="resource-detail-header">
           <div>
-            <p class="resource-detail-kicker">Resource</p>
+            <p class="resource-detail-kicker">{{ activeResource.kindLabel }}</p>
             <h2 class="resource-detail-title">{{ activeResource.icon }} {{ activeResource.label }}</h2>
-            <p class="resource-detail-subtitle">Current stock, production, and consumption for this single resource.</p>
+            <p class="resource-detail-subtitle">{{ activeResource.subtitle }}</p>
           </div>
           <button class="resource-detail-close" type="button" title="Close" @click="close">✕</button>
         </header>
@@ -35,13 +35,13 @@
                 class="resource-detail-value"
                 :class="activeResource.maintenanceDemand.shortfall > 0 ? 'resource-detail-bad' : 'resource-detail-neutral'"
               >
-                {{ activeResource.maintenanceDemand.amount }} now
+                {{ formatAmount(activeResource.maintenanceDemand.amount) }} now
               </p>
               <p
                 v-if="activeResource.maintenanceDemand.shortfall > 0"
                 class="resource-detail-card-note resource-detail-bad"
               >
-                {{ activeResource.maintenanceDemand.shortfall }} short
+                {{ formatAmount(activeResource.maintenanceDemand.shortfall) }} short
               </p>
             </div>
           </div>
@@ -74,14 +74,14 @@
           <div v-if="activeResource.maintenanceDemand" class="resource-detail-list resource-detail-maintenance-list">
             <div class="resource-detail-list-row resource-detail-list-row-maintenance">
               <span>Building repairs</span>
-              <span>{{ activeResource.maintenanceDemand.amount }} needed now</span>
+              <span>{{ formatAmount(activeResource.maintenanceDemand.amount) }} needed now</span>
             </div>
             <div
               v-if="activeResource.maintenanceDemand.shortfall > 0"
               class="resource-detail-list-row resource-detail-list-row-maintenance"
             >
               <span>Repair shortfall</span>
-              <span>{{ activeResource.maintenanceDemand.shortfall }} missing</span>
+              <span>{{ formatAmount(activeResource.maintenanceDemand.shortfall) }} missing</span>
             </div>
           </div>
         </section>
@@ -98,6 +98,7 @@ import { getBuildingDefinitionByKey } from '../shared/buildings/registry.ts';
 import { getPerMinuteResources } from '../shared/buildings/jobSiteDetails.ts';
 import { resolveBuildingJobResources } from '../shared/buildings/registry.ts';
 import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
+import { getInventoryEntryDefinition, getInventoryKindLabel } from '../shared/game/inventoryPresentation.ts';
 import { workforceState } from '../store/clientJobStore';
 import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { populationState } from '../store/clientPopulationStore';
@@ -106,27 +107,15 @@ import { settlers } from '../store/settlerStore.ts';
 import { closeResourceDetailModal, selectedResourceDetail } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 
-const RESOURCE_META: Record<ResourceType, { label: string; icon: string }> = {
-  wood: { label: 'Wood', icon: '🌲' },
-  food: { label: 'Food', icon: '🍖' },
-  grain: { label: 'Grain', icon: '🌾' },
-  ore: { label: 'Ore', icon: '⛏️' },
-  stone: { label: 'Stone', icon: '🪨' },
-  tools: { label: 'Tools', icon: '🛠️' },
-  water_lily: { label: 'Water Lilies', icon: '🪷' },
-  water: { label: 'Water', icon: '💧' },
-  crystal: { label: 'Crystal', icon: '💎' },
-  artifact: { label: 'Artifact', icon: '🏺' },
-};
-
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.RESOURCE_MODAL));
 
 function formatAmount(value: number) {
-  return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, '');
+  return `${Math.floor(value)}`;
 }
 
 function formatSigned(value: number) {
-  const absolute = formatAmount(Math.abs(value));
+  const absolute = Math.floor(Math.abs(value));
+  if (absolute <= 0) return '0';
   if (value > 0) return `+${absolute}`;
   if (value < 0) return `-${absolute}`;
   return '0';
@@ -166,22 +155,27 @@ const activeResource = computed(() => {
 
   const producedAmount = producers.reduce((sum, entry) => sum + entry.amount, 0);
   const consumedAmount = consumers.reduce((sum, entry) => sum + entry.amount, 0);
-  const net = Number((producedAmount - consumedAmount).toFixed(1));
-  const meta = RESOURCE_META[resourceType];
+  const net = producedAmount - consumedAmount;
+  const netMagnitude = Math.floor(Math.abs(net));
+  const meta = getInventoryEntryDefinition(resourceType);
+  const kindLabel = getInventoryKindLabel(meta.kind);
   const maintenanceOverview = getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
   const maintenanceDemand = maintenanceOverview.backlogResources.find((resource) => resource.type === resourceType) ?? null;
 
   return {
     key: resourceType,
-    ...meta,
-    stock: resourceInventory[resourceType] ?? 0,
-    produced: Number(producedAmount.toFixed(1)),
-    consumed: Number(consumedAmount.toFixed(1)),
+    label: meta.label,
+    icon: meta.icon,
+    kindLabel,
+    subtitle: `Current storage, production, and consumption for this ${kindLabel.toLowerCase()}.`,
+    stock: Math.floor(resourceInventory[resourceType] ?? 0),
+    produced: producedAmount,
+    consumed: consumedAmount,
     net,
     producers,
     consumers,
     maintenanceDemand,
-    netClass: net > 0 ? 'resource-detail-good' : net < 0 ? 'resource-detail-bad' : 'resource-detail-neutral',
+    netClass: netMagnitude <= 0 ? 'resource-detail-neutral' : net > 0 ? 'resource-detail-good' : 'resource-detail-bad',
   };
 });
 

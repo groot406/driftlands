@@ -25,6 +25,7 @@ import { findNearestTaskAccessTile } from '../../../src/shared/tasks/taskAccess'
 import { tileIndex } from '../../../src/shared/game/world';
 import { canAssignWorkersToSite, finalizeMineExtraction, listResolvedJobSites } from './jobSiteRuntime';
 import { addStudyProgress, broadcastStudyState, hasActiveStudy } from '../../../src/store/studyStore';
+import { consumeTileProductionBoost } from '../../../src/shared/game/tileFeatures';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
 import {
     getRepairNeededAmount,
@@ -888,6 +889,9 @@ function completeWorkCycle(settler: Settler, now: number) {
     settler.workProgressMs = 0;
     settler.carryingPayload = cloneResource(siteInfo.output) ?? undefined;
     settler.carryingKind = settler.carryingPayload ? 'output' : null;
+    if (consumeTileProductionBoost(siteInfo.site.tile)) {
+        broadcast({ type: 'tile:updated', tile: siteInfo.site.tile } as TileUpdatedMessage);
+    }
 
     return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now);
 }

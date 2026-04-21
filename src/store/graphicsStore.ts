@@ -16,23 +16,6 @@ export const DEFAULT_GRAPHICS_SETTINGS: GraphicsSettingsData = {
     particles: true,
 };
 
-function detectSafariBrowser() {
-    if (typeof navigator === 'undefined') {
-        return false;
-    }
-
-    const userAgent = navigator.userAgent;
-    const vendor = navigator.vendor ?? '';
-    const isAppleSafari = /Safari/i.test(userAgent) && /Apple/i.test(vendor);
-    const hasChromiumMarker = /Chrome|CriOS|Chromium|Edg|OPR|Brave|Vivaldi/i.test(userAgent);
-    const hasOtherEngineMarker = /Firefox|FxiOS|Android/i.test(userAgent);
-    return isAppleSafari && !hasChromiumMarker && !hasOtherEngineMarker;
-}
-
-export const browserGraphicsProfile = {
-    safariOptimized: detectSafariBrowser(),
-};
-
 function loadGraphicsSettings(): GraphicsSettingsData {
     if (typeof window === 'undefined') {
         return { ...DEFAULT_GRAPHICS_SETTINGS };
@@ -61,27 +44,27 @@ function loadGraphicsSettings(): GraphicsSettingsData {
 export const graphicsStore = reactive<GraphicsSettingsData>(loadGraphicsSettings());
 
 export function isMotionBlurEffectEnabled() {
-    return graphicsStore.motionBlur && !browserGraphicsProfile.safariOptimized;
+    return graphicsStore.motionBlur;
 }
 
 export function isBloomEffectEnabled() {
-    return graphicsStore.bloom && !browserGraphicsProfile.safariOptimized;
+    return graphicsStore.bloom;
 }
 
 export function shouldUseCanvasDropShadow() {
-    return !browserGraphicsProfile.safariOptimized;
+    return true;
 }
 
 export function shouldUseEdgeVignette() {
-    return !browserGraphicsProfile.safariOptimized;
+    return true;
 }
 
 export function shouldUseParticleGlowPass() {
-    return !browserGraphicsProfile.safariOptimized;
+    return true;
 }
 
 export function getEffectiveParticleBudget() {
-    return browserGraphicsProfile.safariOptimized ? 180 : 420;
+    return 420;
 }
 
 export function persistGraphicsSettings() {

@@ -2,10 +2,6 @@
   <div class="space-y-6">
     <h3 class="text-lg font-semibold text-white mb-4">Graphics Settings</h3>
 
-    <div v-if="safariOptimized" class="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs text-amber-100">
-      Safari performance mode is active. Bloom, motion blur, some particle glow, and heavy canvas filters are reduced automatically to keep the map smooth.
-    </div>
-
     <div class="space-y-4">
       <h4 class="text-sm font-medium text-slate-300 border-b border-slate-600 pb-2">Camera Effects</h4>
 
@@ -30,7 +26,6 @@
         <input
           type="checkbox"
           v-model="graphicsSettings.motionBlur"
-          :disabled="safariOptimized"
           @change="saveSettings"
           class="setting-checkbox"
         />
@@ -44,7 +39,6 @@
         <input
           type="checkbox"
           v-model="graphicsSettings.bloom"
-          :disabled="safariOptimized"
           @change="saveSettings"
           class="setting-checkbox"
         />
@@ -67,10 +61,9 @@
 </template>
 
 <script setup lang="ts">
-import { browserGraphicsProfile, graphicsStore, persistGraphicsSettings } from '../../store/graphicsStore';
+import { graphicsStore, persistGraphicsSettings } from '../../store/graphicsStore';
 
 const graphicsSettings = graphicsStore;
-const safariOptimized = browserGraphicsProfile.safariOptimized;
 
 function saveSettings() {
   persistGraphicsSettings();

@@ -2,7 +2,7 @@
   <button
     ref="bubbleEl"
     class="resource-bubble"
-    :class="{ 'resource-bubble-clickable': clickable }"
+    :class="{ 'resource-bubble-clickable': clickable, 'resource-bubble-compact': compact }"
     type="button"
     :title="label"
     @click="emit('select')"
@@ -23,6 +23,7 @@ const props = defineProps<{
   value: number | string;
   resourceKey: ResourceType;
   clickable?: boolean;
+  compact?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -64,5 +65,12 @@ onBeforeUnmount(() => registerResourceTarget(props.resourceKey, null));
 .resource-bubble-clickable:focus-visible {
   outline: 2px solid rgba(251, 191, 36, 0.7);
   outline-offset: 2px;
+}
+
+.resource-bubble-compact {
+  padding: 0.3rem 0.45rem;
+  gap: 0.25rem;
+  background: rgba(31, 63, 62, 0.76);
+  border-color: rgba(183, 242, 255, 0.26);
 }
 </style>

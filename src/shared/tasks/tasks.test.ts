@@ -834,6 +834,8 @@ test('dock builds face the access tile where the hero starts construction', () =
     operationalBuildingCounts: {},
     discoveredTerrains: ['water'],
     unlockedHeroIds: [],
+    completedStudyKeys: [],
+    heroAbilityChargesEarned: 0,
   }));
 
   const hero = heroes[0]!;

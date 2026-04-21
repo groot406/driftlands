@@ -15,6 +15,12 @@ import type { TileUpdatedMessage } from '../protocol.ts';
 import { broadcastGameMessage as broadcast } from '../game/runtime';
 import { getMineOrePerCycle } from './mine.ts';
 import { STUDY_WORK_CYCLE_MS } from '../studies/studies.ts';
+import {
+    countActiveAdjacentRevealedModifier,
+    countActiveAdjacentRevealedSpecial,
+    hasRevealedModifier,
+    hasRevealedSpecial,
+} from '../game/tileFeatures.ts';
 
 export interface BuildingDefinition {
     key: string;
@@ -185,7 +191,8 @@ function getQuarryStonePerCycle(tile: Tile, assignedWorkers: number) {
         return 0;
     }
 
-    return Math.min(4, Math.max(1, countActiveConnectedTiles(tile, 'mountain'))) * assignedWorkers;
+    const rockyBonus = hasRevealedModifier(tile, 'rocky_ground') ? 1 : 0;
+    return (Math.min(4, Math.max(1, countActiveConnectedTiles(tile, 'mountain'))) + rockyBonus) * assignedWorkers;
 }
 
 function countActiveAdjacentTiles(tile: Tile, terrain: Tile['terrain']) {
@@ -505,8 +512,12 @@ const buildings: BuildingDefinition[] = [
         repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 2.1,
         getJobResources(tile, assignedWorkers) {
+            const denseForestBonus = hasRevealedModifier(tile, 'dense_forest')
+                || countActiveAdjacentRevealedModifier(tile, 'dense_forest') > 0
+                ? 1
+                : 0;
             return {
-                produces: [{ type: 'wood', amount: countActiveConnectedTiles(tile, 'forest') * assignedWorkers }],
+                produces: [{ type: 'wood', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -546,8 +557,10 @@ const buildings: BuildingDefinition[] = [
         repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.9,
         getJobResources(tile, assignedWorkers) {
+            const soilBonus = hasRevealedModifier(tile, 'rich_soil') ? 1 : 0;
+            const basinBonus = countActiveAdjacentRevealedSpecial(tile, 'fertile_basin') > 0 ? 1 : 0;
             return {
-                produces: [{ type: 'grain', amount: countActiveConnectedTiles(tile, 'grain') * assignedWorkers }],
+                produces: [{ type: 'grain', amount: (countActiveConnectedTiles(tile, 'grain') + soilBonus + basinBonus) * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -608,6 +621,53 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'plains_bakery', { stagger: false, respectBiome: false });
             } else if (tile.terrain === 'dirt') {
                 applyVariant(tile, 'dirt_bakery', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'oven',
+        label: 'Oven',
+        summary: 'Turns desert sand and steady fuel into glass for advanced housing.',
+        categoryLabel: 'Industry',
+        buildTaskKey: 'buildOven',
+        buildTaskLabel: 'Build Oven',
+        sortOrder: 37,
+        requiredPopulation: 6,
+        variantKeys: ['plains_oven', 'dirt_oven'],
+        overlayAssetKey: 'building_depot_overlay',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        consumes: [
+            { type: 'sand', amount: 2 },
+            { type: 'wood', amount: 1 },
+        ],
+        produces: [{ type: 'glass', amount: 1 }],
+        jobLabel: 'Glassmaker',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.8,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 4200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 10 },
+                { type: 'stone', amount: 6 },
+                { type: 'tools', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_oven', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_oven', { stagger: false, respectBiome: false });
             }
         },
     },
@@ -711,7 +771,7 @@ const buildings: BuildingDefinition[] = [
         buildTaskKey: 'buildHouse',
         buildTaskLabel: 'Build House',
         sortOrder: 37,
-        variantKeys: ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'],
+        variantKeys: ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'],
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.1,
@@ -795,8 +855,9 @@ const buildings: BuildingDefinition[] = [
         repairResources: [{ type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.4,
         getJobResources(tile, assignedWorkers) {
+            const oreBonus = hasRevealedSpecial(tile, 'rich_ore_vein') ? 1 : 0;
             return {
-                produces: [{ type: 'ore', amount: getMineOrePerCycle(tile, assignedWorkers) }],
+                produces: [{ type: 'ore', amount: getMineOrePerCycle(tile, assignedWorkers) + (oreBonus * assignedWorkers) }],
             };
         },
         canPlace(tile, _hero) {

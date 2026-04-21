@@ -69,7 +69,7 @@ test('syncHeroRoster preserves live hero progression for existing heroes', () =>
     assert.equal(veteran.r, 4);
 
     assert.ok(unlock);
-    assert.equal(unlock.stats.xp, 10);
+    assert.equal(unlock.stats.xp, 100);
     assert.equal(unlock.q, 0);
     assert.equal(unlock.r, 0);
   } finally {

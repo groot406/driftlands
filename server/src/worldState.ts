@@ -83,6 +83,14 @@ function serializeTile(tile: Tile): Tile {
     condition: tile.condition ?? null,
     conditionState: tile.conditionState ?? null,
     lastConditionUpdateMs: tile.lastConditionUpdateMs ?? null,
+    modifier: tile.modifier ?? null,
+    modifierRevealed: tile.modifierRevealed ?? false,
+    surveyed: tile.surveyed ?? false,
+    special: tile.special ?? null,
+    specialRevealed: tile.specialRevealed ?? false,
+    specialActivated: tile.specialActivated ?? false,
+    conditionStabilizedUntilMs: tile.conditionStabilizedUntilMs ?? null,
+    nextProductionBoostMultiplier: tile.nextProductionBoostMultiplier ?? null,
   };
 }
 
@@ -94,6 +102,9 @@ function serializeHero(hero: Hero): Hero {
     q: hero.q,
     r: hero.r,
     stats: { ...hero.stats },
+    xpChargeProgress: hero.xpChargeProgress ?? 0,
+    abilityCharges: hero.abilityCharges ?? 0,
+    abilityChargesEarned: hero.abilityChargesEarned ?? 0,
     facing: hero.facing,
     movement: hero.movement
       ? {

@@ -339,6 +339,48 @@
                       </span>
                     </div>
                   </div>
+                  <div v-if="selectedJobSiteDetail.studyOptions.length" class="tc-study-picker">
+                    <button
+                      v-for="study in selectedJobSiteDetail.studyOptions"
+                      :key="study.key"
+                      type="button"
+                      class="tc-study-option"
+                      :class="{
+                        'tc-study-option-active': study.active,
+                        'tc-study-option-complete': study.completed,
+                      }"
+                      :disabled="study.completed || study.active"
+                      @click.stop="selectStudy(study.key)"
+                    >
+                      <div class="tc-study-option-top">
+                        <span class="tc-study-option-title">{{ study.label }}</span>
+                        <span class="tc-detail-pill" :class="study.statusClass">{{ study.statusLabel }}</span>
+                      </div>
+                      <p class="tc-detail-flow-note">{{ study.summary }}</p>
+                      <p v-if="study.unlockText" class="tc-detail-flow-note">{{ study.unlockText }}</p>
+                      <div class="tc-maintenance-bar-track">
+                        <div class="tc-maintenance-bar-fill tc-maintenance-bar-fill-ok" :style="{ width: `${study.percent}%` }" />
+                      </div>
+                      <div class="tc-detail-chip-row">
+                        <span class="tc-detail-chip">{{ study.progressLabel }}</span>
+                        <span
+                          v-for="unlock in study.unlocks"
+                          :key="`${study.key}:${unlock.kind}:${unlock.key}`"
+                          class="tc-detail-chip"
+                          :title="unlock.description"
+                        >
+                          {{ unlock.label }}
+                        </span>
+                        <span
+                          v-for="effect in study.effectLabels"
+                          :key="`${study.key}:${effect}`"
+                          class="tc-detail-chip"
+                        >
+                          {{ effect }}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
                   <div v-if="!selectedJobSiteDetail.studyProgress" class="tc-detail-flow-grid">
                     <section class="tc-detail-flow-card">
                       <p class="tc-detail-flow-title">Consumes</p>
@@ -499,8 +541,16 @@ function toggleJobSiteEnabled(tileId: string, enabled: boolean) {
   });
 }
 
+function selectStudy(studyKey: string) {
+  sendMessage({
+    type: 'studies:set_active',
+    studyKey,
+    timestamp: Date.now(),
+  });
+}
+
 function formatNumber(value: number) {
-  return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, '');
+  return `${Math.floor(value)}`;
 }
 
 function formatCycleDuration(cycleMs: number | undefined) {
@@ -522,6 +572,14 @@ function formatStudyDuration(ms: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function formatStudyEffect(effect: { kind: string; multiplier?: number }) {
+  if (effect.kind === 'job_output_multiplier' && typeof effect.multiplier === 'number') {
+    return `Output +${Math.round((effect.multiplier - 1) * 100)}%`;
+  }
+
+  return 'Colony buff';
 }
 
 function formatResourceList(resources: ResourceAmount[], emptyText: string) {
@@ -597,12 +655,12 @@ function formatMaintenanceBacklog(resource: {
   amount: number;
   shortfall: number;
 }) {
-  const base = `${resource.amount} ${formatResourceType(resource.type)}`;
-  return resource.shortfall > 0 ? `${base} · short ${resource.shortfall}` : base;
+  const base = `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}`;
+  return resource.shortfall > 0 ? `${base} · short ${formatNumber(resource.shortfall)}` : base;
 }
 
 function getWarehouseAmount(type: ResourceType) {
-  return resourceInventory[type] ?? 0;
+  return Math.floor(resourceInventory[type] ?? 0);
 }
 
 function getActionSummary(def: TaskDefinition) {
@@ -879,6 +937,27 @@ const selectedJobSiteDetail = computed(() => {
         unlocks: [],
       }
       : null);
+  const studyOptions = building?.key === 'library'
+    ? studyState.studies.map((study) => {
+      const percent = study.requiredProgressMs > 0
+        ? Math.min(100, Math.floor((study.progressMs / study.requiredProgressMs) * 100))
+        : 100;
+      return {
+        key: study.key,
+        label: study.label,
+        summary: study.summary,
+        progressLabel: `${formatStudyDuration(study.progressMs)} / ${formatStudyDuration(study.requiredProgressMs)}`,
+        percent,
+        active: study.active,
+        completed: study.completed,
+        statusLabel: study.completed ? 'Complete' : study.active ? 'Active' : 'Available',
+        statusClass: study.completed || study.active ? 'tc-detail-pill-ok' : 'tc-detail-pill-warn',
+        unlocks: study.unlocks,
+        unlockText: study.unlocks.map((unlock) => `${unlock.label}: ${unlock.description}`).join(' • '),
+        effectLabels: study.effects.map(formatStudyEffect),
+      };
+    })
+    : [];
   const advice = hasJobSite && building && site
     ? getJobSiteAdvice({
       building,
@@ -938,6 +1017,7 @@ const selectedJobSiteDetail = computed(() => {
     isJobSite: hasJobSite,
     cycleLabel: formatCycleDuration(building?.cycleMs),
     studyProgress,
+    studyOptions,
     assignedWorkersLabel: currentWorkerCount > 0
       ? `${currentWorkerCount} ${building?.jobLabel ?? 'worker'}${currentWorkerCount === 1 ? '' : 's'} on duty`
       : 'No crew assigned',
@@ -1866,6 +1946,55 @@ onUnmounted(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
+}
+
+.tc-study-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tc-study-option {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(15, 23, 42, 0.46);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.tc-study-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.34);
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.tc-study-option:disabled {
+  cursor: default;
+}
+
+.tc-study-option-active {
+  border-color: rgba(134, 239, 172, 0.24);
+  background: rgba(22, 101, 52, 0.18);
+}
+
+.tc-study-option-complete {
+  opacity: 0.78;
+}
+
+.tc-study-option-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tc-study-option-title {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .tc-detail-condition-card {

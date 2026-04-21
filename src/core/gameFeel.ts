@@ -1,6 +1,7 @@
 import type {Hero} from './types/Hero';
 import type {ResourceType} from './types/Resource';
 import {GROWTH_HYBRID_STYLE} from './render/visualStyle';
+import { getInventoryEntryDefinition } from '../shared/game/inventoryPresentation';
 
 export type GameplayImpactKind = 'deposit' | 'handin' | 'work' | 'complete';
 
@@ -69,16 +70,18 @@ export interface GameplayImpactOptions {
 }
 
 const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
-    wood: {icon: '\uD83C\uDF32', color: '#85c46c'},
-    ore: {icon: '\u26CF\uFE0F', color: '#9aa6c7'},
-    stone: {icon: '\uD83E\uDEA8', color: '#b9b3a1'},
-    tools: {icon: '\uD83D\uDEE0\uFE0F', color: '#d8b46a'},
-    food: {icon: '\uD83C\uDF56', color: '#ffb56e'},
-    crystal: {icon: '\uD83D\uDC8E', color: '#8cd6ff'},
-    artifact: {icon: '\uD83C\uDFFA', color: '#e5d489'},
-    water: {icon: '\uD83D\uDCA7', color: '#70d6ff'},
-    grain: {icon: '\uD83C\uDF3E', color: '#f4d36b'},
-    water_lily: {icon: '\uD83E\uDEB7', color: '#8fd9a8'},
+    wood: {icon: getInventoryEntryDefinition('wood').icon, color: '#85c46c'},
+    ore: {icon: getInventoryEntryDefinition('ore').icon, color: '#9aa6c7'},
+    stone: {icon: getInventoryEntryDefinition('stone').icon, color: '#b9b3a1'},
+    tools: {icon: getInventoryEntryDefinition('tools').icon, color: '#d8b46a'},
+    food: {icon: getInventoryEntryDefinition('food').icon, color: '#ffb56e'},
+    crystal: {icon: getInventoryEntryDefinition('crystal').icon, color: '#8cd6ff'},
+    artifact: {icon: getInventoryEntryDefinition('artifact').icon, color: '#e5d489'},
+    sand: {icon: getInventoryEntryDefinition('sand').icon, color: '#e7c979'},
+    glass: {icon: getInventoryEntryDefinition('glass').icon, color: '#b7f2ff'},
+    water: {icon: getInventoryEntryDefinition('water').icon, color: '#70d6ff'},
+    grain: {icon: getInventoryEntryDefinition('grain').icon, color: '#f4d36b'},
+    water_lily: {icon: getInventoryEntryDefinition('water_lily').icon, color: '#8fd9a8'},
 };
 
 const hitStopByKind: Record<GameplayImpactKind, number> = {

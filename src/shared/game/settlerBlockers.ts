@@ -7,7 +7,7 @@ export function formatSettlerBlocker(reason: SettlerBlockerReason | null | undef
 
     const resourceLabel = reason.resourceType?.replace(/_/g, ' ') ?? 'resources';
     const amountLabel = typeof reason.amount === 'number' && reason.amount > 0
-        ? `${reason.amount} `
+        ? `${Math.floor(reason.amount)} `
         : '';
 
     switch (reason.code) {

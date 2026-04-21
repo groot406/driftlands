@@ -30,13 +30,14 @@ function getStoredPlayerName() {
 
 // Determine URL only in browser; Node lacks import.meta.env
 const isBrowser = typeof window !== 'undefined';
-const env = (isBrowser ? (import.meta as any)?.env : {}) || {};
+const env = (isBrowser ? (import.meta as any)?.env : null) || {};
 // Prefer explicit VITE_SERVER_URL when provided. Otherwise use same-origin and
 // let Vite proxy `/socket.io` in development.
 const SOCKET_URL = isBrowser ? (env.VITE_SERVER_URL || undefined) : undefined;
 
 export const socket = io(SOCKET_URL, {
   path: '/socket.io',
+  autoConnect: isBrowser,
 });
 export const currentPlayer = ref<{ id: string; name: string } | null>(null);
 export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);

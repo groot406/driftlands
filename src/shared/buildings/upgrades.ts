@@ -65,6 +65,40 @@ const upgrades: UpgradeDefinition[] = [
     },
   },
   {
+    key: 'glass_house_upgrade',
+    label: 'Glass House',
+    summary: 'Fit stone houses with glasswork and brighter rooms to raise housing capacity again.',
+    baseBuildingKey: 'house',
+    taskKey: 'upgradeHouseToGlass',
+    buildTaskLabel: 'Upgrade To Glass House',
+    sortOrder: 215,
+    fromVariants: ['plains_stone_house', 'dirt_stone_house'],
+    toVariant: 'glass_house',
+    progressionNodeKeys: ['desert_industry'],
+    costs: [
+      { type: 'wood', amount: 4 },
+      { type: 'glass', amount: 4 },
+      { type: 'tools', amount: 2 },
+    ],
+    requiredXp(_distance: number) {
+      return 3400;
+    },
+    heroRate(hero: Hero) {
+      return 18 * Math.max(1, hero.stats.atk);
+    },
+    effects: [
+      { kind: 'house_beds_total', value: 6 },
+    ],
+    resolveToVariant(tile: Tile) {
+      if (tile.variant === 'plains_stone_house') return 'plains_glass_house';
+      if (tile.variant === 'dirt_stone_house') return 'dirt_glass_house';
+      return null;
+    },
+    onComplete() {
+      onPopulationBuildingCompleted();
+    },
+  },
+  {
     key: 'warehouse_upgrade',
     label: 'Warehouse',
     summary: 'Expand the depot into a full warehouse with more capacity.',

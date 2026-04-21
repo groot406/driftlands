@@ -41,6 +41,14 @@ To play on an iPad or another device on your LAN:
 2. Find your computer's local IP address, for example with `ipconfig getifaddr en0` on macOS
 3. Open `http://<your-local-ip>:5173` on the iPad
 
+To play from outside your network through router port forwarding:
+
+1. Start the client and server together with `npm start`, or run `npm run start:server` next to `npm run preview`
+2. Forward external port `5173` to this computer's port `5173`
+3. Open `http://<your-public-ip-or-hostname>:5173`
+
+Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards that traffic to the local game server on `3000`, so you do not need to expose port `3000` separately for the default setup.
+
 ## Run Scripts
 
 - `npm start` starts client and server together
@@ -70,7 +78,7 @@ server/
 Helpful notes:
 
 - the client talks to the local game server over Socket.IO
-- Vite proxies `/socket.io` requests to `http://localhost:3000` during development, including when the page is opened via your LAN IP
+- Vite proxies `/socket.io` requests to `http://localhost:3000` during development and preview, including when the page is opened via your LAN IP or a forwarded public `5173` port
 - the client can also target a custom server with `VITE_SERVER_URL`
 - the server supports `HOST`, `PORT`, `FRONTEND_ORIGIN`, `SERVER_TPS`, and `SERVER_SEED`
 - omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run

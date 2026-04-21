@@ -12,6 +12,7 @@ import { axialDistanceFromOrigin } from '../shared/game/hex';
 import { emitGameplayEvent } from '../shared/gameplay/events';
 import { resolveWorldTile } from './worldGeneration';
 import { setWorldGenerationSeed, worldNoise01 } from './worldVariation';
+import { resolveGeneratedTileModifier, resolveGeneratedTileSpecial } from '../shared/game/tileFeatures.ts';
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
 // World data containers
@@ -205,6 +206,11 @@ export function discoverTile(tile: Tile) {
 
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
+    tile.modifier = resolveGeneratedTileModifier(tile.q, tile.r, generated.terrain);
+    tile.modifierRevealed = false;
+    tile.special = resolveGeneratedTileSpecial(tile.q, tile.r, generated.terrain);
+    tile.specialRevealed = false;
+    tile.specialActivated = false;
     tile.discovered = true;
     tile.isBaseTile = true;
     if (!tileIndex[tile.id]) indexTile(tile);

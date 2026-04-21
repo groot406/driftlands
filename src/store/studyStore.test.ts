@@ -7,6 +7,7 @@ import {
   getStudySnapshot,
   isContentUnlockedByStudies,
   resetStudyState,
+  selectActiveStudy,
 } from './studyStore.ts';
 import { STUDY_WORK_CYCLE_MS } from '../shared/studies/studies.ts';
 
@@ -28,4 +29,17 @@ test('study progress completes subjects and applies their unlock effects', () =>
   addStudyProgress(9 * STUDY_WORK_CYCLE_MS);
 
   assert.equal(isContentUnlockedByStudies({ kind: 'upgrade', key: 'stone_house_upgrade' }), true);
+});
+
+test('active study can be selected from unfinished subjects', () => {
+  resetStudyState();
+
+  assert.equal(selectActiveStudy('warehouse_ledgers'), true);
+  assert.equal(getStudySnapshot().activeStudyKey, 'warehouse_ledgers');
+
+  addStudyProgress(12 * STUDY_WORK_CYCLE_MS);
+
+  assert.equal(isContentUnlockedByStudies({ kind: 'upgrade', key: 'warehouse_upgrade' }), true);
+  assert.equal(selectActiveStudy('warehouse_ledgers'), false);
+  assert.notEqual(getStudySnapshot().activeStudyKey, 'warehouse_ledgers');
 });

@@ -5,6 +5,8 @@ export type Terrain = TerrainKey;
 export type TileActivationState = 'active' | 'inactive';
 export type TileSupportBand = 'stable' | 'fragile' | 'inactive' | 'uncontrolled';
 export type TileConditionState = 'healthy' | 'worn' | 'damaged' | 'offline';
+export type TileModifierKey = 'rich_soil' | 'rocky_ground' | 'dense_forest' | 'sand_rich';
+export type TileSpecialKey = 'fertile_basin' | 'ancient_ruins' | 'natural_crossing' | 'rich_ore_vein';
 
 export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
 export type TileSide = typeof SIDE_NAMES[number];
@@ -41,4 +43,12 @@ export interface Tile {
     condition?: number | null;
     conditionState?: TileConditionState | null;
     lastConditionUpdateMs?: number | null;
+    modifier?: TileModifierKey | null;
+    modifierRevealed?: boolean;
+    surveyed?: boolean;
+    special?: TileSpecialKey | null;
+    specialRevealed?: boolean;
+    specialActivated?: boolean;
+    conditionStabilizedUntilMs?: number | null;
+    nextProductionBoostMultiplier?: number | null;
 }

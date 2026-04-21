@@ -42,6 +42,9 @@ export interface Hero {
     q: number; // axial coordinate q
     r: number; // axial coordinate r
     stats: HeroStats;
+    xpChargeProgress?: number;
+    abilityCharges?: number;
+    abilityChargesEarned?: number;
     facing: 'up' | 'down' | 'left' | 'right'; // sprite facing direction
     movement?: HeroMovementState; // optional movement state if hero is walking
     currentTaskId?: string; // id of currently assigned active task (if any)

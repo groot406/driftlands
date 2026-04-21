@@ -6,6 +6,7 @@ import type { TaskDefinition } from '../../../core/types/Task';
 import { resolveBridgeVariantFromAccessTile } from '../../game/bridges.ts';
 import { isTileControlled } from '../../game/state/settlementSupportStore';
 import { findNearestTaskAccessTile } from '../taskAccess';
+import { countActiveAdjacentRevealedSpecial, hasRevealedSpecial } from '../../game/tileFeatures.ts';
 
 const buildBridgeTask: TaskDefinition = {
     key: 'buildBridge',
@@ -34,8 +35,10 @@ const buildBridgeTask: TaskDefinition = {
         return 16 * Math.max(1, hero.stats.atk);
     },
 
-    requiredResources(_distance: number): ResourceAmount[] {
-        return [{ type: 'wood', amount: 4 }];
+    requiredResources(_distance: number, tile): ResourceAmount[] {
+        const crossingBonus = hasRevealedSpecial(tile, 'natural_crossing')
+            || countActiveAdjacentRevealedSpecial(tile, 'natural_crossing') > 0;
+        return [{ type: 'wood', amount: crossingBonus ? 2 : 4 }];
     },
 
     onStart(tile, instance, participants) {

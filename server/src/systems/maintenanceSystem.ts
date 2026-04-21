@@ -27,6 +27,9 @@ export const maintenanceSystem = {
             }
 
             initializeBuildingCondition(tile, ctx.now);
+            if ((tile.conditionStabilizedUntilMs ?? 0) > ctx.now) {
+                continue;
+            }
             const decayPerMinute = getTileMaintenanceDecayPerMinute(tile);
             if (decayPerMinute <= 0) {
                 continue;

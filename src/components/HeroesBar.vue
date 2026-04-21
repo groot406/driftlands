@@ -95,6 +95,8 @@ const scoutResourceColors: Partial<Record<ResourceType, string>> = {
   stone: '#b9b3a1',
   ore: '#9aa6c7',
   crystal: '#8cd6ff',
+  sand: '#e7c979',
+  glass: '#b7f2ff',
 };
 
 const scoutResourceCodes: Partial<Record<ResourceType, string>> = {
@@ -104,6 +106,8 @@ const scoutResourceCodes: Partial<Record<ResourceType, string>> = {
   stone: 'S',
   ore: 'O',
   crystal: 'C',
+  sand: 'S',
+  glass: 'G',
 };
 
 const scoutOptions = SCOUTABLE_RESOURCE_TYPES.map((type) => ({

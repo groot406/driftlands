@@ -14,6 +14,7 @@ import { isAxialNeighbor } from '../../../src/shared/game/hex';
 import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { canStartTaskDefinition } from '../../../src/shared/tasks/taskAvailability';
+import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
 import { coopState } from '../state/coopState';
 import {
     SCOUT_RESOURCE_TASK_TYPE,
@@ -62,7 +63,7 @@ export class ServerMovementHandler {
 
         const existing = getTaskByTile(tile.id, task);
         const def = getTaskDefinition(task);
-        if (!canStartTaskDefinition(def, tile, hero)) {
+        if (!isTaskUnlockedForUse(task) || !canStartTaskDefinition(def, tile, hero)) {
             return false;
         }
 
@@ -217,6 +218,10 @@ export class ServerMovementHandler {
 
         if (hero.q === target.q && hero.r === target.r) {
             if (task && logicalTaskTile && isHeroAtTaskAccess(hero, task, logicalTaskTile)) {
+                if (!isTaskUnlockedForUse(task)) {
+                    return;
+                }
+
                 const existing = getTaskByTile(logicalTaskTile.id, task);
                 if (!existing) {
                     startTask(logicalTaskTile, task, hero);

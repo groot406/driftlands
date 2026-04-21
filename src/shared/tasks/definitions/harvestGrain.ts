@@ -2,6 +2,7 @@ import { registerTask } from '../taskRegistry';
 import type {TaskDefinition} from "../../../core/types/Task";
 import type {Hero} from "../../../core/types/Hero";
 import { broadcastGameMessage as broadcast } from '../../game/runtime';
+import { countActiveAdjacentRevealedSpecial, hasRevealedModifier } from '../../game/tileFeatures.ts';
 
 const harvestGrainTask: TaskDefinition = {
     key: 'harvestGrain',
@@ -21,8 +22,10 @@ const harvestGrainTask: TaskDefinition = {
         return 15 * hero.stats.atk;
     },
 
-    totalRewardedResources(_distance: number) {
-        return { type: 'grain', amount: 3 };
+    totalRewardedResources(_distance: number, tile) {
+        const modifierBonus = hasRevealedModifier(tile, 'rich_soil') ? 1 : 0;
+        const basinBonus = countActiveAdjacentRevealedSpecial(tile, 'fertile_basin') > 0 ? 1 : 0;
+        return { type: 'grain', amount: 3 + modifierBonus + basinBonus };
     },
 
     onComplete(tile, _instance) {

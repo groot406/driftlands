@@ -3,6 +3,7 @@ import type { StorageKind } from '../game/storage.ts';
 import { getBuildingDefinitionForTile, type BuildingDefinition } from './registry.ts';
 import { getUpgradeDefinitionByKey, listUpgradeDefinitions, type UpgradeDefinition } from './upgrades.ts';
 import { getStudyJobOutputMultiplier } from '../../store/studyStore.ts';
+import { getTileProductionBoostMultiplier } from '../game/tileFeatures.ts';
 
 export interface BuildingStateSnapshot {
   building: BuildingDefinition;
@@ -48,7 +49,7 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
       ?? (building.key === 'supplyDepot' ? 'depot' : 'warehouse')) as StorageKind)
     : (building.key === 'supplyDepot' ? 'depot' : null);
   const upgradeOutputMultiplier = upgrade?.effects.find((effect) => effect.kind === 'job_output_multiplier')?.value ?? 1;
-  const jobOutputMultiplier = upgradeOutputMultiplier * getStudyJobOutputMultiplier();
+  const jobOutputMultiplier = upgradeOutputMultiplier * getStudyJobOutputMultiplier() * getTileProductionBoostMultiplier(tile);
 
   return {
     building,

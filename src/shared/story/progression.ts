@@ -18,11 +18,13 @@ export type BuildingKey =
   | 'library'
   | 'mine'
   | 'quarry'
+  | 'oven'
   | 'house'
   | 'road';
 
 export type UpgradeKey =
   | 'stone_house_upgrade'
+  | 'glass_house_upgrade'
   | 'warehouse_upgrade'
   | 'sawmill_upgrade'
   | 'reinforced_mine_upgrade'
@@ -41,9 +43,13 @@ export type ProgressionNodeKey =
   | 'timber_industry'
   | 'masonry'
   | 'harsh_frontier'
+  | 'desert_industry'
+  | 'frontier_surveying'
+  | 'hero_methods'
   | 'toolmaking'
   | 'expansion'
-  | 'deep_frontier';
+  | 'deep_frontier'
+  | 'ancient_frontier';
 
 export type ProgressionLane =
   | 'Settlement'
@@ -73,7 +79,11 @@ export type RequirementDefinition =
   | { kind: 'resource_stock_at_least'; resourceType: ResourceType; amount: number }
   | { kind: 'building_count_at_least'; buildingKey: BuildingKey; amount: number }
   | { kind: 'building_operational_at_least'; buildingKey: BuildingKey; amount: number }
-  | { kind: 'terrain_discovered'; terrainKey: TerrainKey };
+  | { kind: 'terrain_discovered'; terrainKey: TerrainKey }
+  | { kind: 'study_completed'; studyKey: string }
+  | { kind: 'any_study_completed' }
+  | { kind: 'any_hero_ability_charge_earned' }
+  | { kind: 'any_of'; requirements: RequirementDefinition[] };
 
 export interface RequirementProgress {
   kind: RequirementDefinition['kind'];
@@ -150,6 +160,8 @@ export interface ProgressionMetrics {
   operationalBuildingCounts: Partial<Record<BuildingKey, number>>;
   discoveredTerrains: TerrainKey[];
   unlockedHeroIds: StoryHeroId[];
+  completedStudyKeys: string[];
+  heroAbilityChargesEarned: number;
 }
 
 export type StoryBuildingKey = BuildingKey;
@@ -221,6 +233,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Quarry',
     description: 'Establishes a lasting stone extraction point in the ridges.',
     taskKey: 'buildQuarry',
+  },
+  oven: {
+    label: 'Oven',
+    description: 'Turns desert sand and fuel into glass for advanced housing.',
+    taskKey: 'buildOven',
   },
   house: {
     label: 'House',
@@ -319,6 +336,18 @@ const TASK_META: Record<string, { label: string; description: string }> = {
     label: 'Mine Ore',
     description: 'Extract ore from completed mine heads.',
   },
+  gatherSand: {
+    label: 'Gather Sand',
+    description: 'Collect usable sand from controlled desert ground.',
+  },
+  surveyTile: {
+    label: 'Survey Tile',
+    description: 'Reveal hidden tile modifiers and special frontier features.',
+  },
+  activateRuins: {
+    label: 'Activate Ruins',
+    description: 'Use a hero to turn ancient frontier notes into study progress.',
+  },
 };
 
 const TERRAIN_META: Record<TerrainKey, { label: string; description: string }> = {
@@ -369,6 +398,11 @@ const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; tas
     label: 'Stone House',
     description: 'Rebuilds a basic house into sturdier stone housing with more beds.',
     taskKey: 'upgradeHouseToStone',
+  },
+  glass_house_upgrade: {
+    label: 'Glass House',
+    description: 'Rebuilds a stone house with glasswork for a larger household.',
+    taskKey: 'upgradeHouseToGlass',
   },
   warehouse_upgrade: {
     label: 'Warehouse',
@@ -557,6 +591,26 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     ],
   },
   {
+    key: 'frontier_surveying',
+    label: 'Frontier Surveying',
+    category: 'Frontier',
+    description: 'Organized survey work turns ordinary tiles into informed choices.',
+    requirements: [
+      { kind: 'population_at_least', amount: 5 },
+      {
+        kind: 'any_of',
+        requirements: [
+          { kind: 'building_count_at_least', buildingKey: 'library', amount: 1 },
+          { kind: 'building_count_at_least', buildingKey: 'watchtower', amount: 1 },
+        ],
+      },
+    ],
+    sortOrder: 95,
+    unlocks: [
+      { kind: 'task', key: 'surveyTile' },
+    ],
+  },
+  {
     key: 'timber_industry',
     label: 'Timber Industry',
     category: 'Industry',
@@ -574,15 +628,13 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     key: 'masonry',
     label: 'Masonry',
     category: 'Upgrades',
-    description: 'Stonework makes the first permanent housing, storage, and paving upgrades possible.',
+    description: 'Stonework makes durable frontier paving possible while housing and storage plans move into the library.',
     requirements: [
       { kind: 'resource_stock_at_least', resourceType: 'stone', amount: 8 },
       { kind: 'population_at_least', amount: 4 },
     ],
     sortOrder: 110,
     unlocks: [
-      { kind: 'upgrade', key: 'stone_house_upgrade' },
-      { kind: 'upgrade', key: 'warehouse_upgrade' },
       { kind: 'upgrade', key: 'stone_road_upgrade' },
     ],
   },
@@ -601,6 +653,36 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'terrain', key: 'snow' },
       { kind: 'terrain', key: 'dessert' },
     ],
+  },
+  {
+    key: 'desert_industry',
+    label: 'Desert Industry',
+    category: 'Industry',
+    description: 'The desert becomes a source of glass once the colony can spare fuel and haulers.',
+    requirements: [
+      { kind: 'terrain_discovered', terrainKey: 'dessert' },
+      { kind: 'population_at_least', amount: 6 },
+      { kind: 'building_operational_at_least', buildingKey: 'supplyDepot', amount: 1 },
+      { kind: 'resource_stock_at_least', resourceType: 'wood', amount: 10 },
+    ],
+    sortOrder: 122,
+    unlocks: [
+      { kind: 'building', key: 'oven' },
+      { kind: 'task', key: 'gatherSand' },
+      { kind: 'upgrade', key: 'glass_house_upgrade' },
+    ],
+  },
+  {
+    key: 'hero_methods',
+    label: 'Hero Methods',
+    category: 'Upgrades',
+    description: 'The crew turns hard-won experience into shared hero actions for urgent colony work.',
+    requirements: [
+      { kind: 'any_study_completed' },
+      { kind: 'any_hero_ability_charge_earned' },
+    ],
+    sortOrder: 123,
+    unlocks: [],
   },
   {
     key: 'toolmaking',
@@ -648,6 +730,25 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'terrain', key: 'vulcano' },
       { kind: 'upgrade', key: 'sawmill_upgrade' },
       { kind: 'upgrade', key: 'reinforced_mine_upgrade' },
+    ],
+  },
+  {
+    key: 'ancient_frontier',
+    label: 'Ancient Frontier',
+    category: 'Frontier',
+    description: 'Survey crews learn how to read the rare landmarks scattered beyond the colony.',
+    requirements: [
+      {
+        kind: 'any_of',
+        requirements: [
+          { kind: 'terrain_discovered', terrainKey: 'vulcano' },
+          { kind: 'study_completed', studyKey: 'frontier_almanacs' },
+        ],
+      },
+    ],
+    sortOrder: 150,
+    unlocks: [
+      { kind: 'task', key: 'activateRuins' },
     ],
   },
 ] as const;
@@ -726,7 +827,7 @@ function makeProgressionUnlockDescriptor(unlock: ProgressionUnlockRef): Progress
   }
 }
 
-function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDefinition) {
+function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDefinition): number {
   switch (requirement.kind) {
     case 'population_at_least':
       return metrics.population;
@@ -742,12 +843,37 @@ function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDef
       return metrics.operationalBuildingCounts[requirement.buildingKey] ?? 0;
     case 'terrain_discovered':
       return metrics.discoveredTerrains.includes(requirement.terrainKey) ? 1 : 0;
+    case 'study_completed':
+      return metrics.completedStudyKeys.includes(requirement.studyKey) ? 1 : 0;
+    case 'any_study_completed':
+      return metrics.completedStudyKeys.length > 0 ? 1 : 0;
+    case 'any_hero_ability_charge_earned':
+      return metrics.heroAbilityChargesEarned > 0 ? 1 : 0;
+    case 'any_of':
+      return requirement.requirements.some((innerRequirement) => isRequirementSatisfied(metrics, innerRequirement)) ? 1 : 0;
     default:
       return 0;
   }
 }
 
-function getRequirementLabel(requirement: RequirementDefinition) {
+function getRequirementTarget(requirement: RequirementDefinition): number {
+  switch (requirement.kind) {
+    case 'terrain_discovered':
+    case 'study_completed':
+    case 'any_study_completed':
+    case 'any_hero_ability_charge_earned':
+    case 'any_of':
+      return 1;
+    default:
+      return requirement.amount;
+  }
+}
+
+function isRequirementSatisfied(metrics: ProgressionMetrics, requirement: RequirementDefinition): boolean {
+  return getMetricValue(metrics, requirement) >= getRequirementTarget(requirement);
+}
+
+function getRequirementLabel(requirement: RequirementDefinition): string {
   switch (requirement.kind) {
     case 'population_at_least':
       return `Population ${requirement.amount}`;
@@ -763,6 +889,14 @@ function getRequirementLabel(requirement: RequirementDefinition) {
       return `Operational ${BUILDING_META[requirement.buildingKey].label} x${requirement.amount}`;
     case 'terrain_discovered':
       return `Discover ${TERRAIN_META[requirement.terrainKey]?.label ?? requirement.terrainKey}`;
+    case 'study_completed':
+      return `Complete ${requirement.studyKey.replace(/_/g, ' ')}`;
+    case 'any_study_completed':
+      return 'Complete any study';
+    case 'any_hero_ability_charge_earned':
+      return 'Earn a hero ability charge';
+    case 'any_of':
+      return requirement.requirements.map(getRequirementLabel).join(' or ');
     default:
       return 'Requirement';
   }
@@ -770,7 +904,7 @@ function getRequirementLabel(requirement: RequirementDefinition) {
 
 function buildRequirementProgress(metrics: ProgressionMetrics, requirement: RequirementDefinition): RequirementProgress {
   const current = getMetricValue(metrics, requirement);
-  const target = requirement.kind === 'terrain_discovered' ? 1 : requirement.amount;
+  const target = getRequirementTarget(requirement);
 
   return {
     kind: requirement.kind,
@@ -780,12 +914,12 @@ function buildRequirementProgress(metrics: ProgressionMetrics, requirement: Requ
     satisfied: current >= target,
     currentLabel: requirement.kind === 'terrain_discovered'
       ? (current >= 1 ? 'Discovered' : 'Undiscovered')
-      : `${current}/${target}`,
+      : (target === 1 ? (current >= 1 ? 'Done' : 'Missing') : `${current}/${target}`),
   };
 }
 
 function nodeRequirementsSatisfied(metrics: ProgressionMetrics, node: ProgressionNodeDefinition) {
-  return node.requirements.every((requirement) => getMetricValue(metrics, requirement) >= (requirement.kind === 'terrain_discovered' ? 1 : requirement.amount));
+  return node.requirements.every((requirement) => isRequirementSatisfied(metrics, requirement));
 }
 
 function flattenUnlockedDescriptors(nodeKeys: ProgressionNodeKey[]) {
@@ -851,6 +985,8 @@ export function createEmptyProgressionMetrics(): ProgressionMetrics {
     operationalBuildingCounts: {},
     discoveredTerrains: [],
     unlockedHeroIds: [],
+    completedStudyKeys: [],
+    heroAbilityChargesEarned: 0,
   };
 }
 

@@ -144,7 +144,7 @@ const carryingLabel = computed(() => {
     return 'Empty handed';
   }
 
-  return `${formatTitleCase(currentSettler.carryingKind)} · ${currentSettler.carryingPayload.amount} ${formatTitleCase(currentSettler.carryingPayload.type)}`;
+  return `${formatTitleCase(currentSettler.carryingKind)} · ${Math.floor(currentSettler.carryingPayload.amount)} ${formatTitleCase(currentSettler.carryingPayload.type)}`;
 });
 
 const movementLabel = computed(() => {

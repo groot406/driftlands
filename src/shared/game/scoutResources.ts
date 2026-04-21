@@ -24,6 +24,7 @@ export const SCOUTABLE_RESOURCE_TYPES = [
     'stone',
     'ore',
     'crystal',
+    'sand',
 ] as const satisfies readonly ResourceType[];
 
 export type ScoutableResourceType = typeof SCOUTABLE_RESOURCE_TYPES[number];
@@ -76,6 +77,8 @@ export function getScoutResourceLabel(resourceType: ResourceType) {
             return 'Ore';
         case 'crystal':
             return 'Crystal';
+        case 'sand':
+            return 'Sand';
         case 'water_lily':
             return 'Water Lilies';
         default:
@@ -96,6 +99,8 @@ export function doesScoutResourceMatchTerrain(resourceType: ResourceType, terrai
             return terrain === 'mountain';
         case 'crystal':
             return terrain === 'vulcano';
+        case 'sand':
+            return terrain === 'dessert';
         default:
             return false;
     }

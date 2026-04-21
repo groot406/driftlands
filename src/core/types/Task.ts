@@ -31,7 +31,7 @@ export interface TaskDefinition {
     // Optional base reward resources for participants collectively (split proportionally)
     totalRewardedResources?(distance: number, tile ?: Tile): ResourceAmount;
 
-    requiredResources?(distance: number): ResourceAmount[]
+    requiredResources?(distance: number, tile?: Tile): ResourceAmount[]
     canAutoChainTo?(sourceTile: Tile, targetTile: Tile, hero: Hero): boolean;
 
     repeatTask?: boolean; // whether task can be repeated on same tile

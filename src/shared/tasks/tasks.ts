@@ -287,7 +287,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (selected) {
         const taskTile = pendingTaskTile ?? tile;
         const def = getTaskDefinition(selected);
-        if (!canStartTaskDefinition(def, taskTile, hero)) {
+        if (!isTaskUnlockedForUse(selected) || !canStartTaskDefinition(def, taskTile, hero)) {
             return;
         }
 
@@ -324,6 +324,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     const candidates: Tile[] = [];
     for (const ct of cluster) {
         if (getTaskByTile(ct.id, pending.taskType)) continue;
+        if (!isTaskUnlockedForUse(pending.taskType)) continue;
         if (!canStartTaskDefinition(def, ct, hero)) continue;
         if (def.canAutoChainTo && !def.canAutoChainTo(source, ct, hero)) continue;
         candidates.push(ct);

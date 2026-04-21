@@ -1,56 +1,59 @@
 <template>
-  <div class="noscrollbar flex flex-row items-center flex-wrap gap-1.5 max-w-full overflow-x-auto pointer-events-auto">
-    <button class="pop-bubble" type="button" title="Open settler overview" @click="openPopulationModal()">
-      <span class="text-xs leading-none">&#x1F465;</span>
-      <span class="text-[11px] font-mono leading-none text-emerald-50">{{ populationState.current }}/{{ populationState.max }}</span>
-    </button>
-    <ResourceBubble
-      v-for="r in resources"
-      :key="r.key"
-      :resource-key="r.key"
-      :icon="r.icon"
-      :label="r.label"
-      :value="r.value"
-      clickable
-      @select="openResourceDetailModal(r.key)"
-    />
+  <div class="resource-hud noscrollbar">
+    <div class="inventory-strip inventory-strip-stocks">
+      <button class="pop-bubble" type="button" title="Open settler overview" @click="openPopulationModal()">
+        <span class="text-xs leading-none">&#x1F465;</span>
+        <span class="text-[11px] font-mono leading-none text-emerald-50">{{ populationState.current }}/{{ populationState.max }}</span>
+      </button>
+      <ResourceBubble
+        v-for="r in stockEntries"
+        :key="r.key"
+        :resource-key="r.key"
+        :icon="r.icon"
+        :label="r.label"
+        :value="r.value"
+        clickable
+        @select="openResourceDetailModal(r.key)"
+      />
+    </div>
+
+    <div v-if="itemEntries.length" class="inventory-strip inventory-strip-items" aria-label="Items">
+      <ResourceBubble
+        v-for="r in itemEntries"
+        :key="r.key"
+        :resource-key="r.key"
+        :icon="r.icon"
+        :label="r.label"
+        :value="r.value"
+        compact
+        clickable
+        @select="openResourceDetailModal(r.key)"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {ref, type Ref, watch} from 'vue';
+import { computed } from 'vue';
 import ResourceBubble from './ResourceBubble.vue';
 import {resourceInventory, resourceVersion} from '../store/resourceStore';
 import {populationState} from '../store/clientPopulationStore';
-import type {ResourceType} from "../core/types/Resource.ts";
 import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
+import { runSnapshot, runVersion } from '../store/runStore.ts';
+import { getVisibleInventoryEntries } from '../shared/game/inventoryPresentation.ts';
 
-interface ResMeta {
-  key: ResourceType;
-  label: string;
-  icon: string;
-}
+const visibleEntries = computed(() => {
+  resourceVersion.value;
+  runVersion.value;
 
-interface Resource {
-  key: ResourceType;
-  label: string;
-  icon: string;
-  value: number;
-}
-const resources:Ref<Resource[]> = ref([]);
+  return getVisibleInventoryEntries({
+    inventory: resourceInventory,
+    progression: runSnapshot.value?.progression ?? null,
+  });
+});
 
-watch(() => resourceVersion.value, () => {
-  const meta: ResMeta[] = [
-    {key: 'wood', label: 'Wood', icon: '\uD83C\uDF32'},
-    {key: 'ore', label: 'Ore', icon: '\u26CF\uFE0F'},
-    {key: 'stone', label: 'Stone', icon: '\uD83E\uDEA8'},
-    {key: 'tools', label: 'Tools', icon: '\uD83D\uDEE0\uFE0F'},
-    {key: 'food', label: 'Food', icon: '\uD83C\uDF56'},
-    {key: 'grain', label: 'Grain', icon: '\uD83C\uDF3E'},
-    {key: 'water_lily', label: 'Water Lilies', icon: '\uD83E\uDEB7'},
-  ];
-  resources.value = meta.map(m => ({...m, value: resourceInventory[m.key] ?? 0}));
-}, {immediate: true});
+const stockEntries = computed(() => visibleEntries.value.filter((entry) => entry.group === 'stock'));
+const itemEntries = computed(() => visibleEntries.value.filter((entry) => entry.group === 'item'));
 </script>
 
 <script lang="ts">
@@ -58,6 +61,29 @@ export default {name: 'ResourceBar'};
 </script>
 
 <style scoped>
+.resource-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  pointer-events: auto;
+}
+
+.inventory-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inventory-strip-items {
+  padding-left: 6px;
+  border-left: 1px solid rgba(196, 228, 151, 0.28);
+}
+
 .pop-bubble {
   @apply flex items-center gap-1.5 rounded-lg border px-2 py-1.5 shadow-md;
   background: rgba(35, 83, 46, 0.78);

@@ -1,7 +1,7 @@
 import { broadcast } from '../messages/messageRouter';
 import type { GameplayEvent } from '../../../src/shared/gameplay/events';
 import { tiles } from '../../../src/shared/game/world';
-import { syncHeroRoster } from '../../../src/shared/game/state/heroStore';
+import { heroes, syncHeroRoster } from '../../../src/shared/game/state/heroStore';
 import { getPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getWorkforceSnapshot } from '../../../src/shared/game/state/jobStore';
 import { resourceInventory } from '../../../src/shared/game/state/resourceStore';
@@ -27,6 +27,7 @@ import { loadStoryProgression } from '../../../src/shared/story/progressionState
 import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
 import { getForestDiscoveryHintTile, getWaterDiscoveryHintTile } from '../../../src/shared/game/waterDiscoveryHint';
+import { getStudySnapshot } from '../../../src/store/studyStore';
 
 interface RunMetrics {
   discoveredTiles: number;
@@ -72,6 +73,10 @@ const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: 
     speakerId: 'h4',
     text: 'Everything still bottlenecks through the center stone. A supply depot is how this stops feeling like improvisation.',
   },
+  frontier_surveying: {
+    speakerId: 'h2',
+    text: 'We are done guessing at good ground. Survey the frontier, mark what is special, and build where the land gives us leverage.',
+  },
   timber_industry: {
     speakerId: 'h4',
     text: 'We can stop scavenging wood tree by tree now. A staffed lumber camp turns forest into a real production line.',
@@ -84,6 +89,14 @@ const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: 
     speakerId: 'h2',
     text: 'The forgiving ground ends here. Snow and desert are within reach now, if the colony can keep itself fed on the march.',
   },
+  desert_industry: {
+    speakerId: 'h4',
+    text: 'The desert is not empty. Bring sand home, feed an oven, and glass becomes the next housing bottleneck.',
+  },
+  hero_methods: {
+    speakerId: 'h3',
+    text: 'The crew has learned enough to act decisively. Save those hero charges for the moments where timing matters.',
+  },
   toolmaking: {
     speakerId: 'h4',
     text: 'Ore is useful. Tools are leverage. Give the miners a workshop and the whole frontier starts moving differently.',
@@ -95,6 +108,10 @@ const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: 
   deep_frontier: {
     speakerId: 'h4',
     text: 'The deep frontier is open now. If we stall here, it will be because the colony stopped upgrading the tools that got it this far.',
+  },
+  ancient_frontier: {
+    speakerId: 'h3',
+    text: 'Some landmarks are older than the colony by centuries. Survey them carefully, and the ruins may still teach us.',
   },
 };
 
@@ -386,6 +403,8 @@ class RunState {
       operationalBuildingCounts,
       discoveredTerrains: Array.from(discoveredTerrains).filter((terrain): terrain is NonNullable<typeof terrain> => !!terrain),
       unlockedHeroIds: this.snapshot?.progression.unlocked.heroes.slice() ?? [],
+      completedStudyKeys: getStudySnapshot().completedStudyKeys,
+      heroAbilityChargesEarned: heroes.reduce((sum, hero) => sum + (hero.abilityChargesEarned ?? 0), 0),
     };
   }
 

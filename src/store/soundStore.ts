@@ -10,7 +10,20 @@ interface SoundSettings {
 
 const SOUND_SETTINGS_KEY = 'driftlands-sound-settings';
 
+function defaultSoundSettings(): SoundSettings {
+    return {
+        masterVolume: 0.7,
+        musicVolume: 0.8,
+        effectsVolume: 1.0,
+        soundEnabled: true,
+    };
+}
+
 function loadSoundSettings(): SoundSettings {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
+        return defaultSoundSettings();
+    }
+
     try {
         const saved = localStorage.getItem(SOUND_SETTINGS_KEY);
         if (saved) {
@@ -26,15 +39,14 @@ function loadSoundSettings(): SoundSettings {
         console.warn('Failed to load sound settings:', error);
     }
 
-    return {
-        masterVolume: 0.7,
-        musicVolume: 0.8,
-        effectsVolume: 1.0,
-        soundEnabled: true,
-    };
+    return defaultSoundSettings();
 }
 
 function saveSoundSettings(settings: SoundSettings) {
+    if (typeof localStorage === 'undefined' || typeof localStorage.setItem !== 'function') {
+        return;
+    }
+
     try {
         localStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify(settings));
     } catch (error) {

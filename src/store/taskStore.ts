@@ -27,6 +27,7 @@ import { getTaskEconomyDistance } from '../shared/tasks/economy';
 import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/taskAvailability';
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
+import { addHeroAbilityProgress } from '../shared/heroes/heroAbilities.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -329,7 +330,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 
     const economyDistance = getTaskEconomyDistance();
     const tileDistance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const requiredResources = def.requiredResources?.(economyDistance);
+    const requiredResources = def.requiredResources?.(economyDistance, tile);
     const collectedResources: ResourceAmount[] = [];
 
     if (!taskStore.tasksByTile[tile.id]) {
@@ -405,7 +406,7 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
     const tile = tileIndex[inst.tileId];
     if (!def || !tile) return;
 
-    const requiredResources = def.requiredResources?.(getTaskEconomyDistance());
+    const requiredResources = inst.requiredResources ?? def.requiredResources?.(getTaskEconomyDistance(), tile);
 
     // add carrying to collected resources if applicable (only positive amounts)
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
@@ -552,6 +553,7 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
 
     const rewardedStats = rewardStatsToParticipants(inst, participants);
     const rewardedResources = rewardResourcesToParticipants(inst, participants);
+    rewardAbilityProgressToParticipants(inst, participants);
 
     // Call task's onComplete hook
     def.onComplete?.(tile, inst, participants);
@@ -588,6 +590,28 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     cleanupCompletedTasks();
 }
 
+export function boostTaskProgress(taskId: string, amount: number) {
+    const inst = taskStore.taskIndex[taskId];
+    const def = inst ? getTaskDefinition(inst.type) : null;
+    const tile = inst ? tileIndex[inst.tileId] : null;
+    if (!inst || !def || !tile || amount <= 0 || inst.completedMs) {
+        return false;
+    }
+
+    const participants = Object.keys(inst.participants)
+        .map((heroId) => heroes.find((hero) => hero.id === heroId))
+        .filter((hero): hero is Hero => !!hero);
+
+    inst.progressXp = Math.min(inst.requiredXp, inst.progressXp + amount);
+    if (inst.progressXp >= inst.requiredXp) {
+        completeTask(inst, def, tile, participants);
+        return true;
+    }
+
+    broadcastTaskProgress(inst);
+    return true;
+}
+
 function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[]): Record<string, any> {
     const rewardedStats: Record<string, any> = {};
     const def = getTaskDefinition(instance.type);
@@ -617,6 +641,17 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
         }
     }
     return rewardedStats;
+}
+
+function rewardAbilityProgressToParticipants(instance: TaskInstance, participants: Hero[]) {
+    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
+
+    for (const hero of participants) {
+        const contrib = instance.participants[hero.id] || 0;
+        const share = contrib / totalContrib;
+        const progress = Math.max(10, Math.round((instance.requiredXp * share) / 100));
+        addHeroAbilityProgress(hero, progress);
+    }
 }
 
 function rewardResourcesToParticipants(instance: TaskInstance, participants: Hero[]): Record<string, any> {

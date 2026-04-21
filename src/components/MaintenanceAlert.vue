@@ -30,8 +30,8 @@
         </div>
 
         <p v-if="topShortfall" class="maintenance-alert__note">
-          Backlog needs {{ topShortfall.amount }} {{ formatResourceType(topShortfall.type) }}
-          <span v-if="topShortfall.shortfall > 0"> · short {{ topShortfall.shortfall }}</span>
+          Backlog needs {{ formatAmount(topShortfall.amount) }} {{ formatResourceType(topShortfall.type) }}
+          <span v-if="topShortfall.shortfall > 0"> · short {{ formatAmount(topShortfall.shortfall) }}</span>
         </p>
         <p v-else class="maintenance-alert__note">
           Repair crews pull wood and stone from colony storage automatically.
@@ -64,6 +64,10 @@ import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.t
 import { formatResourceType } from '../shared/buildings/jobSiteDetails.ts';
 
 const expanded = ref(false);
+
+function formatAmount(value: number) {
+  return `${Math.floor(value)}`;
+}
 
 const summary = computed(() => {
   void resourceVersion.value;

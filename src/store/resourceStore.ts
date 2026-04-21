@@ -16,6 +16,8 @@ const RESOURCE_TYPES: ResourceType[] = [
     'water',
     'grain',
     'water_lily',
+    'sand',
+    'glass',
 ];
 
 function createEmptyInventory(): Partial<Record<ResourceType, number>> {
@@ -30,6 +32,8 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         water: 0,
         grain: 0,
         water_lily: 0,
+        sand: 0,
+        glass: 0,
     };
 }
 

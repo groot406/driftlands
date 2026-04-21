@@ -51,7 +51,7 @@ interface SupportSelectionResult {
 
 const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'] as const;
 const CAMPFIRE_VARIANT_KEYS = ['plains_campfire', 'dirt_campfire'] as const;
-const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house'] as const;
+const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'] as const;
 const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
     'road',
     'road_ad',
@@ -84,10 +84,14 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'dirt_bakery',
     'plains_library',
     'dirt_library',
+    'plains_oven',
+    'dirt_oven',
     'plains_house',
     'dirt_house',
     'plains_stone_house',
     'dirt_stone_house',
+    'plains_glass_house',
+    'dirt_glass_house',
     'forest_lumber_camp',
     'forest_sawmill',
     'grain_granary',

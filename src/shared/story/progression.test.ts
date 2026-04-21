@@ -20,6 +20,8 @@ function metrics(overrides: Partial<ProgressionMetrics> = {}): ProgressionMetric
     beds: overrides.beds ?? 0,
     frontierDistance: overrides.frontierDistance ?? 0,
     unlockedHeroIds: overrides.unlockedHeroIds ?? [],
+    completedStudyKeys: overrides.completedStudyKeys ?? [],
+    heroAbilityChargesEarned: overrides.heroAbilityChargesEarned ?? 0,
   };
 }
 
@@ -159,16 +161,65 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.ok(progression.unlockedNodeKeys.includes('expansion'));
   assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
   assert.ok(progression.unlocked.buildings.includes('workshop'));
-  assert.ok(progression.unlocked.upgrades.includes('stone_house_upgrade'));
-  assert.ok(progression.unlocked.upgrades.includes('warehouse_upgrade'));
+  assert.equal(progression.unlocked.upgrades.includes('stone_house_upgrade'), false);
+  assert.equal(progression.unlocked.upgrades.includes('warehouse_upgrade'), false);
   assert.ok(progression.unlocked.upgrades.includes('stone_road_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('sawmill_upgrade'));
   assert.ok(progression.unlocked.upgrades.includes('reinforced_mine_upgrade'));
   assert.ok(progression.unlocked.terrains.includes('snow'));
   assert.ok(progression.unlocked.terrains.includes('dessert'));
   assert.ok(progression.unlocked.terrains.includes('vulcano'));
-  assert.ok(taskKeys.includes('upgradeHouseToStone'));
+  assert.equal(taskKeys.includes('upgradeHouseToStone'), false);
+  assert.equal(taskKeys.includes('upgradeDepotToWarehouse'), false);
   assert.ok(taskKeys.includes('upgradeMineToReinforced'));
+});
+
+test('desert industry unlocks sand, ovens, and glass housing after harsh frontier discovery', () => {
+  const previous = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['dessert'],
+    population: 6,
+    resourceStock: {
+      wood: 10,
+    },
+    operationalBuildingCounts: {
+      supplyDepot: 1,
+    },
+  }), previous.unlockedNodeKeys);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.ok(progression.unlockedNodeKeys.includes('desert_industry'));
+  assert.ok(progression.unlocked.buildings.includes('oven'));
+  assert.ok(progression.unlocked.upgrades.includes('glass_house_upgrade'));
+  assert.ok(taskKeys.includes('gatherSand'));
+  assert.ok(taskKeys.includes('buildOven'));
+  assert.ok(taskKeys.includes('upgradeHouseToGlass'));
+});
+
+test('surveying unlocks from a library or watchtower and enough population', () => {
+  const progression = evaluateProgression(metrics({
+    population: 5,
+    buildingCounts: {
+      library: 1,
+    },
+  }));
+
+  assert.ok(progression.unlockedNodeKeys.includes('frontier_surveying'));
+  assert.ok(getAvailableStoryTaskKeys(progression).includes('surveyTile'));
+});
+
+test('hero methods require a completed study and an earned hero charge', () => {
+  const locked = evaluateProgression(metrics({
+    completedStudyKeys: ['field_notebooks'],
+  }));
+  assert.equal(locked.unlockedNodeKeys.includes('hero_methods'), false);
+
+  const unlocked = evaluateProgression(metrics({
+    completedStudyKeys: ['field_notebooks'],
+    heroAbilityChargesEarned: 1,
+  }));
+  assert.ok(unlocked.unlockedNodeKeys.includes('hero_methods'));
 });
 
 test('previously unlocked milestones stay unlocked after metrics dip on reload', () => {

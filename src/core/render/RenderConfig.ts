@@ -1,5 +1,4 @@
 import {
-    browserGraphicsProfile,
     getEffectiveParticleBudget,
     graphicsStore,
     isBloomEffectEnabled,
@@ -117,7 +116,7 @@ const BASE_RENDER_QUALITY_PROFILES: Record<RenderQualityName, RenderQualityProfi
     high: {
         name: 'high',
         particlesEnabled: true,
-        maxParticles: browserGraphicsProfile.safariOptimized ? 170 : 330,
+        maxParticles: 330,
         bloomEnabled: true,
         cloudsEnabled: true,
         vignetteEnabled: true,

@@ -3,7 +3,7 @@ import {moveCamera} from './camera.ts';
 import {ensureTileExists, getTilesInRadius} from './world.ts';
 import {handleHeroArrival} from '../shared/tasks/tasks';
 import {sendMessage} from "./socket.ts";
-import type {MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
+import type {HeroAbilityUseMessage, MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
 import type {Hero, HeroPendingTaskIntent, HeroStats} from "./types/Hero.ts";
 import type { ResourceType } from './types/Resource.ts';
@@ -12,6 +12,7 @@ import {playPositionalSound} from "../store/soundStore.ts";
 import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../shared/game/movementBalance';
 import { SCOUT_RESOURCE_TASK_TYPE, shouldStopScoutResourceForMovement } from '../shared/game/scoutResources';
+import type { HeroAbilityKey } from '../shared/heroes/heroAbilities.ts';
 
 type AxialCoord = { q: number; r: number };
 
@@ -319,6 +320,23 @@ export function requestHeroScoutResource(heroId: string, resourceType: ResourceT
         resourceType,
         timestamp: Date.now(),
     });
+}
+
+export function requestHeroAbilityUse(
+    heroId: string,
+    ability: HeroAbilityKey,
+    target: { tileId?: string; taskId?: string } = {},
+) {
+    const message: HeroAbilityUseMessage = {
+        type: 'hero:ability_use',
+        heroId,
+        ability,
+        tileId: target.tileId,
+        taskId: target.taskId,
+        timestamp: Date.now(),
+    };
+
+    sendMessage(message);
 }
 
 export function focusHero(hero: Hero) {
