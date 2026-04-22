@@ -62,14 +62,14 @@ export const GROWTH_HYBRID_STYLE = {
         story: 'rgba(180, 240, 255, 0.92)',
     },
     particles: {
-        ambientDensity: 0.42,
-        waterRippleChance: 0.28,
-        forestLeafChance: 0.35,
+        ambientDensity: 0.82,
+        waterRippleChance: 0.38,
+        forestLeafChance: 0.55,
         grainPollenChance: 0.36,
         snowChance: 0.24,
         sandChance: 0.22,
         townSparkChance: 0.28,
-        volcanoSmokeChance: 0.12,
+        volcanoSmokeChance: 0.52,
     },
     camera: {
         adaptiveRadiusScale: 1.16,

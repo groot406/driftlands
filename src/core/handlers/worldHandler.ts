@@ -18,6 +18,7 @@ import {loadPopulation, updatePopulation} from "../../store/clientPopulationStor
 import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
 import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
 import { loadSettlers, updateSettlers } from '../../store/settlerStore';
+import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -58,6 +59,11 @@ class WorldHandler {
 
     private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
         loadWorld(message.tiles);
+        for (const tile of message.tiles) {
+            if (tile.discovered) {
+                clearScoutStoryHintsForTile(tile.q, tile.r);
+            }
+        }
         loadHeroes(message.heroes);
         loadSettlers(message.settlers ?? [], message.timestamp);
         loadTasks(message.tasks);
@@ -121,7 +127,10 @@ class WorldHandler {
     }
 
     private handleTileUpdated(message: TileUpdatedMessage): void {
-        updateTile(message.tile)
+        updateTile(message.tile);
+        if (message.tile.discovered) {
+            clearScoutStoryHintsForTile(message.tile.q, message.tile.r);
+        }
     }
 
     private handlePopulationUpdate(message: PopulationUpdateMessage): void {

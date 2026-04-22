@@ -29,6 +29,18 @@ export function clearStoryTileHint(id: string) {
   }
 }
 
+export function clearScoutStoryHintsForTile(q: number, r: number) {
+  const next = activeStoryTileHints.value.filter((entry) => (
+    entry.kind !== 'scout'
+    || entry.q !== q
+    || entry.r !== r
+  ));
+
+  if (next.length !== activeStoryTileHints.value.length) {
+    activeStoryTileHints.value = next;
+  }
+}
+
 export function clearStoryTileHints() {
   activeStoryTileHints.value = [];
 }

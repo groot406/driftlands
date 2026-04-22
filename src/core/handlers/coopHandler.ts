@@ -4,6 +4,7 @@ import { addCoopPing, replacePartyState } from '../../store/playerStore';
 import { addNotification } from '../../store/notificationStore';
 import { currentPlayerId } from '../socket';
 import { setStoryTileHint } from '../../store/storyHintStore';
+import { tileIndex } from '../world';
 
 class ClientCoopHandler {
   private initialized = false;
@@ -24,6 +25,11 @@ class ClientCoopHandler {
 
   private handlePing(message: CoopPingMessage): void {
     if (message.ping.kind === 'scout' && message.ping.label.startsWith('Found ')) {
+      const tile = tileIndex[`${message.ping.q},${message.ping.r}`];
+      if (tile?.discovered) {
+        return;
+      }
+
       setStoryTileHint({
         id: `scout:${message.ping.id}`,
         kind: 'scout',

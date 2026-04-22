@@ -440,10 +440,7 @@ function handleStoryHintPointerUp(hint: { id: string; kind: string; q: number; r
     return;
   }
   const target = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
-  const requested = requestSelectedHeroExploreStoryHint(target, 'story-hint');
-  if (requested && hint.kind === 'scout') {
-    clearStoryTileHint(hint.id);
-  }
+  requestSelectedHeroExploreStoryHint(target, 'story-hint');
 }
 
 function handlePointerMoveEvent(ev: Event) {
