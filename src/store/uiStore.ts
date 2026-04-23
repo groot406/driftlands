@@ -137,6 +137,7 @@ export function pauseGame() {
 export function returnToTitle() {
     uiStore.phase = 'title';
     uiStore.menuOpen = false;
+    soundService.pauseSounds();
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
     closeWindow(WINDOW_IDS.MISSION_CENTER);
     closeWindow(WINDOW_IDS.NOTIFICATION_CENTER);

@@ -79,9 +79,8 @@ test('worldState.init uses the provided seed and resets hero/task state', async 
     assert.equal(getWorldGenerationSeed(), 42);
     assert.equal(taskStore.tasks.length, 0);
     assert.ok(heroes.length > 0);
-    assert.equal(settlers.length, 1);
+    assert.equal(settlers.length, 0);
     assert.ok(heroes.every((hero) => hero.q === 0 && hero.r === 0));
-    assert.ok(settlers.every((settler) => settler.q === 0 && settler.r === 0));
     assert.ok(heroes.every((hero) => !hero.currentTaskId && !hero.pendingTask && !hero.carryingPayload));
   } finally {
     if (originalEnvSeed === undefined) {

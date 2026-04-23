@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { soundService, soundState } from '../core/soundService';
+import { isPlaying } from './uiStore';
 
 interface SoundSettings {
     masterVolume: number;
@@ -125,6 +126,7 @@ export async function playPositionalSound(
     }
 ) {
     if (!soundStore.soundEnabled) return;
+    if (!isPlaying()) return;
     await soundService.playPositionalSound(id, soundPath, q, r, options);
 }
 

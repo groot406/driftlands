@@ -1,5 +1,5 @@
 <template>
-  <button
+  <NineSliceButton
     ref="bubbleEl"
     class="resource-bubble"
     :class="{ 'resource-bubble-clickable': clickable, 'resource-bubble-compact': compact }"
@@ -7,15 +7,16 @@
     :title="label"
     @click="emit('select')"
   >
-    <span class="text-xs leading-none">{{ icon }}</span>
-    <span class="text-[11px] font-mono leading-none text-emerald-50">{{ value }}</span>
-  </button>
+    <span class="leading-none mr-4">{{ icon }}</span>
+    <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50">{{ value }}</span>
+  </NineSliceButton>
 </template>
 
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {registerResourceTarget} from '../core/gameFeel';
 import type {ResourceType} from "../core/types/Resource.ts";
+import NineSliceButton from "./ui/NineSliceButton.vue";
 
 const props = defineProps<{
   icon: string;
@@ -44,7 +45,7 @@ onBeforeUnmount(() => registerResourceTarget(props.resourceKey, null));
 
 <style scoped>
 .resource-bubble {
-  @apply flex items-center gap-1.5 rounded-lg border px-2 py-1.5 shadow-md;
+  @apply flex items-center;
   background: rgba(35, 83, 46, 0.78);
   border-color: rgba(196, 228, 151, 0.34);
   appearance: none;
@@ -57,9 +58,8 @@ onBeforeUnmount(() => registerResourceTarget(props.resourceKey, null));
 }
 
 .resource-bubble-clickable:hover {
-  transform: translateY(-1px);
-  border-color: rgba(252, 211, 77, 0.56);
-  background: rgba(65, 103, 49, 0.9);
+  transform: translateY(-2px);
+  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
 }
 
 .resource-bubble-clickable:focus-visible {

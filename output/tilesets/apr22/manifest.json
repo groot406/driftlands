@@ -1,0 +1,3731 @@
+{
+  "source": {
+    "path": "/Users/andredegroot/Downloads/ChatGPT Image Apr 22, 2026 at 04_15_42 PM.png",
+    "width": 1254,
+    "height": 1254
+  },
+  "detectedGrid": {
+    "rows": 12,
+    "cols": 12,
+    "confidence": 0.965,
+    "method": "border-connected-background-column-projection",
+    "visualBands": {
+      "columns": [
+        {
+          "left": 9,
+          "right": 97
+        },
+        {
+          "left": 111,
+          "right": 201
+        },
+        {
+          "left": 216,
+          "right": 306
+        },
+        {
+          "left": 320,
+          "right": 411
+        },
+        {
+          "left": 425,
+          "right": 514
+        },
+        {
+          "left": 530,
+          "right": 619
+        },
+        {
+          "left": 634,
+          "right": 723
+        },
+        {
+          "left": 738,
+          "right": 828
+        },
+        {
+          "left": 843,
+          "right": 932
+        },
+        {
+          "left": 947,
+          "right": 1037
+        },
+        {
+          "left": 1051,
+          "right": 1141
+        },
+        {
+          "left": 1155,
+          "right": 1245
+        }
+      ],
+      "rows": [
+        {
+          "top": 12,
+          "bottom": 101
+        },
+        {
+          "top": 113,
+          "bottom": 206
+        },
+        {
+          "top": 219,
+          "bottom": 312
+        },
+        {
+          "top": 326,
+          "bottom": 417
+        },
+        {
+          "top": 430,
+          "bottom": 521
+        },
+        {
+          "top": 534,
+          "bottom": 626
+        },
+        {
+          "top": 639,
+          "bottom": 731
+        },
+        {
+          "top": 743,
+          "bottom": 836
+        },
+        {
+          "top": 847,
+          "bottom": 940
+        },
+        {
+          "top": 954,
+          "bottom": 1044
+        },
+        {
+          "top": 1059,
+          "bottom": 1148
+        },
+        {
+          "top": 1162,
+          "bottom": 1253
+        }
+      ]
+    },
+    "cellBounds": [
+      {
+        "row": 0,
+        "col": 0,
+        "left": 0,
+        "top": 0,
+        "right": 104,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 1,
+        "left": 104,
+        "top": 0,
+        "right": 209,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 2,
+        "left": 209,
+        "top": 0,
+        "right": 314,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 3,
+        "left": 314,
+        "top": 0,
+        "right": 418,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 4,
+        "left": 418,
+        "top": 0,
+        "right": 522,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 5,
+        "left": 522,
+        "top": 0,
+        "right": 627,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 6,
+        "left": 627,
+        "top": 0,
+        "right": 732,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 7,
+        "left": 732,
+        "top": 0,
+        "right": 836,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 8,
+        "left": 836,
+        "top": 0,
+        "right": 940,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 9,
+        "left": 940,
+        "top": 0,
+        "right": 1045,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 10,
+        "left": 1045,
+        "top": 0,
+        "right": 1150,
+        "bottom": 104
+      },
+      {
+        "row": 0,
+        "col": 11,
+        "left": 1150,
+        "top": 0,
+        "right": 1254,
+        "bottom": 104
+      },
+      {
+        "row": 1,
+        "col": 0,
+        "left": 0,
+        "top": 104,
+        "right": 104,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 1,
+        "left": 104,
+        "top": 104,
+        "right": 209,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 2,
+        "left": 209,
+        "top": 104,
+        "right": 314,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 3,
+        "left": 314,
+        "top": 104,
+        "right": 418,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 4,
+        "left": 418,
+        "top": 104,
+        "right": 522,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 5,
+        "left": 522,
+        "top": 104,
+        "right": 627,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 6,
+        "left": 627,
+        "top": 104,
+        "right": 732,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 7,
+        "left": 732,
+        "top": 104,
+        "right": 836,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 8,
+        "left": 836,
+        "top": 104,
+        "right": 940,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 9,
+        "left": 940,
+        "top": 104,
+        "right": 1045,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 10,
+        "left": 1045,
+        "top": 104,
+        "right": 1150,
+        "bottom": 209
+      },
+      {
+        "row": 1,
+        "col": 11,
+        "left": 1150,
+        "top": 104,
+        "right": 1254,
+        "bottom": 209
+      },
+      {
+        "row": 2,
+        "col": 0,
+        "left": 0,
+        "top": 209,
+        "right": 104,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 1,
+        "left": 104,
+        "top": 209,
+        "right": 209,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 2,
+        "left": 209,
+        "top": 209,
+        "right": 314,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 3,
+        "left": 314,
+        "top": 209,
+        "right": 418,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 4,
+        "left": 418,
+        "top": 209,
+        "right": 522,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 5,
+        "left": 522,
+        "top": 209,
+        "right": 627,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 6,
+        "left": 627,
+        "top": 209,
+        "right": 732,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 7,
+        "left": 732,
+        "top": 209,
+        "right": 836,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 8,
+        "left": 836,
+        "top": 209,
+        "right": 940,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 9,
+        "left": 940,
+        "top": 209,
+        "right": 1045,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 10,
+        "left": 1045,
+        "top": 209,
+        "right": 1150,
+        "bottom": 314
+      },
+      {
+        "row": 2,
+        "col": 11,
+        "left": 1150,
+        "top": 209,
+        "right": 1254,
+        "bottom": 314
+      },
+      {
+        "row": 3,
+        "col": 0,
+        "left": 0,
+        "top": 314,
+        "right": 104,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 1,
+        "left": 104,
+        "top": 314,
+        "right": 209,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 2,
+        "left": 209,
+        "top": 314,
+        "right": 314,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 3,
+        "left": 314,
+        "top": 314,
+        "right": 418,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 4,
+        "left": 418,
+        "top": 314,
+        "right": 522,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 5,
+        "left": 522,
+        "top": 314,
+        "right": 627,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 6,
+        "left": 627,
+        "top": 314,
+        "right": 732,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 7,
+        "left": 732,
+        "top": 314,
+        "right": 836,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 8,
+        "left": 836,
+        "top": 314,
+        "right": 940,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 9,
+        "left": 940,
+        "top": 314,
+        "right": 1045,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 10,
+        "left": 1045,
+        "top": 314,
+        "right": 1150,
+        "bottom": 418
+      },
+      {
+        "row": 3,
+        "col": 11,
+        "left": 1150,
+        "top": 314,
+        "right": 1254,
+        "bottom": 418
+      },
+      {
+        "row": 4,
+        "col": 0,
+        "left": 0,
+        "top": 418,
+        "right": 104,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 1,
+        "left": 104,
+        "top": 418,
+        "right": 209,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 2,
+        "left": 209,
+        "top": 418,
+        "right": 314,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 3,
+        "left": 314,
+        "top": 418,
+        "right": 418,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 4,
+        "left": 418,
+        "top": 418,
+        "right": 522,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 5,
+        "left": 522,
+        "top": 418,
+        "right": 627,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 6,
+        "left": 627,
+        "top": 418,
+        "right": 732,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 7,
+        "left": 732,
+        "top": 418,
+        "right": 836,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 8,
+        "left": 836,
+        "top": 418,
+        "right": 940,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 9,
+        "left": 940,
+        "top": 418,
+        "right": 1045,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 10,
+        "left": 1045,
+        "top": 418,
+        "right": 1150,
+        "bottom": 522
+      },
+      {
+        "row": 4,
+        "col": 11,
+        "left": 1150,
+        "top": 418,
+        "right": 1254,
+        "bottom": 522
+      },
+      {
+        "row": 5,
+        "col": 0,
+        "left": 0,
+        "top": 522,
+        "right": 104,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 1,
+        "left": 104,
+        "top": 522,
+        "right": 209,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 2,
+        "left": 209,
+        "top": 522,
+        "right": 314,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 3,
+        "left": 314,
+        "top": 522,
+        "right": 418,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 4,
+        "left": 418,
+        "top": 522,
+        "right": 522,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 5,
+        "left": 522,
+        "top": 522,
+        "right": 627,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 6,
+        "left": 627,
+        "top": 522,
+        "right": 732,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 7,
+        "left": 732,
+        "top": 522,
+        "right": 836,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 8,
+        "left": 836,
+        "top": 522,
+        "right": 940,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 9,
+        "left": 940,
+        "top": 522,
+        "right": 1045,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 10,
+        "left": 1045,
+        "top": 522,
+        "right": 1150,
+        "bottom": 627
+      },
+      {
+        "row": 5,
+        "col": 11,
+        "left": 1150,
+        "top": 522,
+        "right": 1254,
+        "bottom": 627
+      },
+      {
+        "row": 6,
+        "col": 0,
+        "left": 0,
+        "top": 627,
+        "right": 104,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 1,
+        "left": 104,
+        "top": 627,
+        "right": 209,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 2,
+        "left": 209,
+        "top": 627,
+        "right": 314,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 3,
+        "left": 314,
+        "top": 627,
+        "right": 418,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 4,
+        "left": 418,
+        "top": 627,
+        "right": 522,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 5,
+        "left": 522,
+        "top": 627,
+        "right": 627,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 6,
+        "left": 627,
+        "top": 627,
+        "right": 732,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 7,
+        "left": 732,
+        "top": 627,
+        "right": 836,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 8,
+        "left": 836,
+        "top": 627,
+        "right": 940,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 9,
+        "left": 940,
+        "top": 627,
+        "right": 1045,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 10,
+        "left": 1045,
+        "top": 627,
+        "right": 1150,
+        "bottom": 732
+      },
+      {
+        "row": 6,
+        "col": 11,
+        "left": 1150,
+        "top": 627,
+        "right": 1254,
+        "bottom": 732
+      },
+      {
+        "row": 7,
+        "col": 0,
+        "left": 0,
+        "top": 732,
+        "right": 104,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 1,
+        "left": 104,
+        "top": 732,
+        "right": 209,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 2,
+        "left": 209,
+        "top": 732,
+        "right": 314,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 3,
+        "left": 314,
+        "top": 732,
+        "right": 418,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 4,
+        "left": 418,
+        "top": 732,
+        "right": 522,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 5,
+        "left": 522,
+        "top": 732,
+        "right": 627,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 6,
+        "left": 627,
+        "top": 732,
+        "right": 732,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 7,
+        "left": 732,
+        "top": 732,
+        "right": 836,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 8,
+        "left": 836,
+        "top": 732,
+        "right": 940,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 9,
+        "left": 940,
+        "top": 732,
+        "right": 1045,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 10,
+        "left": 1045,
+        "top": 732,
+        "right": 1150,
+        "bottom": 836
+      },
+      {
+        "row": 7,
+        "col": 11,
+        "left": 1150,
+        "top": 732,
+        "right": 1254,
+        "bottom": 836
+      },
+      {
+        "row": 8,
+        "col": 0,
+        "left": 0,
+        "top": 836,
+        "right": 104,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 1,
+        "left": 104,
+        "top": 836,
+        "right": 209,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 2,
+        "left": 209,
+        "top": 836,
+        "right": 314,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 3,
+        "left": 314,
+        "top": 836,
+        "right": 418,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 4,
+        "left": 418,
+        "top": 836,
+        "right": 522,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 5,
+        "left": 522,
+        "top": 836,
+        "right": 627,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 6,
+        "left": 627,
+        "top": 836,
+        "right": 732,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 7,
+        "left": 732,
+        "top": 836,
+        "right": 836,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 8,
+        "left": 836,
+        "top": 836,
+        "right": 940,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 9,
+        "left": 940,
+        "top": 836,
+        "right": 1045,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 10,
+        "left": 1045,
+        "top": 836,
+        "right": 1150,
+        "bottom": 940
+      },
+      {
+        "row": 8,
+        "col": 11,
+        "left": 1150,
+        "top": 836,
+        "right": 1254,
+        "bottom": 940
+      },
+      {
+        "row": 9,
+        "col": 0,
+        "left": 0,
+        "top": 940,
+        "right": 104,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 1,
+        "left": 104,
+        "top": 940,
+        "right": 209,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 2,
+        "left": 209,
+        "top": 940,
+        "right": 314,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 3,
+        "left": 314,
+        "top": 940,
+        "right": 418,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 4,
+        "left": 418,
+        "top": 940,
+        "right": 522,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 5,
+        "left": 522,
+        "top": 940,
+        "right": 627,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 6,
+        "left": 627,
+        "top": 940,
+        "right": 732,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 7,
+        "left": 732,
+        "top": 940,
+        "right": 836,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 8,
+        "left": 836,
+        "top": 940,
+        "right": 940,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 9,
+        "left": 940,
+        "top": 940,
+        "right": 1045,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 10,
+        "left": 1045,
+        "top": 940,
+        "right": 1150,
+        "bottom": 1045
+      },
+      {
+        "row": 9,
+        "col": 11,
+        "left": 1150,
+        "top": 940,
+        "right": 1254,
+        "bottom": 1045
+      },
+      {
+        "row": 10,
+        "col": 0,
+        "left": 0,
+        "top": 1045,
+        "right": 104,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 1,
+        "left": 104,
+        "top": 1045,
+        "right": 209,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 2,
+        "left": 209,
+        "top": 1045,
+        "right": 314,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 3,
+        "left": 314,
+        "top": 1045,
+        "right": 418,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 4,
+        "left": 418,
+        "top": 1045,
+        "right": 522,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 5,
+        "left": 522,
+        "top": 1045,
+        "right": 627,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 6,
+        "left": 627,
+        "top": 1045,
+        "right": 732,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 7,
+        "left": 732,
+        "top": 1045,
+        "right": 836,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 8,
+        "left": 836,
+        "top": 1045,
+        "right": 940,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 9,
+        "left": 940,
+        "top": 1045,
+        "right": 1045,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 10,
+        "left": 1045,
+        "top": 1045,
+        "right": 1150,
+        "bottom": 1150
+      },
+      {
+        "row": 10,
+        "col": 11,
+        "left": 1150,
+        "top": 1045,
+        "right": 1254,
+        "bottom": 1150
+      },
+      {
+        "row": 11,
+        "col": 0,
+        "left": 0,
+        "top": 1150,
+        "right": 104,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 1,
+        "left": 104,
+        "top": 1150,
+        "right": 209,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 2,
+        "left": 209,
+        "top": 1150,
+        "right": 314,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 3,
+        "left": 314,
+        "top": 1150,
+        "right": 418,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 4,
+        "left": 418,
+        "top": 1150,
+        "right": 522,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 5,
+        "left": 522,
+        "top": 1150,
+        "right": 627,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 6,
+        "left": 627,
+        "top": 1150,
+        "right": 732,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 7,
+        "left": 732,
+        "top": 1150,
+        "right": 836,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 8,
+        "left": 836,
+        "top": 1150,
+        "right": 940,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 9,
+        "left": 940,
+        "top": 1150,
+        "right": 1045,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 10,
+        "left": 1045,
+        "top": 1150,
+        "right": 1150,
+        "bottom": 1254
+      },
+      {
+        "row": 11,
+        "col": 11,
+        "left": 1150,
+        "top": 1150,
+        "right": 1254,
+        "bottom": 1254
+      }
+    ]
+  },
+  "tiles": [
+    {
+      "row": 0,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 0,
+        "right": 104,
+        "bottom": 104
+      },
+      "label": "Plains",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "plains",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 0,
+        "right": 209,
+        "bottom": 104
+      },
+      "label": "Plains Grass Detail",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 0,
+        "right": 314,
+        "bottom": 104
+      },
+      "label": "Plains Wildflowers",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 0,
+        "right": 418,
+        "bottom": 104
+      },
+      "label": "Plains Clover",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 0,
+        "right": 522,
+        "bottom": 104
+      },
+      "label": "Plains Meadow",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 0,
+        "right": 627,
+        "bottom": 104
+      },
+      "label": "Road Bend",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 0,
+        "right": 732,
+        "bottom": 104
+      },
+      "label": "Road Corner",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 0,
+        "right": 836,
+        "bottom": 104
+      },
+      "label": "Road Split",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 0,
+        "right": 940,
+        "bottom": 104
+      },
+      "label": "Dirt Pebbles",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_pebbles",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 0,
+        "right": 1045,
+        "bottom": 104
+      },
+      "label": "Mountain Lichen",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "mountains_lichen",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 0,
+        "right": 1150,
+        "bottom": 104
+      },
+      "label": "Mountain Scree",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "mountains_scree",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 0,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 0,
+        "right": 1254,
+        "bottom": 104
+      },
+      "label": "Mountain Ridge",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "mountains_ridge",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 104,
+        "right": 104,
+        "bottom": 209
+      },
+      "label": "Forest",
+      "status": "promote",
+      "kind": "terrainWithOverhang",
+      "baseAssetKey": "forest",
+      "overlayAssetKey": "forest_overlay",
+      "renderAnchor": "terrain-top",
+      "overlayOffset": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "row": 1,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 104,
+        "right": 209,
+        "bottom": 209
+      },
+      "label": "Young Forest",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "young_forest",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 104,
+        "right": 314,
+        "bottom": 209
+      },
+      "label": "Forest Mushrooms",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "forest_mushrooms",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 104,
+        "right": 418,
+        "bottom": 209
+      },
+      "label": "Dense Forest",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 104,
+        "right": 522,
+        "bottom": 209
+      },
+      "label": "Forest Camp",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 104,
+        "right": 627,
+        "bottom": 209
+      },
+      "label": "Pine Forest",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 104,
+        "right": 732,
+        "bottom": 209
+      },
+      "label": "Road End",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 104,
+        "right": 836,
+        "bottom": 209
+      },
+      "label": "Rocky Road",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 104,
+        "right": 940,
+        "bottom": 209
+      },
+      "label": "Rocky Forest",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 104,
+        "right": 1045,
+        "bottom": 209
+      },
+      "label": "Rocky Plains",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 104,
+        "right": 1150,
+        "bottom": 209
+      },
+      "label": "Rocky Hills",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 1,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 104,
+        "right": 1254,
+        "bottom": 209
+      },
+      "label": "Rocky Field",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 209,
+        "right": 104,
+        "bottom": 314
+      },
+      "label": "Mountains",
+      "status": "promote",
+      "kind": "terrainWithOverhang",
+      "baseAssetKey": "mountains-v2",
+      "overlayAssetKey": "mountains_overhang",
+      "renderAnchor": "terrain-top",
+      "overlayOffset": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "row": 2,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 209,
+        "right": 209,
+        "bottom": 314
+      },
+      "label": "Mountains Ashen",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "mountains_ashen",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 209,
+        "right": 314,
+        "bottom": 314
+      },
+      "label": "Mountain Peak",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 209,
+        "right": 418,
+        "bottom": 314
+      },
+      "label": "Mountain Dark",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 209,
+        "right": 522,
+        "bottom": 314
+      },
+      "label": "Snowy Mountain",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 209,
+        "right": 627,
+        "bottom": 314
+      },
+      "label": "Snowy Ridge",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 209,
+        "right": 732,
+        "bottom": 314
+      },
+      "label": "Snow Mountains",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 209,
+        "right": 836,
+        "bottom": 314
+      },
+      "label": "Snow Mountain Rocks",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 209,
+        "right": 940,
+        "bottom": 314
+      },
+      "label": "Snow Pines",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "snow_pines",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 209,
+        "right": 1045,
+        "bottom": 314
+      },
+      "label": "Snow Rock",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "snow_rock",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 209,
+        "right": 1150,
+        "bottom": 314
+      },
+      "label": "Snow",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "snow",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 2,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 209,
+        "right": 1254,
+        "bottom": 314
+      },
+      "label": "Ice Water",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 314,
+        "right": 104,
+        "bottom": 418
+      },
+      "label": "Water",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "water-v2",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 314,
+        "right": 209,
+        "bottom": 418
+      },
+      "label": "Water Lily",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "water_lily",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 314,
+        "right": 314,
+        "bottom": 418
+      },
+      "label": "Water Reeds",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "water_reeds",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 314,
+        "right": 418,
+        "bottom": 418
+      },
+      "label": "Water Shallows",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "water_shallows",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 314,
+        "right": 522,
+        "bottom": 418
+      },
+      "label": "Water Islets",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "water_islets",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 314,
+        "right": 627,
+        "bottom": 418
+      },
+      "label": "Dirt Mossy",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_mossy",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 314,
+        "right": 732,
+        "bottom": 418
+      },
+      "label": "Dirt Rocks",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_rocks",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 314,
+        "right": 836,
+        "bottom": 418
+      },
+      "label": "Plains Rock",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "plains_rock",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 314,
+        "right": 940,
+        "bottom": 418
+      },
+      "label": "Rocky Plains Detail",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 314,
+        "right": 1045,
+        "bottom": 418
+      },
+      "label": "Dessert Shrubs",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dessert_shrubs",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 314,
+        "right": 1150,
+        "bottom": 418
+      },
+      "label": "Dessert",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dessert",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 3,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 314,
+        "right": 1254,
+        "bottom": 418
+      },
+      "label": "Dessert Stones",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dessert_stones",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 418,
+        "right": 104,
+        "bottom": 522
+      },
+      "label": "Dirt Cracked",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_cracked",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 418,
+        "right": 209,
+        "bottom": 522
+      },
+      "label": "Cactus",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "cactus",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 418,
+        "right": 314,
+        "bottom": 522
+      },
+      "label": "Dessert Rock",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dessert_rock",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 418,
+        "right": 418,
+        "bottom": 522
+      },
+      "label": "Dirt Big Rock",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_big_rock",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 418,
+        "right": 522,
+        "bottom": 522
+      },
+      "label": "Dessert Rock Two",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dessert_rock2",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 418,
+        "right": 627,
+        "bottom": 522
+      },
+      "label": "Black Rock",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 418,
+        "right": 732,
+        "bottom": 522
+      },
+      "label": "Black Rock Detail",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 418,
+        "right": 836,
+        "bottom": 522
+      },
+      "label": "Lava Cracks",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 418,
+        "right": 940,
+        "bottom": 522
+      },
+      "label": "Volcanic Cracks",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 418,
+        "right": 1045,
+        "bottom": 522
+      },
+      "label": "Vulcano",
+      "status": "promote",
+      "kind": "terrainWithOverhang",
+      "baseAssetKey": "vulcano",
+      "overlayAssetKey": "vulcano_overhang",
+      "renderAnchor": "terrain-top",
+      "overlayOffset": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "row": 4,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 418,
+        "right": 1150,
+        "bottom": 522
+      },
+      "label": "Lava Field",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 4,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 418,
+        "right": 1254,
+        "bottom": 522
+      },
+      "label": "Vulcano Tall",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 522,
+        "right": 104,
+        "bottom": 627
+      },
+      "label": "Grain",
+      "status": "promote",
+      "kind": "terrainWithOverhang",
+      "baseAssetKey": "grain-v2",
+      "overlayAssetKey": "grain_overhang",
+      "renderAnchor": "terrain-top",
+      "overlayOffset": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "row": 5,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 522,
+        "right": 209,
+        "bottom": 627
+      },
+      "label": "Grain Dense",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "grain_dense",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 522,
+        "right": 314,
+        "bottom": 627
+      },
+      "label": "Dirt Tilled",
+      "status": "promote",
+      "kind": "terrainBase",
+      "baseAssetKey": "dirt_tilled",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 522,
+        "right": 418,
+        "bottom": 627
+      },
+      "label": "Orchard Red",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 522,
+        "right": 522,
+        "bottom": 627
+      },
+      "label": "Orchard Orange",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 522,
+        "right": 627,
+        "bottom": 627
+      },
+      "label": "Berry Orchard",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 522,
+        "right": 732,
+        "bottom": 627
+      },
+      "label": "White Flower Field",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 522,
+        "right": 836,
+        "bottom": 627
+      },
+      "label": "Rose Field",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 522,
+        "right": 940,
+        "bottom": 627
+      },
+      "label": "Windmill",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 522,
+        "right": 1045,
+        "bottom": 627
+      },
+      "label": "House Red Roof",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 522,
+        "right": 1150,
+        "bottom": 627
+      },
+      "label": "House Red Roof Two",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 5,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 522,
+        "right": 1254,
+        "bottom": 627
+      },
+      "label": "House Blue Roof",
+      "status": "promote",
+      "kind": "fullTileBuilding",
+      "baseAssetKey": "house",
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 627,
+        "right": 104,
+        "bottom": 732
+      },
+      "label": "House Red Roof Alternate",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 627,
+        "right": 209,
+        "bottom": 732
+      },
+      "label": "House Blue Roof Alternate",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 627,
+        "right": 314,
+        "bottom": 732
+      },
+      "label": "House Yellow Roof",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 627,
+        "right": 418,
+        "bottom": 732
+      },
+      "label": "Market Stall",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 627,
+        "right": 522,
+        "bottom": 732
+      },
+      "label": "Depot",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 627,
+        "right": 627,
+        "bottom": 732
+      },
+      "label": "Forge",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 627,
+        "right": 732,
+        "bottom": 732
+      },
+      "label": "Workshop Blue Roof",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 627,
+        "right": 836,
+        "bottom": 732
+      },
+      "label": "Workshop",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 627,
+        "right": 940,
+        "bottom": 732
+      },
+      "label": "Quarry Building",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 627,
+        "right": 1045,
+        "bottom": 732
+      },
+      "label": "Covered Workshop",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 627,
+        "right": 1150,
+        "bottom": 732
+      },
+      "label": "Stone Building",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 6,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 627,
+        "right": 1254,
+        "bottom": 732
+      },
+      "label": "Lumber Building",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 732,
+        "right": 104,
+        "bottom": 836
+      },
+      "label": "Church",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 732,
+        "right": 209,
+        "bottom": 836
+      },
+      "label": "Blue House",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 732,
+        "right": 314,
+        "bottom": 836
+      },
+      "label": "Red Church",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 732,
+        "right": 418,
+        "bottom": 836
+      },
+      "label": "Blue Church",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 732,
+        "right": 522,
+        "bottom": 836
+      },
+      "label": "Stone Tower",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 732,
+        "right": 627,
+        "bottom": 836
+      },
+      "label": "Castle Red",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 732,
+        "right": 732,
+        "bottom": 836
+      },
+      "label": "Castle Keep Red",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 732,
+        "right": 836,
+        "bottom": 836
+      },
+      "label": "Castle Keep Blue",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 732,
+        "right": 940,
+        "bottom": 836
+      },
+      "label": "Town Center Candidate",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 732,
+        "right": 1045,
+        "bottom": 836
+      },
+      "label": "Fortified House",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 732,
+        "right": 1150,
+        "bottom": 836
+      },
+      "label": "Wooden Fort",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 7,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 732,
+        "right": 1254,
+        "bottom": 836
+      },
+      "label": "Town House",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 836,
+        "right": 104,
+        "bottom": 940
+      },
+      "label": "Red Market Tent",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 836,
+        "right": 209,
+        "bottom": 940
+      },
+      "label": "Purple Market Tent",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 836,
+        "right": 314,
+        "bottom": 940
+      },
+      "label": "Blue Market Tent",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 836,
+        "right": 418,
+        "bottom": 940
+      },
+      "label": "Green Market Tent",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 836,
+        "right": 522,
+        "bottom": 940
+      },
+      "label": "Canopy Tent",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 836,
+        "right": 627,
+        "bottom": 940
+      },
+      "label": "Wooden Watchtower",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 836,
+        "right": 732,
+        "bottom": 940
+      },
+      "label": "Wooden Tower",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 836,
+        "right": 836,
+        "bottom": 940
+      },
+      "label": "Red Wooden Tower",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 836,
+        "right": 940,
+        "bottom": 940
+      },
+      "label": "Wood Fort",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 836,
+        "right": 1045,
+        "bottom": 940
+      },
+      "label": "Blue Roof Fort",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 836,
+        "right": 1150,
+        "bottom": 940
+      },
+      "label": "Golden Tower",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 8,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 836,
+        "right": 1254,
+        "bottom": 940
+      },
+      "label": "Wood Hut",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 940,
+        "right": 104,
+        "bottom": 1045
+      },
+      "label": "Wood Shed",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 940,
+        "right": 209,
+        "bottom": 1045
+      },
+      "label": "Wood Shrine",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 940,
+        "right": 314,
+        "bottom": 1045
+      },
+      "label": "Wood Camp",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 940,
+        "right": 418,
+        "bottom": 1045
+      },
+      "label": "Wood Hut Two",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 940,
+        "right": 522,
+        "bottom": 1045
+      },
+      "label": "Mine Camp",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 940,
+        "right": 627,
+        "bottom": 1045
+      },
+      "label": "Worksite",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 940,
+        "right": 732,
+        "bottom": 1045
+      },
+      "label": "Stone Worksite",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 940,
+        "right": 836,
+        "bottom": 1045
+      },
+      "label": "Ruined Castle",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 940,
+        "right": 940,
+        "bottom": 1045
+      },
+      "label": "Stone Ruins",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 940,
+        "right": 1045,
+        "bottom": 1045
+      },
+      "label": "Stone Gate",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 940,
+        "right": 1150,
+        "bottom": 1045
+      },
+      "label": "Round Stone Ruin",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 9,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 940,
+        "right": 1254,
+        "bottom": 1045
+      },
+      "label": "Stone Tower Ruin",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 1045,
+        "right": 104,
+        "bottom": 1150
+      },
+      "label": "Ancient Pillars",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 1045,
+        "right": 209,
+        "bottom": 1150
+      },
+      "label": "Stone Monolith",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 1045,
+        "right": 314,
+        "bottom": 1150
+      },
+      "label": "Rubble",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 1045,
+        "right": 418,
+        "bottom": 1150
+      },
+      "label": "Stone Table",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 1045,
+        "right": 522,
+        "bottom": 1150
+      },
+      "label": "Stone Circle",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 1045,
+        "right": 627,
+        "bottom": 1150
+      },
+      "label": "Stone Pillars",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 1045,
+        "right": 732,
+        "bottom": 1150
+      },
+      "label": "Stone Circle Ruins",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 1045,
+        "right": 836,
+        "bottom": 1150
+      },
+      "label": "Obelisk",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 1045,
+        "right": 940,
+        "bottom": 1150
+      },
+      "label": "Blue Roof Shrine",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 1045,
+        "right": 1045,
+        "bottom": 1150
+      },
+      "label": "Ruin Columns",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 1045,
+        "right": 1150,
+        "bottom": 1150
+      },
+      "label": "Crystal Shrine",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 10,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 1045,
+        "right": 1254,
+        "bottom": 1150
+      },
+      "label": "Wood Gate",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 0,
+      "crop": {
+        "left": 0,
+        "top": 1150,
+        "right": 104,
+        "bottom": 1254
+      },
+      "label": "Golden Building",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 1,
+      "crop": {
+        "left": 104,
+        "top": 1150,
+        "right": 209,
+        "bottom": 1254
+      },
+      "label": "Tall Obelisk",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 2,
+      "crop": {
+        "left": 209,
+        "top": 1150,
+        "right": 314,
+        "bottom": 1254
+      },
+      "label": "Blue Crystal",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 3,
+      "crop": {
+        "left": 314,
+        "top": 1150,
+        "right": 418,
+        "bottom": 1254
+      },
+      "label": "Ice Crystal",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 4,
+      "crop": {
+        "left": 418,
+        "top": 1150,
+        "right": 522,
+        "bottom": 1254
+      },
+      "label": "Stone Monument",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 5,
+      "crop": {
+        "left": 522,
+        "top": 1150,
+        "right": 627,
+        "bottom": 1254
+      },
+      "label": "Crystal Cluster",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 6,
+      "crop": {
+        "left": 627,
+        "top": 1150,
+        "right": 732,
+        "bottom": 1254
+      },
+      "label": "White Stones",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 7,
+      "crop": {
+        "left": 732,
+        "top": 1150,
+        "right": 836,
+        "bottom": 1254
+      },
+      "label": "Lava Spire",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 8,
+      "crop": {
+        "left": 836,
+        "top": 1150,
+        "right": 940,
+        "bottom": 1254
+      },
+      "label": "Stonehenge",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 9,
+      "crop": {
+        "left": 940,
+        "top": 1150,
+        "right": 1045,
+        "bottom": 1254
+      },
+      "label": "Dead Tree",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 10,
+      "crop": {
+        "left": 1045,
+        "top": 1150,
+        "right": 1150,
+        "bottom": 1254
+      },
+      "label": "Rock Spire",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    },
+    {
+      "row": 11,
+      "col": 11,
+      "crop": {
+        "left": 1150,
+        "top": 1150,
+        "right": 1254,
+        "bottom": 1254
+      },
+      "label": "Stone Mountain Cluster",
+      "status": "stage",
+      "kind": "reviewOnly",
+      "baseAssetKey": null,
+      "overlayAssetKey": null,
+      "renderAnchor": null,
+      "overlayOffset": null
+    }
+  ]
+}

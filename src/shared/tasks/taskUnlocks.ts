@@ -1,4 +1,5 @@
 import type { TaskType } from '../../core/types/Task.ts';
+import { getPopulationState } from '../game/state/populationStore.ts';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry.ts';
 import { getUpgradeDefinitionByTaskKey } from '../buildings/upgrades.ts';
 import { isContentUnlockedByStudies } from '../../store/studyStore.ts';
@@ -10,6 +11,7 @@ import {
 } from '../story/progression.ts';
 
 const ALWAYS_AVAILABLE_TASK_KEYS = new Set<string>(['dismantle', 'walk']);
+const ZERO_SETTLER_FALLBACK_TASK_KEYS = new Set<string>(['fishAtDock']);
 
 export interface TaskUnlockStatus {
   unlocked: boolean;
@@ -55,6 +57,15 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
     return {
       unlocked: true,
       contentKind: 'always',
+      contentKey: taskKey,
+      lockingNode: null,
+    };
+  }
+
+  if (ZERO_SETTLER_FALLBACK_TASK_KEYS.has(taskKey) && getPopulationState().current <= 0) {
+    return {
+      unlocked: true,
+      contentKind: 'task',
       contentKey: taskKey,
       lockingNode: null,
     };

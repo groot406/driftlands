@@ -1,91 +1,93 @@
 <template>
   <Transition name="smooth-modal" appear>
-    <div v-if="isOpen && activeResource" class="resource-detail-backdrop smooth-modal-backdrop" @click.self="close">
-      <section class="resource-detail-panel smooth-modal-surface" @click.stop>
-        <header class="resource-detail-header">
-          <div>
-            <p class="resource-detail-kicker">{{ activeResource.kindLabel }}</p>
-            <h2 class="resource-detail-title">{{ activeResource.icon }} {{ activeResource.label }}</h2>
-            <p class="resource-detail-subtitle">{{ activeResource.subtitle }}</p>
-          </div>
-          <button class="resource-detail-close" type="button" title="Close" @click="close">✕</button>
-        </header>
+    <div v-if="isOpen && activeResource" class="resource-detail-backdrop smooth-modal-backdrop text-opacity-75" @click.self="close">
+      <NineSlicePanel type="small">
+        <section class="resource-detail-panel " @click.stop>
+          <header class="resource-detail-header">
+            <div>
+              <p class="resource-detail-kicker">{{ activeResource.kindLabel }}</p>
+              <h2 class="resource-detail-title">{{ activeResource.icon }} {{ activeResource.label }}</h2>
+              <p class="resource-detail-subtitle">{{ activeResource.subtitle }}</p>
+            </div>
+            <button class="resource-detail-close" type="button" title="Close" @click="close">✕</button>
+          </header>
 
-        <section class="resource-detail-section">
-          <div class="resource-detail-stat-grid">
-            <div class="resource-detail-card">
-              <p class="resource-detail-label">In Storage</p>
-              <p class="resource-detail-value">{{ activeResource.stock }}</p>
+          <section class="resource-detail-section">
+            <div class="resource-detail-stat-grid">
+              <div class="resource-detail-card">
+                <p class="resource-detail-label">In Storage</p>
+                <p class="resource-detail-value">{{ activeResource.stock }}</p>
+              </div>
+              <div class="resource-detail-card">
+                <p class="resource-detail-label">Produced</p>
+                <p class="resource-detail-value">+{{ formatAmount(activeResource.produced) }}/min</p>
+              </div>
+              <div class="resource-detail-card">
+                <p class="resource-detail-label">Consumed</p>
+                <p class="resource-detail-value">-{{ formatAmount(activeResource.consumed) }}/min</p>
+              </div>
+              <div class="resource-detail-card">
+                <p class="resource-detail-label">Net Flow</p>
+                <p class="resource-detail-value" :class="activeResource.netClass">{{ formatSigned(activeResource.net) }}/min</p>
+              </div>
+              <div v-if="activeResource.maintenanceDemand" class="resource-detail-card">
+                <p class="resource-detail-label">Maintenance Need</p>
+                <p
+                  class="resource-detail-value"
+                  :class="activeResource.maintenanceDemand.shortfall > 0 ? 'resource-detail-bad' : 'resource-detail-neutral'"
+                >
+                  {{ formatAmount(activeResource.maintenanceDemand.amount) }} now
+                </p>
+                <p
+                  v-if="activeResource.maintenanceDemand.shortfall > 0"
+                  class="resource-detail-card-note resource-detail-bad"
+                >
+                  {{ formatAmount(activeResource.maintenanceDemand.shortfall) }} short
+                </p>
+              </div>
             </div>
-            <div class="resource-detail-card">
-              <p class="resource-detail-label">Produced</p>
-              <p class="resource-detail-value">+{{ formatAmount(activeResource.produced) }}/min</p>
+          </section>
+
+          <section class="resource-detail-section">
+            <div class="resource-detail-section-head">
+              <h3 class="resource-detail-section-title">Where It Comes From</h3>
             </div>
-            <div class="resource-detail-card">
-              <p class="resource-detail-label">Consumed</p>
-              <p class="resource-detail-value">-{{ formatAmount(activeResource.consumed) }}/min</p>
+            <div v-if="activeResource.producers.length" class="resource-detail-list">
+              <div v-for="entry in activeResource.producers" :key="entry.label" class="resource-detail-list-row">
+                <span>{{ entry.label }}</span>
+                <span>+{{ formatAmount(entry.amount) }}/min</span>
+              </div>
             </div>
-            <div class="resource-detail-card">
-              <p class="resource-detail-label">Net Flow</p>
-              <p class="resource-detail-value" :class="activeResource.netClass">{{ formatSigned(activeResource.net) }}/min</p>
+            <p v-else class="resource-detail-empty">No active production right now.</p>
+          </section>
+
+          <section class="resource-detail-section">
+            <div class="resource-detail-section-head">
+              <h3 class="resource-detail-section-title">Where It Goes</h3>
             </div>
-            <div v-if="activeResource.maintenanceDemand" class="resource-detail-card">
-              <p class="resource-detail-label">Maintenance Need</p>
-              <p
-                class="resource-detail-value"
-                :class="activeResource.maintenanceDemand.shortfall > 0 ? 'resource-detail-bad' : 'resource-detail-neutral'"
-              >
-                {{ formatAmount(activeResource.maintenanceDemand.amount) }} now
-              </p>
-              <p
+            <div v-if="activeResource.consumers.length" class="resource-detail-list">
+              <div v-for="entry in activeResource.consumers" :key="entry.label" class="resource-detail-list-row">
+                <span>{{ entry.label }}</span>
+                <span>-{{ formatAmount(entry.amount) }}/min</span>
+              </div>
+            </div>
+            <p v-else class="resource-detail-empty">No active per-minute consumption right now.</p>
+            <div v-if="activeResource.maintenanceDemand" class="resource-detail-list resource-detail-maintenance-list">
+              <div class="resource-detail-list-row resource-detail-list-row-maintenance">
+                <span>Building repairs</span>
+                <span>{{ formatAmount(activeResource.maintenanceDemand.amount) }} needed now</span>
+              </div>
+              <div
                 v-if="activeResource.maintenanceDemand.shortfall > 0"
-                class="resource-detail-card-note resource-detail-bad"
+                class="resource-detail-list-row resource-detail-list-row-maintenance"
               >
-                {{ formatAmount(activeResource.maintenanceDemand.shortfall) }} short
-              </p>
+                <span>Repair shortfall</span>
+                <span>{{ formatAmount(activeResource.maintenanceDemand.shortfall) }} missing</span>
+              </div>
             </div>
-          </div>
+          </section>
         </section>
-
-        <section class="resource-detail-section">
-          <div class="resource-detail-section-head">
-            <h3 class="resource-detail-section-title">Where It Comes From</h3>
-          </div>
-          <div v-if="activeResource.producers.length" class="resource-detail-list">
-            <div v-for="entry in activeResource.producers" :key="entry.label" class="resource-detail-list-row">
-              <span>{{ entry.label }}</span>
-              <span>+{{ formatAmount(entry.amount) }}/min</span>
-            </div>
-          </div>
-          <p v-else class="resource-detail-empty">No active production right now.</p>
-        </section>
-
-        <section class="resource-detail-section">
-          <div class="resource-detail-section-head">
-            <h3 class="resource-detail-section-title">Where It Goes</h3>
-          </div>
-          <div v-if="activeResource.consumers.length" class="resource-detail-list">
-            <div v-for="entry in activeResource.consumers" :key="entry.label" class="resource-detail-list-row">
-              <span>{{ entry.label }}</span>
-              <span>-{{ formatAmount(entry.amount) }}/min</span>
-            </div>
-          </div>
-          <p v-else class="resource-detail-empty">No active per-minute consumption right now.</p>
-          <div v-if="activeResource.maintenanceDemand" class="resource-detail-list resource-detail-maintenance-list">
-            <div class="resource-detail-list-row resource-detail-list-row-maintenance">
-              <span>Building repairs</span>
-              <span>{{ formatAmount(activeResource.maintenanceDemand.amount) }} needed now</span>
-            </div>
-            <div
-              v-if="activeResource.maintenanceDemand.shortfall > 0"
-              class="resource-detail-list-row resource-detail-list-row-maintenance"
-            >
-              <span>Repair shortfall</span>
-              <span>{{ formatAmount(activeResource.maintenanceDemand.shortfall) }} missing</span>
-            </div>
-          </div>
-        </section>
-      </section>
+      </NineSlicePanel>
     </div>
   </Transition>
 </template>
@@ -106,6 +108,7 @@ import { resourceInventory } from '../store/resourceStore';
 import { settlers } from '../store/settlerStore.ts';
 import { closeResourceDetailModal, selectedResourceDetail } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
+import NineSlicePanel from "./ui/NineSlicePanel.vue";
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.RESOURCE_MODAL));
 
@@ -228,11 +231,7 @@ onUnmounted(() => {
   max-height: min(88vh, 50rem);
   overflow-y: auto;
   border-radius: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
-    radial-gradient(circle at top, rgba(245, 158, 11, 0.11), transparent 58%);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+
   color: #f8fafc;
 }
 

@@ -138,42 +138,24 @@ test('workforce snapshots reflect assigned settlers per site', () => {
   );
 });
 
-test('starter settlers can staff docks before any houses are built', () => {
+test('no workers can staff docks before houses provide beds', () => {
   loadWorld([
     createTowncenterTile(),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', variant: 'water_dock_a' }),
   ]);
-  loadPopulation(1, 0);
-  loadSettlers([
-    {
-      id: 'settler-1',
-      q: 0,
-      r: 0,
-      facing: 'down',
-      appearanceSeed: 1,
-      homeTileId: '0,0',
-      homeAccessTileId: '0,0',
-      settlementId: '0,0',
-      assignedWorkTileId: null,
-      activity: 'idle',
-      stateSinceMs: 0,
-      hungerMs: 0,
-      fatigueMs: 0,
-      workProgressMs: 0,
-      carryingKind: null,
-    },
-  ]);
+  loadPopulation(0, 0);
+  loadSettlers([]);
   settlerSystem.init();
   jobSystem.init();
 
   tickAll(1_000, 1_000);
 
   const snapshot = getWorkforceSnapshot();
-  assert.equal(snapshot.availableWorkers, 1);
-  assert.equal(snapshot.assignedWorkers, 1);
+  assert.equal(snapshot.availableWorkers, 0);
+  assert.equal(snapshot.assignedWorkers, 0);
   assert.equal(snapshot.idleWorkers, 0);
-  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.assignedWorkers, 1);
-  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'staffed');
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.assignedWorkers, 0);
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'unstaffed');
 });
 
 test('granary and bakery form a settler-driven production chain', () => {

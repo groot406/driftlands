@@ -312,9 +312,46 @@ export class OverlayRenderer {
             deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false);
         }
 
+        this.drawInteractiveTopHighlights(overlay.ctx, frame, opts, deps);
         this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);
         this.drawTaskIndicators(overlay.ctx, frame.visibleTiles, false, opts.hoveredTile, deps);
         overlay.ctx.restore();
+    }
+
+    private drawInteractiveTopHighlights(
+        ctx: CanvasRenderingContext2D,
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ) {
+        if (opts.hoveredTile && hexDistance(camera, opts.hoveredTile) <= camera.radius + 1) {
+            const dist = hexDistance(camera, opts.hoveredTile);
+            const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+            const opacity = fade * fade;
+            const pulse = (Math.sin(frame.effectNowMs / 360) + 1) / 2;
+            const inReach = opts.hoveredTileInReach !== false;
+            deps.drawHexHighlight(
+                ctx,
+                opts.hoveredTile.q,
+                opts.hoveredTile.r,
+                null,
+                inReach ? GROWTH_HYBRID_STYLE.outlines.hover : GROWTH_HYBRID_STYLE.outlines.unreachable,
+                opacity * (0.74 + (pulse * 0.2)),
+            );
+        }
+
+        if (opts.taskMenuTile && hexDistance(camera, opts.taskMenuTile) <= camera.radius + 1) {
+            const dist = hexDistance(camera, opts.taskMenuTile);
+            const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+            deps.drawHexHighlight(
+                ctx,
+                opts.taskMenuTile.q,
+                opts.taskMenuTile.r,
+                null,
+                GROWTH_HYBRID_STYLE.outlines.selected,
+                fade * fade,
+            );
+        }
     }
 
     private drawStoryHintHighlights(

@@ -166,6 +166,7 @@ test('ParticleRenderer renders underlay and overlay particles to separate surfac
             hexSize: 34,
             hexSpace: 2,
             tileDrawSize: 66,
+            tileDepthPaddingPx: 16,
             terrainChunkSize: 16,
             heroFrameSize: 16,
             heroZoom: 2,

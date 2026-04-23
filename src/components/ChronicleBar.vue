@@ -10,8 +10,10 @@
 
   <!-- Centered conversation panel -->
   <Transition name="story-pop">
-    <section
+    <NineSlicePanel
       v-if="visibleEntry"
+      as="section"
+      type="small"
       class="story-popup pointer-events-auto"
       @click="advanceOrDismiss"
     >
@@ -23,8 +25,8 @@
         <span class="story-popup__counter">{{ entryCounter }}</span>
       </div>
 
-      <div class="story-popup__body">
-        <div class="story-popup__avatar">
+      <div class="story-popup__body my-4">
+        <div class="story-popup__avatar translate-y-3">
           <Sprite
             v-if="speakerAvatar"
             :sprite="speakerAvatar"
@@ -33,6 +35,7 @@
             :frame="0"
             :size="32"
             :aria-label="visibleEntry.speaker.name"
+            class="-translate-x-2 -translate-y-2"
           />
           <div v-else class="story-popup__glyph pixel-font">LOG</div>
         </div>
@@ -72,13 +75,14 @@
           Skip all
         </button>
       </div>
-    </section>
+    </NineSlicePanel>
   </Transition>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import Sprite from './Sprite.vue';
+import NineSlicePanel from './ui/NineSlicePanel.vue';
 import { runSnapshot } from '../store/runStore.ts';
 import { chronicleReopenRequested, chronicleHasEntries } from '../store/chronicleStore.ts';
 import boyAvatar from '../assets/heroes/boy.png';
@@ -246,16 +250,12 @@ watch(chronicleReopenRequested, () => {
 }
 
 .story-popup {
-  @apply flex w-[min(94vw,36rem)] flex-col gap-4 rounded-[1.8rem] border px-5 py-4 shadow-2xl;
+  @apply flex w-[min(94vw,36rem)] flex-col gap-4 px-5 py-4;
   position: fixed;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 50;
-  border-color: rgba(245, 195, 92, 0.22);
-  background:
-    linear-gradient(180deg, rgba(9, 18, 23, 0.98), rgba(10, 18, 24, 0.995)),
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.14), transparent 36%);
   cursor: pointer;
 }
 

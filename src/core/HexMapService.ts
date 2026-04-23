@@ -363,6 +363,12 @@ const DEFAULT_CAMERA_COMPOSITE_STATE: CameraCompositeState = {
 };
 
 const DEFAULT_RENDER_QUALITY: RenderQualityProfile = getResolvedRenderQualityProfile(0);
+const TILE_BOTTOM_EDGE_LEFT_KEY = 'tile-bottom-edge-left';
+const TILE_BOTTOM_EDGE_RIGHT_KEY = 'tile-bottom-edge-right';
+const TILE_ART_SOURCE_SIZE = 64;
+const TILE_BOTTOM_EDGE_TOP_NUDGE_Y = -5;
+const TILE_BOTTOM_EDGE_LEFT_NUDGE_X = -2;
+const TILE_BOTTOM_EDGE_RIGHT_NUDGE_X = 1;
 
 export class HexMapService {
 
@@ -925,6 +931,7 @@ export class HexMapService {
                         getSupportAwareTileOpacity: (tile, opacity) => this.getSupportAwareTileOpacity(tile, opacity),
                         getTileOpacity: (dist, applyCameraFade) => this.getTileOpacity(dist, applyCameraFade),
                         drawTile: (tile, now, ctx, opacity) => this.drawTile(tile, now, ctx, opacity),
+                        drawTileBottomEdges: (tile, now, ctx, opacity) => this.drawTileBottomEdges(tile, now, ctx, opacity),
                         drawUndiscoveredTile: (ctx, opacity, tile, inReach) => this.drawUndiscoveredTile(ctx, opacity, tile, inReach),
                         getTileOverlayKey: (tile) => this.getTileOverlayKey(tile),
                         getTileOverlayOffset: (tile) => this.getTileOverlayOffset(tile),
@@ -4677,6 +4684,115 @@ export class HexMapService {
         }
 
         ctx.restore();
+    }
+
+    private hasVisibleTileOnSide(tile: Tile, side: TileSide) {
+        const neighbor = tile.neighbors?.[side];
+        return !!(neighbor?.discovered && neighbor.terrain);
+    }
+
+    private getTileDepthEdgePlacement(edgeImg: HTMLImageElement, side: 'left' | 'right') {
+        const scale = this.TILE_DRAW_SIZE / TILE_ART_SOURCE_SIZE;
+        const sourceWidth = edgeImg.naturalWidth || edgeImg.width;
+        const sourceHeight = edgeImg.naturalHeight || edgeImg.height;
+        const width = Math.round(sourceWidth * scale);
+        const height = Math.round(sourceHeight * scale);
+        const top = Math.floor(this.TILE_DRAW_SIZE * 0.75) + TILE_BOTTOM_EDGE_TOP_NUDGE_Y;
+        const left = side === 'left'
+            ? TILE_BOTTOM_EDGE_LEFT_NUDGE_X
+            : Math.round(this.TILE_DRAW_SIZE - width + TILE_BOTTOM_EDGE_RIGHT_NUDGE_X);
+
+        return {
+            x: left,
+            y: top,
+            width,
+            height,
+        };
+    }
+
+    private drawTileDepthInnerCornerShadow(ctx: CanvasRenderingContext2D, state: TileRenderState, hasLeftEdge: boolean, hasRightEdge: boolean) {
+        if (!hasLeftEdge && !hasRightEdge) {
+            return;
+        }
+
+        const vertices = this.getHexVertices(state.x, state.y);
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+
+        const drawShadow = (vertexIndex: number, direction: -1 | 1) => {
+            const corner = vertices[vertexIndex];
+            if (!corner) {
+                return;
+            }
+
+            const centerX = corner.x + (direction * 3);
+            const centerY = corner.y + 2;
+            const cornerShadow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 10);
+            cornerShadow.addColorStop(0, 'rgba(42, 24, 6, 0.38)');
+            cornerShadow.addColorStop(0.56, 'rgba(42, 24, 6, 0.18)');
+            cornerShadow.addColorStop(1, 'rgba(42, 24, 6, 0)');
+            ctx.globalAlpha = state.opacity;
+            ctx.fillStyle = cornerShadow;
+            ctx.fillRect(centerX - 11, centerY - 8, 22, 19);
+
+            ctx.globalAlpha = state.opacity * 0.34;
+            ctx.strokeStyle = 'rgba(35, 20, 6, 0.56)';
+            ctx.lineWidth = 1.25;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(corner.x + (direction * 1.5), corner.y - 1);
+            ctx.lineTo(corner.x + (direction * 7), corner.y + 4);
+            ctx.stroke();
+        };
+
+        if (hasLeftEdge) {
+            drawShadow(4, 1);
+        }
+        if (hasRightEdge) {
+            drawShadow(2, -1);
+        }
+
+        ctx.restore();
+    }
+
+    private drawTileBottomEdgeStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+        if (state.opacity <= 0.03) {
+            return;
+        }
+
+        const drawEdge = (key: string, side: TileSide, placementSide: 'left' | 'right') => {
+            if (this.hasVisibleTileOnSide(state.tile, side)) {
+                return false;
+            }
+
+            const edgeImg = this._images[key];
+            if (!edgeImg) {
+                return false;
+            }
+
+            const placement = this.getTileDepthEdgePlacement(edgeImg, placementSide);
+            ctx.globalAlpha = state.opacity;
+            ctx.drawImage(
+                edgeImg,
+                state.x - this.HEX_SIZE + placement.x,
+                state.y - this.HEX_SIZE + placement.y,
+                placement.width,
+                placement.height,
+            );
+            return true;
+        };
+
+        const hasLeftEdge = drawEdge(TILE_BOTTOM_EDGE_LEFT_KEY, 'e', 'left');
+        const hasRightEdge = drawEdge(TILE_BOTTOM_EDGE_RIGHT_KEY, 'd', 'right');
+        this.drawTileDepthInnerCornerShadow(ctx, state, hasLeftEdge, hasRightEdge);
+    }
+
+    private drawTileBottomEdges(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
+        const state = this.createTileRenderState(t, now, opacity);
+        if (!state) return;
+
+        this.drawTileBottomEdgeStage(ctx, state);
+        ctx.globalAlpha = 1;
     }
 
     private ensureTileCompositeScratchSurface() {

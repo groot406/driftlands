@@ -5,7 +5,7 @@
         <ResourceBar/>
       </div>
       <div class="pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
-        <button class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</button>
+        <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
       <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
         <WorldControls/>
@@ -71,6 +71,7 @@ import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
+import NineSliceButton from './ui/NineSliceButton.vue';
 import { pauseGame } from '../store/uiStore';
 import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
@@ -131,14 +132,16 @@ onBeforeUnmount(() => {
 }
 
 .menu-shortcut-btn {
-  @apply self-end rounded-lg border px-4 py-3 text-[10px] uppercase tracking-normal text-emerald-50 shadow-md transition-colors hover:border-amber-200/60;
-  background-color: rgb(35 83 46 / 0.76);
-  border-color: rgb(196 228 151 / 0.36);
+  @apply self-end text-[10px] uppercase tracking-normal shadow-md;
+  min-width: 5.75rem;
+  min-height: 3rem;
+  color: #2f1609;
+  font-weight: 800;
   letter-spacing: 0;
 }
 
 .menu-shortcut-btn:hover {
-  background-color: rgb(49 103 56 / 0.86);
+  filter: brightness(1.06);
 }
 
 .conversation-recall-btn {

@@ -23,6 +23,7 @@ export interface RenderConfig {
     hexSize: number;
     hexSpace: number;
     tileDrawSize: number;
+    tileDepthPaddingPx: number;
     terrainChunkSize: number;
     heroFrameSize: number;
     heroZoom: number;
@@ -37,11 +38,13 @@ const SQRT3 = Math.sqrt(3);
 const HEX_SIZE = 34;
 const HEX_SPACE = 2;
 const TILE_DRAW_SIZE = (HEX_SIZE * 2) - HEX_SPACE;
+const TILE_DEPTH_PADDING_PX = 16;
 
 export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     hexSize: HEX_SIZE,
     hexSpace: HEX_SPACE,
     tileDrawSize: TILE_DRAW_SIZE,
+    tileDepthPaddingPx: TILE_DEPTH_PADDING_PX,
     terrainChunkSize: 16,
     heroFrameSize: 16,
     heroZoom: 2,

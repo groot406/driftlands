@@ -1,10 +1,11 @@
 <template>
   <div class="resource-hud noscrollbar">
     <div class="inventory-strip inventory-strip-stocks">
-      <button class="pop-bubble" type="button" title="Open settler overview" @click="openPopulationModal()">
-        <span class="text-xs leading-none">&#x1F465;</span>
-        <span class="text-[11px] font-mono leading-none text-emerald-50">{{ populationState.current }}/{{ populationState.max }}</span>
-      </button>
+      <NineSliceButton type="button" class="pop-bubble" title="Open settler overview" @click="openPopulationModal()">
+        <span class="leading-none mr-4">&#x1F465;</span>
+        <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50">{{ populationState.current }}/{{ populationState.max }}</span>
+      </NineSliceButton>
+
       <ResourceBubble
         v-for="r in stockEntries"
         :key="r.key"
@@ -15,6 +16,7 @@
         clickable
         @select="openResourceDetailModal(r.key)"
       />
+
     </div>
 
     <div v-if="itemEntries.length" class="inventory-strip inventory-strip-items" aria-label="Items">
@@ -41,6 +43,8 @@ import {populationState} from '../store/clientPopulationStore';
 import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
 import { runSnapshot, runVersion } from '../store/runStore.ts';
 import { getVisibleInventoryEntries } from '../shared/game/inventoryPresentation.ts';
+import NineSliceButton from "./ui/NineSliceButton.vue";
+import NineSlicePanel from "./ui/NineSlicePanel.vue";
 
 const visibleEntries = computed(() => {
   resourceVersion.value;
@@ -93,9 +97,7 @@ export default {name: 'ResourceBar'};
 }
 
 .pop-bubble:hover {
-  transform: translateY(-1px);
-  border-color: rgba(252, 211, 77, 0.56);
-  background: rgba(65, 103, 49, 0.9);
+  transform: translateY(-2px);
 }
 
 .pop-bubble:focus-visible {

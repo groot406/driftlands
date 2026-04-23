@@ -39,6 +39,7 @@ interface EntityRendererDependencies {
     getSupportAwareTileOpacity(tile: Tile, opacity: number): number;
     getTileOpacity(dist: number, applyCameraFade: boolean): number;
     drawTile(tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number): void;
+    drawTileBottomEdges(tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number): void;
     drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, tile: Tile, inReach: boolean): void;
     getTileOverlayKey(tile: Tile): string | null;
     getTileOverlayOffset(tile: Tile): { x: number; y: number };
@@ -175,8 +176,17 @@ export class EntityRenderer {
             }
 
             // Chunked terrain already rendered the discovered ground layer.
-            void now;
             void deps.drawTile;
+        }
+
+        for (const tile of tiles) {
+            if (!tile.discovered) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            const opacity = deps.getSupportAwareTileOpacity(tile, deps.getTileOpacity(dist, false));
+            deps.drawTileBottomEdges(tile, now, ctx, opacity);
         }
     }
 }

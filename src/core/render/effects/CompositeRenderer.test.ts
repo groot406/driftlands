@@ -129,6 +129,7 @@ function createContext(): RenderPassContext {
             hexSize: 34,
             hexSpace: 2,
             tileDrawSize: 66,
+            tileDepthPaddingPx: 16,
             terrainChunkSize: 16,
             heroFrameSize: 16,
             heroZoom: 2,

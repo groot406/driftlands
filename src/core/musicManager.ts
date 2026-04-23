@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue';
+import { reactive, watch, type WatchStopHandle } from 'vue';
 import { setBackgroundMusic } from '../store/soundStore';
 import { soundService } from './soundService';
 import { uiStore } from '../store/uiStore';
@@ -68,12 +68,13 @@ export class MusicManager {
     private isInGame = false;
     private isPaused = false;
     private loadedTracks: Map<number, string> = new Map(); // Cache loaded track URLs
+    private stopPhaseWatch: WatchStopHandle | null = null;
 
     initialize() {
         if (this.initialized) return;
 
         // Watch for phase changes
-        watch(() => uiStore.phase, (phase) => {
+        this.stopPhaseWatch = watch(() => uiStore.phase, (phase) => {
             if (phase === 'title') {
                 this.playTitleMusic();
             } else if (phase === 'playing') {
@@ -84,8 +85,8 @@ export class MusicManager {
         this.initialized = true;
     }
 
-    private async playTitleMusic() {
-        if (this.currentTrack === TITLE_MUSIC) return;
+    async playTitleMusic() {
+        if (this.currentTrack === TITLE_MUSIC && soundService.getCurrentMusic() === TITLE_MUSIC) return;
 
         this.stopPlaylist();
         this.isInGame = false;
@@ -244,6 +245,10 @@ export class MusicManager {
 
     destroy() {
         this.stopPlaylist();
+        if (this.stopPhaseWatch) {
+            this.stopPhaseWatch();
+            this.stopPhaseWatch = null;
+        }
         this.loadedTracks.clear(); // Clear loaded track cache
         this.initialized = false;
         musicPlayerState.isPlaying = false;

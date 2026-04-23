@@ -8,7 +8,11 @@ import {
   computeReachTileIds,
   computeReachTileIdsForTC,
   computeReachTileIdsForWatchtower,
+  getPopulationState,
+  initializePopulation,
   isTileWithinReach,
+  recalculatePopulationLimits,
+  resetPopulationState,
 } from './populationStore.ts';
 
 function tile(q: number, r: number, terrain: Tile['terrain'], variant: Tile['variant'] = null): Tile {
@@ -43,6 +47,43 @@ test('watchtowers chain their reach when each next tower is inside current reach
   } finally {
     loadWorld([]);
     resetSettlementSupportState();
+  }
+});
+
+test('town centers provide population cap but no starting beds or settlers', () => {
+  loadWorld([
+    tile(0, 0, 'towncenter'),
+  ]);
+
+  try {
+    initializePopulation();
+
+    const population = getPopulationState();
+    assert.equal(population.max, 15);
+    assert.equal(population.beds, 0);
+    assert.equal(population.current, 0);
+  } finally {
+    loadWorld([]);
+    resetSettlementSupportState();
+    resetPopulationState();
+  }
+});
+
+test('houses within reach provide the first beds after the town center is built', () => {
+  loadWorld([
+    tile(0, 0, 'towncenter'),
+    tile(1, 0, 'plains', 'plains_house'),
+  ]);
+
+  try {
+    const limits = recalculatePopulationLimits();
+
+    assert.equal(limits.max, 15);
+    assert.equal(limits.beds, 2);
+  } finally {
+    loadWorld([]);
+    resetSettlementSupportState();
+    resetPopulationState();
   }
 });
 

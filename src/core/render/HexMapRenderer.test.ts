@@ -86,6 +86,7 @@ test('HexMapRenderer executes passes in order and records timings', () => {
             hexSize: 34,
             hexSpace: 2,
             tileDrawSize: 66,
+            tileDepthPaddingPx: 16,
             terrainChunkSize: 16,
             heroFrameSize: 16,
             heroZoom: 2,

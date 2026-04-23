@@ -14,11 +14,8 @@ import {
 
 // --- Constants ---
 
-/** Base population provided by each town center. */
+/** Maximum population capacity unlocked by each town center. */
 export const TC_BASE_POPULATION = 15;
-
-/** Additional population provided by each starter house within a town center's reach. */
-export const HOUSE_POPULATION_BONUS = 2;
 
 /** Food consumed per settler per minute. */
 export const FOOD_PER_SETTLER_PER_MINUTE = 1;
@@ -26,8 +23,8 @@ export const FOOD_PER_SETTLER_PER_MINUTE = 1;
 /** Minutes without food before a settler dies. */
 export const HUNGER_GRACE_MINUTES = 3;
 
-/** Minimum population — cannot drop below this even from hunger. */
-export const MIN_POPULATION = 1;
+/** Minimum population — the landing can sit empty until housing is built. */
+export const MIN_POPULATION = 0;
 
 // --- House variant keys (must match terrainDefs) ---
 
@@ -244,7 +241,7 @@ export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSuppo
 
 /**
  * Initialize population for a new game (after world generation).
- * Starts at MIN_POPULATION — growth happens passively on food ticks.
+ * Starts at zero; growth happens passively once houses provide beds.
  */
 export function initializePopulation() {
     recalculatePopulationLimits();

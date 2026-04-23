@@ -3,8 +3,7 @@
 // Provides deterministic lightweight hash + terrain selection + cached hex tile canvas.
 
 import { TERRAIN_DEFS, type TerrainKey, type TerrainVariationDef, type TerrainSide } from './terrainDefs';
-import { getDecorativeSelectionForTerrain } from './tileVisuals';
-import { getWorldGenerationSeed, noise01 } from './worldVariation';
+import { getClimateProfile, getWorldGenerationSeed, noise01 } from './worldVariation';
 import { resolveWorldTile } from './worldGeneration';
 
 // Deterministic cache for selected terrain types to avoid recomputation in neighbor lookups
@@ -17,14 +16,111 @@ const NEIGHBOR_DELTAS: Array<[number, number]> = [
 ];
 // Side order mapping to neighbor deltas (a..f)
 const SIDE_ORDER: TerrainSide[] = ['a','b','c','d','e','f'];
+const titleSelectionCache = new Map<string, TitleSpriteSelection>();
+const TITLE_VARIANT_BASE_WEIGHT_MULTIPLIER = 0.42;
 
-// Title/background tiles now use the same biome resolver as the game world.
+const TITLE_EXTRA_VARIANTS: Partial<Record<TerrainKey, TerrainVariationDef[]>> = {
+  water: [
+    { key: 'water_reflections', weight: 16, decorative: true },
+    { key: 'water_shallows', weight: 14, decorative: true },
+    { key: 'water_foam', weight: 9, decorative: true },
+    { key: 'water_reeds', weight: 8, decorative: true },
+    { key: 'water_islets', weight: 6, decorative: true },
+  ],
+  forest: [
+    { key: 'young_forest', weight: 5, decorative: true, overlayAssetKey: false },
+  ],
+  grain: [
+    { key: 'grain_patchwork', weight: 7, decorative: true },
+  ],
+  snow: [
+    { key: 'snow_pines', weight: 6, decorative: true },
+  ],
+};
+
+interface TitleSpriteSelection {
+  terrain: TerrainKey;
+  variant: TerrainVariationDef | null;
+  assetKey: string;
+}
+
+function getBaseWorldTerrain(q: number, r: number): TerrainKey {
+  return resolveWorldTile(q, r).terrain;
+}
+
+function countBaseWaterNeighbors(q: number, r: number): number {
+  let waterNeighbors = 0;
+  for (const [dq, dr] of NEIGHBOR_DELTAS) {
+    if (getBaseWorldTerrain(q + dq, r + dr) === 'water') {
+      waterNeighbors++;
+    }
+  }
+  return waterNeighbors;
+}
+
+function getTitleLandFillTerrain(q: number, r: number): TerrainKey {
+  const counts = new Map<TerrainKey, number>();
+
+  for (const [dq, dr] of NEIGHBOR_DELTAS) {
+    const terrain = getBaseWorldTerrain(q + dq, r + dr);
+    if (terrain !== 'water' && terrain !== 'vulcano' && terrain !== 'towncenter') {
+      counts.set(terrain, (counts.get(terrain) ?? 0) + 2);
+    }
+  }
+
+  for (let dq = -2; dq <= 2; dq++) {
+    for (let dr = Math.max(-2, -dq - 2); dr <= Math.min(2, -dq + 2); dr++) {
+      if (dq === 0 && dr === 0) continue;
+      const terrain = getBaseWorldTerrain(q + dq, r + dr);
+      if (terrain !== 'water' && terrain !== 'vulcano' && terrain !== 'towncenter') {
+        counts.set(terrain, (counts.get(terrain) ?? 0) + 1);
+      }
+    }
+  }
+
+  if (counts.size > 0) {
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]![0];
+  }
+
+  const roll = noise01(q, r, 1609);
+  if (roll < 0.42) return 'plains';
+  if (roll < 0.62) return 'dirt';
+  if (roll < 0.8) return 'forest';
+  if (roll < 0.91) return 'grain';
+  if (roll < 0.97) return 'mountain';
+  return 'dessert';
+}
+
+function shouldThinTitleWater(q: number, r: number): boolean {
+  const waterNeighbors = countBaseWaterNeighbors(q, r);
+  const roll = (noise01(q, r, 1433) * 0.72) + (noise01(q + r, q - r, 1434) * 0.28);
+  const landChance = waterNeighbors <= 2
+    ? 0.84
+    : waterNeighbors === 3
+      ? 0.65
+      : waterNeighbors === 4
+        ? 0.42
+        : waterNeighbors === 5
+          ? 0.19
+          : 0.06;
+
+  return roll < landChance;
+}
+
+// Title/background tiles start from the game resolver, then apply presentation-only tweaks.
 export function getTileType(q: number, r: number): TerrainKey {
   const k = key(q, r);
   const cached = typeCache.get(k);
   if (cached) return cached;
 
-  const generated = resolveWorldTile(q, r).terrain;
+  const generated = getBaseWorldTerrain(q, r);
+  if (generated === 'water' && shouldThinTitleWater(q, r)) {
+    const terrain = getTitleLandFillTerrain(q, r);
+    typeCache.set(k, terrain);
+    return terrain;
+  }
+
   typeCache.set(k, generated);
   return generated;
 }
@@ -161,13 +257,127 @@ function getNeighborBySide(q: number, r: number, side: TerrainSide): TerrainKey 
 export interface TileSelection { terrain: TerrainKey; variant: TerrainVariationDef | null }
 
 export function getTileSelection(q: number, r: number): TileSelection {
-  const terrain = getTileType(q, r);
-  const selection = getDecorativeSelectionForTerrain(q, r, terrain, side => getNeighborBySide(q, r, side));
-  return { terrain, variant: selection.variant };
+  const selection = getTitleSpriteSelection(q, r);
+  return { terrain: selection.terrain, variant: selection.variant };
 }
 
 // Derive sprite key for image loading: prefer variant assetKey/key, else terrain assetKey or terrain key
 export function getTileSpriteKey(q: number, r: number): string {
+  return getTitleSpriteSelection(q, r).assetKey;
+}
+
+function getSelectionCacheKey(q: number, r: number, terrain: TerrainKey): string {
+  const neighborSignature = SIDE_ORDER.map(side => getNeighborBySide(q, r, side) ?? '_').join('.');
+  return `${getWorldGenerationSeed()}:${q},${r}:${terrain}:${neighborSignature}`;
+}
+
+function matchesTitleVariantConstraints(
+  q: number,
+  r: number,
+  variant: TerrainVariationDef,
+  getNeighborTerrain: (side: TerrainSide) => TerrainKey | null,
+): boolean {
+  const climate = getClimateProfile(q, r);
+
+  if (variant.minMoisture !== undefined && climate.moisture < variant.minMoisture) return false;
+  if (variant.maxMoisture !== undefined && climate.moisture > variant.maxMoisture) return false;
+  if (variant.minTemperature !== undefined && climate.temperature < variant.minTemperature) return false;
+  if (variant.maxTemperature !== undefined && climate.temperature > variant.maxTemperature) return false;
+  if (variant.minRuggedness !== undefined && climate.ruggedness < variant.minRuggedness) return false;
+  if (variant.maxRuggedness !== undefined && climate.ruggedness > variant.maxRuggedness) return false;
+
+  for (const constraint of variant.constraints ?? []) {
+    const neighbor = getNeighborTerrain(constraint.side);
+    if (!neighbor) {
+      if (constraint.allowUndiscovered) continue;
+      return false;
+    }
+    if (!constraint.anyOf.includes(neighbor)) return false;
+  }
+
+  return true;
+}
+
+function getTitleVariantPool(terrain: TerrainKey): TerrainVariationDef[] {
+  const def = TERRAIN_DEFS[terrain];
+  const byKey = new Map<string, TerrainVariationDef>();
+
+  for (const variant of def.decorativeVariants ?? []) {
+    if ((variant.weight ?? 1) > 0) {
+      byKey.set(variant.key, variant);
+    }
+  }
+
+  for (const variant of def.variations ?? []) {
+    if (variant.decorative && (variant.weight ?? 1) > 0) {
+      byKey.set(variant.key, variant);
+    }
+  }
+
+  for (const variant of TITLE_EXTRA_VARIANTS[terrain] ?? []) {
+    byKey.set(variant.key, variant);
+  }
+
+  return Array.from(byKey.values());
+}
+
+function getTitleSpriteSelection(q: number, r: number): TitleSpriteSelection {
   const terrain = getTileType(q, r);
-  return getDecorativeSelectionForTerrain(q, r, terrain, side => getNeighborBySide(q, r, side)).assetKey;
+  const cacheKey = getSelectionCacheKey(q, r, terrain);
+  const cached = titleSelectionCache.get(cacheKey);
+  if (cached) return cached;
+
+  const def = TERRAIN_DEFS[terrain];
+  const baseAssetKey = def.assetKey ?? terrain;
+  const variants = getTitleVariantPool(terrain);
+  const eligible = variants.filter(variant => (
+    matchesTitleVariantConstraints(q, r, variant, side => getNeighborBySide(q, r, side))
+  ));
+
+  if (!eligible.length) {
+    const selection = { terrain, variant: null, assetKey: baseAssetKey };
+    titleSelectionCache.set(cacheKey, selection);
+    return selection;
+  }
+
+  const baseWeight = Math.max(0, (def.decorativeBaseWeight ?? 18) * TITLE_VARIANT_BASE_WEIGHT_MULTIPLIER);
+  const variantWeight = eligible.reduce((sum, variant) => sum + Math.max(0, variant.weight ?? 1), 0);
+  const total = baseWeight + variantWeight;
+
+  if (total <= 0) {
+    const selection = { terrain, variant: null, assetKey: baseAssetKey };
+    titleSelectionCache.set(cacheKey, selection);
+    return selection;
+  }
+
+  let roll = ((noise01(q, r, 811) * 0.58) + (noise01(q + r, r - q, 812) * 0.42)) * total;
+  if (roll < baseWeight) {
+    const selection = { terrain, variant: null, assetKey: baseAssetKey };
+    titleSelectionCache.set(cacheKey, selection);
+    return selection;
+  }
+
+  roll -= baseWeight;
+  for (const variant of eligible) {
+    const weight = Math.max(0, variant.weight ?? 1);
+    if (roll <= weight) {
+      const selection = {
+        terrain,
+        variant,
+        assetKey: variant.assetKey ?? variant.key,
+      };
+      titleSelectionCache.set(cacheKey, selection);
+      return selection;
+    }
+    roll -= weight;
+  }
+
+  const fallback = eligible[eligible.length - 1];
+  const selection = {
+    terrain,
+    variant: fallback ?? null,
+    assetKey: fallback?.assetKey ?? fallback?.key ?? baseAssetKey,
+  };
+  titleSelectionCache.set(cacheKey, selection);
+  return selection;
 }

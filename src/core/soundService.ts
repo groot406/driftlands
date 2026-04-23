@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import { camera, hexDistance } from './camera';
-import { isPaused } from '../store/uiStore';
+import { isPlaying } from '../store/uiStore';
 import { taskStore } from '../store/taskStore';
 import { getTaskDefinition } from '../shared/tasks/taskRegistry';
 import { tileIndex } from './world';
@@ -26,6 +26,10 @@ export interface SoundState {
     maxAudioDistance: number;
     panningStrength: number; // 0-1, how much left/right panning to apply
     positionalSounds: Map<string, PositionalSound>;
+}
+
+interface SoundInitializeOptions {
+    positionalAudio?: boolean;
 }
 
 export const soundState: SoundState = reactive({
@@ -57,25 +61,38 @@ class SoundService {
 
     private initializationPromise: Promise<void> | null = null;
 
-    async initialize() {
-        if (this.initialized) return;
+    async initialize(options: SoundInitializeOptions = { positionalAudio: true }) {
+        const positionalAudio = options.positionalAudio ?? true;
+
+        if (this.initialized) {
+            if (positionalAudio) {
+                this.enablePositionalAudio();
+            }
+            return;
+        }
 
         // Prevent multiple simultaneous initializations
         if (this.initializationPromise) {
-            return this.initializationPromise;
+            await this.initializationPromise;
+            if (positionalAudio) {
+                this.enablePositionalAudio();
+            }
+            return;
         }
 
-        this.initializationPromise = this.doInitialize();
+        this.initializationPromise = this.doInitialize({ positionalAudio });
         return this.initializationPromise;
     }
 
-    private async doInitialize() {
+    private async doInitialize(options: SoundInitializeOptions) {
         if (this.initialized) return;
 
         try {
             this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             this.setupMusicNodes();
-            this.startUpdateLoop();
+            if (options.positionalAudio) {
+                this.enablePositionalAudio();
+            }
             this.initialized = true;
             console.log('Sound system initialized');
         } catch (error) {
@@ -97,6 +114,10 @@ class SoundService {
         this.crossfadeGainNode.gain.value = 0;
     }
 
+    private enablePositionalAudio() {
+        this.startUpdateLoop();
+    }
+
     private startUpdateLoop() {
         if (this.updateInterval) return;
 
@@ -106,7 +127,7 @@ class SoundService {
     }
 
     private updatePositionalAudio() {
-        if (!this.audioContext || isPaused()) return;
+        if (!this.audioContext || !isPlaying()) return;
 
         // Use Array.from to avoid modifying map during iteration when removing sounds
         const soundsToRemove: string[] = [];
@@ -255,7 +276,7 @@ class SoundService {
             return;
         }
 
-        await this.initialize();
+        await this.initialize({ positionalAudio: false });
 
         const newAudio = new Audio(musicPath);
         newAudio.loop = true;
@@ -295,6 +316,10 @@ class SoundService {
         } catch (error) {
             console.warn('Failed to set music:', error);
         }
+    }
+
+    getCurrentMusic() {
+        return soundState.currentMusic;
     }
 
     private async crossfadeMusic(newAudio: HTMLAudioElement) {
@@ -361,7 +386,9 @@ class SoundService {
             loop?: boolean;
         } = {}
     ) {
-        await this.initialize();
+        if (!isPlaying()) return;
+
+        await this.initialize({ positionalAudio: true });
 
         // Remove existing sound with same id
         this.removePositionalSound(id);

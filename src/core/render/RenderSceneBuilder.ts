@@ -145,8 +145,8 @@ export class RenderSceneBuilder {
                 maxR: bounds.maxR,
                 worldX: minWorld.x - this.config.hexSize,
                 worldY: minWorld.y - this.config.hexSize,
-                width: (maxWorld.x - minWorld.x) + this.config.tileDrawSize,
-                height: (maxWorld.y - minWorld.y) + this.config.tileDrawSize,
+                width: (maxWorld.x - minWorld.x) + this.config.tileDrawSize + this.config.tileDepthPaddingPx,
+                height: (maxWorld.y - minWorld.y) + this.config.tileDrawSize + this.config.tileDepthPaddingPx,
             });
         }
 

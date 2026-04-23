@@ -1,7 +1,7 @@
 <template>
   <Transition name="smooth-modal" appear>
     <div v-if="visible" class="menu-overlay smooth-modal-backdrop" @click.self="resumeGame">
-      <div class="menu-panel smooth-modal-surface" :class="{ 'menu-panel-settings': showSettings }" @click.stop>
+      <NineSlicePanel type="small" class="p-4 smooth-modal-surface" :class="{ 'menu-panel-settings': showSettings }" @click.stop>
         <Transition name="menu-swap" mode="out-in">
           <div v-if="!showSettings" key="menu" class="menu-view">
             <div class="menu-header">
@@ -40,7 +40,7 @@
             <Settings @back="showSettings = false" />
           </div>
         </Transition>
-      </div>
+      </NineSlicePanel>
     </div>
   </Transition>
 </template>
@@ -49,6 +49,7 @@
 import { uiStore, resumeGame, returnToTitle } from '../store/uiStore';
 import { computed, ref, watch } from 'vue';
 import Settings from './Settings.vue';
+import NineSlicePanel from "./ui/NineSlicePanel.vue";
 
 const visible = computed(() => uiStore.menuOpen);
 const showSettings = ref(false);

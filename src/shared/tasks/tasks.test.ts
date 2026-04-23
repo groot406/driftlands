@@ -8,6 +8,7 @@ import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
 import { loadTasks, startTask } from '../../store/taskStore.ts';
+import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
 import { evaluateProgression } from '../story/progression.ts';
 import { getTaskDefinition } from './taskRegistry.ts';
@@ -43,6 +44,7 @@ test.afterEach(() => {
   loadWorld([]);
   loadTasks([]);
   resetResourceState();
+  resetPopulationState();
   resetGameRuntime();
   loadStoryProgression(null);
   loadHeroes(originalHeroes.map(cloneHero));
@@ -212,8 +214,19 @@ test('mission 1 campfires offer ration cooking', () => {
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'campfireRations'), true);
 });
 
-test('manual dock fishing stays unavailable when docks are job-only', () => {
+test('manual dock fishing stays progression-locked while settlers can work docks', () => {
   setStoryProgressionForMission(2);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
   loadWorld([
     {
       id: '0,0',
@@ -241,6 +254,48 @@ test('manual dock fishing stays unavailable when docks are job-only', () => {
   };
 
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), false);
+});
+
+test('manual dock fishing emergency-unlocks when settlers drop to zero', () => {
+  setStoryProgressionForMission(2);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'water_dock_a',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'fishAtDock'), true);
 });
 
 test('deferred chop wood chaining skips young forest targets', () => {

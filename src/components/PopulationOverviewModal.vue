@@ -1,7 +1,7 @@
 <template>
   <Transition name="smooth-modal" appear>
     <div v-if="isOpen" class="population-modal-backdrop smooth-modal-backdrop" @click.self="close">
-      <section class="population-modal-panel smooth-modal-surface" @click.stop>
+      <NineSlicePanel type="small" class="population-modal-panel smooth-modal-surface" @click.stop>
         <header class="population-modal-header">
           <div>
             <p class="population-modal-kicker">Population</p>
@@ -55,7 +55,7 @@
           </div>
           <p v-else class="population-empty">No settlers available.</p>
         </section>
-      </section>
+      </NineSlicePanel>
     </div>
   </Transition>
 </template>
@@ -73,6 +73,7 @@ import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { settlers as settlerState } from '../store/settlerStore';
 import { closePopulationModal, openSettlerModal } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
+import NineSlicePanel from "./ui/NineSlicePanel.vue";
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.POPULATION_MODAL));
 const settlers = computed(() => [...settlerState]);
@@ -167,13 +168,6 @@ onUnmounted(() => {
 .population-modal-panel {
   width: min(48rem, 100%);
   max-height: min(88vh, 52rem);
-  overflow-y: auto;
-  border-radius: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 58%);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
   color: #f8fafc;
 }
 
