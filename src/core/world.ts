@@ -20,6 +20,7 @@ export let tiles: Tile[] = [];
 export let tileIndex: Record<string, Tile> = {};
 const radiusOffsetCache = new Map<number, Array<[number, number]>>();
 const pendingRenderDirtyTileIds = new Set<string>();
+const pendingRenderDiscoveredTileIds = new Set<string>();
 
 export let worldOuterRadius = 0;
 let worldRenderVersion = 0;
@@ -78,8 +79,15 @@ export function consumePendingRenderDirtyTiles(): Tile[] {
     return dirtyTiles;
 }
 
+export function consumePendingRenderDiscoveredTileIds(): Set<string> {
+    const discoveredTileIds = new Set(pendingRenderDiscoveredTileIds);
+    pendingRenderDiscoveredTileIds.clear();
+    return discoveredTileIds;
+}
+
 export function clearPendingRenderDirtyTiles() {
     pendingRenderDirtyTileIds.clear();
+    pendingRenderDiscoveredTileIds.clear();
 }
 
 function indexTile(t: Tile) {
@@ -111,11 +119,16 @@ export function ensureTileExists(q: number, r: number): Tile {
 
 export function updateTile(tile: Tile) {
     const target = tileIndex[tile.id] ?? ensureTileExists(tile.q, tile.r);
+    const prevDiscovered = target.discovered;
     const prevTerrain = target.terrain;
     const prevVariant = target.variant;
 
     Object.assign(target, tile);
     tileIndex[target.id] = target;
+
+    if (!prevDiscovered && target.discovered && target.terrain) {
+        pendingRenderDiscoveredTileIds.add(target.id);
+    }
 
     if (prevTerrain && prevTerrain !== target.terrain) {
         terrainPositions[prevTerrain].delete(target.id);
@@ -249,6 +262,9 @@ export function discoverTile(tile: Tile) {
             r: tile.r,
             terrain: tile.terrain,
         });
+        if (!generating) {
+            pendingRenderDiscoveredTileIds.add(tile.id);
+        }
         markTileAndNeighborsRenderDirty(tile);
         bumpWorldRenderVersion();
         return;
@@ -274,6 +290,9 @@ export function discoverTile(tile: Tile) {
         r: tile.r,
         terrain: tile.terrain,
     });
+    if (!generating) {
+        pendingRenderDiscoveredTileIds.add(tile.id);
+    }
 
     tile.variant = tile.terrain ? resolveGeneratedTileVariant(tile, tile.terrain) : null;
     if (tile.variant) {

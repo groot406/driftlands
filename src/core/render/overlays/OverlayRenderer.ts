@@ -369,28 +369,54 @@ export class OverlayRenderer {
         const selectedHero = selectedHeroId.value ? heroes.find((hero) => hero.id === selectedHeroId.value) || null : null;
         const selectedHeroIdle = selectedHero ? deps.isHeroIdle(selectedHero, frame.movementNowMs) : false;
         const selectedHeroWalking = selectedHero ? deps.isHeroWalking(selectedHero, frame.movementNowMs) : false;
-        if (!(selectedHeroIdle || selectedHeroWalking) || !opts.pathCoords.length) {
+
+        const drawPathStroke = (path: Array<{ q: number; r: number }>, markLastAsTarget: boolean) => {
+            for (const pc of path) {
+                if (hexDistance(camera, pc) > camera.radius + 1) continue;
+                const dist = hexDistance(camera, pc);
+                const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+                const last = markLastAsTarget && pc === path[path.length - 1];
+                deps.drawHexHighlight(
+                    ctx,
+                    pc.q,
+                    pc.r,
+                    null,
+                    last ? GROWTH_HYBRID_STYLE.outlines.pathTarget : GROWTH_HYBRID_STYLE.outlines.path,
+                    fade * fade,
+                );
+            }
+        };
+
+        if ((selectedHeroIdle || selectedHeroWalking) && opts.pathCoords.length) {
+            const first = opts.pathCoords[0];
+            const drawPath = selectedHero && first && (first.q !== selectedHero.q || first.r !== selectedHero.r)
+                ? [{ q: selectedHero.q, r: selectedHero.r }, ...opts.pathCoords]
+                : opts.pathCoords;
+            drawPathStroke(drawPath, true);
             return;
         }
 
-        const first = opts.pathCoords[0];
-        const drawPath = selectedHero && first && (first.q !== selectedHero.q || first.r !== selectedHero.r)
-            ? [{ q: selectedHero.q, r: selectedHero.r }, ...opts.pathCoords]
-            : opts.pathCoords;
+        if (!selectedHero?.movement) {
+            return;
+        }
 
-        for (const pc of drawPath) {
-            if (hexDistance(camera, pc) > camera.radius + 1) continue;
-            const dist = hexDistance(camera, pc);
+        const movement = selectedHero.movement;
+        let currentIndex = movement.path.findIndex((point) => point.q === selectedHero.q && point.r === selectedHero.r);
+        if (currentIndex < 0 && selectedHero.q === movement.origin.q && selectedHero.r === movement.origin.r) {
+            currentIndex = -1;
+        }
+
+        const remaining = movement.path.slice(Math.max(0, currentIndex + 1));
+        if (remaining.length) {
+            drawPathStroke(remaining, true);
+            return;
+        }
+
+        const target = movement.target;
+        if (hexDistance(camera, target) <= camera.radius + 1) {
+            const dist = hexDistance(camera, target);
             const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
-            const last = pc === drawPath[drawPath.length - 1];
-            deps.drawHexHighlight(
-                ctx,
-                pc.q,
-                pc.r,
-                null,
-                last ? GROWTH_HYBRID_STYLE.outlines.pathTarget : GROWTH_HYBRID_STYLE.outlines.path,
-                fade * fade,
-            );
+            deps.drawHexHighlight(ctx, target.q, target.r, null, GROWTH_HYBRID_STYLE.outlines.path, fade * fade);
         }
     }
 

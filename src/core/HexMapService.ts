@@ -1,5 +1,6 @@
 import {
     axialKey,
+    consumePendingRenderDiscoveredTileIds,
     consumePendingRenderDirtyTiles,
     getTilesInRadius,
     getWorldRenderVersion,
@@ -304,6 +305,7 @@ interface Particle {
     twinkle: number;
     shape: 'circle' | 'diamond' | 'cloud' | 'ring' | 'bird';
     renderMode?: 'glow' | 'smoke';
+    fadeMode?: 'dissolve';
     growth?: number;
     layer?: 'underlay' | 'overlay';
     wobbleX?: number;
@@ -1291,6 +1293,7 @@ export class HexMapService {
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
         const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
         const dirtyTiles = consumePendingRenderDirtyTiles();
+        const discoveredTileIds = consumePendingRenderDiscoveredTileIds();
         const dirtyChunkKeys = getDirtyChunkKeysForTiles(dirtyTiles, this._renderConfig.terrainChunkSize);
         const discoveredVisibleCount = visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0);
         const stressTier = this.updateRenderStress(visibleTiles.length, discoveredVisibleCount);
@@ -1300,7 +1303,7 @@ export class HexMapService {
         }
         this._currentCameraFx = cameraFx;
         this._currentRenderQuality = quality;
-        this.registerTileRevealAnimations(dirtyTiles, effectNowMs);
+        this.registerTileRevealAnimations(dirtyTiles, effectNowMs, discoveredTileIds);
         this.applyPendingCameraNudges(cameraFx);
         const scene = this._sceneBuilder.build({
             viewport,
@@ -1589,13 +1592,19 @@ export class HexMapService {
         }
     }
 
-    private registerTileRevealAnimations(dirtyTiles: readonly Tile[], nowMs: number) {
+    private registerTileRevealAnimations(
+        dirtyTiles: readonly Tile[],
+        nowMs: number,
+        discoveredTileIds: ReadonlySet<string> = new Set(),
+    ) {
         if (!dirtyTiles.length) {
             return;
         }
 
         let sparkleBursts = 0;
         const sparkleBurstCap = 24;
+        let dustBursts = 0;
+        const dustBurstCap = this._currentRenderQuality.expensiveAtmosphere ? 8 : 5;
         for (const tile of dirtyTiles) {
             if (!tile.discovered || !tile.terrain) {
                 continue;
@@ -1620,6 +1629,15 @@ export class HexMapService {
             ) {
                 this.emitTileRevealSparkles(tile, nowMs, intensity);
                 sparkleBursts += 1;
+            }
+
+            if (
+                discoveredTileIds.has(tile.id)
+                && this._currentRenderQuality.enableParticles
+                && dustBursts < dustBurstCap
+            ) {
+                this.emitTileDiscoveryDustBurst(tile, nowMs, intensity);
+                dustBursts += 1;
             }
         }
     }
@@ -1691,6 +1709,142 @@ export class HexMapService {
                 layer: 'overlay',
             });
         }
+    }
+
+    private emitTileDiscoveryDustBurst(tile: Tile, nowMs: number, intensity: number) {
+        const origin = axialToPixel(tile.q, tile.r);
+        const revealDustY = origin.y + 5;
+        const palette = this.getTileDiscoveryDustPalette(tile);
+        const cloudCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 56 : 40) * intensity);
+        const moteCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 24 : 16) * intensity);
+
+        this.emitParticle({
+            x: origin.x,
+            y: revealDustY + 2,
+            vx: 0,
+            vy: 0,
+            size: this.randomBetween(8.4, 11.8),
+            bornMs: nowMs,
+            lifeMs: this.randomBetween(360, 520),
+            alpha: 0.36 * intensity,
+            glow: 0,
+            color: palette.ring,
+            gravity: 0,
+            drag: 0,
+            twinkle: this.randomBetween(0, 1000),
+            shape: 'ring',
+            growth: this.randomBetween(5.2, 6.6),
+            layer: 'overlay',
+        });
+
+        for (let i = 0; i < cloudCount; i++) {
+            const angle = this.randomBetween(0, Math.PI * 2);
+            const distance = Math.sqrt(Math.random()) * this.randomBetween(2, this.HEX_SIZE * 0.72);
+            const speed = this.randomBetween(4, 18) * intensity;
+            const lift = this.randomBetween(2, 12) * intensity;
+            this.emitParticle({
+                x: origin.x + (Math.cos(angle) * distance),
+                y: revealDustY + (Math.sin(angle) * distance * 0.72) + this.randomBetween(-7, 10),
+                vx: (Math.cos(angle) * speed) + this.randomBetween(-2.5, 2.5),
+                vy: (Math.sin(angle) * speed * 0.16) - lift,
+                size: this.randomBetween(7.2, 15.8),
+                bornMs: nowMs,
+                lifeMs: this.randomBetween(460, 820),
+                alpha: this.randomBetween(0.22, 0.42) * intensity,
+                glow: 0,
+                color: this.pickGlow(palette.clouds),
+                gravity: this.randomBetween(2, 10),
+                drag: this.randomBetween(1.8, 2.8),
+                twinkle: this.randomBetween(0, 1800),
+                shape: 'cloud',
+                renderMode: 'smoke',
+                fadeMode: 'dissolve',
+                growth: this.randomBetween(1.2, 1.85),
+                layer: 'overlay',
+            });
+        }
+
+        for (let i = 0; i < moteCount; i++) {
+            const angle = this.randomBetween(0, Math.PI * 2);
+            const distance = this.randomBetween(3, this.HEX_SIZE * 0.48);
+            const speed = this.randomBetween(10, 30) * intensity;
+            this.emitParticle({
+                x: origin.x + (Math.cos(angle) * distance),
+                y: revealDustY + (Math.sin(angle) * distance * 0.68),
+                vx: (Math.cos(angle) * speed) + this.randomBetween(-4, 4),
+                vy: (Math.sin(angle) * speed * 0.24) - this.randomBetween(4, 16),
+                size: this.randomBetween(0.95, 2.1),
+                bornMs: nowMs,
+                lifeMs: this.randomBetween(260, 520),
+                alpha: this.randomBetween(0.16, 0.32) * intensity,
+                glow: this.randomBetween(0.8, 1.45),
+                color: this.pickGlow(palette.motes),
+                gravity: this.randomBetween(10, 24),
+                drag: this.randomBetween(2.3, 3.6),
+                twinkle: this.randomBetween(0, 1200),
+                shape: Math.random() > 0.72 ? 'diamond' : 'circle',
+                layer: 'overlay',
+            });
+        }
+    }
+
+    private getTileDiscoveryDustPalette(tile: Tile) {
+        const key = this.getTileImageKey(tile) ?? tile.terrain ?? '';
+        if (tile.terrain === 'water' || key.startsWith('water')) {
+            return {
+                clouds: [[74, 105, 112], [98, 128, 130], [52, 82, 92]] as GlowColor[],
+                motes: [[213, 247, 255], [164, 226, 242], [229, 255, 255]] as GlowColor[],
+                ring: [96, 150, 158] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'snow' || key.startsWith('snow')) {
+            return {
+                clouds: [[126, 136, 132], [154, 166, 166], [96, 110, 114]] as GlowColor[],
+                motes: [[255, 255, 255], [218, 241, 255], [194, 226, 242]] as GlowColor[],
+                ring: [150, 166, 168] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') {
+            return {
+                clouds: [[116, 86, 52], [146, 110, 66], [84, 66, 44]] as GlowColor[],
+                motes: [[244, 213, 158], [214, 178, 120], [236, 199, 142]] as GlowColor[],
+                ring: [154, 116, 70] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'mountain' || key.startsWith('mountain')) {
+            return {
+                clouds: [[70, 68, 66], [94, 88, 82], [48, 48, 50]] as GlowColor[],
+                motes: [[210, 196, 174], [168, 158, 148], [232, 222, 204]] as GlowColor[],
+                ring: [104, 96, 84] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'vulcano') {
+            return {
+                clouds: [[38, 36, 36], [62, 52, 46], [92, 58, 42]] as GlowColor[],
+                motes: [[255, 190, 112], [255, 130, 78], [202, 92, 58]] as GlowColor[],
+                ring: [122, 62, 44] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'forest' || key.startsWith('forest')) {
+            return {
+                clouds: [[48, 58, 38], [66, 76, 44], [34, 44, 32]] as GlowColor[],
+                motes: [[164, 202, 110], [118, 172, 86], [202, 190, 106]] as GlowColor[],
+                ring: [78, 92, 54] as GlowColor,
+            };
+        }
+        if (tile.terrain === 'grain' || key.startsWith('grain')) {
+            return {
+                clouds: [[104, 76, 36], [136, 100, 46], [78, 60, 34]] as GlowColor[],
+                motes: [[255, 226, 136], [232, 194, 96], [255, 242, 176]] as GlowColor[],
+                ring: [132, 96, 48] as GlowColor,
+            };
+        }
+
+        return {
+            clouds: [[82, 64, 42], [112, 86, 52], [58, 50, 38]] as GlowColor[],
+            motes: [[226, 214, 176], [184, 164, 116], [205, 194, 148]] as GlowColor[],
+            ring: [114, 88, 54] as GlowColor,
+        };
     }
 
     private drawTileRevealPulse(

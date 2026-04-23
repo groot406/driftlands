@@ -25,6 +25,7 @@ interface ParticleLike {
     twinkle: number;
     shape: 'circle' | 'diamond' | 'cloud' | 'ring' | 'bird';
     renderMode?: 'glow' | 'smoke';
+    fadeMode?: 'dissolve';
     growth?: number;
     layer?: ParticleLayer;
     vx?: number;
@@ -232,7 +233,9 @@ export class ParticleRenderer {
 
             const progress = age / particle.lifeMs;
             const fade = particle.renderMode === 'smoke'
-                ? (1 - (progress * 0.58))
+                ? particle.fadeMode === 'dissolve'
+                    ? Math.pow(1 - progress, 3.1)
+                    : (1 - (progress * 0.58))
                 : particle.shape === 'bird'
                     ? (0.98 - (progress * 0.2))
                     : (1 - (progress * 0.82));
