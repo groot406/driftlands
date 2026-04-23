@@ -14,7 +14,16 @@ interface CameraCompositeStateLike {
 interface DrawOptionsLike {
     hoveredHero: Hero | null;
     hoveredSettler?: { id: string } | null;
+    hoveredTile?: Tile | null;
+    taskMenuTile?: Tile | null;
+    pathCoords: Array<{ q: number; r: number }>;
+    clusterBoundaryTiles?: Tile[];
+    clusterTileIds?: Set<string>;
     globalReachTileIds?: Set<string>;
+    globalReachBoundary?: Array<{ q: number; r: number }>;
+    storyHintTiles?: Tile[];
+    showSupportOverlay?: boolean;
+    hoveredTileInReach?: boolean;
 }
 
 interface RenderFrameLike {
@@ -39,7 +48,13 @@ interface EntityRendererDependencies {
     getSupportAwareTileOpacity(tile: Tile, opacity: number): number;
     getTileOpacity(dist: number, applyCameraFade: boolean): number;
     drawTile(tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number): void;
-    drawTileBottomEdges(tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number): void;
+    drawTileBottomEdges(
+        tile: Tile,
+        now: number,
+        ctx: CanvasRenderingContext2D,
+        opacity: number,
+        visibleTileIds: ReadonlySet<string>,
+    ): void;
     drawUndiscoveredTile(ctx: CanvasRenderingContext2D, opacity: number, tile: Tile, inReach: boolean): void;
     getTileOverlayKey(tile: Tile): string | null;
     getTileOverlayOffset(tile: Tile): { x: number; y: number };
@@ -55,6 +70,11 @@ interface EntityRendererDependencies {
         drawHeight: number,
     ): HTMLCanvasElement | null;
     images: Record<string, HTMLImageElement>;
+    drawDepthEdgeHighlights(
+        ctx: CanvasRenderingContext2D,
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+    ): void;
     heroRenderer: HeroRenderer;
     heroRenderDependencies: Parameters<HeroRenderer['drawHeroes']>[6];
 }
@@ -88,6 +108,7 @@ export class EntityRenderer {
 
         const overlayRecords: HeroOverlayRecord[] = [];
         this.drawTiles(surface.ctx, overlayRecords, frame.visibleTiles, frame.effectNowMs, opts.globalReachTileIds, deps);
+        deps.drawDepthEdgeHighlights(surface.ctx, frame, opts);
         deps.heroRenderer.drawHeroes(
             surface.ctx,
             opts.hoveredHero,
@@ -179,14 +200,11 @@ export class EntityRenderer {
             void deps.drawTile;
         }
 
+        const visibleTileIds = new Set(tiles.map((tile) => tile.id));
         for (const tile of tiles) {
-            if (!tile.discovered) {
-                continue;
-            }
-
             const dist = hexDistance(camera, tile);
             const opacity = deps.getSupportAwareTileOpacity(tile, deps.getTileOpacity(dist, false));
-            deps.drawTileBottomEdges(tile, now, ctx, opacity);
+            deps.drawTileBottomEdges(tile, now, ctx, opacity, visibleTileIds);
         }
     }
 }

@@ -15,6 +15,10 @@ import type { RenderPassContext } from '../RenderPassContext';
 import { GROWTH_HYBRID_STYLE } from '../visualStyle';
 
 const TEXT_INDICATOR_STACK_GAP_PX = 18;
+const SCOUTED_TILE_STYLE = {
+    stroke: 'rgba(203, 213, 225, 0.46)',
+    foundStroke: 'rgba(125, 211, 252, 0.82)',
+};
 
 interface CameraCompositeStateLike {
     offsetX: number;
@@ -118,6 +122,19 @@ export class OverlayRenderer {
         this.drawUnderlay(context, frame, opts, deps);
         this.drawTop(context, frame, opts, deps);
         this.drawScreen(context, frame, deps);
+    }
+
+    drawDepthEdgeHighlights(
+        ctx: CanvasRenderingContext2D,
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ) {
+        this.drawPathTopHighlights(ctx, frame, opts, deps);
+        this.drawStoryHintHighlights(ctx, opts.storyHintTiles ?? [], frame.effectNowMs, deps, false);
+        this.drawScoutedTopHighlights(ctx, frame.visibleTiles, opts, deps);
+        this.drawInteractiveTopHighlights(ctx, frame, opts, deps);
+        this.drawActiveTaskHighlights(ctx, frame.visibleTiles, frame.effectNowMs, deps);
     }
 
     private drawUnderlay(
@@ -312,10 +329,69 @@ export class OverlayRenderer {
             deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false);
         }
 
-        this.drawInteractiveTopHighlights(overlay.ctx, frame, opts, deps);
         this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);
         this.drawTaskIndicators(overlay.ctx, frame.visibleTiles, false, opts.hoveredTile, deps);
         overlay.ctx.restore();
+    }
+
+    private drawScoutedTopHighlights(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ) {
+        for (const tile of tiles) {
+            if (tile.discovered || !tile.scouted || hexDistance(camera, tile) > camera.radius + 1) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+            const inReach = !opts.globalReachTileIds || opts.globalReachTileIds.has(`${tile.q},${tile.r}`);
+            const reachDim = inReach ? 1 : 0.35;
+            deps.drawHexHighlight(
+                ctx,
+                tile.q,
+                tile.r,
+                null,
+                tile.scoutFoundResource ? SCOUTED_TILE_STYLE.foundStroke : SCOUTED_TILE_STYLE.stroke,
+                fade * fade * (tile.scoutFoundResource ? 0.78 : 0.55) * reachDim,
+            );
+        }
+    }
+
+    private drawPathTopHighlights(
+        ctx: CanvasRenderingContext2D,
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ) {
+        const selectedHero = selectedHeroId.value ? heroes.find((hero) => hero.id === selectedHeroId.value) || null : null;
+        const selectedHeroIdle = selectedHero ? deps.isHeroIdle(selectedHero, frame.movementNowMs) : false;
+        const selectedHeroWalking = selectedHero ? deps.isHeroWalking(selectedHero, frame.movementNowMs) : false;
+        if (!(selectedHeroIdle || selectedHeroWalking) || !opts.pathCoords.length) {
+            return;
+        }
+
+        const first = opts.pathCoords[0];
+        const drawPath = selectedHero && first && (first.q !== selectedHero.q || first.r !== selectedHero.r)
+            ? [{ q: selectedHero.q, r: selectedHero.r }, ...opts.pathCoords]
+            : opts.pathCoords;
+
+        for (const pc of drawPath) {
+            if (hexDistance(camera, pc) > camera.radius + 1) continue;
+            const dist = hexDistance(camera, pc);
+            const fade = deps.computeFade(dist, camera.innerRadius, camera.radius);
+            const last = pc === drawPath[drawPath.length - 1];
+            deps.drawHexHighlight(
+                ctx,
+                pc.q,
+                pc.r,
+                null,
+                last ? GROWTH_HYBRID_STYLE.outlines.pathTarget : GROWTH_HYBRID_STYLE.outlines.path,
+                fade * fade,
+            );
+        }
     }
 
     private drawInteractiveTopHighlights(
@@ -359,6 +435,7 @@ export class OverlayRenderer {
         tiles: Tile[],
         nowMs: number,
         deps: OverlayRendererDependencies,
+        includeFill: boolean = true,
     ) {
         for (const tile of tiles) {
             if (hexDistance(camera, tile) > camera.radius + 1) {
@@ -372,7 +449,7 @@ export class OverlayRenderer {
                 ctx,
                 tile.q,
                 tile.r,
-                'rgba(180, 240, 255, 0.05)',
+                includeFill ? 'rgba(180, 240, 255, 0.05)' : null,
                 GROWTH_HYBRID_STYLE.outlines.story,
                 fade * (0.6 + pulse * 0.35),
             );

@@ -125,7 +125,7 @@ function createRenderPassContext(ctx: CanvasRenderingContext2D): RenderPassConte
     };
 }
 
-function createDependencies(capturedOverlayCounts: number[]) {
+function createDependencies(capturedOverlayCounts: number[], drawOrder: string[] = []) {
     return {
         canvas: { width: 640, height: 480 } as HTMLCanvasElement,
         dpr: 1,
@@ -136,7 +136,9 @@ function createDependencies(capturedOverlayCounts: number[]) {
         getSupportAwareTileOpacity: (_tile: unknown, opacity: number) => opacity,
         getTileOpacity: () => 1,
         drawTile: () => undefined,
-        drawTileBottomEdges: () => undefined,
+        drawTileBottomEdges: () => {
+            drawOrder.push('depth-edges');
+        },
         drawUndiscoveredTile: () => undefined,
         getTileOverlayKey: () => 'grain_overhang',
         getTileOverlayOffset: () => ({ x: 0, y: 0 }),
@@ -152,6 +154,9 @@ function createDependencies(capturedOverlayCounts: number[]) {
                 height: 64,
             } as HTMLImageElement,
         },
+        drawDepthEdgeHighlights: () => {
+            drawOrder.push('highlights');
+        },
         heroRenderer: {
             drawHeroes: (
                 _ctx: CanvasRenderingContext2D,
@@ -159,6 +164,7 @@ function createDependencies(capturedOverlayCounts: number[]) {
                 _hoveredSettler: null,
                 overlayRecords: ReadonlyArray<unknown>,
             ) => {
+                drawOrder.push('overlays-and-actors');
                 capturedOverlayCounts.push(overlayRecords.length);
             },
         },
@@ -170,6 +176,7 @@ test('EntityRenderer keeps inactive terrain overlays inside the tile composite p
     const renderer = new EntityRenderer();
     const ctx = createMockContext();
     const capturedOverlayCounts: number[] = [];
+    const drawOrder: string[] = [];
 
     renderer.renderWorldLayer(
         createRenderPassContext(ctx),
@@ -197,17 +204,20 @@ test('EntityRenderer keeps inactive terrain overlays inside the tile composite p
         },
         {
             hoveredHero: null,
+            pathCoords: [],
         },
-        createDependencies(capturedOverlayCounts) as any,
+        createDependencies(capturedOverlayCounts, drawOrder) as any,
     );
 
     assert.deepEqual(capturedOverlayCounts, [0]);
+    assert.deepEqual(drawOrder, ['depth-edges', 'highlights', 'overlays-and-actors']);
 });
 
 test('EntityRenderer still defers active terrain overlays for hero layering', () => {
     const renderer = new EntityRenderer();
     const ctx = createMockContext();
     const capturedOverlayCounts: number[] = [];
+    const drawOrder: string[] = [];
 
     renderer.renderWorldLayer(
         createRenderPassContext(ctx),
@@ -235,9 +245,11 @@ test('EntityRenderer still defers active terrain overlays for hero layering', ()
         },
         {
             hoveredHero: null,
+            pathCoords: [],
         },
-        createDependencies(capturedOverlayCounts) as any,
+        createDependencies(capturedOverlayCounts, drawOrder) as any,
     );
 
     assert.deepEqual(capturedOverlayCounts, [1]);
+    assert.deepEqual(drawOrder, ['depth-edges', 'highlights', 'overlays-and-actors']);
 });

@@ -363,12 +363,21 @@ const DEFAULT_CAMERA_COMPOSITE_STATE: CameraCompositeState = {
 };
 
 const DEFAULT_RENDER_QUALITY: RenderQualityProfile = getResolvedRenderQualityProfile(0);
+const UNDISCOVERED_TILE_KEY = 'undiscovered';
 const TILE_BOTTOM_EDGE_LEFT_KEY = 'tile-bottom-edge-left';
 const TILE_BOTTOM_EDGE_RIGHT_KEY = 'tile-bottom-edge-right';
 const TILE_ART_SOURCE_SIZE = 64;
 const TILE_BOTTOM_EDGE_TOP_NUDGE_Y = -5;
 const TILE_BOTTOM_EDGE_LEFT_NUDGE_X = -2;
 const TILE_BOTTOM_EDGE_RIGHT_NUDGE_X = 1;
+const TILE_SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
+    a: [0, -1],
+    b: [1, -1],
+    c: [1, 0],
+    d: [0, 1],
+    e: [-1, 1],
+    f: [-1, 0],
+};
 
 export class HexMapService {
 
@@ -479,6 +488,8 @@ export class HexMapService {
     private _tileOverlayAlphaBoundsCache = new Map<string, { top: number; bottom: number } | null>();
     private _tileCompositeScratchCanvas: HTMLCanvasElement | null = null;
     private _tileCompositeScratchCtx: CanvasRenderingContext2D | null = null;
+    private _tileDepthShadowCanvas: HTMLCanvasElement | null = null;
+    private _tileDepthShadowCtx: CanvasRenderingContext2D | null = null;
     private _currentRenderQuality: RenderQualityProfile = { ...DEFAULT_RENDER_QUALITY };
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
@@ -555,6 +566,8 @@ export class HexMapService {
         this._waterShimmerCanvasCache.clear();
         this._tileCompositeScratchCanvas = null;
         this._tileCompositeScratchCtx = null;
+        this._tileDepthShadowCanvas = null;
+        this._tileDepthShadowCtx = null;
         this._renderStress = {
             tier: 0,
             smoothedFrameMs: 5.5,
@@ -931,7 +944,9 @@ export class HexMapService {
                         getSupportAwareTileOpacity: (tile, opacity) => this.getSupportAwareTileOpacity(tile, opacity),
                         getTileOpacity: (dist, applyCameraFade) => this.getTileOpacity(dist, applyCameraFade),
                         drawTile: (tile, now, ctx, opacity) => this.drawTile(tile, now, ctx, opacity),
-                        drawTileBottomEdges: (tile, now, ctx, opacity) => this.drawTileBottomEdges(tile, now, ctx, opacity),
+                        drawTileBottomEdges: (tile, now, ctx, opacity, visibleTileIds) => (
+                            this.drawTileBottomEdges(tile, now, ctx, opacity, visibleTileIds)
+                        ),
                         drawUndiscoveredTile: (ctx, opacity, tile, inReach) => this.drawUndiscoveredTile(ctx, opacity, tile, inReach),
                         getTileOverlayKey: (tile) => this.getTileOverlayKey(tile),
                         getTileOverlayOffset: (tile) => this.getTileOverlayOffset(tile),
@@ -942,6 +957,46 @@ export class HexMapService {
                             this.buildShadedTileOverlayCanvas(tile, baseKey, overlayKey, overlayImg, drawWidth, drawHeight)
                         ),
                         images: this._images,
+                        drawDepthEdgeHighlights: (ctx, frame, opts) => {
+                            this._overlayRenderer.drawDepthEdgeHighlights(ctx, frame, opts, {
+                                canvas: this._canvas,
+                                dpr: this._dpr,
+                                hexSize: this.HEX_SIZE,
+                                tileDrawSize: this.TILE_DRAW_SIZE,
+                                heroFrameSize: this.heroFrameSize,
+                                resourceIconMap: this.RESOURCE_ICON_MAP,
+                                storageIndicatorAlphaByTileId: this._storageIndicatorAlphaByTileId,
+                                getCanvasCenter: () => this.getCanvasCenter(),
+                                applyWorldTransform: (highlightCtx, translateX, translateY, cameraFx) => {
+                                    this.applyWorldTransform(highlightCtx, translateX, translateY, cameraFx as CameraCompositeState);
+                                },
+                                computeFade: (dist, inner, radius) => this.computeFade(dist, inner, radius),
+                                getTileOpacity: (dist, applyCameraFade) => this.getTileOpacity(dist, applyCameraFade),
+                                drawHexHighlight: (highlightCtx, q, r, fill, stroke, opacity) => {
+                                    this.drawHexHighlight(highlightCtx, q, r, fill, stroke, opacity);
+                                },
+                                drawSupportOverlay: (highlightCtx, tiles, applyCameraFade, showSupportOverlay) => {
+                                    this.drawSupportOverlay(highlightCtx, tiles, applyCameraFade, showSupportOverlay);
+                                },
+                                drawGameplayWorldImpacts: (highlightCtx, nowMs, applyCameraFade) => {
+                                    this.drawGameplayWorldImpacts(highlightCtx, nowMs, applyCameraFade);
+                                },
+                                drawGrowthTileMotion: (highlightCtx, tiles, nowMs) => {
+                                    this.drawGrowthTileMotion(highlightCtx, tiles, nowMs);
+                                },
+                                drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered) => {
+                                    this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered);
+                                },
+                                drawRoundedRect: (highlightCtx, x, y, w, h, r) => {
+                                    this.drawRoundedRect(highlightCtx, x, y, w, h, r);
+                                },
+                                projectWorldToScreenPixels: (worldX, worldY, cameraFx) => (
+                                    this.projectWorldToScreenPixels(worldX, worldY, cameraFx as CameraCompositeState)
+                                ),
+                                isHeroIdle: (hero, now) => this.isHeroIdle(hero, now),
+                                isHeroWalking: (hero, now) => this.isHeroWalking(hero, now),
+                            });
+                        },
                         heroRenderer: this._heroRenderer,
                         heroRenderDependencies: {
                             queueMissingHeroAssets: () => this.queueMissingHeroAssets(),
@@ -4686,9 +4741,15 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private hasVisibleTileOnSide(tile: Tile, side: TileSide) {
-        const neighbor = tile.neighbors?.[side];
-        return !!(neighbor?.discovered && neighbor.terrain);
+    private hasVisibleTileOnSide(tile: Tile, side: TileSide, visibleTileIds?: ReadonlySet<string>) {
+        const [dq, dr] = TILE_SIDE_DELTAS[side];
+        const neighborKey = axialKey(tile.q + dq, tile.r + dr);
+        if (visibleTileIds?.has(neighborKey)) {
+            return true;
+        }
+
+        const neighbor = tile.neighbors?.[side] ?? tileIndex[neighborKey];
+        return isRenderableExplorationTile(neighbor);
     }
 
     private getTileDepthEdgePlacement(edgeImg: HTMLImageElement, side: 'left' | 'right') {
@@ -4710,14 +4771,40 @@ export class HexMapService {
         };
     }
 
+    private ensureTileDepthShadowSurface() {
+        if (!this._tileDepthShadowCanvas) {
+            this._tileDepthShadowCanvas = this.createTileSizedCanvas();
+            this._tileDepthShadowCtx = this._tileDepthShadowCanvas.getContext('2d');
+        }
+
+        return this._tileDepthShadowCanvas && this._tileDepthShadowCtx
+            ? {
+                canvas: this._tileDepthShadowCanvas,
+                ctx: this._tileDepthShadowCtx,
+            }
+            : null;
+    }
+
     private drawTileDepthInnerCornerShadow(ctx: CanvasRenderingContext2D, state: TileRenderState, hasLeftEdge: boolean, hasRightEdge: boolean) {
         if (!hasLeftEdge && !hasRightEdge) {
             return;
         }
 
-        const vertices = this.getHexVertices(state.x, state.y);
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
+        const shadowSurface = this.ensureTileDepthShadowSurface();
+        if (!shadowSurface) {
+            return;
+        }
+
+        const localState: TileRenderState = {
+            ...state,
+            x: this.HEX_SIZE,
+            y: this.HEX_SIZE,
+            opacity: 1,
+        };
+        const vertices = this.getHexVertices(localState.x, localState.y);
+        const shadowCtx = shadowSurface.ctx;
+        shadowCtx.clearRect(0, 0, shadowSurface.canvas.width, shadowSurface.canvas.height);
+        shadowCtx.save();
 
         const drawShadow = (vertexIndex: number, direction: -1 | 1) => {
             const corner = vertices[vertexIndex];
@@ -4731,18 +4818,18 @@ export class HexMapService {
             cornerShadow.addColorStop(0, 'rgba(42, 24, 6, 0.38)');
             cornerShadow.addColorStop(0.56, 'rgba(42, 24, 6, 0.18)');
             cornerShadow.addColorStop(1, 'rgba(42, 24, 6, 0)');
-            ctx.globalAlpha = state.opacity;
-            ctx.fillStyle = cornerShadow;
-            ctx.fillRect(centerX - 11, centerY - 8, 22, 19);
+            shadowCtx.globalAlpha = 1;
+            shadowCtx.fillStyle = cornerShadow;
+            shadowCtx.fillRect(centerX - 11, centerY - 8, 22, 19);
 
-            ctx.globalAlpha = state.opacity * 0.34;
-            ctx.strokeStyle = 'rgba(35, 20, 6, 0.56)';
-            ctx.lineWidth = 1.25;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(corner.x + (direction * 1.5), corner.y - 1);
-            ctx.lineTo(corner.x + (direction * 7), corner.y + 4);
-            ctx.stroke();
+            shadowCtx.globalAlpha = 0.34;
+            shadowCtx.strokeStyle = 'rgba(35, 20, 6, 0.56)';
+            shadowCtx.lineWidth = 1.25;
+            shadowCtx.lineCap = 'round';
+            shadowCtx.beginPath();
+            shadowCtx.moveTo(corner.x + (direction * 1.5), corner.y - 1);
+            shadowCtx.lineTo(corner.x + (direction * 7), corner.y + 4);
+            shadowCtx.stroke();
         };
 
         if (hasLeftEdge) {
@@ -4752,16 +4839,34 @@ export class HexMapService {
             drawShadow(2, -1);
         }
 
+        shadowCtx.globalCompositeOperation = 'destination-in';
+        shadowCtx.globalAlpha = 1;
+        if (hasLeftEdge) {
+            this.drawTileBottomEdgeMask(shadowCtx, localState, TILE_BOTTOM_EDGE_LEFT_KEY, 'left');
+        }
+        if (hasRightEdge) {
+            this.drawTileBottomEdgeMask(shadowCtx, localState, TILE_BOTTOM_EDGE_RIGHT_KEY, 'right');
+        }
+        shadowCtx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = state.opacity;
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.drawImage(shadowSurface.canvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
         ctx.restore();
     }
 
-    private drawTileBottomEdgeStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
+    private drawTileBottomEdgeStage(
+        ctx: CanvasRenderingContext2D,
+        state: TileRenderState,
+        visibleTileIds?: ReadonlySet<string>,
+    ) {
         if (state.opacity <= 0.03) {
             return;
         }
 
         const drawEdge = (key: string, side: TileSide, placementSide: 'left' | 'right') => {
-            if (this.hasVisibleTileOnSide(state.tile, side)) {
+            if (this.hasVisibleTileOnSide(state.tile, side, visibleTileIds)) {
                 return false;
             }
 
@@ -4770,15 +4875,7 @@ export class HexMapService {
                 return false;
             }
 
-            const placement = this.getTileDepthEdgePlacement(edgeImg, placementSide);
-            ctx.globalAlpha = state.opacity;
-            ctx.drawImage(
-                edgeImg,
-                state.x - this.HEX_SIZE + placement.x,
-                state.y - this.HEX_SIZE + placement.y,
-                placement.width,
-                placement.height,
-            );
+            this.drawTileBottomEdgeImage(ctx, state, edgeImg, placementSide);
             return true;
         };
 
@@ -4787,11 +4884,48 @@ export class HexMapService {
         this.drawTileDepthInnerCornerShadow(ctx, state, hasLeftEdge, hasRightEdge);
     }
 
-    private drawTileBottomEdges(t: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) {
+    private drawTileBottomEdgeImage(
+        ctx: CanvasRenderingContext2D,
+        state: TileRenderState,
+        edgeImg: HTMLImageElement,
+        placementSide: 'left' | 'right',
+    ) {
+        const placement = this.getTileDepthEdgePlacement(edgeImg, placementSide);
+        ctx.globalAlpha = state.opacity;
+        ctx.drawImage(
+            edgeImg,
+            state.x - this.HEX_SIZE + placement.x,
+            state.y - this.HEX_SIZE + placement.y,
+            placement.width,
+            placement.height,
+        );
+    }
+
+    private drawTileBottomEdgeMask(
+        ctx: CanvasRenderingContext2D,
+        state: TileRenderState,
+        key: string,
+        placementSide: 'left' | 'right',
+    ) {
+        const edgeImg = this._images[key];
+        if (!edgeImg) {
+            return;
+        }
+
+        this.drawTileBottomEdgeImage(ctx, state, edgeImg, placementSide);
+    }
+
+    private drawTileBottomEdges(
+        t: Tile,
+        now: number,
+        ctx: CanvasRenderingContext2D,
+        opacity: number,
+        visibleTileIds?: ReadonlySet<string>,
+    ) {
         const state = this.createTileRenderState(t, now, opacity);
         if (!state) return;
 
-        this.drawTileBottomEdgeStage(ctx, state);
+        this.drawTileBottomEdgeStage(ctx, state, visibleTileIds);
         ctx.globalAlpha = 1;
     }
 
@@ -5138,7 +5272,7 @@ export class HexMapService {
         t: Tile,
         inReach: boolean,
     ) {
-        const fogCanvas = this.ensureFogTileCanvas();
+        const fogCanvas = this._maskedImages.get(UNDISCOVERED_TILE_KEY) ?? this.ensureFogTileCanvas();
         const reachDim = inReach ? 1 : 0.35;
         const centerX = this.HEX_SIZE;
         const centerY = this.HEX_SIZE;
@@ -5208,7 +5342,7 @@ export class HexMapService {
             }
         }
 
-        const fogCanvas = this.ensureFogTileCanvas();
+        const fogCanvas = this._maskedImages.get(UNDISCOVERED_TILE_KEY) ?? this.ensureFogTileCanvas();
         ctx.globalAlpha = opacity * 0.85 * reachDim;
         ctx.drawImage(fogCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
 
