@@ -6,7 +6,9 @@
       <LoadingOverlay />
     </div>
   </div>
-  <GameGui v-if="playing" />
+  <div v-show="playing">
+    <GameGui />
+  </div>
 </template>
 
 <script setup lang="ts">

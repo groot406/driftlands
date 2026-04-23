@@ -51,7 +51,6 @@
   <ResourceDetailModal />
   <SettlerModal />
   <NotificationOverlay />
-  <InGameMenu />
 </template>
 
 <script setup lang="ts">
@@ -62,7 +61,6 @@ import ChronicleBar from './ChronicleBar.vue';
 import GoalsPanel from './GoalsPanel.vue';
 import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';
-import InGameMenu from './InGameMenu.vue';
 import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
 import MusicPlayer from './MusicPlayer.vue';
@@ -72,7 +70,7 @@ import ResourceDetailModal from './ResourceDetailModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
-import { pauseGame } from '../store/uiStore';
+import { isPlaying, pauseGame } from '../store/uiStore';
 import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
 
@@ -101,6 +99,8 @@ function toggleGoals() {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  if (!isPlaying()) return;
+
   if (e.key === 'Tab') {
     e.preventDefault();
     showHelpers.value = !showHelpers.value;

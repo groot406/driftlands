@@ -1620,10 +1620,13 @@ export class HexMapService {
 
         let sparkleBursts = 0;
         const sparkleBurstCap = 24;
-        let dustBursts = 0;
-        const dustBurstCap = this._currentRenderQuality.expensiveAtmosphere ? 8 : 5;
+        let revealBursts = 0;
+        const revealBurstCap = this._currentRenderQuality.expensiveAtmosphere ? 10 : 6;
         for (const tile of dirtyTiles) {
             if (!tile.discovered || !tile.terrain) {
+                continue;
+            }
+            if (!discoveredTileIds.has(tile.id)) {
                 continue;
             }
 
@@ -1651,10 +1654,10 @@ export class HexMapService {
             if (
                 discoveredTileIds.has(tile.id)
                 && this._currentRenderQuality.enableParticles
-                && dustBursts < dustBurstCap
+                && revealBursts < revealBurstCap
             ) {
-                this.emitTileDiscoveryDustBurst(tile, nowMs, intensity);
-                dustBursts += 1;
+                this.emitTileDiscoveryRevealBurst(tile, nowMs, intensity);
+                revealBursts += 1;
             }
         }
     }
@@ -1728,137 +1731,176 @@ export class HexMapService {
         }
     }
 
-    private emitTileDiscoveryDustBurst(tile: Tile, nowMs: number, intensity: number) {
+    private emitTileDiscoveryRevealBurst(tile: Tile, nowMs: number, intensity: number) {
         const origin = axialToPixel(tile.q, tile.r);
-        const revealDustY = origin.y + 5;
-        const palette = this.getTileDiscoveryDustPalette(tile);
-        const cloudCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 56 : 40) * intensity);
-        const moteCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 24 : 16) * intensity);
+        const palette = this.getTileDiscoveryRevealPalette(tile);
+        const edgeCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 22 : 15) * intensity);
+        const moteCount = Math.round((this._currentRenderQuality.expensiveAtmosphere ? 18 : 12) * intensity);
 
         this.emitParticle({
             x: origin.x,
-            y: revealDustY + 2,
+            y: origin.y + 2,
             vx: 0,
             vy: 0,
-            size: this.randomBetween(8.4, 11.8),
+            size: this.randomBetween(4.8, 6.8),
             bornMs: nowMs,
-            lifeMs: this.randomBetween(360, 520),
-            alpha: 0.36 * intensity,
+            lifeMs: this.randomBetween(430, 620),
+            alpha: 0.34 * intensity,
             glow: 0,
             color: palette.ring,
             gravity: 0,
             drag: 0,
             twinkle: this.randomBetween(0, 1000),
             shape: 'ring',
-            growth: this.randomBetween(5.2, 6.6),
+            growth: this.randomBetween(7.2, 8.8),
             layer: 'overlay',
         });
 
-        for (let i = 0; i < cloudCount; i++) {
-            const angle = this.randomBetween(0, Math.PI * 2);
-            const distance = Math.sqrt(Math.random()) * this.randomBetween(2, this.HEX_SIZE * 0.72);
-            const speed = this.randomBetween(4, 18) * intensity;
-            const lift = this.randomBetween(2, 12) * intensity;
+        if (this._currentRenderQuality.expensiveAtmosphere) {
             this.emitParticle({
-                x: origin.x + (Math.cos(angle) * distance),
-                y: revealDustY + (Math.sin(angle) * distance * 0.72) + this.randomBetween(-7, 10),
-                vx: (Math.cos(angle) * speed) + this.randomBetween(-2.5, 2.5),
-                vy: (Math.sin(angle) * speed * 0.16) - lift,
-                size: this.randomBetween(7.2, 15.8),
+                x: origin.x,
+                y: origin.y + 2,
+                vx: 0,
+                vy: 0,
+                size: this.randomBetween(2.6, 4.1),
                 bornMs: nowMs,
-                lifeMs: this.randomBetween(460, 820),
-                alpha: this.randomBetween(0.22, 0.42) * intensity,
+                lifeMs: this.randomBetween(520, 740),
+                alpha: 0.22 * intensity,
                 glow: 0,
-                color: this.pickGlow(palette.clouds),
-                gravity: this.randomBetween(2, 10),
-                drag: this.randomBetween(1.8, 2.8),
-                twinkle: this.randomBetween(0, 1800),
-                shape: 'cloud',
-                renderMode: 'smoke',
-                fadeMode: 'dissolve',
-                growth: this.randomBetween(1.2, 1.85),
+                color: palette.wash,
+                gravity: 0,
+                drag: 0,
+                twinkle: this.randomBetween(0, 1000),
+                shape: 'ring',
+                growth: this.randomBetween(9.5, 11.4),
+                layer: 'overlay',
+            });
+        }
+
+        const edgeVertices = this.getHexVertices(origin.x, origin.y);
+        for (let i = 0; i < edgeCount; i++) {
+            const edgeCursor = ((i / Math.max(1, edgeCount)) * 6) + this.randomBetween(-0.2, 0.2);
+            const edgeFloor = Math.floor(edgeCursor);
+            const edgeIndex = ((edgeFloor % 6) + 6) % 6;
+            const edgeProgress = edgeCursor - edgeFloor;
+            const start = edgeVertices[edgeIndex]!;
+            const end = edgeVertices[(edgeIndex + 1) % edgeVertices.length]!;
+            const particleX = start.x + ((end.x - start.x) * edgeProgress);
+            const particleY = start.y + ((end.y - start.y) * edgeProgress);
+            const inwardX = origin.x - particleX;
+            const inwardY = origin.y - particleY;
+            const inwardLength = Math.hypot(inwardX, inwardY) || 1;
+            const tangentX = end.x - start.x;
+            const tangentY = end.y - start.y;
+            const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+            const speed = this.randomBetween(14, 30) * intensity;
+            const slide = this.randomBetween(-8, 8);
+
+            this.emitParticle({
+                x: particleX + ((inwardX / inwardLength) * this.randomBetween(1, 4)),
+                y: particleY + ((inwardY / inwardLength) * this.randomBetween(1, 4)),
+                vx: ((inwardX / inwardLength) * speed) + ((tangentX / tangentLength) * slide),
+                vy: ((inwardY / inwardLength) * speed * 0.7) + ((tangentY / tangentLength) * slide * 0.55) - this.randomBetween(3, 12),
+                size: this.randomBetween(1.0, 2.25),
+                bornMs: nowMs,
+                lifeMs: this.randomBetween(360, 680),
+                alpha: this.randomBetween(0.22, 0.42) * intensity,
+                glow: this.randomBetween(2.1, 3.35),
+                color: this.pickGlow(palette.edge),
+                gravity: this.randomBetween(5, 16),
+                drag: this.randomBetween(1.5, 2.6),
+                twinkle: this.randomBetween(0, 1200),
+                shape: Math.random() > 0.34 ? 'diamond' : 'circle',
                 layer: 'overlay',
             });
         }
 
         for (let i = 0; i < moteCount; i++) {
             const angle = this.randomBetween(0, Math.PI * 2);
-            const distance = this.randomBetween(3, this.HEX_SIZE * 0.48);
-            const speed = this.randomBetween(10, 30) * intensity;
+            const distance = Math.sqrt(Math.random()) * this.HEX_SIZE * 0.52;
+            const speed = this.randomBetween(18, 44) * intensity;
             this.emitParticle({
                 x: origin.x + (Math.cos(angle) * distance),
-                y: revealDustY + (Math.sin(angle) * distance * 0.68),
-                vx: (Math.cos(angle) * speed) + this.randomBetween(-4, 4),
-                vy: (Math.sin(angle) * speed * 0.24) - this.randomBetween(4, 16),
-                size: this.randomBetween(0.95, 2.1),
+                y: origin.y + (Math.sin(angle) * distance * 0.72) + this.randomBetween(-4, 5),
+                vx: (Math.cos(angle) * speed) + this.randomBetween(-5, 5),
+                vy: (Math.sin(angle) * speed * 0.34) - this.randomBetween(8, 22),
+                size: this.randomBetween(0.9, 2.05),
                 bornMs: nowMs,
-                lifeMs: this.randomBetween(260, 520),
-                alpha: this.randomBetween(0.16, 0.32) * intensity,
-                glow: this.randomBetween(0.8, 1.45),
+                lifeMs: this.randomBetween(420, 760),
+                alpha: this.randomBetween(0.18, 0.36) * intensity,
+                glow: this.randomBetween(1.9, 3.1),
                 color: this.pickGlow(palette.motes),
-                gravity: this.randomBetween(10, 24),
-                drag: this.randomBetween(2.3, 3.6),
+                gravity: this.randomBetween(8, 20),
+                drag: this.randomBetween(1.8, 3.0),
                 twinkle: this.randomBetween(0, 1200),
-                shape: Math.random() > 0.72 ? 'diamond' : 'circle',
+                shape: Math.random() > 0.46 ? 'diamond' : 'circle',
                 layer: 'overlay',
             });
         }
     }
 
-    private getTileDiscoveryDustPalette(tile: Tile) {
+    private getTileDiscoveryRevealPalette(tile: Tile) {
         const key = this.getTileImageKey(tile) ?? tile.terrain ?? '';
         if (tile.terrain === 'water' || key.startsWith('water')) {
             return {
-                clouds: [[74, 105, 112], [98, 128, 130], [52, 82, 92]] as GlowColor[],
+                wash: [118, 214, 230] as GlowColor,
+                edge: [[226, 255, 255], [164, 226, 242], [132, 207, 255]] as GlowColor[],
                 motes: [[213, 247, 255], [164, 226, 242], [229, 255, 255]] as GlowColor[],
                 ring: [96, 150, 158] as GlowColor,
             };
         }
         if (tile.terrain === 'snow' || key.startsWith('snow')) {
             return {
-                clouds: [[126, 136, 132], [154, 166, 166], [96, 110, 114]] as GlowColor[],
+                wash: [220, 244, 252] as GlowColor,
+                edge: [[255, 255, 255], [218, 241, 255], [194, 226, 242]] as GlowColor[],
                 motes: [[255, 255, 255], [218, 241, 255], [194, 226, 242]] as GlowColor[],
                 ring: [150, 166, 168] as GlowColor,
             };
         }
         if (tile.terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') {
             return {
-                clouds: [[116, 86, 52], [146, 110, 66], [84, 66, 44]] as GlowColor[],
+                wash: [230, 184, 112] as GlowColor,
+                edge: [[255, 232, 176], [236, 199, 142], [244, 213, 158]] as GlowColor[],
                 motes: [[244, 213, 158], [214, 178, 120], [236, 199, 142]] as GlowColor[],
                 ring: [154, 116, 70] as GlowColor,
             };
         }
         if (tile.terrain === 'mountain' || key.startsWith('mountain')) {
             return {
-                clouds: [[70, 68, 66], [94, 88, 82], [48, 48, 50]] as GlowColor[],
+                wash: [190, 184, 166] as GlowColor,
+                edge: [[232, 222, 204], [210, 196, 174], [168, 158, 148]] as GlowColor[],
                 motes: [[210, 196, 174], [168, 158, 148], [232, 222, 204]] as GlowColor[],
                 ring: [104, 96, 84] as GlowColor,
             };
         }
         if (tile.terrain === 'vulcano') {
             return {
-                clouds: [[38, 36, 36], [62, 52, 46], [92, 58, 42]] as GlowColor[],
+                wash: [255, 156, 92] as GlowColor,
+                edge: [[255, 220, 150], [255, 160, 96], [255, 120, 72]] as GlowColor[],
                 motes: [[255, 190, 112], [255, 130, 78], [202, 92, 58]] as GlowColor[],
                 ring: [122, 62, 44] as GlowColor,
             };
         }
         if (tile.terrain === 'forest' || key.startsWith('forest')) {
             return {
-                clouds: [[48, 58, 38], [66, 76, 44], [34, 44, 32]] as GlowColor[],
+                wash: [134, 202, 116] as GlowColor,
+                edge: [[202, 232, 132], [164, 202, 110], [118, 172, 86]] as GlowColor[],
                 motes: [[164, 202, 110], [118, 172, 86], [202, 190, 106]] as GlowColor[],
                 ring: [78, 92, 54] as GlowColor,
             };
         }
         if (tile.terrain === 'grain' || key.startsWith('grain')) {
             return {
-                clouds: [[104, 76, 36], [136, 100, 46], [78, 60, 34]] as GlowColor[],
+                wash: [255, 216, 118] as GlowColor,
+                edge: [[255, 242, 176], [255, 226, 136], [232, 194, 96]] as GlowColor[],
                 motes: [[255, 226, 136], [232, 194, 96], [255, 242, 176]] as GlowColor[],
                 ring: [132, 96, 48] as GlowColor,
             };
         }
 
         return {
-            clouds: [[82, 64, 42], [112, 86, 52], [58, 50, 38]] as GlowColor[],
+            wash: [214, 198, 146] as GlowColor,
+            edge: [[246, 232, 180], [226, 214, 176], [184, 164, 116]] as GlowColor[],
             motes: [[226, 214, 176], [184, 164, 116], [205, 194, 148]] as GlowColor[],
             ring: [114, 88, 54] as GlowColor,
         };
@@ -1876,24 +1918,113 @@ export class HexMapService {
         const fade = (1 - progress) * (1 - progress);
         const { x, y } = axialToPixel(tile.q, tile.r);
         const scale = 1 + ((GROWTH_HYBRID_STYLE.tileReveal.scale - 1) * pop * reveal.intensity);
+        const palette = this.getTileDiscoveryRevealPalette(tile);
+        const revealEase = 1 - Math.pow(1 - progress, 3);
+        const sweepAlpha = Math.sin(Math.min(1, progress * 1.18) * Math.PI);
 
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
         ctx.translate(x, y);
         ctx.scale(scale, scale);
         ctx.translate(-x, -y);
-        this.drawTile(tile, nowMs, ctx, Math.min(0.34, 0.22 * pop * reveal.intensity) * opacity);
+        this.drawTile(tile, nowMs, ctx, Math.min(0.3, 0.18 * pop * reveal.intensity) * opacity);
         ctx.restore();
 
         ctx.save();
-        ctx.globalAlpha = opacity * fade * reveal.intensity;
+        this.traceHexClipPath(ctx, x, y);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = opacity * reveal.intensity;
+
+        const glowRadius = this.HEX_SIZE * (0.34 + (revealEase * 1.08));
+        const centerGlow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+        centerGlow.addColorStop(0, this.toRgba(palette.wash, 0.24 * fade));
+        centerGlow.addColorStop(0.58, this.toRgba(palette.ring, 0.13 * sweepAlpha));
+        centerGlow.addColorStop(1, this.toRgba(palette.wash, 0));
+        ctx.fillStyle = centerGlow;
+        ctx.fillRect(x - this.HEX_SIZE, y - this.HEX_SIZE, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+
+        const sweepY = y - this.HEX_SIZE + (this.TILE_DRAW_SIZE * revealEase);
+        const sweep = ctx.createLinearGradient(x - this.HEX_SIZE, sweepY - 18, x + this.HEX_SIZE, sweepY + 18);
+        sweep.addColorStop(0, this.toRgba(palette.wash, 0));
+        sweep.addColorStop(0.42, this.toRgba([255, 255, 255], 0.2 * sweepAlpha));
+        sweep.addColorStop(0.52, this.toRgba(palette.wash, 0.28 * sweepAlpha));
+        sweep.addColorStop(1, this.toRgba(palette.ring, 0));
+        ctx.fillStyle = sweep;
+        ctx.fillRect(x - this.HEX_SIZE, y - this.HEX_SIZE, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = opacity * fade * reveal.intensity * 0.82;
         this.traceHexClipPath(ctx, x, y);
         ctx.fillStyle = GROWTH_HYBRID_STYLE.tileReveal.fill;
         ctx.fill();
-        ctx.strokeStyle = GROWTH_HYBRID_STYLE.tileReveal.stroke;
-        ctx.lineWidth = 1.4 + (pop * 1.2);
+        ctx.strokeStyle = this.toRgba(palette.edge[0] ?? palette.ring, 0.9);
+        ctx.lineWidth = 1.25 + (pop * 1.4);
         ctx.lineJoin = 'round';
         ctx.stroke();
+        ctx.restore();
+
+        this.drawTileRevealEdgeTrace(ctx, x, y, progress, opacity * reveal.intensity, palette.edge[0] ?? palette.ring);
+    }
+
+    private drawTileRevealEdgeTrace(
+        ctx: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        progress: number,
+        alpha: number,
+        color: GlowColor,
+    ) {
+        const vertices = this.getHexVertices(x, y);
+        const lead = 1 - Math.pow(1 - Math.min(1, progress * 1.12), 2.4);
+        const pulse = Math.sin(Math.min(1, progress * 1.32) * Math.PI);
+        const edgeAlpha = alpha * (0.16 + (pulse * 0.52)) * Math.pow(1 - progress, 0.42);
+        if (edgeAlpha <= 0.01) {
+            return;
+        }
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = this.toRgba(color, edgeAlpha * 0.85);
+        ctx.shadowBlur = 5 + (pulse * 4);
+        ctx.strokeStyle = this.toRgba(color, edgeAlpha);
+        ctx.lineWidth = 1 + (pulse * 1.25);
+
+        for (let i = 0; i < vertices.length; i++) {
+            const start = vertices[i]!;
+            const end = vertices[(i + 1) % vertices.length]!;
+            const phaseOffset = i % 2 === 0 ? 0 : 0.08;
+            const center = Math.max(0, Math.min(1, lead + phaseOffset - 0.04));
+            const halfLength = 0.12 + (pulse * 0.13);
+            const a = Math.max(0, center - halfLength);
+            const b = Math.min(1, center + halfLength);
+            if (b <= 0 || a >= 1 || b <= a) {
+                continue;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(start.x + ((end.x - start.x) * a), start.y + ((end.y - start.y) * a));
+            ctx.lineTo(start.x + ((end.x - start.x) * b), start.y + ((end.y - start.y) * b));
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = this.toRgba([255, 255, 255], edgeAlpha * 0.46);
+        ctx.lineWidth = 0.75 + (pulse * 0.8);
+        for (const vertex of vertices) {
+            const inwardX = x - vertex.x;
+            const inwardY = y - vertex.y;
+            const length = Math.hypot(inwardX, inwardY) || 1;
+            const startInset = 0.08;
+            const endInset = 0.22 + (pulse * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(vertex.x + ((inwardX / length) * this.HEX_SIZE * startInset), vertex.y + ((inwardY / length) * this.HEX_SIZE * startInset));
+            ctx.lineTo(vertex.x + ((inwardX / length) * this.HEX_SIZE * endInset), vertex.y + ((inwardY / length) * this.HEX_SIZE * endInset));
+            ctx.stroke();
+        }
+
         ctx.restore();
     }
 
