@@ -52,7 +52,7 @@ export function isBloomEffectEnabled() {
 }
 
 export function shouldUseCanvasDropShadow() {
-    return true;
+    return false;
 }
 
 export function shouldUseEdgeVignette() {

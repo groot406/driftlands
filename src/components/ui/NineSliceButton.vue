@@ -4,8 +4,8 @@
     as="button"
     class="ui-nine-slice-button"
     :image-path="buttonFrameUrl"
-    :slice="16"
-    :border-width="25"
+    :slice="18"
+    :border-width="18"
     repeat="stretch"
     fill
     pixelated
@@ -45,8 +45,6 @@ export default {name: 'NineSliceButton'};
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 7rem;
-  min-height: 3.25rem;
   padding: 0;
   color: rgb(54, 34, 18);
   font: inherit;

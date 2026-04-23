@@ -48,15 +48,21 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
 
         if (frame.quality.enableManualShadowComposite) {
             ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 2;
-            ctx.shadowBlur = 5;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+            ctx.shadowOffsetY = 3;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(3, 18, 12, 0.42)';
             ctx.drawImage(frame.worldCanvas, 0, 0);
 
-            ctx.shadowOffsetX = 15;
-            ctx.shadowOffsetY = 35;
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowOffsetX = 18;
+            ctx.shadowOffsetY = 32;
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(2, 14, 10, 0.24)';
+            ctx.drawImage(frame.worldCanvas, 0, 0);
+
+            ctx.shadowOffsetX = -5;
+            ctx.shadowOffsetY = 12;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = 'rgba(36, 50, 28, 0.14)';
             ctx.drawImage(frame.worldCanvas, 0, 0);
 
             ctx.shadowOffsetX = 0;

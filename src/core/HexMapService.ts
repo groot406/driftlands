@@ -87,6 +87,7 @@ import { BloomEffect } from './render/effects/BloomEffect';
 import { VignetteEffect } from './render/effects/VignetteEffect';
 import { FogShimmerEffect } from './render/effects/FogShimmerEffect';
 import { CloudShadowEffect } from './render/effects/CloudShadowEffect';
+import { PeacefulAtmosphereEffect } from './render/effects/PeacefulAtmosphereEffect';
 import { AuraEffect } from './render/effects/AuraEffect';
 import { BackdropRenderer } from './render/effects/BackdropRenderer';
 import { CompositeRenderer } from './render/effects/CompositeRenderer';
@@ -411,13 +412,14 @@ export class HexMapService {
     private _effectPipeline!: EffectPipeline;
     private readonly _fogShimmerEffect = new FogShimmerEffect();
     private readonly _cloudShadowEffect = new CloudShadowEffect({
-        dpr: this._dpr,
+        getDpr: () => this._dpr,
         getCanvasCenter: () => this.getCanvasCenter(),
         getCameraFx: (context) => this.getLegacyFrameFromPassContext(context).cameraFx,
         applyWorldTransform: (ctx, translateX, translateY, cameraFx) => {
             this.applyWorldTransform(ctx, translateX, translateY, cameraFx as CameraCompositeState);
         },
     });
+    private readonly _peacefulAtmosphereEffect = new PeacefulAtmosphereEffect();
     private readonly _auraEffect = new AuraEffect();
     private readonly _backdropRenderer = new BackdropRenderer<Tile, CameraCompositeState>();
     private readonly _compositeRenderer = new CompositeRenderer<RenderFrameContext>();
@@ -444,6 +446,7 @@ export class HexMapService {
     private _bloomCanvas: HTMLCanvasElement | null = null;
     private _bloomCtx: CanvasRenderingContext2D | null = null;
     private _dpr = 1;
+    private _renderArchitectureDpr = -1;
 
     private _images: Record<string, HTMLImageElement> = {};
     private _maskedImages = new Map<string, HTMLCanvasElement>();
@@ -547,6 +550,7 @@ export class HexMapService {
         this._effectCtx = null;
         this._bloomCanvas = null;
         this._bloomCtx = null;
+        this._renderArchitectureDpr = -1;
         this._heroLayouts.clear();
         this._maskedImages.clear();
         this._particles = [];
@@ -694,12 +698,26 @@ export class HexMapService {
             self._debugRenderer = new DebugRenderer();
         }
 
-        self._effectPipeline = new EffectPipeline([
+        const shouldRebuildPipeline =
+            !self._effectPipeline
+            || !self._renderPipeline
+            || this._renderArchitectureDpr !== this._dpr;
+
+        if (shouldRebuildPipeline) {
+            self._effectPipeline = this.createEffectPipeline();
+            self._renderPipeline = new HexMapRenderer(this.createRenderPasses());
+            this._renderArchitectureDpr = this._dpr;
+        }
+    }
+
+    private createEffectPipeline() {
+        return new EffectPipeline([
             new MotionBlurEffect(),
             this._cloudShadowEffect,
+            this._peacefulAtmosphereEffect,
             new BloomEffect({
-                dpr: this._dpr,
                 hexSize: this.HEX_SIZE,
+                getDpr: () => this._dpr,
                 getBloomSurface: () => (
                     this._bloomCtx && this._bloomCanvas
                         ? this.toRenderSurface(this._bloomCanvas, this._bloomCtx)
@@ -726,7 +744,6 @@ export class HexMapService {
                 projectWorldToScreenPixels: (worldX, worldY, cameraFx) => this.projectWorldToScreenPixels(worldX, worldY, cameraFx),
             }),
         ]);
-        self._renderPipeline = new HexMapRenderer(this.createRenderPasses());
     }
 
     pickTile(screenX: number, screenY: number): Tile | null {
@@ -3239,6 +3256,31 @@ export class HexMapService {
                 drag: 0.9,
                 twinkle: this.randomBetween(0, 1000),
                 shape: 'diamond',
+            });
+            return;
+        }
+
+        if (tile.terrain === 'plains' || key.startsWith('plains')) {
+            const flowered = key.includes('flower') || key.includes('clover') || key.includes('meadow');
+            if (!this.shouldSpawnAmbientParticle(flowered ? 0.34 : 0.18)) return;
+            const colors: GlowColor[] = flowered
+                ? [[248, 236, 146], [194, 246, 164], [255, 204, 174], [182, 235, 220]]
+                : [[214, 238, 158], [174, 224, 148], [238, 226, 142]];
+            this.emitParticle({
+                x: x + this.randomBetween(-18, 18),
+                y: y + this.randomBetween(-10, 8),
+                vx: this.randomBetween(-4, 5),
+                vy: this.randomBetween(-9, -1),
+                size: this.randomBetween(0.75, flowered ? 1.45 : 1.18),
+                bornMs: now,
+                lifeMs: this.randomBetween(1500, 3200),
+                alpha: this.randomBetween(flowered ? 0.12 : 0.08, flowered ? 0.26 : 0.18),
+                glow: this.randomBetween(1.35, flowered ? 2.2 : 1.75),
+                color: this.pickGlow(colors),
+                gravity: this.randomBetween(-1.4, 0.8),
+                drag: this.randomBetween(0.38, 0.72),
+                twinkle: this.randomBetween(0, 1200),
+                shape: flowered && Math.random() > 0.42 ? 'diamond' : 'circle',
             });
             return;
         }

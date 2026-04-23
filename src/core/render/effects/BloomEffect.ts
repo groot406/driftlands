@@ -36,8 +36,8 @@ interface BloomFrameLike {
 }
 
 interface BloomEffectDependencies {
-    dpr: number;
     hexSize: number;
+    getDpr(): number;
     getBloomSurface(): RenderSurface | null;
     getFrame(context: RenderPassContext): BloomFrameLike;
     getDrawOptions(context: RenderPassContext): DrawOptionsLike;
@@ -94,9 +94,10 @@ export class BloomEffect implements WorldEffect {
         const translateX = cx - camPx.x;
         const translateY = cy - camPx.y;
         const cameraPoint = { q: frame.viewport.cameraQ, r: frame.viewport.cameraR };
+        const dpr = this.deps.getDpr();
 
         ctx.save();
-        ctx.scale(this.deps.dpr, this.deps.dpr);
+        ctx.scale(dpr, dpr);
         this.deps.applyWorldTransform(ctx, translateX, translateY, frame.cameraFx);
 
         for (const tile of frame.visibleTiles) {

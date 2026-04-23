@@ -10,7 +10,7 @@ interface CameraCompositeStateLike {
 }
 
 interface CloudShadowEffectDependencies {
-    dpr: number;
+    getDpr(): number;
     getCanvasCenter(): { cx: number; cy: number };
     getCameraFx(context: RenderPassContext): CameraCompositeStateLike;
     applyWorldTransform(
@@ -105,9 +105,10 @@ export class CloudShadowEffect implements WorldEffect {
         const secondaryDetailMotion = detailLayerEnabled
             ? this.getCloudLayerMotion(morph.secondarySeed ^ 0x6ad5c431, true, 0.8)
             : null;
+        const dpr = this.deps.getDpr();
 
         ctx.save();
-        ctx.scale(this.deps.dpr, this.deps.dpr);
+        ctx.scale(dpr, dpr);
         this.deps.applyWorldTransform(ctx, translateX, translateY, cameraFx);
         this.withDiscoveredClip(ctx, discoveredTiles, context.config.hexSize, context.config.tileDrawSize, () => {
             ctx.globalCompositeOperation = 'source-over';
@@ -272,7 +273,7 @@ export class CloudShadowEffect implements WorldEffect {
         const data = image.data;
 
         for (let index = 0; index < signalValues.length; index++) {
-            const density = this.smoothstep(thresholdStart, thresholdEnd, signalValues[index]);
+            const density = this.smoothstep(thresholdStart, thresholdEnd, signalValues[index] ?? 0);
             const alpha = Math.pow(Math.max(0, density), profile.alphaPower);
             const pixelIndex = index * 4;
             data[pixelIndex] = 20;

@@ -28,7 +28,10 @@ function cloneRunSnapshot(run: RunSnapshot): RunSnapshot {
     mutator: { ...run.mutator },
     chapter: { ...run.chapter },
     progression: cloneProgression(run.progression),
-    objectives: [],
+    objectives: run.objectives.map((objective) => ({
+      ...objective,
+      reward: objective.reward ? { ...objective.reward } : undefined,
+    })),
     dialogue: {
       activeEntryId: run.dialogue.activeEntryId,
       entries: run.dialogue.entries.map((entry) => ({
@@ -36,8 +39,26 @@ function cloneRunSnapshot(run: RunSnapshot): RunSnapshot {
         speaker: { ...entry.speaker },
       })),
     },
-    chapterArchive: [],
-    lastCompletedChapter: undefined,
+    chapterArchive: run.chapterArchive.map((chapter) => ({
+      ...chapter,
+      mutator: { ...chapter.mutator },
+      chapter: { ...chapter.chapter },
+      objectives: chapter.objectives.map((objective) => ({
+        ...objective,
+        reward: objective.reward ? { ...objective.reward } : undefined,
+      })),
+    })),
+    lastCompletedChapter: run.lastCompletedChapter
+      ? {
+          ...run.lastCompletedChapter,
+          mutator: { ...run.lastCompletedChapter.mutator },
+          chapter: { ...run.lastCompletedChapter.chapter },
+          objectives: run.lastCompletedChapter.objectives.map((objective) => ({
+            ...objective,
+            reward: objective.reward ? { ...objective.reward } : undefined,
+          })),
+        }
+      : undefined,
   };
 }
 

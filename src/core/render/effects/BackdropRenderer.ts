@@ -69,9 +69,9 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
         ctx.imageSmoothingEnabled = true;
 
         const wash = ctx.createLinearGradient(0, 0, width, height);
-        wash.addColorStop(0, toRgba(topColor, 0.34));
-        wash.addColorStop(0.52, toRgba(topColor, 0.18));
-        wash.addColorStop(1, toRgba(bottomColor, 0.42));
+        wash.addColorStop(0, toRgba(topColor, 0.62));
+        wash.addColorStop(0.52, toRgba(topColor, 0.42));
+        wash.addColorStop(1, toRgba(bottomColor, 0.7));
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
@@ -116,8 +116,8 @@ export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends 
         ctx.globalCompositeOperation = 'multiply';
         const floorShadow = ctx.createLinearGradient(0, height * 0.18, 0, height);
         floorShadow.addColorStop(0, 'rgba(5, 8, 14, 0)');
-        floorShadow.addColorStop(0.64, 'rgba(26, 42, 36, 0.045)');
-        floorShadow.addColorStop(1, 'rgba(26, 42, 36, 0.11)');
+        floorShadow.addColorStop(0.64, 'rgba(26, 42, 36, 0.028)');
+        floorShadow.addColorStop(1, 'rgba(26, 42, 36, 0.07)');
         ctx.fillStyle = floorShadow;
         ctx.fillRect(0, 0, width, height);
 

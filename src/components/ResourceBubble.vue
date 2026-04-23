@@ -7,8 +7,8 @@
     :title="label"
     @click="emit('select')"
   >
-    <span class="leading-none mr-4">{{ icon }}</span>
-    <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50">{{ value }}</span>
+    <span class="leading-none mr-4 text-xs">{{ icon }}</span>
+    <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50 pr-2 pb-1">{{ value }}</span>
   </NineSliceButton>
 </template>
 
