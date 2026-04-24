@@ -58,7 +58,7 @@ function moveToPosition(position: { q: number, r: number} ) {
   moveCamera(position.q, position.r);
 }
 
-// Global hotkeys: 1-9 select hero, Tab/Shift+Tab cycle through heroes
+// Global hotkeys: 1-9 select hero, brackets cycle through heroes
 function onGlobalKeyDown(e: KeyboardEvent) {
   // Ignore if any modal is blocking keyboard input
   if (isKeyboardBlocked.value) return;
@@ -81,14 +81,14 @@ function onGlobalKeyDown(e: KeyboardEvent) {
     return;
   }
 
-  // Tab cycles selection; Shift+Tab cycles backwards
-  if (e.key === 'Tab') {
+  // Bracket keys cycle selection; left bracket cycles backwards.
+  if (e.key === '[' || e.key === ']') {
     e.preventDefault();
     if (!heroes.length) return;
     const current = getSelectedHero();
     const currentIdx = current ? heroes.findIndex(h => h.id === current.id) : -1;
     let nextIdx;
-    if (e.shiftKey) {
+    if (e.key === '[') {
       nextIdx = currentIdx <= 0 ? heroes.length - 1 : currentIdx - 1;
     } else {
       nextIdx = currentIdx >= 0 ? (currentIdx + 1) % heroes.length : 0;

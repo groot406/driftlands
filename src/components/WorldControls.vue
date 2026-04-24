@@ -33,7 +33,7 @@
     <div class="world-action-row">
       <button class="mini-btn" @click="restartWorldStory()" title="Restart the world and story using the entered seed">Restart Story</button>
       <button class="mini-btn" @click="restartWorldStory(true)" title="Restart the world and story with a brand new random seed">Restart Random</button>
-      <button class="mini-btn" @click="restartLargeWorld()" title="Restart the world and story as a large 200-ring debug world">Large World (200)</button>
+      <button class="mini-btn mini-btn--disabled" disabled :title="LARGE_WORLD_DISABLED_TITLE">Large World (200)</button>
       <button class="mini-btn" @click="centerCamera()" title="Center camera on world">Center Camera</button>
     </div>
   </div>
@@ -48,7 +48,7 @@ import { runSnapshot } from '../store/runStore';
 
 const MAX_UINT32 = 0xffffffff;
 const DEBUG_SEED_STORAGE_KEY = 'driftlands-restart-seed-v1';
-const DEBUG_LARGE_WORLD_RADIUS = 200;
+const LARGE_WORLD_DISABLED_TITLE = 'Disabled for now: 200-ring worlds can overwhelm the server snapshot path.';
 
 const storySeed = computed(() => runSnapshot.value?.seed ?? null);
 const activeWorldSeed = ref(getWorldGenerationSeed());
@@ -145,10 +145,6 @@ function restartWorldStory(forceRandom: boolean = false, radius?: number) {
   }
 }
 
-function restartLargeWorld() {
-  restartWorldStory(false, DEBUG_LARGE_WORLD_RADIUS);
-}
-
 watch(storySeed, (seed) => {
   if (seed === null) {
     activeWorldSeed.value = getWorldGenerationSeed();
@@ -203,5 +199,11 @@ watch(storySeed, (seed) => {
 
 .mini-btn {
   @apply rounded-md border border-slate-600 bg-slate-700 px-2 py-1 text-xs font-medium text-white shadow transition-colors hover:bg-slate-600;
+}
+
+.mini-btn--disabled,
+.mini-btn--disabled:hover {
+  @apply cursor-not-allowed border-slate-700 bg-slate-800 text-slate-500;
+  box-shadow: none;
 }
 </style>

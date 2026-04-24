@@ -125,3 +125,15 @@ test('worldState.init respects the requested world radius', async () => {
   assert.equal(Math.max(...discoveredRings), 3);
   assert.equal(discoveredTiles.length, 37);
 });
+
+test('worldState.init clamps oversized debug world radius', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42, 999);
+
+  const discoveredTiles = tiles.filter((tile) => tile.discovered);
+  const discoveredRings = discoveredTiles.map((tile) => hexDistance(tile.q, tile.r));
+
+  assert.equal(Math.max(...discoveredRings), 64);
+  assert.equal(discoveredTiles.length, 12481);
+});

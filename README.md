@@ -96,7 +96,8 @@ Helpful notes:
 
 - click a hero or hero portrait to select it
 - press `1-9` to select a hero directly
-- press `Tab` to cycle heroes
+- press `[` or `]` to cycle heroes
+- press `Tab` to show playtest/debug controls
 - click a tile to move or open its task menu
 - drag to move the camera
 - press `Escape` to open the in-game menu

@@ -171,7 +171,8 @@ Controls and affordances that matter:
 
 - Click hero portrait or hero sprite to select.
 - Number keys `1-9` select heroes.
-- `Tab` cycles heroes in `Game.vue`, but it also toggles helper visibility in `GameGui.vue`.
+- Bracket keys `[` and `]` cycle heroes in `Game.vue`.
+- `Tab` toggles helper/debug controls in `GameGui.vue`.
 - Click tile to move or open tasks.
 - Drag to pan camera.
 - `Escape` opens or closes the in-game menu.
@@ -179,7 +180,7 @@ Controls and affordances that matter:
 
 Known rough edges:
 
-- Control responsibilities overlap.
+- Control responsibilities have been improving, but shortcuts still need regular UX review as playtest controls move in and out of the helper menu.
 - Debug/helper interactions are mixed with gameplay input.
 - The task layer carries most of the design weight, so the game feels systemic but aimless.
 
@@ -279,4 +280,3 @@ If a future task touches gameplay or architecture, read these first:
 - `server/src/tick.ts`
 - `server/src/handlers/movementHandler.ts`
 - `TODO.md`
-

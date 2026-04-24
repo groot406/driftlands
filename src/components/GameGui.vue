@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import MaintenanceAlert from './MaintenanceAlert.vue';
 import ChronicleBar from './ChronicleBar.vue';
@@ -71,10 +71,11 @@ import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
-import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
+import { chronicleHasEntries, openGoalsPanel, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
 
 const showHelpers = ref(false);
+let autoOpenedGoalsForSeed: number | null = null;
 
 const hasGoals = computed(() => {
   const run = runSnapshot.value;
@@ -101,18 +102,35 @@ function toggleGoals() {
 function handleKeyDown(e: KeyboardEvent) {
   if (!isPlaying()) return;
 
+  const target = e.target as HTMLElement | null;
+  const isInput = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
+
+  if (isInput) return;
+
   if (e.key === 'Tab') {
     e.preventDefault();
+    e.stopImmediatePropagation();
     showHelpers.value = !showHelpers.value;
     return;
   }
-  const target = e.target as HTMLElement | null;
-  const isInput = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
-  if (isInput || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
 
   if (e.code === 'KeyC') recallConversation();
   if (e.code === 'KeyG') toggleGoals();
 }
+
+function maybeOpenStartingGoals() {
+  const run = runSnapshot.value;
+  if (!run || !hasGoals.value || autoOpenedGoalsForSeed === run.seed) {
+    return;
+  }
+
+  autoOpenedGoalsForSeed = run.seed;
+  openGoalsPanel();
+}
+
+watch([runSnapshot, hasGoals], maybeOpenStartingGoals, { immediate: true });
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);

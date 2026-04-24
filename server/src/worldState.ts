@@ -26,7 +26,8 @@ import { syncSettlerPopulation } from './systems/settlerSystem';
 const STARTING_FOOD = 12;
 const MAX_UINT32 = 0xffffffff;
 const DEFAULT_WORLD_DISCOVER_RADIUS = 1;
-const MAX_WORLD_DISCOVER_RADIUS = 200;
+// Keep debug restarts below snapshot sizes that can overwhelm the dev server.
+const MAX_WORLD_DISCOVER_RADIUS = 64;
 
 function normalizeSeed(seed: number | null | undefined) {
   if (typeof seed !== 'number' || !Number.isFinite(seed)) {
