@@ -70,9 +70,17 @@ function recomputeAggregateInventory() {
         resourceInventory[resourceType] = 0;
     }
 
+    clearReactiveRecord(settlementResourceInventories);
+
     for (const snapshot of Object.values(storageInventories)) {
+        const settlementId = getStorageSettlementId(snapshot.tileId);
+        const settlementInventory = settlementId ? ensureSettlementResourceInventory(settlementId) : null;
         for (const resourceType of RESOURCE_TYPES) {
-            resourceInventory[resourceType] = (resourceInventory[resourceType] ?? 0) + (snapshot.resources[resourceType] ?? 0);
+            const amount = snapshot.resources[resourceType] ?? 0;
+            resourceInventory[resourceType] = (resourceInventory[resourceType] ?? 0) + amount;
+            if (settlementInventory) {
+                settlementInventory.resources[resourceType] = (settlementInventory.resources[resourceType] ?? 0) + amount;
+            }
         }
     }
 }
@@ -115,17 +123,44 @@ function getStorageCapacityForTileId(tileId: string) {
     return kind ? getStorageCapacity(kind) : 0;
 }
 
+function getStorageSettlementId(tileId: string) {
+    const tile = tileIndex[tileId];
+    return tile?.ownerSettlementId ?? tile?.controlledBySettlementId ?? (tile?.terrain === 'towncenter' ? tile.id : null) ?? null;
+}
+
+function ensureSettlementResourceInventory(settlementId: string): SettlementResourceInventorySnapshot {
+    let snapshot = settlementResourceInventories[settlementId];
+    if (!snapshot) {
+        snapshot = {
+            settlementId,
+            resources: createEmptyInventory(),
+        };
+        settlementResourceInventories[settlementId] = snapshot;
+    }
+
+    return snapshot;
+}
+
+export interface SettlementResourceInventorySnapshot {
+    settlementId: string;
+    resources: Partial<Record<ResourceType, number>>;
+}
+
 // Aggregate view of all delivered resources across every local storage.
 export const resourceInventory: Partial<Record<ResourceType, number>> = reactive(createEmptyInventory());
 
 // Per-storage inventories keyed by storage tile id.
 export const storageInventories: Record<string, StorageSnapshot> = reactive({});
 
+// Per-settlement aggregate inventories keyed by settlement id.
+export const settlementResourceInventories: Record<string, SettlementResourceInventorySnapshot> = reactive({});
+
 // Version ref for watchers (incremented on any inventory mutation)
 export const resourceVersion = ref(0);
 
 export function resetResourceState() {
     clearReactiveRecord(storageInventories);
+    clearReactiveRecord(settlementResourceInventories);
     writeAggregateInventory(createEmptyInventory());
     resourceVersion.value++;
 }
@@ -153,6 +188,23 @@ export function listStorageSnapshots(): StorageSnapshot[] {
         capacity: storage.capacity,
         resources: cloneInventory(storage.resources),
     }));
+}
+
+export function listSettlementResourceSnapshots(): SettlementResourceInventorySnapshot[] {
+    return Object.values(settlementResourceInventories)
+        .sort((a, b) => a.settlementId.localeCompare(b.settlementId))
+        .map((settlement) => ({
+            settlementId: settlement.settlementId,
+            resources: cloneInventory(settlement.resources),
+        }));
+}
+
+export function getSettlementResourceInventory(settlementId: string | null | undefined) {
+    if (!settlementId) {
+        return createEmptyInventory();
+    }
+
+    return cloneInventory(settlementResourceInventories[settlementId]?.resources);
 }
 
 export function ensureStorageSnapshotForTile(tile: Tile | null | undefined) {
@@ -239,6 +291,14 @@ export function withdrawResourceFromStorage(tileId: string, type: ResourceType, 
 }
 
 export function withdrawResourceAcrossStorages(type: ResourceType, amount: number = 1): StorageResourceTransfer[] {
+    return withdrawResourceAcrossStoragesForSettlement(null, type, amount);
+}
+
+export function withdrawResourceAcrossStoragesForSettlement(
+    settlementId: string | null | undefined,
+    type: ResourceType,
+    amount: number = 1,
+): StorageResourceTransfer[] {
     if (amount <= 0) {
         return [];
     }
@@ -246,7 +306,9 @@ export function withdrawResourceAcrossStorages(type: ResourceType, amount: numbe
     const transfers: StorageResourceTransfer[] = [];
     let remaining = amount;
 
-    const prioritizedStorageIds = Object.keys(storageInventories).sort(compareStorageWithdrawalPriority);
+    const prioritizedStorageIds = Object.keys(storageInventories)
+        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
+        .sort(compareStorageWithdrawalPriority);
     for (const storageTileId of prioritizedStorageIds) {
         if (remaining <= 0) {
             break;
@@ -268,28 +330,44 @@ export function withdrawResourceAcrossStorages(type: ResourceType, amount: numbe
         return transfers;
     }
 
-    const current = resourceInventory[type] ?? 0;
+    const current = settlementId
+        ? settlementResourceInventories[settlementId]?.resources[type] ?? 0
+        : resourceInventory[type] ?? 0;
     const withdrawnAmount = Math.min(amount, current);
     if (withdrawnAmount <= 0) {
         return [];
     }
 
-    resourceInventory[type] = Math.max(0, current - withdrawnAmount);
+    if (settlementId) {
+        ensureSettlementResourceInventory(settlementId).resources[type] = Math.max(0, current - withdrawnAmount);
+    } else {
+        resourceInventory[type] = Math.max(0, current - withdrawnAmount);
+    }
     resourceVersion.value++;
     return [{
-        storageTileId: '0,0',
+        storageTileId: settlementId ?? '0,0',
         amount: withdrawnAmount,
     }];
 }
 
 export function planResourceWithdrawalsAcrossStorages(type: ResourceType, amount: number = 1): StorageResourceTransfer[] {
+    return planResourceWithdrawalsAcrossStoragesForSettlement(null, type, amount);
+}
+
+export function planResourceWithdrawalsAcrossStoragesForSettlement(
+    settlementId: string | null | undefined,
+    type: ResourceType,
+    amount: number = 1,
+): StorageResourceTransfer[] {
     if (amount <= 0) {
         return [];
     }
 
     const transfers: StorageResourceTransfer[] = [];
     let remaining = amount;
-    const prioritizedStorageIds = Object.keys(storageInventories).sort(compareStorageWithdrawalPriority);
+    const prioritizedStorageIds = Object.keys(storageInventories)
+        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
+        .sort(compareStorageWithdrawalPriority);
 
     for (const storageTileId of prioritizedStorageIds) {
         if (remaining <= 0) {
@@ -313,14 +391,16 @@ export function planResourceWithdrawalsAcrossStorages(type: ResourceType, amount
         return transfers;
     }
 
-    const current = resourceInventory[type] ?? 0;
+    const current = settlementId
+        ? settlementResourceInventories[settlementId]?.resources[type] ?? 0
+        : resourceInventory[type] ?? 0;
     const amountToTake = Math.min(amount, current);
     if (amountToTake <= 0) {
         return [];
     }
 
     return [{
-        storageTileId: '0,0',
+        storageTileId: settlementId ?? '0,0',
         amount: amountToTake,
     }];
 }
@@ -406,6 +486,7 @@ export function setResourceAmount(type: ResourceType, amount: number) {
 
 export function replaceInventory(values: Partial<Record<ResourceType, number>>) {
     clearReactiveRecord(storageInventories);
+    clearReactiveRecord(settlementResourceInventories);
     writeAggregateInventory(values);
     resourceVersion.value++;
 }

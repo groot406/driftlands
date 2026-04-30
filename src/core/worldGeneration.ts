@@ -29,26 +29,26 @@ function clamp01(value: number) {
     return Math.max(0, Math.min(1, value));
 }
 
-function getStarterGroveCenters(): Array<[number, number]> {
-    const primaryIndex = Math.floor(getClimateProfile(0, 0).weirdness * STARTER_GROVE_DIRECTIONS.length) % STARTER_GROVE_DIRECTIONS.length;
-    const secondaryIndex = (primaryIndex + 1 + Math.floor(getClimateProfile(0, 0).temperature * 2)) % STARTER_GROVE_DIRECTIONS.length;
+function getStarterGroveCenters(origin: {q:number, r:number} = {q:0, r:0}): Array<[number, number]> {
+    const primaryIndex = Math.floor(getClimateProfile(origin.q, origin.r).weirdness * STARTER_GROVE_DIRECTIONS.length) % STARTER_GROVE_DIRECTIONS.length;
+    const secondaryIndex = (primaryIndex + 1 + Math.floor(getClimateProfile(origin.q, origin.r).temperature * 2)) % STARTER_GROVE_DIRECTIONS.length;
     const primaryDirection = STARTER_GROVE_DIRECTIONS[primaryIndex] ?? STARTER_GROVE_DIRECTIONS[0]!;
     const secondaryDirection = STARTER_GROVE_DIRECTIONS[secondaryIndex] ?? STARTER_GROVE_DIRECTIONS[1]!;
 
     return [
-        [primaryDirection[0] * 3, primaryDirection[1] * 3],
-        [primaryDirection[0] * 4, primaryDirection[1] * 4],
-        [secondaryDirection[0] * 3, secondaryDirection[1] * 3],
+        [origin.q + primaryDirection[0] * 3, origin.r + primaryDirection[1] * 3],
+        [origin.q + primaryDirection[0] * 4, origin.r + primaryDirection[1] * 4],
+        [origin.q + secondaryDirection[0] * 3, origin.r + secondaryDirection[1] * 3],
     ];
 }
 
-function isStarterForestTile(q: number, r: number) {
-    const distance = axialDistanceFromOrigin(q, r);
+function isStarterForestTile(q: number, r: number, origin: {q:number, r:number} = {q:0, r:0}) {
+    const distance = axialDistanceCoords(q, r, origin.q, origin.r);
     if (distance < 2 || distance > 4) {
         return false;
     }
 
-    for (const [centerQ, centerR] of getStarterGroveCenters()) {
+    for (const [centerQ, centerR] of getStarterGroveCenters(origin)) {
         if (axialDistanceCoords(q, r, centerQ, centerR) <= 1) {
             return true;
         }
@@ -57,26 +57,26 @@ function isStarterForestTile(q: number, r: number) {
     return false;
 }
 
-function getStarterPondTiles(): Array<[number, number]> {
-    const originClimate = getClimateProfile(0, 0);
+function getStarterPondTiles(origin: {q:number, r:number} = {q:0, r:0}): Array<[number, number]> {
+    const originClimate = getClimateProfile(origin.q, origin.r);
     const groveIndex = Math.floor(originClimate.weirdness * STARTER_GROVE_DIRECTIONS.length) % STARTER_GROVE_DIRECTIONS.length;
     const pondIndex = (groveIndex + 2 + Math.floor(originClimate.basin * 2)) % STARTER_GROVE_DIRECTIONS.length;
     const outward = STARTER_GROVE_DIRECTIONS[pondIndex] ?? STARTER_GROVE_DIRECTIONS[0]!;
     const clockwise = STARTER_GROVE_DIRECTIONS[(pondIndex + 2) % STARTER_GROVE_DIRECTIONS.length] ?? STARTER_GROVE_DIRECTIONS[2]!;
     const counterClockwise = STARTER_GROVE_DIRECTIONS[(pondIndex + 4) % STARTER_GROVE_DIRECTIONS.length] ?? STARTER_GROVE_DIRECTIONS[4]!;
-    const centerQ = outward[0] * 6;
-    const centerR = outward[1] * 6;
+    const centerQ = origin.q + outward[0] * 6;
+    const centerR = origin.r + outward[1] * 6;
 
     return [
-        [outward[0] * 5, outward[1] * 5],
+        [origin.q + outward[0] * 5, origin.r + outward[1] * 5],
         [centerQ, centerR],
         [centerQ + clockwise[0], centerR + clockwise[1]],
         [centerQ + counterClockwise[0], centerR + counterClockwise[1]],
     ];
 }
 
-function isStarterPondTile(q: number, r: number) {
-    for (const [pondQ, pondR] of getStarterPondTiles()) {
+function isStarterPondTile(q: number, r: number, origin: {q:number, r:number} = {q:0, r:0}) {
+    for (const [pondQ, pondR] of getStarterPondTiles(origin)) {
         if (q === pondQ && r === pondR) {
             return true;
         }
@@ -85,12 +85,12 @@ function isStarterPondTile(q: number, r: number) {
     return false;
 }
 
-function isStarterPondShoreTile(q: number, r: number) {
-    if (isStarterPondTile(q, r)) {
+function isStarterPondShoreTile(q: number, r: number, origin: {q:number, r:number} = {q:0, r:0}) {
+    if (isStarterPondTile(q, r, origin)) {
         return false;
     }
 
-    for (const [pondQ, pondR] of getStarterPondTiles()) {
+    for (const [pondQ, pondR] of getStarterPondTiles(origin)) {
         if (axialDistanceCoords(q, r, pondQ, pondR) <= 1) {
             return true;
         }
@@ -102,11 +102,11 @@ function isStarterPondShoreTile(q: number, r: number) {
 function getSeaWaterScore(q: number, r: number) {
     const climate = getClimateProfile(q, r);
     const distance = axialDistanceFromOrigin(q, r);
-    return ((1 - climate.continentalness) * 0.64)
-        + (climate.basin * 0.62)
-        + ((1 - climate.erosion) * 0.1)
-        - (climate.uplands * 0.24)
-        - (distance < 4 ? 0.74 : 0);
+    return ((1 - climate.continentalness) * 0.6)
+        + (climate.basin * 0.56)
+        + ((1 - climate.erosion) * 0.08)
+        - (climate.uplands * 0.26)
+        - (distance < 4 ? 0.78 : 0);
 }
 
 function getPondCenterScore(q: number, r: number) {
@@ -154,7 +154,7 @@ function isPondCenter(q: number, r: number) {
 function isProceduralPondTile(q: number, r: number) {
     const climate = getClimateProfile(q, r);
     const seaWaterScore = getSeaWaterScore(q, r);
-    if (seaWaterScore > 0.58 || climate.uplands > 0.48 || climate.peaks > 0.54) {
+    if (seaWaterScore > 0.57 || climate.uplands > 0.48 || climate.peaks > 0.54) {
         return false;
     }
 
@@ -214,20 +214,20 @@ function getDirtScore(q: number, r: number) {
         + (climate.weirdness * 0.1);
 }
 
-export function resolveBiomeFamily(q: number, r: number): BiomeKey {
+export function resolveBiomeFamily(q: number, r: number, origin: { q: number, r: number} = { q: 0, r: 0 }): BiomeKey {
     const climate = getClimateProfile(q, r);
-    const distance = axialDistanceFromOrigin(q, r);
+    const distance = axialDistanceCoords(q, r, origin.q, origin.r);
     if (isStarterPondTile(q, r) || isProceduralPondTile(q, r)) {
         return 'lake';
     }
 
     const seaWaterScore = getSeaWaterScore(q, r);
-    if (distance >= 7 && seaWaterScore > 0.51) {
+    if (distance >= 7 && seaWaterScore > 0.54) {
         return 'lake';
     }
 
     const alpineScore = getAlpineScore(q, r);
-    if (distance >= 10 && climate.temperature < 0.4 && alpineScore > 0.55) {
+    if (distance >= 12 && climate.temperature < 0.34 && alpineScore > 0.61) {
         return 'snow';
     }
     if (distance >= 6 && alpineScore > 0.68) {
@@ -240,7 +240,7 @@ export function resolveBiomeFamily(q: number, r: number): BiomeKey {
     }
 
     const forestScore = getForestScore(q, r);
-    if (forestScore > 0.5 && climate.moisture > 0.44) {
+    if (forestScore > 0.47 && climate.moisture > 0.42) {
         return 'forest';
     }
 
@@ -262,7 +262,7 @@ function shouldSpawnVolcano(q: number, r: number) {
         + (climate.temperature * 0.18)
         - (climate.moisture * 0.16);
 
-    if (score < 0.58 || climate.temperature < 0.36 || climate.moisture > 0.6) {
+    if (score < 0.56 || climate.temperature < 0.36 || climate.moisture > 0.6) {
         return false;
     }
 
@@ -280,9 +280,9 @@ function shouldSpawnVolcano(q: number, r: number) {
     return true;
 }
 
-function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey): TerrainKey {
+function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey, origin: {q:number, r:number} = {q:0, r: 0}): TerrainKey {
     const climate = getClimateProfile(q, r);
-    const distance = axialDistanceFromOrigin(q, r);
+    const distance = axialDistanceCoords(q, r, origin.q, origin.r);
 
     if ((biome === 'mountain' || biome === 'dessert') && shouldSpawnVolcano(q, r)) {
         return 'vulcano';
@@ -296,7 +296,7 @@ function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey): TerrainK
             return 'snow';
 
         case 'mountain':
-            if (distance >= 12 && climate.temperature < 0.38 && climate.peaks > 0.58) {
+            if (distance >= 14 && climate.temperature < 0.32 && climate.peaks > 0.66) {
                 return 'snow';
             }
             return 'mountain';
@@ -347,8 +347,8 @@ function resolveTerrainForBiome(q: number, r: number, biome: BiomeKey): TerrainK
     }
 }
 
-function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number): GeneratedWorldTile {
-    const distance = axialDistanceFromOrigin(q, r);
+function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number, origin: {q:number, r:number} = {q:0, r: 0}): GeneratedWorldTile {
+    const distance = axialDistanceCoords(q, r, origin.q, origin.r);
     if (distance <= 2) {
         const climate = getClimateProfile(q, r);
         if (climate.canopy > 0.56) {
@@ -360,15 +360,15 @@ function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number): Gen
         return { biome: 'plains', terrain: 'plains' };
     }
 
-    if (isStarterForestTile(q, r)) {
+    if (isStarterForestTile(q, r, origin)) {
         return { biome: 'forest', terrain: 'forest' };
     }
 
-    if (isStarterPondTile(q, r)) {
+    if (isStarterPondTile(q, r, origin)) {
         return { biome: 'lake', terrain: 'water' };
     }
 
-    if (distance <= 8 && isStarterPondShoreTile(q, r)) {
+    if (distance <= 8 && isStarterPondShoreTile(q, r, origin)) {
         return { biome: 'plains', terrain: 'plains' };
     }
 
@@ -385,8 +385,8 @@ function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number): Gen
 
 // Simplified Minecraft-inspired generation:
 // broad climate fields first, then a terrain choice inside that biome family.
-export function resolveWorldTile(q: number, r: number): GeneratedWorldTile {
-    const biome = resolveBiomeFamily(q, r);
-    const terrain = resolveTerrainForBiome(q, r, biome);
-    return enforceSpawnSafety({ biome, terrain }, q, r);
+export function resolveWorldTile(q: number, r: number, origin: { q: number, r: number} = { q: 0, r: 0}): GeneratedWorldTile {
+    const biome = resolveBiomeFamily(q, r, origin);
+    const terrain = resolveTerrainForBiome(q, r, biome, origin);
+    return enforceSpawnSafety({ biome, terrain }, q, r, origin);
 }

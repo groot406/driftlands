@@ -10,6 +10,15 @@ export class ClientMessageRouter {
     if (!this.handlers.has(type)) {
       this.handlers.set(type, []);
     }
+
+    // Check if the handler is already registered, do this by comparing the hashed function
+    const existingHandlers = this.handlers.get(type)!;
+    const existingHandlerHash = existingHandlers.map(h => h.toString()).join(',');
+    const newHandlerHash = handler.toString();
+    if (existingHandlerHash.includes(newHandlerHash)) {
+      return;
+    }
+
     this.handlers.get(type)!.push(handler as MessageHandler);
   }
 
@@ -27,8 +36,11 @@ export class ClientMessageRouter {
   // Route an incoming message to appropriate handlers
   route(message: ServerMessage): void {
     const typeHandlers = this.handlers.get(message.type);
-    if (typeHandlers) {
-      typeHandlers.forEach(handler => {
+    const wildCardHandlers = this.handlers.get('*');
+    const allHandlers = [...(typeHandlers || []), ...(wildCardHandlers || [])];
+
+    if (allHandlers) {
+      allHandlers.forEach(handler => {
         try {
           handler(message);
         } catch (error) {

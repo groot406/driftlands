@@ -15,11 +15,11 @@
           <div class="population-stat-grid">
             <div class="population-stat-card">
               <p class="population-stat-label">Population</p>
-              <p class="population-stat-value">{{ populationState.current }}/{{ populationState.max }}</p>
+              <p class="population-stat-value">{{ playerPopulation.current }}/{{ playerPopulation.max }}</p>
             </div>
             <div class="population-stat-card">
               <p class="population-stat-label">Beds</p>
-              <p class="population-stat-value">{{ populationState.beds }}</p>
+              <p class="population-stat-value">{{ playerPopulation.beds }}</p>
             </div>
             <div class="population-stat-card">
               <p class="population-stat-label">Workers</p>
@@ -74,10 +74,22 @@ import { settlers as settlerState } from '../store/settlerStore';
 import { closePopulationModal, openSettlerModal } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 import NineSlicePanel from "./ui/NineSlicePanel.vue";
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.POPULATION_MODAL));
-const settlers = computed(() => [...settlerState]);
-const foodUseLabel = computed(() => `${populationState.current * FOOD_PER_SETTLER_PER_MINUTE}/min`);
+const playerPopulation = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+});
+const settlers = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? settlerState.filter((settler) => settler.settlementId === settlementId)
+    : [...settlerState];
+});
+const foodUseLabel = computed(() => `${playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE}/min`);
 
 function formatActivity(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -93,7 +105,7 @@ function getTileLabel(tileId: string | null | undefined) {
   if (!tile) return 'Unknown place';
   if (tile.terrain === 'towncenter') return 'Town Center';
   const building = getBuildingDefinitionForTile(tile);
-  return building?.label ?? tile.terrain.replace(/_/g, ' ');
+  return building?.label ?? tile.terrain?.replace(/_/g, ' ') ?? 'Unknown place';
 }
 
 function getSettlerLocation(settler: Settler) {

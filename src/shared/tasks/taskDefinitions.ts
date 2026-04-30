@@ -12,6 +12,7 @@ import './definitions/dismantle';
 import './definitions/dig';
 import './definitions/explore';
 import './definitions/fishAtDock';
+import './definitions/gatherDriftwood';
 import './definitions/gatherSand';
 import './definitions/harvestGrain';
 import './definitions/harvestWaterLilies';

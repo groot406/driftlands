@@ -1,10 +1,16 @@
-import type {HeroAbilityUpdateMessage, HeroPayloadUpdateMessage, HeroScoutResourceUpdateMessage} from '../../shared/protocol';
+import type {
+    HeroAbilityUpdateMessage,
+    HeroPayloadUpdateMessage,
+    HeroRosterUpdateMessage,
+    HeroScoutResourceUpdateMessage,
+} from '../../shared/protocol';
 import {clientMessageRouter} from '../messageRouter';
-import {getHero} from '../../store/heroStore';
+import {getHero, loadHeroes} from '../../store/heroStore';
 import { SCOUT_RESOURCE_TASK_TYPE } from '../../shared/game/scoutResources';
 import { addTextIndicator } from '../textIndicators';
 import { playPositionalSound } from '../../store/soundStore';
 import { addNotification } from '../../store/notificationStore';
+import { ensureHeroSelected } from '../../store/uiStore';
 
 class ClientHeroHandler {
     private initialized = false;
@@ -18,6 +24,12 @@ class ClientHeroHandler {
         clientMessageRouter.on('hero:payload_update', this.handlePayloadUpdate.bind(this));
         clientMessageRouter.on('hero:scout_resource_update', this.handleScoutResourceUpdate.bind(this));
         clientMessageRouter.on('hero:ability_update', this.handleAbilityUpdate.bind(this));
+        clientMessageRouter.on('hero:roster_update', this.handleRosterUpdate.bind(this));
+    }
+
+    private handleRosterUpdate(message: HeroRosterUpdateMessage): void {
+        loadHeroes(message.heroes);
+        ensureHeroSelected(false);
     }
 
     private handlePayloadUpdate(message: HeroPayloadUpdateMessage): void {

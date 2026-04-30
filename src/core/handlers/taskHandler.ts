@@ -15,6 +15,8 @@ import {addTextIndicator} from "../textIndicators.ts";
 import { PathService } from "../PathService.ts";
 import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity } from "../../shared/buildings/storage.ts";
 import type { Hero } from "../types/Hero.ts";
+import { currentPlayerId } from "../socket.ts";
+import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
 
 const rewardDeliveryPathService = new PathService();
 
@@ -51,6 +53,18 @@ const TASK_COMPLETION_FEEDBACK: Record<string, CompletionFeedback> = {
     dig: { text: 'Dug out', color: '#d6d3d1', soundPath: 'mining.mp3', baseVolume: 0.24 },
     removeTrunks: { text: 'Cleared', color: '#bbf7d0', soundPath: 'chopping.wav', baseVolume: 0.24 },
 };
+
+function isLocalHero(hero: Hero | null | undefined) {
+    if (!hero) {
+        return false;
+    }
+
+    if (currentPlayerSettlementId.value && hero.settlementId === currentPlayerSettlementId.value) {
+        return true;
+    }
+
+    return !!currentPlayerId.value && hero.playerId === currentPlayerId.value;
+}
 
 class ClientTaskHandler {
     private initialized = false;
@@ -198,6 +212,10 @@ class ClientTaskHandler {
         if (task) {
             const def = getTaskDefinition(task.type);
             const tile = tileIndex[task.tileId];
+            const participantHeroes = message.rewards
+                .map((reward) => getHero(reward.heroId))
+                .filter((hero): hero is Hero => !!hero);
+            const isLocalCompletion = participantHeroes.some((hero) => isLocalHero(hero));
             this.lastWorkImpactMsByTaskId.delete(task.id);
 
             if (tile && task.type !== 'explore') {
@@ -234,7 +252,7 @@ class ClientTaskHandler {
                     return;
                 }
                 const completionSoundConfig = def.getSoundOnComplete(tile, task);
-                if (completionSoundConfig) {
+                if (completionSoundConfig && isLocalCompletion) {
 
                     const completionSoundId = `${task.type}-complete-${tile.q}-${tile.r}`;
                     playPositionalSound(
@@ -295,9 +313,16 @@ class ClientTaskHandler {
             return;
         }
 
-        const heroAnchor = heroIds
+        const participantHeroes = heroIds
             .map((heroId) => getHero(heroId))
+            .filter((hero): hero is Hero => !!hero);
+        const heroAnchor = participantHeroes
             .find((hero): hero is Hero => !!hero && hero.q === tile.q && hero.r === tile.r);
+        const isLocalCompletion = participantHeroes.some((hero) => isLocalHero(hero));
+
+        if (!isLocalCompletion) {
+            return;
+        }
 
         addTextIndicator(heroAnchor ?? tile, feedback.text, feedback.color, 1650);
 
@@ -351,15 +376,18 @@ class ClientTaskHandler {
         }
 
         // Prefer a warehouse with capacity; fall back to any warehouse for swap
-        const warehouse = findNearestWarehouseWithCapacity(hero.q, hero.r, 1)
-            ?? findNearestWarehouseAccessTile(hero.q, hero.r);
+        const settlementId = hero.settlementId ?? null;
+        const warehouse = findNearestWarehouseWithCapacity(hero.q, hero.r, settlementId, 1)
+            ?? findNearestWarehouseAccessTile(hero.q, hero.r, settlementId);
         if (!warehouse) {
             return;
         }
 
         const origin = { q: hero.q, r: hero.r };
         const target = { q: warehouse.q, r: warehouse.r };
-        const path = rewardDeliveryPathService.findWalkablePath(origin.q, origin.r, target.q, target.r);
+        const path = rewardDeliveryPathService.findWalkablePath(origin.q, origin.r, target.q, target.r, {
+            settlementId,
+        });
         if (!path.length) {
             return;
         }

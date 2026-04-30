@@ -101,6 +101,56 @@ test('dock construction does not use bridges as water-only access', () => {
   assert.equal(accessTile, null);
 });
 
+test('task access stays within the acting settlement when multiple adjacent approaches exist', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'ally',
+      ownerSettlementId: 'ally',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'home',
+      ownerSettlementId: 'home',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'inactive',
+      controlledBySettlementId: 'home',
+      ownerSettlementId: 'home',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const shoreline = tileIndex['0,1']!;
+
+  assert.equal(findNearestTaskAccessTile('buildDock', shoreline, 0, 0)?.id, '0,0');
+  assert.equal(findNearestTaskAccessTile('buildDock', shoreline, 0, 0, 'home')?.id, '1,0');
+  assert.equal(findNearestTaskAccessTile('buildDock', shoreline, 0, 0, 'ally')?.id, '0,0');
+});
+
 test('bridges extend from active shore or an existing straight bridgehead', () => {
   loadWorld([
     {

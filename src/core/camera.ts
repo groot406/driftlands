@@ -1,5 +1,5 @@
 import {reactive} from 'vue';
-import {getMaxRadiusFor} from './world';
+
 import {isPaused} from '../store/uiStore';
 import {isKeyboardBlocked} from './windowManager';
 import { axialDistance } from '../shared/game/hex';
@@ -192,7 +192,8 @@ export function resetCameraPointerState(mouseDownRef?: { value: boolean }, optio
 }
 
 async function clampCameraTargets() {
-    const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
+    return;
+    const maxRad = 200;
     if (maxRad < 0) {
         camera.targetQ = 0;
         camera.targetR = 0;
@@ -250,6 +251,7 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
             mouseDownRef.value = false;
             return;
         }
+
         if (e.pointerType === 'mouse' && e.button !== 0) return; // only left button
 
         mouseDownRef.value = true;
@@ -269,11 +271,11 @@ export function createPointerHandlers(mouseDownRef: { value: boolean }) {
         }
         if (!mouseDownRef.value) return;
 
+
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
-        const maxRad = getMaxRadiusFor(camera.targetQ, camera.targetR, camera.radius / 2) - (camera.radius / 2) + 2;
 
-        if (!dragging && maxRad >= 0) {
+        if (!dragging) {
             const dist2 = (e.clientX - dragStartX) ** 2 + (e.clientY - dragStartY) ** 2;
             if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) dragging = true;
             if (dragging) dragged = true;
@@ -400,7 +402,7 @@ export async function animateCamera() {
 
         camera.targetQ += dqInput * MOVE_SPEED * dt;
         camera.targetR += drInput * MOVE_SPEED * dt;
-        clampCameraTargets();
+       clampCameraTargets();
         camera.velQ = 0;
         camera.velR = 0; // cancel inertial velocity on active input
     }
@@ -408,7 +410,8 @@ export async function animateCamera() {
     if (camera.velQ !== 0 || camera.velR !== 0) {
         camera.targetQ += camera.velQ * dt;
         camera.targetR += camera.velR * dt;
-        clampCameraTargets();
+       clampCameraTargets();
+
         const decay = Math.exp(-FRICTION * dt);
         camera.velQ *= decay;
         camera.velR *= decay;
@@ -424,7 +427,7 @@ export async function animateCamera() {
     const lerp = baseMin + (1 - Math.exp(-dist * 0.9)) * (baseMax - baseMin);
     if (Math.abs(dq) < 0.05) camera.q = camera.targetQ; else camera.q += dq * lerp;
     if (Math.abs(dr) < 0.05) camera.r = camera.targetR; else camera.r += dr * lerp;
-    clampCameraTargets();
+   clampCameraTargets();
 
     // Compute instantaneous movement speed (axial units / second) then smooth it
     const moveDQ = camera.q - lastQ;

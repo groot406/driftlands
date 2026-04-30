@@ -19,7 +19,7 @@ const climateCache = new Map<string, ClimateProfile>();
 let worldGenerationSeed = 123456789;
 const SQRT3_OVER_2 = Math.sqrt(3) / 2;
 const PERLIN_NORMALIZER = Math.SQRT1_2;
-const BIOME_SIZE_SCALE = 0.48;
+const BIOME_SIZE_SCALE = 0.58;
 
 function clamp01(value: number): number {
     return Math.max(0, Math.min(1, value));

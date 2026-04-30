@@ -76,3 +76,33 @@ test('syncHeroRoster preserves live hero progression for existing heroes', () =>
     loadHeroes(originalHeroes);
   }
 });
+
+test('syncHeroRoster keeps multiplayer founder heroes outside the story roster', () => {
+  const originalHeroes = heroes.map(cloneHero);
+
+  try {
+    loadHeroes([
+      {
+        id: 'founder:player-1',
+        name: 'Ada Founder',
+        avatar: 'girl',
+        q: 18,
+        r: -4,
+        stats: { xp: 100, hp: 100, atk: 10, spd: 1 },
+        facing: 'down',
+        playerId: 'player-1',
+        playerName: 'Ada',
+      },
+    ]);
+
+    syncHeroRoster(['h1']);
+
+    assert.ok(heroes.some((hero) => hero.id === 'h1'));
+    const founder = heroes.find((hero) => hero.id === 'founder:player-1');
+    assert.ok(founder);
+    assert.equal(founder.q, 18);
+    assert.equal(founder.playerName, 'Ada');
+  } finally {
+    loadHeroes(originalHeroes);
+  }
+});

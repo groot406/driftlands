@@ -2,7 +2,7 @@ import type { Server } from 'socket.io';
 
 export class MessageLogger {
   private static instance: MessageLogger;
-  private isLoggingEnabled = false;
+  public isLoggingEnabled = false;
 
   private constructor() {}
 

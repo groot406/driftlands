@@ -2,10 +2,17 @@ import {reactive} from 'vue';
 import { axialToPixel } from './camera';
 import { DEFAULT_RENDER_CONFIG } from './render/RenderConfig';
 import type { Hero } from './types/Hero';
+import { currentPlayerId } from './socket';
+import { currentPlayerSettlementId } from '../store/settlementStartStore';
 
 type TextIndicatorSource = Pick<Hero, 'q' | 'r'>
     & Partial<Pick<Hero, 'currentOffset'>>
-    & Partial<Pick<Hero, 'id' | 'facing' | 'movement'>>;
+    & Partial<Pick<Hero, 'id' | 'facing' | 'movement' | 'playerId' | 'settlementId'>>
+    & {
+        ownerSettlementId?: string | null;
+        controlledBySettlementId?: string | null;
+        terrain?: string | null;
+    };
 
 export interface TextIndicator {
     position: {
@@ -22,6 +29,8 @@ export interface TextIndicator {
     created: number;
     duration: number;
     stackIndex?: number;
+    visibleToPlayerId?: string | null;
+    visibleToSettlementId?: string | null;
 }
 
 // Reactive registry of loaders
@@ -95,10 +104,10 @@ function getStackAnchorKey(indicator: TextIndicator) {
     return `${indicator.position.q},${indicator.position.r},${offset.x},${offset.y}`;
 }
 
-function updateStackIndices() {
+function updateStackIndices(indicators: TextIndicator[] = _indicators) {
     const groups = new Map<string, TextIndicator[]>();
 
-    for (const indicator of _indicators) {
+    for (const indicator of indicators) {
         const key = getStackAnchorKey(indicator);
         let group = groups.get(key);
         if (!group) {
@@ -122,6 +131,12 @@ export function addTextIndicator(
     duration: number
 ): void {
     const created = Date.now();
+    const visibleToPlayerId = position.playerId ?? null;
+    const visibleToSettlementId = position.settlementId
+        ?? position.ownerSettlementId
+        ?? position.controlledBySettlementId
+        ?? (position.terrain === 'towncenter' && position.id ? position.id : null)
+        ?? null;
     const indicator: TextIndicator = {
         position: {
             q: position.q,
@@ -133,6 +148,8 @@ export function addTextIndicator(
         color,
         created,
         duration,
+        visibleToPlayerId,
+        visibleToSettlementId,
     };
     _indicators.push(indicator);
 }
@@ -151,6 +168,22 @@ export function getTextIndicators(): TextIndicator[] {
         }
     }
 
-    updateStackIndices();
-    return _indicators;
+    const visibleIndicators = _indicators.filter((indicator) => {
+        if (indicator.visibleToPlayerId) {
+            return indicator.visibleToPlayerId === currentPlayerId.value;
+        }
+
+        if (indicator.visibleToSettlementId) {
+            return indicator.visibleToSettlementId === currentPlayerSettlementId.value;
+        }
+
+        return true;
+    });
+
+    updateStackIndices(visibleIndicators);
+    return visibleIndicators;
+}
+
+export function clearTextIndicators(): void {
+    _indicators.splice(0, _indicators.length);
 }

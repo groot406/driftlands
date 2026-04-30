@@ -1,10 +1,20 @@
 import type { Socket, Server } from 'socket.io';
-import type { ChatMessage, CoopSnapshotMessage, PlayerJoinMessage, PlayerLeaveMessage } from '../../../src/shared/protocol';
-import { broadcast, serverMessageRouter } from '../messages/messageRouter';
+import type {
+  ChatMessage,
+  CoopSnapshotMessage,
+  PlayerJoinMessage,
+  PlayerLeaveMessage,
+  PlayerSnapshotMessage, SettlementFoundResultMessage,
+  RunSnapshotMessage,
+} from '../../../src/shared/protocol';
+import {broadcast, sendToSocket, serverMessageRouter} from '../messages/messageRouter';
 import { coopState } from '../state/coopState';
+import { playerSettlementState } from '../state/playerSettlementState';
+import {tileIndex} from "../../../src/core/world";
+import { runState } from '../state/runState';
 
 export class ServerPlayerHandler {
-  private connectedPlayers = new Map<string, { id: string, name: string, socket: Socket }>();
+  private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket }>();
   private readonly io: Server;
 
   constructor(io: Server) {
@@ -27,22 +37,38 @@ export class ServerPlayerHandler {
     broadcast(message);
   }
 
+  private buildPlayerSnapshot(currentPlayerId: string | null = null): PlayerSnapshotMessage {
+    return {
+      type: 'player:snapshot',
+      currentPlayerId,
+      players: playerSettlementState.listPlayers(),
+      timestamp: Date.now(),
+    };
+  }
+
+  broadcastPlayerSnapshot() {
+    this.io.emit('message', this.buildPlayerSnapshot());
+  }
+
   private handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): void {
-    const playerId = socket.id;
+    const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName);
+    const playerId = player.id;
 
     // Store player info
     this.connectedPlayers.set(socket.id, {
       id: playerId,
-      name: message.playerName,
+      name: player.nickname,
+      color: player.color,
       socket
     });
-    coopState.upsertPlayer(socket, message.playerName);
+    coopState.upsertPlayer(socket, player.nickname, player.id, player.color, player.settlementId);
 
     // Broadcast to all other players
     socket.broadcast.emit('message', {
       type: 'player:join',
       playerId,
-      playerName: message.playerName,
+      playerName: player.nickname,
+      playerColor: player.color,
       timestamp: Date.now()
     });
 
@@ -54,6 +80,7 @@ export class ServerPlayerHandler {
           type: 'player:join',
           playerId: player.id,
           playerName: player.name,
+          playerColor: player.color,
           timestamp: Date.now()
         });
       }
@@ -63,6 +90,7 @@ export class ServerPlayerHandler {
       type: 'world:welcome',
       timestamp: Date.now(),
     });
+    socket.emit('message', this.buildPlayerSnapshot(player.id));
 
     this.io.emit('message', {
       type: 'player:count',
@@ -71,6 +99,32 @@ export class ServerPlayerHandler {
     });
 
     this.broadcastCoopSnapshot();
+    this.broadcastPlayerSnapshot();
+
+    const existingSettlementId = playerSettlementState.getPlayerSettlement(playerId);
+    if (existingSettlementId) {
+      const existingTile = tileIndex[existingSettlementId];
+      sendToSocket(socket, {
+        type: 'settlement:found_result',
+        success: true,
+        playerId,
+        settlementId: existingSettlementId,
+        q: existingTile?.q,
+        r: existingTile?.r,
+        message: 'You already have a settlement in this world.',
+        timestamp: Date.now(),
+      } satisfies SettlementFoundResultMessage);
+      const run = runState.getSnapshotForSettlement(existingSettlementId);
+      if (run) {
+        sendToSocket(socket, {
+          type: 'run:snapshot',
+          settlementId: existingSettlementId,
+          run,
+          timestamp: Date.now(),
+        } satisfies RunSnapshotMessage);
+      }
+      return;
+    }
   }
 
   private handlePlayerLeave(socket: Socket, message: PlayerLeaveMessage): void {
@@ -79,6 +133,7 @@ export class ServerPlayerHandler {
     // Remove player from our tracking
     this.connectedPlayers.delete(socket.id);
     coopState.removePlayer(socket.id);
+    playerSettlementState.unregisterSocket(socket.id);
 
     // Broadcast to all other players
     socket.broadcast.emit('message', {
@@ -95,6 +150,7 @@ export class ServerPlayerHandler {
     });
 
     this.broadcastCoopSnapshot();
+    this.broadcastPlayerSnapshot();
   }
 
   private handleChatMessage(socket: Socket, message: ChatMessage): void {
@@ -117,6 +173,7 @@ export class ServerPlayerHandler {
       // Remove from our tracking
       this.connectedPlayers.delete(socket.id);
       coopState.removePlayer(socket.id);
+      playerSettlementState.unregisterSocket(socket.id);
 
       // Broadcast to all other players
       socket.broadcast.emit('message', {
@@ -133,6 +190,7 @@ export class ServerPlayerHandler {
       });
 
       this.broadcastCoopSnapshot();
+      this.broadcastPlayerSnapshot();
     }
   }
 }

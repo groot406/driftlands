@@ -195,6 +195,13 @@ export interface HexMapDrawOptions {
     clusterTileIds?: ReadonlySet<string>;
     globalReachBoundary?: readonly AxialCoord[];
     globalReachTileIds?: ReadonlySet<string>;
+    globalReachColor?: string;
+    settlementReachOutlines?: ReadonlyArray<{
+        readonly boundary: readonly AxialCoord[];
+        readonly tileIds: ReadonlySet<string>;
+        readonly color?: string | null;
+        readonly isOwn?: boolean;
+    }>;
     storyHintTiles?: readonly AxialCoord[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean;

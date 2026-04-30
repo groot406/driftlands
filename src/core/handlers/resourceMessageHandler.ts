@@ -7,6 +7,20 @@ import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
 import {addTextIndicator} from "../textIndicators.ts";
 import {tileIndex} from "../world.ts";
+import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
+import { currentPlayerId } from "../socket.ts";
+
+function isLocalHeroEvent(hero: { playerId?: string | null; settlementId?: string | null } | null | undefined) {
+    if (!hero) {
+        return false;
+    }
+
+    if (currentPlayerSettlementId.value && hero.settlementId === currentPlayerSettlementId.value) {
+        return true;
+    }
+
+    return !!currentPlayerId.value && hero.playerId === currentPlayerId.value;
+}
 
 class ClientResourceHandler {
     private initialized = false;
@@ -34,28 +48,32 @@ class ClientResourceHandler {
             return;
         }
 
-        playPositionalSound(hero.id + ':resource_deposit', 'drop.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
-        triggerGameplayImpact({
-            q: hero.q,
-            r: hero.r,
-            kind: 'deposit',
-            terrain: 'towncenter',
-            resourceType: message.resource.type,
-            amount: message.resource.amount,
-            heroIds: [hero.id],
-        });
         const storageTile = tileIndex[message.storageTileId];
-        addTextIndicator(storageTile ?? hero, `+${message.resource.amount}`, '#fff1a8', 1300);
-        triggerCameraShake({
-            q: hero.q,
-            r: hero.r,
-            intensity: Math.min(4.8, 1.7 + (message.resource.amount * 0.42)),
-            durationMs: 130,
-            falloffRadius: 6,
-            frequency: 10,
-            directional: true,
-            pushScale: 0.34,
-        });
+        const localEvent = isLocalHeroEvent(hero);
+
+        if (localEvent) {
+            playPositionalSound(hero.id + ':resource_deposit', 'drop.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            triggerGameplayImpact({
+                q: hero.q,
+                r: hero.r,
+                kind: 'deposit',
+                terrain: 'towncenter',
+                resourceType: message.resource.type,
+                amount: message.resource.amount,
+                heroIds: [hero.id],
+            });
+            addTextIndicator(storageTile ?? hero, `+${message.resource.amount}`, '#fff1a8', 1300);
+            triggerCameraShake({
+                q: hero.q,
+                r: hero.r,
+                intensity: Math.min(4.8, 1.7 + (message.resource.amount * 0.42)),
+                durationMs: 130,
+                falloffRadius: 6,
+                frequency: 10,
+                directional: true,
+                pushScale: 0.34,
+            });
+        }
     }
 
     private handleResourceWithdraw(message: ResourceWithdrawMessage): void {
@@ -66,7 +84,9 @@ class ClientResourceHandler {
             return;
         }
 
-        playPositionalSound(hero.id + ':resource_fetch', 'take.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        if (isLocalHeroEvent(hero)) {
+            playPositionalSound(hero.id + ':resource_fetch', 'take.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+        }
     }
 }
 

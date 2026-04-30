@@ -7,9 +7,13 @@ import { resourceMessageHandler } from './handlers/resourceMessageHandler';
 import { heroMessageHandler } from './handlers/heroMessageHandler';
 import { runHandler } from './handlers/runHandler';
 import { coopHandler } from './handlers/coopHandler';
+import { settlementStartHandler } from './handlers/settlementStartHandler';
+import { clientMessageRouter } from './messageRouter';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
+  clientMessageRouter.on('*', (message) => console.debug('Received message:', message));
+
   playerMessageHandler.init();
   chatMessageHandler.init();
   worldHandler.init();
@@ -19,4 +23,5 @@ export function initializeClientHandlers(): void {
   heroMessageHandler.init();
   runHandler.init();
   coopHandler.init();
+  settlementStartHandler.init();
 }

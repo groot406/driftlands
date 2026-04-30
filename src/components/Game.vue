@@ -22,6 +22,8 @@ import TitleBackground from "./TitleBackground.vue";
 import { soundService } from '../core/soundService';
 import { musicManager } from '../core/musicManager';
 import { heroes } from '../store/heroStore';
+import { canControlHero } from '../store/playerStore';
+import { currentPlayerId } from '../core/socket';
 import { isKeyboardBlocked } from '../core/windowManager';
 import {createLoader, updateLoader, finishLoader} from "../core/loader.ts";
 
@@ -75,8 +77,9 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   // Number keys 1-9 select hero by index
   if (e.key >= '1' && e.key <= '9') {
     const idx = Number(e.key) - 1;
-    if (heroes[idx]) {
-      selectHero(heroes[idx], true);
+    const selectableHeroes = heroes.filter((hero) => canControlHero(hero.id, currentPlayerId.value));
+    if (selectableHeroes[idx]) {
+      selectHero(selectableHeroes[idx], false);
     }
     return;
   }
@@ -84,22 +87,23 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   // Bracket keys cycle selection; left bracket cycles backwards.
   if (e.key === '[' || e.key === ']') {
     e.preventDefault();
-    if (!heroes.length) return;
+    const selectableHeroes = heroes.filter((hero) => canControlHero(hero.id, currentPlayerId.value));
+    if (!selectableHeroes.length) return;
     const current = getSelectedHero();
-    const currentIdx = current ? heroes.findIndex(h => h.id === current.id) : -1;
+    const currentIdx = current ? selectableHeroes.findIndex(h => h.id === current.id) : -1;
     let nextIdx;
     if (e.key === '[') {
-      nextIdx = currentIdx <= 0 ? heroes.length - 1 : currentIdx - 1;
+      nextIdx = currentIdx <= 0 ? selectableHeroes.length - 1 : currentIdx - 1;
     } else {
-      nextIdx = currentIdx >= 0 ? (currentIdx + 1) % heroes.length : 0;
+      nextIdx = currentIdx >= 0 ? (currentIdx + 1) % selectableHeroes.length : 0;
     }
 
-    const nextHero = heroes[nextIdx];
+    const nextHero = selectableHeroes[nextIdx];
     if (!nextHero) {
       return;
     }
 
-    selectHero(nextHero, true);
+    selectHero(nextHero, false);
   }
 }
 </script>

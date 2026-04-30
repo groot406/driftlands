@@ -6,7 +6,6 @@ import type {Hero} from "../../../core/types/Hero";
 import { SIDE_NAMES, type Tile } from "../../../core/types/Tile";
 import { PathService } from '../../game/PathService';
 import { moveHeroWithRuntime } from '../../game/runtime';
-import { isPositionControlled } from '../../game/state/settlementSupportStore';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../taskAccess';
 import { listUndiscoveredFrontierTiles } from '../../game/explorationFrontier';
 
@@ -52,7 +51,6 @@ const exploreTask: TaskDefinition = {
 
     canStart(tile: Tile, _hero: Hero): boolean {
         return !tile.discovered
-            && isPositionControlled(tile.q, tile.r)
             && listTaskAccessTiles('explore', tile).length > 0;
     },
 
@@ -68,8 +66,9 @@ const exploreTask: TaskDefinition = {
     },
 
     onComplete(tile, _instance, participants) {
-        discoverTile(tile);
-        revealNearbyWaterFromShore(tile);
+        const discoveryOrigin = resolveDiscoveryOrigin(participants, tile);
+        discoverTile(tile, discoveryOrigin);
+        revealNearbyWaterFromShore(tile, discoveryOrigin);
 
         let timer = setTimeout(() => continueExploration(tile, participants), EXPLORE_CHAIN_DELAY_MS);
         for (const hero of participants) {
@@ -95,7 +94,7 @@ function continueExploration(tile: Tile, participants: Hero[]) {
 }
 
 function moveHeroToExploreTile(hero: Hero, tile: Tile) {
-    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r) ?? tile;
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null) ?? tile;
     moveHeroWithRuntime(
         hero,
         accessTile,
@@ -160,11 +159,11 @@ function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
 }
 
 function isReachableControlledUndiscoveredTile(tile: Tile, hero: Hero): boolean {
-    if (tile.discovered || !isPositionControlled(tile.q, tile.r)) {
+    if (tile.discovered) {
         return false;
     }
 
-    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r);
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
     if (!accessTile) {
         return false;
     }
@@ -174,7 +173,7 @@ function isReachableControlledUndiscoveredTile(tile: Tile, hero: Hero): boolean 
 }
 
 function getExploreAccessDistance(hero: Hero, tile: Tile) {
-    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r);
+    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
     if (!accessTile) {
         return Number.POSITIVE_INFINITY;
     }
@@ -182,7 +181,17 @@ function getExploreAccessDistance(hero: Hero, tile: Tile) {
     return explorePathService.axialDistance(hero.q, hero.r, accessTile.q, accessTile.r);
 }
 
-function revealNearbyWaterFromShore(origin: Tile) {
+function resolveDiscoveryOrigin(participants: Hero[], tile: Tile) {
+    const settlementId = participants.find((hero) => !!hero.settlementId)?.settlementId ?? null;
+
+    return {
+        q: tile.q,
+        r: tile.r,
+        settlementId,
+    };
+}
+
+function revealNearbyWaterFromShore(origin: Tile, discoveryOrigin: { q: number; r: number; settlementId?: string | null }) {
     if (origin.terrain !== 'water') {
         return;
     }
@@ -211,7 +220,7 @@ function revealNearbyWaterFromShore(origin: Tile) {
                 continue;
             }
 
-            discoverTile(neighbor);
+            discoverTile(neighbor, discoveryOrigin);
             revealedCount += 1;
             if (revealedCount >= EXPLORE_WATER_SURVEY_MAX_EXTRA_TILES) {
                 break;

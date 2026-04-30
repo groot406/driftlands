@@ -104,8 +104,11 @@ tickEngine.start();
 io.on('connection', (socket) => {
   // Route all incoming messages through the message router
   socket.on('message', (message: BaseMessage) => {
-    //console.log(`>>>> ${message.type}`);
-    //console.log(message);
+    // If logging is enabled:
+    if (messageLogger.isLoggingEnabled) {
+      console.log(`>>>> ${message.type}`);
+      console.log(message);
+    }
     serverMessageRouter.route(socket, message);
   });
 

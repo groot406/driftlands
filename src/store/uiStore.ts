@@ -1,14 +1,16 @@
-import {reactive, ref} from 'vue';
+import {reactive, ref, watch} from 'vue';
 import {heroes } from './heroStore';
 import { getSettler } from './settlerStore';
-import {camera, moveCamera} from '../core/camera';
+import {camera} from '../core/camera';
 import {soundService} from '../core/soundService';
 import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
-import {focusHero} from "../core/heroService.ts";
 import type {Hero} from "../core/types/Hero.ts";
 import type { Settler } from '../core/types/Settler';
 import { resetNotifications } from './notificationStore';
 import type { ResourceType } from '../core/types/Resource.ts';
+import { currentPlayerSettlementId } from './settlementStartStore.ts';
+import { currentPlayerId } from '../core/socket.ts';
+import { canControlHero } from './playerStore.ts';
 export type Phase = 'title' | 'playing';
 
 interface UIState {
@@ -43,30 +45,55 @@ function restoreUIState() {
         const raw = localStorage.getItem(STATE_KEY);
         if (!raw) return;
         const data = JSON.parse(raw);
-        if (data && data.camera) {
-            moveCamera(data.camera.targetQ ?? data.camera.q ?? 0, data.camera.targetR ?? data.camera.r ?? 0);
-        }
         if (data && data.selectedHeroId) {
             selectedHeroId.value = data.selectedHeroId;
         }
-        ensureHeroSelected(); // default focus true
+        ensureHeroSelected(false);
     } catch {
     }
 }
 
-function ensureHeroSelected(focus: boolean = true) {
-    const current = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) : null;
-    const hero = current || heroes[0] || null;
-    if (hero) {
-        selectedHeroId.value = hero.id;
-        if (focus) focusHero(hero);
+function isSelectableHero(hero: Hero) {
+    if (!canControlHero(hero.id, currentPlayerId.value)) {
+        return false;
     }
+
+    const settlementId = currentPlayerSettlementId.value;
+
+    if (settlementId) {
+        return hero.settlementId === settlementId;
+    }
+
+    return !hero.playerId && !hero.settlementId;
 }
 
-export function selectHero(hero: Hero | null, focus: boolean = true) {
+function findPreferredHero() {
+    const settlementId = currentPlayerSettlementId.value;
+
+    return heroes.find((hero) => settlementId && hero.settlementId === settlementId)
+        ?? heroes.find((hero) => !hero.playerId && !hero.settlementId)
+        ?? null;
+}
+
+export function ensureHeroSelected(focus: boolean = false) {
+    const current = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) : null;
+    const hero = current && isSelectableHero(current) ? current : findPreferredHero();
     if (hero) {
         selectedHeroId.value = hero.id;
-        if (focus) focusHero(hero);
+        return;
+    }
+
+    selectedHeroId.value = null;
+}
+
+export function selectHero(hero: Hero | null, focus: boolean = false) {
+    if (hero) {
+        if (!isSelectableHero(hero)) {
+            ensureHeroSelected(false);
+            return;
+        }
+
+        selectedHeroId.value = hero.id;
     } else {
         selectedHeroId.value = null;
     }
@@ -119,7 +146,7 @@ export function resumeGame() {
     uiStore.menuOpen = false;
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
     restoreUIState();
-    ensureHeroSelected(true);
+    ensureHeroSelected(false);
 
     soundService.resumeAll();
 }
@@ -158,3 +185,7 @@ export function isPaused() {
 export function isPlaying() {
     return uiStore.phase === 'playing' && !uiStore.menuOpen;
 }
+
+watch(currentPlayerSettlementId, () => {
+    ensureHeroSelected(false);
+});

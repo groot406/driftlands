@@ -3,13 +3,31 @@ import assert from 'node:assert/strict';
 
 import type { Tile } from '../core/types/Tile.ts';
 import { loadWorld, tileIndex } from '../core/world.ts';
-import { recalculateSettlementSupport, resetSettlementSupportState } from './settlementSupportStore.ts';
+import {
+  computeControlledTileIdsForSettlement,
+  recalculateSettlementSupport,
+  resetSettlementSupportState,
+} from './settlementSupportStore.ts';
 
 function createTowncenterTile(): Tile {
   return {
     id: '0,0',
     q: 0,
     r: 0,
+    biome: 'plains',
+    terrain: 'towncenter',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    variant: null,
+  };
+}
+
+function createTowncenterTileAt(q: number, r: number): Tile {
+  return {
+    id: `${q},${r}`,
+    q,
+    r,
     biome: 'plains',
     terrain: 'towncenter',
     discovered: true,
@@ -108,6 +126,94 @@ test('inactive tiles automatically restore once support rises again', () => {
   assert.equal(recovered.snapshot.inactiveTileCount, 0);
   assert.deepEqual(recovered.newlyActiveTileIds, [restoredTileId]);
   assert.deepEqual(recovered.restoredTileIds, [restoredTileId]);
+});
+
+test('each settlement spends only its own population support capacity', () => {
+  const settlementATiles = createFrontierTiles(85);
+  const settlementBTiles = settlementATiles.map((tile) => ({
+    ...tile,
+    id: `${tile.q + 40},${tile.r}`,
+    q: tile.q + 40,
+  }));
+
+  loadWorld([
+    createTowncenterTileAt(0, 0),
+    createTowncenterTileAt(40, 0),
+    ...settlementATiles,
+    ...settlementBTiles,
+  ]);
+
+  const result = recalculateSettlementSupport({
+    '0,0': 1,
+    '40,0': 0,
+  }, 0);
+  const settlementA = result.snapshot.settlements.find((settlement) => settlement.settlementId === '0,0');
+  const settlementB = result.snapshot.settlements.find((settlement) => settlement.settlementId === '40,0');
+
+  assert.equal(settlementA?.supportCapacity, 91);
+  assert.equal(settlementA?.inactiveTileCount, 0);
+  assert.equal(settlementB?.supportCapacity, 84);
+  assert.equal(settlementB?.inactiveTileCount, 1);
+});
+
+test('overlapping reach keeps discovered tiles with their owner settlement', () => {
+  loadWorld([
+    createTowncenterTileAt(0, 0),
+    createTowncenterTileAt(10, 0),
+    {
+      id: '8,0',
+      q: 8,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      ownerSettlementId: '0,0',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  recalculateSettlementSupport({
+    '0,0': 1,
+    '10,0': 1,
+  }, 0);
+
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['8,0']?.controlledBySettlementId, '0,0');
+  assert.equal(computeControlledTileIdsForSettlement('0,0').has('8,0'), true);
+  assert.equal(computeControlledTileIdsForSettlement('10,0').has('8,0'), false);
+});
+
+test('owned discovered tiles remain in the owner settlement reach even beyond static overlap bounds', () => {
+  loadWorld([
+    createTowncenterTileAt(0, 0),
+    createTowncenterTileAt(20, 0),
+    {
+      id: '12,0',
+      q: 12,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      ownerSettlementId: '0,0',
+      controlledBySettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  recalculateSettlementSupport({
+    '0,0': 1,
+    '20,0': 1,
+  }, 0);
+
+  assert.equal(tileIndex['12,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['12,0']?.controlledBySettlementId, '0,0');
+  assert.equal(computeControlledTileIdsForSettlement('0,0').has('12,0'), true);
+  assert.equal(computeControlledTileIdsForSettlement('20,0').has('12,0'), false);
 });
 
 test('campfires temporarily keep nearby controlled frontier tiles online beyond base support capacity', () => {

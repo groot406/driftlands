@@ -1,6 +1,6 @@
-import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerCountMessage } from '../../shared/protocol';
+import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerCountMessage, PlayerSnapshotMessage } from '../../shared/protocol';
 import { clientMessageRouter } from '../messageRouter';
-import { addPlayer, removePlayer, updateOnlinePlayersCount } from '../../store/playerStore';
+import { addPlayer, removePlayer, replacePlayerEntities, updateOnlinePlayersCount } from '../../store/playerStore';
 import { addNotification } from '../../store/notificationStore';
 
 class PlayerMessageHandler {
@@ -15,12 +15,13 @@ class PlayerMessageHandler {
     clientMessageRouter.on('player:join', this.handlePlayerJoin.bind(this));
     clientMessageRouter.on('player:leave', this.handlePlayerLeave.bind(this));
     clientMessageRouter.on('player:count', this.handlePlayerCount.bind(this));
+    clientMessageRouter.on('player:snapshot', this.handlePlayerSnapshot.bind(this));
   }
 
   private handlePlayerJoin(message: PlayerJoinMessage): void {
     console.log(`Player joined: ${message.playerName} (${message.playerId})`);
 
-    addPlayer({ id: message.playerId, name: message.playerName });
+    addPlayer({ id: message.playerId, name: message.playerName, color: message.playerColor });
 
     // Show notification for new player
     addNotification({
@@ -49,6 +50,10 @@ class PlayerMessageHandler {
     console.log(`Updated player count: ${message.count}`);
 
     updateOnlinePlayersCount(message.count);
+  }
+
+  private handlePlayerSnapshot(message: PlayerSnapshotMessage): void {
+    replacePlayerEntities(message.players);
   }
 }
 

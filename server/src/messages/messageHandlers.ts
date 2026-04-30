@@ -8,6 +8,7 @@ import { ServerCoopHandler } from '../handlers/coopHandler';
 import { ServerScoutHandler } from '../handlers/scoutHandler';
 import { ServerStudyHandler } from '../handlers/studyHandler';
 import { ServerHeroAbilityHandler } from '../handlers/heroAbilityHandler';
+import { ServerSettlementStartHandler } from '../handlers/settlementStartHandler';
 
 // Initialize all server handlers
 export function initializeServerHandlers(io: Server) {
@@ -16,6 +17,9 @@ export function initializeServerHandlers(io: Server) {
 
   const gameStateHandler = new ServerGameStateHandler(io);
   gameStateHandler.init();
+
+  const settlementStartHandler = new ServerSettlementStartHandler(io);
+  settlementStartHandler.init();
 
   const movementHandler = ServerMovementHandler.getInstance();
   movementHandler.init();
@@ -38,5 +42,16 @@ export function initializeServerHandlers(io: Server) {
   const scoutHandler = new ServerScoutHandler(io);
   scoutHandler.init();
 
-  return { playerHandler, gameStateHandler, movementHandler, taskHandler, jobHandler, studyHandler, heroAbilityHandler, coopHandler, scoutHandler };
+  return {
+    playerHandler,
+    gameStateHandler,
+    settlementStartHandler,
+    movementHandler,
+    taskHandler,
+    jobHandler,
+    studyHandler,
+    heroAbilityHandler,
+    coopHandler,
+    scoutHandler,
+  };
 }

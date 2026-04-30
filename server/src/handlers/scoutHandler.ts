@@ -10,6 +10,7 @@ import {
 } from '../../../src/shared/game/scoutResources';
 import { serverMessageRouter } from '../messages/messageRouter';
 import { coopState } from '../state/coopState';
+import { playerSettlementState } from '../state/playerSettlementState';
 
 export class ServerScoutHandler {
   constructor(_io: Server) {}
@@ -25,6 +26,10 @@ export class ServerScoutHandler {
     }
 
     if (!coopState.canControlHero(socket.id, hero.id)) {
+      return;
+    }
+    const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+    if (!playerSettlementState.canPlayerControlHero(playerId, hero)) {
       return;
     }
 
@@ -44,7 +49,7 @@ export class ServerScoutHandler {
     hero.pendingChain = undefined;
     hero.scoutResourceIntent = {
       resourceType: message.resourceType,
-      playerId: player?.id ?? socket.id,
+      playerId: player?.id ?? playerId ?? socket.id,
       playerName: player?.name ?? hero.name,
     };
     broadcastHeroScoutResourceUpdate(hero);

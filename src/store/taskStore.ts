@@ -204,7 +204,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
 
         if (resource.type === 'water') {
             // For water, find nearest walkable tile adjacent to water
-            const waterLocation = findNearestWaterTile(hero.q, hero.r);
+            const waterLocation = findNearestWaterTile(hero.q, hero.r, hero.settlementId ?? null);
             if (waterLocation) {
                 fetchLocation = { q: waterLocation.q, r: waterLocation.r };
             } else {
@@ -212,15 +212,15 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             }
         } else {
             // For other resources, find nearest warehouse with the resource
-            const found = findNearestWarehouseWithResource(hero.q, hero.r, resource.type, resource.amount);
+            const found = findNearestWarehouseWithResource(hero.q, hero.r, hero.settlementId ?? null, resource.type, resource.amount);
             if (found) fetchLocation = { q: found.q, r: found.r };
         }
 
         if (fetchLocation) {
             // Find path to fetch location
-            const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r);
+            const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r, { settlementId: hero.settlementId ?? null });
             if (pathToFetch && pathToFetch.length > 0) {
-                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r) ?? targetTile;
+                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r, hero.settlementId) ?? targetTile;
                 // Store task info so hero can return after fetching
                 setHeroFetchIntent(hero, targetTile.id, taskType, { q: returnTile.q, r: returnTile.r }, resource);
 
@@ -236,7 +236,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                     continue;
                 }
 
-                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r) ?? targetTile;
+                const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r, hero.settlementId) ?? targetTile;
                 // Prepare carrying intent
                 setHeroFetchIntent(hero, targetTile.id, taskType, { q: returnTile.q, r: returnTile.r }, resource);
 
@@ -325,7 +325,7 @@ export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, _tile
 export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstance | null {
     const def = getTaskDefinition(type);
     if (!def) return null;
-    if (!isTaskUnlockedForUse(type)) return null;
+    if (!isTaskUnlockedForUse(type, starter.settlementId)) return null;
     if (!canStartTaskDefinition(def, tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
@@ -693,25 +693,25 @@ function dispatchRewardResourceDeliveries(participants: Hero[]) {
     for (const hero of participants) {
         if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) continue;
 
-        const warehouse = findNearestWarehouse(hero.q, hero.r);
+        const warehouse = findNearestWarehouse(hero.q, hero.r, hero.settlementId ?? null);
         if (!warehouse) continue;
 
         moveHeroWithRuntime(hero, warehouse);
     }
 }
 
-function findNearestWarehouse(q: number, r: number) {
+function findNearestWarehouse(q: number, r: number, settlementId: string | null | undefined) {
     // Prefer a warehouse with free capacity for normal deposit
-    const withCapacity = findNearestWarehouseWithCapacity(q, r, 1);
+    const withCapacity = findNearestWarehouseWithCapacity(q, r, settlementId, 1);
     if (withCapacity) return { q: withCapacity.q, r: withCapacity.r };
 
     // Fall back to any warehouse so the hero can attempt a resource swap
-    const any = findNearestWarehouseAccessTile(q, r);
+    const any = findNearestWarehouseAccessTile(q, r, settlementId);
     return any ? { q: any.q, r: any.r } : null;
 }
 
-function findNearestWaterTile(q: number, r: number): { q: number; r: number } | null {
-    const tile = findNearestWaterAccessTile(q, r);
+function findNearestWaterTile(q: number, r: number, settlementId: string | null | undefined): { q: number; r: number } | null {
+    const tile = findNearestWaterAccessTile(q, r, settlementId);
     return tile ? { q: tile.q, r: tile.r } : null;
 }
 
@@ -762,7 +762,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
         // Try each candidate until a path is found
         for (const targetTile of candidates) {
-            const accessTile = findNearestTaskAccessTile(inst.type, targetTile, hero.q, hero.r) ?? targetTile;
+            const accessTile = findNearestTaskAccessTile(inst.type, targetTile, hero.q, hero.r, hero.settlementId ?? null) ?? targetTile;
             moveHeroWithRuntime(
                 hero,
                 accessTile,

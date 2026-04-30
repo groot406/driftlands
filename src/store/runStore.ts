@@ -4,6 +4,7 @@ import { cloneStoryProgression, type ProgressionSnapshot } from '../shared/story
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
 import { setWorldGenerationSeed } from '../core/worldVariation.ts';
 import { syncHeroRoster } from './heroStore.ts';
+import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 interface MissionOverlayState {
   type: 'disabled';
@@ -70,9 +71,9 @@ export function loadRunState(run: RunSnapshot) {
   setWorldGenerationSeed(next.seed);
   runSnapshot.value = next;
   runLoaded.value = true;
-  loadStoryProgression(next.progression);
+  loadStoryProgression(next.progression, currentPlayerSettlementId.value);
   if (shouldSyncHeroRoster) {
-    syncHeroRoster(next.progression.unlocked.heroes);
+    //syncHeroRoster(next.progression.unlocked.heroes);
   }
 
   missionOverlay.value = null;

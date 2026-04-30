@@ -10,6 +10,8 @@ import type {
 import type { CoopPingKind } from '../../../src/shared/coop/types';
 import { serverMessageRouter, broadcast } from '../messages/messageRouter';
 import { coopState } from '../state/coopState';
+import { getHero } from '../../../src/shared/game/state/heroStore';
+import { playerSettlementState } from '../state/playerSettlementState';
 
 const PING_DURATION_MS = 7000;
 
@@ -63,6 +65,12 @@ export class ServerCoopHandler {
   }
 
   private handleHeroClaim(socket: Socket, message: CoopHeroClaimMessage): void {
+    const hero = getHero(message.heroId);
+    const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+    if (!playerSettlementState.canPlayerControlHero(playerId, hero)) {
+      return;
+    }
+
     if (!coopState.claimHero(socket.id, message.heroId)) {
       return;
     }

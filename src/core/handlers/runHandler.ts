@@ -1,6 +1,7 @@
 import type { RunSnapshotMessage, RunUpdateMessage } from '../../shared/protocol.ts';
 import { clientMessageRouter } from '../messageRouter.ts';
 import { loadRunState } from '../../store/runStore.ts';
+import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
 
 class ClientRunHandler {
   private initialized = false;
@@ -16,10 +17,18 @@ class ClientRunHandler {
   }
 
   private handleRunSnapshot(message: RunSnapshotMessage): void {
+    if (message.settlementId && message.settlementId !== currentPlayerSettlementId.value) {
+      return;
+    }
+
     loadRunState(message.run);
   }
 
   private handleRunUpdate(message: RunUpdateMessage): void {
+    if (message.settlementId && message.settlementId !== currentPlayerSettlementId.value) {
+      return;
+    }
+
     loadRunState(message.run);
   }
 }

@@ -16,6 +16,12 @@ import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { canStartTaskDefinition } from '../../../src/shared/tasks/taskAvailability';
 import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
 import { coopState } from '../state/coopState';
+import { playerSettlementState } from '../state/playerSettlementState';
+import {
+    isPositionControlledBySettlement,
+    isTileControlled,
+    isTileControlledBySettlement,
+} from '../../../src/shared/game/state/settlementSupportStore';
 import {
     SCOUT_RESOURCE_TASK_TYPE,
     shouldStopScoutResourceForMovement,
@@ -63,7 +69,7 @@ export class ServerMovementHandler {
 
         const existing = getTaskByTile(tile.id, task);
         const def = getTaskDefinition(task);
-        if (!isTaskUnlockedForUse(task) || !canStartTaskDefinition(def, tile, hero)) {
+        if (!isTaskUnlockedForUse(task, hero.settlementId) || !canStartTaskDefinition(def, tile, hero)) {
             return false;
         }
 
@@ -90,6 +96,11 @@ export class ServerMovementHandler {
             return;
         }
 
+        const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+        if (!playerSettlementState.canPlayerControlHero(playerId, hero)) {
+            return;
+        }
+
         coopState.touchHeroActivity(heroId);
 
         if (Math.abs(hero.q - requestedOrigin.q) > 1 || Math.abs(hero.r - requestedOrigin.r) > 1) return;
@@ -104,11 +115,21 @@ export class ServerMovementHandler {
 
         const logicalTaskTarget = message.taskLocation ?? target;
         const logicalTaskTile = getTileForTaskPosition(logicalTaskTarget, message.task);
+        if (!canPlayerUseMovementTarget(playerId, targetTile, target)) {
+            return;
+        }
+        if (logicalTaskTile && !canPlayerUseMovementTarget(playerId, logicalTaskTile, logicalTaskTarget)) {
+            return;
+        }
+
         const isScoutMovement = message.task === SCOUT_RESOURCE_TASK_TYPE;
         const stopsScouting = shouldStopScoutResourceForMovement(hero, message.task);
         const staysAtCurrentPosition = origin.q === target.q && origin.r === target.r;
         const canUseTaskTarget = this.canUseNonWalkableTaskTarget(hero, target, message.task, logicalTaskTarget);
         const exploreTarget = normalizeExploreTarget(message.task, message.exploreTarget);
+        if (exploreTarget && !canPlayerUsePosition(playerId, exploreTarget.q, exploreTarget.r)) {
+            return;
+        }
         if (
             !isMovementWalkablePosition(target.q, target.r, message.task)
             && !canUseTaskTarget
@@ -124,7 +145,12 @@ export class ServerMovementHandler {
             for (const step of sanitizedClientPath) {
                 const isNeighbor = isAxialNeighbor(prev, step);
                 const isTarget = (step.q === target.q && step.r === target.r);
-                if (!isNeighbor || (!isTarget && !isMovementWalkablePosition(step.q, step.r, message.task, stopsScouting))) {
+                const stepTile = getTile(step);
+                if (
+                    !isNeighbor
+                    || (hero.settlementId && isTileControlled(stepTile) && !isTileControlledBySettlement(stepTile, hero.settlementId))
+                    || (!isTarget && !isMovementWalkablePosition(step.q, step.r, message.task, stopsScouting))
+                ) {
                     valid = false;
                     break;
                 }
@@ -136,7 +162,15 @@ export class ServerMovementHandler {
         }
 
         if (!path.length) {
-            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r, getMovementPathOptions(message.task, undefined, stopsScouting));
+            path = this.getPathService().findWalkablePath(origin.q, origin.r, target.q, target.r, getMovementPathOptions(hero, message.task, undefined, stopsScouting));
+        }
+
+        if (path.some((step) => {
+            const stepTile = getTile(step);
+            return (hero.settlementId && isTileControlled(stepTile) && !isTileControlledBySettlement(stepTile, hero.settlementId))
+                || !canPlayerUsePosition(playerId, step.q, step.r);
+        })) {
+            return;
         }
 
         if (!path.length) {
@@ -210,6 +244,10 @@ export class ServerMovementHandler {
             return;
         }
 
+        if (hero.playerId && !canPlayerUseMovementTarget(hero.playerId, targetTile, target)) {
+            return;
+        }
+
         const logicalTaskTarget = taskLocation ?? target;
         const logicalTaskTile = getTile(logicalTaskTarget);
         const exploreTarget = task === 'explore' && hero.pendingExploreTarget
@@ -218,7 +256,7 @@ export class ServerMovementHandler {
 
         if (hero.q === target.q && hero.r === target.r) {
             if (task && logicalTaskTile && isHeroAtTaskAccess(hero, task, logicalTaskTile)) {
-                if (!isTaskUnlockedForUse(task)) {
+                if (!isTaskUnlockedForUse(task, hero.settlementId)) {
                     return;
                 }
 
@@ -234,9 +272,17 @@ export class ServerMovementHandler {
         }
 
         const stopsScouting = shouldStopScoutResourceForMovement(hero, task);
-        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r, getMovementPathOptions(task, options, stopsScouting));
+        const path = this.getPathService().findWalkablePath(hero.q, hero.r, target.q, target.r, getMovementPathOptions(hero, task, options, stopsScouting));
 
         if (!path || !path.length) {
+            return;
+        }
+
+        if (hero.playerId && path.some((step) => {
+            const stepTile = getTile(step);
+            return (hero.settlementId && isTileControlled(stepTile) && !isTileControlledBySettlement(stepTile, hero.settlementId))
+                || !canPlayerUsePosition(hero.playerId, step.q, step.r);
+        })) {
             return;
         }
 
@@ -460,10 +506,16 @@ function normalizeExploreTarget(task: TaskType | undefined, target: { q: number;
     };
 }
 
-function getMovementPathOptions(task: TaskType | undefined, options?: MoveHeroRuntimeOptions, allowScoutedForScoutCancel = false) {
-    return task === SCOUT_RESOURCE_TASK_TYPE || options?.allowScouted || allowScoutedForScoutCancel
+function getMovementPathOptions(hero: Hero, task: TaskType | undefined, options?: MoveHeroRuntimeOptions, allowScoutedForScoutCancel = false) {
+    const opts: PathFindOptions = task === SCOUT_RESOURCE_TASK_TYPE || options?.allowScouted || allowScoutedForScoutCancel
         ? { allowScouted: true }
         : {};
+
+    if (hero.settlementId) {
+        opts.settlementId = hero.settlementId;
+    }
+
+    return opts;
 }
 
 function isMovementWalkablePosition(q: number, r: number, task: TaskType | undefined, allowScoutedForScoutCancel = false) {
@@ -472,6 +524,30 @@ function isMovementWalkablePosition(q: number, r: number, task: TaskType | undef
     }
 
     return isWalkablePosition(q, r);
+}
+
+function canPlayerUsePosition(playerId: string | null | undefined, q: number, r: number) {
+    if (!playerId) {
+        return false;
+    }
+
+    const settlementId = playerSettlementState.getPlayerSettlement(playerId);
+    return isPositionControlledBySettlement(q, r, settlementId);
+}
+
+function canPlayerUseMovementTarget(
+    playerId: string | null | undefined,
+    tile: ReturnType<typeof getTileForTaskPosition>,
+    position: { q: number; r: number },
+) {
+    if (!playerId || !tile) {
+        return false;
+    }
+
+    const settlementId = playerSettlementState.getPlayerSettlement(playerId);
+    return tile.discovered
+        ? isTileControlledBySettlement(tile, settlementId)
+        : isPositionControlledBySettlement(position.q, position.r, settlementId);
 }
 
 function getTileForTaskPosition(position: { q: number; r: number }, task: TaskType | undefined) {

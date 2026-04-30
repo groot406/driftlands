@@ -137,7 +137,14 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
         } else {
             const fetchedAmount = tryToFetchFromWarehouse(hero, tile);
             if (fetchedAmount <= 0) {
-                const fallbackWarehouse = findNearestWarehouseWithResource(tile.q, tile.r, resourceType, Math.abs(carrying.amount), [tile.id]);
+                const fallbackWarehouse = findNearestWarehouseWithResource(
+                    tile.q,
+                    tile.r,
+                    hero.settlementId ?? null,
+                    resourceType,
+                    Math.abs(carrying.amount),
+                    [tile.id],
+                );
                 if (fallbackWarehouse) {
                     moveHeroWithRuntime(hero, fallbackWarehouse);
                     return;
@@ -214,7 +221,13 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 amount: remainingAmount,
             });
 
-            const nextWarehouse = findNearestWarehouseWithCapacity(tile.q, tile.r, remainingAmount, [tile.id]);
+            const nextWarehouse = findNearestWarehouseWithCapacity(
+                tile.q,
+                tile.r,
+                hero.settlementId ?? null,
+                remainingAmount,
+                [tile.id],
+            );
             if (nextWarehouse) {
                 moveHeroWithRuntime(hero, nextWarehouse);
             } else {
@@ -287,7 +300,7 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
     if (selected) {
         const taskTile = pendingTaskTile ?? tile;
         const def = getTaskDefinition(selected);
-        if (!isTaskUnlockedForUse(selected) || !canStartTaskDefinition(def, taskTile, hero)) {
+        if (!isTaskUnlockedForUse(selected, hero.settlementId) || !canStartTaskDefinition(def, taskTile, hero)) {
             return;
         }
 
@@ -324,7 +337,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     const candidates: Tile[] = [];
     for (const ct of cluster) {
         if (getTaskByTile(ct.id, pending.taskType)) continue;
-        if (!isTaskUnlockedForUse(pending.taskType)) continue;
+        if (!isTaskUnlockedForUse(pending.taskType, hero.settlementId)) continue;
         if (!canStartTaskDefinition(def, ct, hero)) continue;
         if (def.canAutoChainTo && !def.canAutoChainTo(source, ct, hero)) continue;
         candidates.push(ct);
@@ -340,7 +353,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     });
 
     for (const targetTile of candidates) {
-        const accessTile = findNearestTaskAccessTile(pending.taskType, targetTile, hero.q, hero.r) ?? targetTile;
+        const accessTile = findNearestTaskAccessTile(pending.taskType, targetTile, hero.q, hero.r, hero.settlementId ?? null) ?? targetTile;
         moveHeroWithRuntime(
             hero,
             accessTile,
@@ -353,7 +366,7 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
 
 export function getAvailableTasks(tile: Tile, hero: Hero): TaskDefinition[] {
     let tasks = listTaskDefinitions().filter(def =>
-        isTaskUnlockedForUse(def.key)
+        isTaskUnlockedForUse(def.key, hero.settlementId)
         && canStartTaskDefinition(def, tile, hero)
         && canStartTaskWhileCarrying(hero, def, tile)
     );

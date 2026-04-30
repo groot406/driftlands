@@ -29,6 +29,8 @@ import {
 import { SIDE_NAMES, type Tile } from '../../../src/core/types/Tile.ts';
 import type { Hero } from '../../../src/core/types/Hero.ts';
 import { clampBuildingCondition, updateTileCondition } from '../../../src/shared/buildings/maintenance.ts';
+import { playerSettlementState } from '../state/playerSettlementState';
+import { isTileControlledBySettlement } from '../../../src/shared/game/state/settlementSupportStore.ts';
 
 interface AbilityResult {
     applied: boolean;
@@ -48,6 +50,14 @@ export class ServerHeroAbilityHandler {
         if (!hero || !coopState.canControlHero(socket.id, hero.id)) {
             return;
         }
+        const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+        if (!playerSettlementState.canPlayerControlHero(playerId, hero)) {
+            return;
+        }
+
+        if (message.tileId && !this.canPlayerUseTile(playerId, message.tileId)) {
+            return;
+        }
 
         const result = this.applyAbility(message);
         if (!result.applied) {
@@ -63,6 +73,9 @@ export class ServerHeroAbilityHandler {
     private handleSkillSelect(socket: Socket, message: HeroSkillSelectMessage): void {
         const hero = getHero(message.heroId);
         if (!hero || !coopState.canControlHero(socket.id, hero.id) || !isHeroSkillKey(message.skill)) {
+            return;
+        }
+        if (!playerSettlementState.canPlayerControlHero(playerSettlementState.getSocketPlayerId(socket.id), hero)) {
             return;
         }
 
@@ -89,6 +102,11 @@ export class ServerHeroAbilityHandler {
             default:
                 return { applied: false };
         }
+    }
+
+    private canPlayerUseTile(playerId: string | null | undefined, tileId: string) {
+        const tile = tileIndex[tileId] ?? null;
+        return canSettlementManageTile(tile, playerSettlementState.getPlayerSettlement(playerId ?? ''));
     }
 
     private boostProduction(hero: Hero, tileId: string | undefined): AbilityResult {
@@ -172,4 +190,20 @@ export class ServerHeroAbilityHandler {
         }
         return changed;
     }
+}
+
+function canSettlementManageTile(tile: Tile | null | undefined, settlementId: string | null | undefined) {
+    if (!tile || !settlementId) {
+        return false;
+    }
+
+    if (tile.terrain === 'towncenter') {
+        return tile.id === settlementId;
+    }
+
+    if (tile.ownerSettlementId) {
+        return tile.ownerSettlementId === settlementId;
+    }
+
+    return isTileControlledBySettlement(tile, settlementId);
 }

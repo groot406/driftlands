@@ -21,6 +21,7 @@ interface DrawOptionsLike {
     clusterTileIds?: Set<string>;
     globalReachTileIds?: Set<string>;
     globalReachBoundary?: Array<{ q: number; r: number }>;
+    globalReachColor?: string;
     storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean;

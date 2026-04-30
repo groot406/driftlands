@@ -36,6 +36,8 @@ export interface RenderDebugState {
     dirtyChunkCount: number;
     terrainChunkRebuilds: number;
     passTimingsMs: Record<string, number>;
+    settlementReachCount?: number;
+    settlementReachInfo?: string;
 }
 
 export const renderDebugState = reactive<RenderDebugState>({
@@ -73,6 +75,8 @@ export const renderDebugState = reactive<RenderDebugState>({
     dirtyChunkCount: 0,
     terrainChunkRebuilds: 0,
     passTimingsMs: {},
+    settlementReachCount: 0,
+    settlementReachInfo: '',
 });
 
 export function updateRenderDebugState(next: Partial<RenderDebugState>) {

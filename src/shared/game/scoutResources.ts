@@ -159,6 +159,45 @@ export function doesScoutResourceMatchTile(resourceType: ScoutTargetType, tile: 
     return doesScoutResourceMatchTerrain(resourceType, generated.terrain, variant);
 }
 
+function getSettlementOrigin(settlementId: string | null | undefined) {
+    if (!settlementId) {
+        return { q: 0, r: 0 };
+    }
+
+    const townCenter = tileIndex[settlementId];
+    if (townCenter) {
+        return { q: townCenter.q, r: townCenter.r };
+    }
+
+    const separatorIndex = settlementId.indexOf(',');
+    if (separatorIndex === -1) {
+        return { q: 0, r: 0 };
+    }
+
+    const q = Number(settlementId.slice(0, separatorIndex));
+    const r = Number(settlementId.slice(separatorIndex + 1));
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+        return { q: 0, r: 0 };
+    }
+
+    return { q, r };
+}
+
+export function doesScoutResourceMatchTileForSettlement(
+    resourceType: ScoutTargetType,
+    tile: Tile,
+    settlementId: string | null | undefined,
+) {
+    if (tile.discovered) {
+        return doesScoutResourceMatchTerrain(resourceType, tile.terrain, tile.variant);
+    }
+
+    const origin = getSettlementOrigin(settlementId);
+    const generated = resolveWorldTile(tile.q, tile.r, origin);
+    const variant = resolveGeneratedTileVariant(tile, generated.terrain);
+    return doesScoutResourceMatchTerrain(resourceType, generated.terrain, variant);
+}
+
 export function hasTileBeenScoutedForResource(tile: Tile, resourceType: ScoutTargetType) {
     return tile.scoutedResourceTypes?.includes(resourceType)
         || tile.scoutedForResource === resourceType
@@ -299,7 +338,7 @@ function completeScoutResourceArrival(hero: Hero, tile: Tile, resourceType: Scou
     }
 
     if (!tile.discovered && !hasTileBeenScoutedForResource(tile, intent.resourceType)) {
-        const found = doesScoutResourceMatchTile(intent.resourceType, tile);
+        const found = doesScoutResourceMatchTileForSettlement(intent.resourceType, tile, hero.settlementId);
         const ensuredNeighbors = markTileScouted(tile, intent.resourceType, found);
         broadcastScoutedTileUpdates(tile, ensuredNeighbors);
 

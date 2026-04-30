@@ -1,6 +1,6 @@
 import { applyVariant } from '../../core/variants';
 import { discoverTile, ensureTileExists } from '../../core/world';
-import { terrainPositions } from '../../core/terrainRegistry';
+import { terrainPositions, updateTileVariantIndex } from '../../core/terrainRegistry';
 import { listDockAccessTiles, isDockLandAccessTile } from '../game/docks.ts';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
 import {
@@ -212,17 +212,30 @@ function countActiveAdjacentTiles(tile: Tile, terrain: Tile['terrain']) {
     return count;
 }
 
+function countApiaryForageTiles(tile: Tile) {
+    return countActiveAdjacentTiles(tile, 'forest') + countActiveAdjacentTiles(tile, 'grain');
+}
+
 function revealTilesAround(tile: Tile, radius: number) {
+    const settlementId = tile.ownerSettlementId
+        ?? tile.controlledBySettlementId
+        ?? (tile.terrain === 'towncenter' ? tile.id : null);
+
     for (let dq = -radius; dq <= radius; dq++) {
         for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
             const target = ensureTileExists(tile.q + dq, tile.r + dr);
-            discoverTile(target);
+            discoverTile(target, {
+                q: tile.q,
+                r: tile.r,
+                settlementId,
+            });
         }
     }
 }
 
-function promoteTileToTowncenter(tile: Tile) {
+export function promoteTileToTowncenter(tile: Tile) {
     const previousTerrain = tile.terrain;
+    const previousVariant = tile.variant;
     if (previousTerrain && previousTerrain !== 'towncenter') {
         terrainPositions[previousTerrain].delete(tile.id);
     }
@@ -232,7 +245,10 @@ function promoteTileToTowncenter(tile: Tile) {
     tile.isBaseTile = true;
     tile.variantSetMs = undefined;
     tile.discovered = true;
+    tile.ownerSettlementId = tile.id;
+    tile.controlledBySettlementId = tile.id;
     terrainPositions.towncenter.add(tile.id);
+    updateTileVariantIndex(tile.id, previousVariant, null);
 
     broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
 }
@@ -319,13 +335,17 @@ const buildings: BuildingDefinition[] = [
         buildTaskLabel: 'Build Watchtower',
         sortOrder: 15,
         requiredPopulation: 3,
-        variantKeys: ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower'],
+        variantKeys: ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower'],
         renderDecoration: 'watchtower',
         overlayAssetKey: 'building_watchtower_overlay',
         maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (
-                (tile.terrain === 'plains' || tile.terrain === 'dirt' || tile.terrain === 'mountain') &&
+                (tile.terrain === 'plains'
+                    || tile.terrain === 'dirt'
+                    || tile.terrain === 'mountain'
+                    || tile.terrain === 'snow'
+                    || tile.terrain === 'dessert') &&
                 tile.isBaseTile
             );
         },
@@ -345,6 +365,10 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'dirt_watchtower', { stagger: false, respectBiome: false });
             } else if (tile.terrain === 'mountain') {
                 applyVariant(tile, 'mountains_watchtower', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'snow') {
+                applyVariant(tile, 'snow_watchtower', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dessert') {
+                applyVariant(tile, 'dessert_watchtower', { stagger: false, respectBiome: false });
             }
 
             revealTilesAround(tile, 3);
@@ -666,6 +690,58 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'plains_bakery', { stagger: false, respectBiome: false });
             } else if (tile.terrain === 'dirt') {
                 applyVariant(tile, 'dirt_bakery', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'apiary',
+        label: 'Apiary',
+        summary: 'Keeps hives beside forests or grain fields and turns nearby forage into steady food.',
+        categoryLabel: 'Food',
+        buildTaskKey: 'buildApiary',
+        buildTaskLabel: 'Build Apiary',
+        sortOrder: 36.5,
+        requiredPopulation: 3,
+        variantKeys: ['plains_apiary', 'dirt_apiary'],
+        overlayAssetKey: 'building_hunters_hut',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        jobLabel: 'Beekeeper',
+        jobPresentation: 'outdoor',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.5,
+        getJobResources(tile, assignedWorkers) {
+            const forageTiles = countApiaryForageTiles(tile);
+            const richSoilBonus = hasRevealedModifier(tile, 'rich_soil') ? 1 : 0;
+            const foodPerWorker = Math.max(1, Math.min(4, forageTiles + richSoilBonus));
+
+            return {
+                produces: [{ type: 'food', amount: foodPerWorker * assignedWorkers }],
+            };
+        },
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt')
+                && tile.isBaseTile
+                && countApiaryForageTiles(tile) > 0;
+        },
+        requiredXp(_distance: number) {
+            return 2200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 4 }];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_apiary', { stagger: false, respectBiome: false });
+                return;
+            }
+
+            if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_apiary', { stagger: false, respectBiome: false });
             }
         },
     },

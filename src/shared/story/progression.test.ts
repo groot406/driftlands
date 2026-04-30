@@ -91,9 +91,11 @@ test('food economy chain unlocks irrigation, stores, and baking from real colony
   assert.ok(progression.unlocked.buildings.includes('well'));
   assert.ok(progression.unlocked.buildings.includes('granary'));
   assert.ok(progression.unlocked.buildings.includes('huntersHut'));
+  assert.ok(progression.unlocked.buildings.includes('apiary'));
   assert.ok(progression.unlocked.buildings.includes('bakery'));
   assert.ok(taskKeys.includes('buildWell'));
   assert.ok(taskKeys.includes('buildHuntersHut'));
+  assert.ok(taskKeys.includes('buildApiary'));
   assert.ok(taskKeys.includes('buildBakery'));
 });
 

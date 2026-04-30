@@ -22,7 +22,7 @@ const buildTunnelTask: TaskDefinition = {
             return false;
         }
 
-        const accessTile = findNearestTaskAccessTile('buildTunnel', tile, hero.q, hero.r);
+        const accessTile = findNearestTaskAccessTile('buildTunnel', tile, hero.q, hero.r, hero.settlementId ?? null);
         return !!accessTile && !!resolveTunnelVariantFromAccessTile(tile, accessTile);
     },
 
@@ -41,7 +41,7 @@ const buildTunnelTask: TaskDefinition = {
     onStart(tile, instance, participants) {
         const starter = participants[0];
         const accessTile = starter
-            ? findNearestTaskAccessTile('buildTunnel', tile, starter.q, starter.r)
+            ? findNearestTaskAccessTile('buildTunnel', tile, starter.q, starter.r, starter.settlementId ?? null)
             : null;
         const tunnelVariant = resolveTunnelVariantFromAccessTile(tile, accessTile);
 

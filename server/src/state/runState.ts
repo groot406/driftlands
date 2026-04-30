@@ -1,10 +1,10 @@
 import { broadcast } from '../messages/messageRouter';
 import type { GameplayEvent } from '../../../src/shared/gameplay/events';
-import { tiles } from '../../../src/shared/game/world';
+import { tiles, tileIndex } from '../../../src/shared/game/world';
 import { heroes, syncHeroRoster } from '../../../src/shared/game/state/heroStore';
-import { getPopulationState } from '../../../src/shared/game/state/populationStore';
+import { getPopulationState, getSettlementPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getWorkforceSnapshot } from '../../../src/shared/game/state/jobStore';
-import { resourceInventory } from '../../../src/shared/game/state/resourceStore';
+import { getSettlementResourceInventory, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { getDistanceToNearestTowncenter } from '../../../src/shared/game/worldQueries';
 import type {
   DialogueEntrySnapshot,
@@ -231,12 +231,30 @@ function buildStoryBeat(progression: ProgressionSnapshot, _metrics: RunMetrics):
 
 class RunState {
   private snapshot: RunSnapshot | null = null;
+  private snapshotsBySettlementId = new Map<string, RunSnapshot>();
+  private restoredTilesBySettlementId = new Map<string, number>();
+  private dialogueSequenceBySettlementId = new Map<string, number>();
   private restoredTiles = 0;
   private dialogueSequence = 0;
+  private activeSeed = 0;
+  private activeSettlementId: string | null = null;
 
   initialize(seed: number) {
+    this.activeSeed = seed;
+    this.snapshotsBySettlementId.clear();
+    this.restoredTilesBySettlementId.clear();
+    this.dialogueSequenceBySettlementId.clear();
     this.restoredTiles = 0;
     this.dialogueSequence = 0;
+    this.activeSettlementId = null;
+    this.snapshot = null;
+  }
+
+  initializeSettlement(settlementId: string, seed: number = this.activeSeed) {
+    this.activeSeed = seed;
+    this.restoredTiles = this.restoredTilesBySettlementId.get(settlementId) ?? 0;
+    this.dialogueSequence = this.dialogueSequenceBySettlementId.get(settlementId) ?? 0;
+    this.activeSettlementId = settlementId;
 
     const now = Date.now();
     const metrics = this.captureMetrics();
@@ -249,7 +267,7 @@ class RunState {
     this.snapshot = {
       mode: 'story_mode',
       modeLabel: 'Colony Mode',
-      seed,
+      seed: this.activeSeed,
       chapterNumber: Math.max(1, progression.unlockedNodeKeys.length),
       chaptersCompleted: Math.max(0, progression.unlockedNodeKeys.length - 1),
       status: 'active',
@@ -277,7 +295,8 @@ class RunState {
       getSpeaker(STORY_VOICE.landfall.speakerId),
       now,
     );
-    if (getForestDiscoveryHintTile()) {
+    const origin = this.getSettlementOrigin(settlementId);
+    if (getForestDiscoveryHintTile(origin, undefined, settlementId)) {
       this.appendDialogueEntry(
         Math.max(1, progression.unlockedNodeKeys.length),
         'advice',
@@ -294,9 +313,10 @@ class RunState {
       now,
     );
 
-    loadStoryProgression(progression);
-    syncHeroRoster(progression.unlocked.heroes);
-    this.broadcastUpdate();
+    loadStoryProgression(progression, settlementId);
+    // syncHeroRoster(progression.unlocked.heroes);
+    this.saveActiveSettlementSnapshot();
+    this.broadcastUpdate(settlementId);
   }
 
   isReady() {
@@ -320,6 +340,28 @@ class RunState {
     };
   }
 
+  getSnapshotForSettlement(settlementId: string | null | undefined): RunSnapshot | null {
+    if (!settlementId) {
+      return this.getSnapshot();
+    }
+
+    const snapshot = this.snapshotsBySettlementId.get(settlementId);
+    if (!snapshot) {
+      return null;
+    }
+
+    return {
+      ...snapshot,
+      mutator: { ...snapshot.mutator },
+      chapter: { ...snapshot.chapter },
+      progression: cloneProgression(snapshot.progression),
+      objectives: [],
+      dialogue: cloneDialogue(snapshot.dialogue),
+      chapterArchive: [],
+      lastCompletedChapter: undefined,
+    };
+  }
+
   tick(_now: number) {
     if (!this.snapshot || this.snapshot.status !== 'active') {
       return;
@@ -329,33 +371,94 @@ class RunState {
   grantBonusScore(_points: number) {}
 
   recordEvent(event: GameplayEvent) {
+    const settlementId = this.resolveEventSettlementId(event);
+    if (!settlementId) {
+      return;
+    }
+
+    if (!this.snapshotsBySettlementId.has(settlementId)) {
+      this.initializeSettlement(settlementId);
+    }
+
+    this.useSettlementSnapshot(settlementId);
     if (!this.snapshot || this.snapshot.status !== 'active') {
       return;
     }
 
     if (event.type === 'tile:restored') {
       this.restoredTiles += 1;
+      this.restoredTilesBySettlementId.set(settlementId, this.restoredTiles);
     }
 
     if (event.type === 'study:completed') {
-      this.recomputeProgress(true);
+      this.recomputeProgress(true, settlementId);
       return;
     }
 
-    this.recomputeProgress();
+    this.recomputeProgress(false, settlementId);
+  }
+
+  private useSettlementSnapshot(settlementId: string) {
+    this.snapshot = this.snapshotsBySettlementId.get(settlementId) ?? null;
+    this.restoredTiles = this.restoredTilesBySettlementId.get(settlementId) ?? 0;
+    this.dialogueSequence = this.dialogueSequenceBySettlementId.get(settlementId) ?? 0;
+    this.activeSettlementId = settlementId;
+  }
+
+  private saveActiveSettlementSnapshot() {
+    if (!this.snapshot || !this.activeSettlementId) {
+      return;
+    }
+
+    this.snapshotsBySettlementId.set(this.activeSettlementId, this.snapshot);
+    this.restoredTilesBySettlementId.set(this.activeSettlementId, this.restoredTiles);
+    this.dialogueSequenceBySettlementId.set(this.activeSettlementId, this.dialogueSequence);
+  }
+
+  private resolveEventSettlementId(event: GameplayEvent) {
+    if (event.type === 'resource:delivered') {
+      const hero = heroes.find((candidate) => candidate.id === event.heroId);
+      if (hero?.settlementId) return hero.settlementId;
+    }
+
+    if (event.type === 'task:completed') {
+      const tile = tileIndex[event.tileId];
+      return tile?.ownerSettlementId ?? tile?.controlledBySettlementId ?? null;
+    }
+
+    if (event.type === 'tile:discovered' || event.type === 'tile:restored') {
+      const tile = tileIndex[event.tileId];
+      return tile?.ownerSettlementId ?? tile?.controlledBySettlementId ?? null;
+    }
+
+    if (event.type === 'study:completed') {
+      return this.activeSettlementId ?? Array.from(this.snapshotsBySettlementId.keys())[0] ?? null;
+    }
+
+    if (event.type === 'population:changed') {
+      return event.settlementId;
+    }
+
+    return null;
   }
 
   private captureMetrics(): RunMetrics {
-    const population = getPopulationState();
+    const settlementId = this.activeSettlementId;
+    const population = settlementId ? getSettlementPopulationState(settlementId) ?? getPopulationState() : getPopulationState();
+    const settlementTiles = tiles.filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId || tile.id === settlementId);
+    const townCenter = settlementId ? tileIndex[settlementId] : null;
 
     return {
-      discoveredTiles: tiles.filter((tile) => tile.discovered && tile.terrain && tile.terrain !== 'towncenter').length,
-      frontierDistance: tiles.reduce((maxDistance, tile) => {
+      discoveredTiles: settlementTiles.filter((tile) => tile.discovered && tile.terrain && tile.terrain !== 'towncenter').length,
+      frontierDistance: settlementTiles.reduce((maxDistance, tile) => {
         if (!tile.discovered || !tile.terrain || tile.terrain === 'towncenter') {
           return maxDistance;
         }
 
-        return Math.max(maxDistance, getDistanceToNearestTowncenter(tile.q, tile.r));
+        const distance = townCenter
+          ? Math.max(Math.abs(tile.q - townCenter.q), Math.abs(tile.r - townCenter.r), Math.abs((tile.q - townCenter.q) + (tile.r - townCenter.r)))
+          : getDistanceToNearestTowncenter(tile.q, tile.r);
+        return Math.max(maxDistance, distance);
       }, 0),
       activeTiles: population.activeTileCount,
       inactiveTiles: population.inactiveTileCount,
@@ -363,13 +466,18 @@ class RunState {
   }
 
   private captureProgressionMetrics(runMetrics: RunMetrics): ProgressionMetrics {
-    const population = getPopulationState();
+    const settlementId = this.activeSettlementId;
+    const population = settlementId ? getSettlementPopulationState(settlementId) ?? getPopulationState() : getPopulationState();
     const workforce = getWorkforceSnapshot();
     const discoveredTerrains = new Set<typeof tiles[number]['terrain']>();
     const buildingCounts: Partial<Record<BuildingKey, number>> = {};
     const operationalBuildingCounts: Partial<Record<BuildingKey, number>> = {};
 
     for (const tile of tiles) {
+      if (settlementId && tile.ownerSettlementId !== settlementId && tile.controlledBySettlementId !== settlementId && tile.id !== settlementId) {
+        continue;
+      }
+
       if (tile.discovered && tile.terrain) {
         discoveredTerrains.add(tile.terrain);
       }
@@ -387,6 +495,11 @@ class RunState {
     }
 
     for (const site of workforce.sites) {
+      const siteTile = tileIndex[site.tileId];
+      if (settlementId && siteTile?.ownerSettlementId !== settlementId && siteTile?.controlledBySettlementId !== settlementId) {
+        continue;
+      }
+
       if (site.status !== 'staffed') {
         continue;
       }
@@ -398,13 +511,15 @@ class RunState {
       population: population.current,
       beds: population.beds,
       frontierDistance: runMetrics.frontierDistance,
-      resourceStock: { ...resourceInventory },
+      resourceStock: settlementId ? getSettlementResourceInventory(settlementId) : { ...resourceInventory },
       buildingCounts,
       operationalBuildingCounts,
       discoveredTerrains: Array.from(discoveredTerrains).filter((terrain): terrain is NonNullable<typeof terrain> => !!terrain),
       unlockedHeroIds: this.snapshot?.progression.unlocked.heroes.slice() ?? [],
       completedStudyKeys: getStudySnapshot().completedStudyKeys,
-      heroAbilityChargesEarned: heroes.reduce((sum, hero) => sum + (hero.abilityChargesEarned ?? 0), 0),
+      heroAbilityChargesEarned: heroes
+        .filter((hero) => !settlementId || hero.settlementId === settlementId)
+        .reduce((sum, hero) => sum + (hero.abilityChargesEarned ?? 0), 0),
     };
   }
 
@@ -441,6 +556,11 @@ class RunState {
     return this.snapshot?.dialogue.entries.some((entry) => entry.text === text) ?? false;
   }
 
+  private getSettlementOrigin(settlementId: string | null | undefined) {
+    const townCenter = settlementId ? tileIndex[settlementId] : null;
+    return townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
+  }
+
   private maybeAppendWaterDiscoveryAdvice(progressionMetrics: ProgressionMetrics, createdAt: number) {
     if (!this.snapshot) {
       return;
@@ -450,7 +570,10 @@ class RunState {
       return;
     }
 
-    if (!getWaterDiscoveryHintTile() || this.hasDialogueText(WATER_DISCOVERY_ADVICE)) {
+    if (
+      !getWaterDiscoveryHintTile(this.getSettlementOrigin(this.activeSettlementId), undefined, this.activeSettlementId)
+      || this.hasDialogueText(WATER_DISCOVERY_ADVICE)
+    ) {
       return;
     }
 
@@ -463,7 +586,7 @@ class RunState {
     );
   }
 
-  private recomputeProgress(forceBroadcast: boolean = false) {
+  private recomputeProgress(forceBroadcast: boolean = false, settlementId: string | null = this.activeSettlementId) {
     if (!this.snapshot) {
       return;
     }
@@ -496,9 +619,9 @@ class RunState {
     this.snapshot.lastCompletedChapter = undefined;
 
     if (heroRosterChanged) {
-      syncHeroRoster(nextProgression.unlocked.heroes);
+      //syncHeroRoster(nextProgression.unlocked.heroes);
     }
-    loadStoryProgression(nextProgression);
+    loadStoryProgression(nextProgression, settlementId);
     this.maybeAppendWaterDiscoveryAdvice(progressionMetrics, Date.now());
 
     if (nextProgression.recentlyUnlockedNodeKeys.length > 0) {
@@ -524,18 +647,20 @@ class RunState {
     }
 
     if (forceBroadcast || before !== JSON.stringify(this.snapshot)) {
-      this.broadcastUpdate();
+      this.saveActiveSettlementSnapshot();
+      this.broadcastUpdate(settlementId);
     }
   }
 
-  private broadcastUpdate() {
-    const run = this.getSnapshot();
+  private broadcastUpdate(settlementId: string | null = this.activeSettlementId) {
+    const run = settlementId ? this.getSnapshotForSettlement(settlementId) : this.getSnapshot();
     if (!run) {
       return;
     }
 
     broadcast({
       type: 'run:update',
+      settlementId,
       run,
       timestamp: Date.now(),
     } as RunUpdateMessage);

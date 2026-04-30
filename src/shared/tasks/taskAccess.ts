@@ -10,6 +10,7 @@ import { isTileWalkable } from '../game/navigation';
 import {
     findNearestActiveAdjacentAccessTile,
     isTileActive,
+    isTileControlledBySettlement,
     listActiveAdjacentAccessTiles,
 } from '../game/state/settlementSupportStore';
 import { tileIndex } from '../game/world';
@@ -80,14 +81,18 @@ export function getTaskAccessMode(
     return 'tile';
 }
 
-function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined) {
+function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined, settlementId: string | null | undefined = null) {
     if (!tile) return [];
 
     const result: Tile[] = [];
     for (const side of SIDE_NAMES) {
         const [dq, dr] = SIDE_DELTAS[side];
         const neighbor = tile.neighbors?.[side] ?? tileIndex[`${tile.q + dq},${tile.r + dr}`] ?? null;
-        if (neighbor?.discovered && isTileWalkable(neighbor)) {
+        if (
+            neighbor?.discovered
+            && isTileWalkable(neighbor)
+            && (!settlementId || isTileControlledBySettlement(neighbor, settlementId))
+        ) {
             result.push(neighbor);
         }
     }
@@ -96,16 +101,27 @@ function listAdjacentWalkableAccessTiles(tile: Tile | null | undefined) {
     return result;
 }
 
-function listBridgeAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
-    return listBridgeAccessTiles(tile).filter((candidate) => candidate.discovered && isTileActive(candidate));
+function listBridgeAdjacentActiveAccessTiles(tile: Tile | null | undefined, settlementId: string | null | undefined = null) {
+    return listBridgeAccessTiles(tile).filter((candidate) => (
+        candidate.discovered
+        && isTileActive(candidate)
+        && (!settlementId || isTileControlledBySettlement(candidate, settlementId))
+    ));
 }
 
-function listDockAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
-    return listDockAccessTiles(tile).filter((candidate) => isTileActive(candidate));
+function listDockAdjacentActiveAccessTiles(tile: Tile | null | undefined, settlementId: string | null | undefined = null) {
+    return listDockAccessTiles(tile).filter((candidate) => (
+        isTileActive(candidate)
+        && (!settlementId || isTileControlledBySettlement(candidate, settlementId))
+    ));
 }
 
-function listTunnelAdjacentActiveAccessTiles(tile: Tile | null | undefined) {
-    return listTunnelAccessTiles(tile).filter((candidate) => candidate.discovered && isTileActive(candidate));
+function listTunnelAdjacentActiveAccessTiles(tile: Tile | null | undefined, settlementId: string | null | undefined = null) {
+    return listTunnelAccessTiles(tile).filter((candidate) => (
+        candidate.discovered
+        && isTileActive(candidate)
+        && (!settlementId || isTileControlledBySettlement(candidate, settlementId))
+    ));
 }
 
 function findNearestCandidateByDistance(candidates: Tile[], fromQ: number, fromR: number) {
@@ -126,27 +142,28 @@ function findNearestCandidateByDistance(candidates: Tile[], fromQ: number, fromR
 export function listTaskAccessTiles(
     taskType: TaskType | string | null | undefined,
     tile: Tile | null | undefined,
+    settlementId: string | null | undefined = null,
 ) {
     if (taskType === 'buildDock') {
-        return listDockAdjacentActiveAccessTiles(tile);
+        return listDockAdjacentActiveAccessTiles(tile, settlementId);
     }
 
     if (taskType === 'buildBridge') {
-        return listBridgeAdjacentActiveAccessTiles(tile);
+        return listBridgeAdjacentActiveAccessTiles(tile, settlementId);
     }
 
     if (taskType === 'buildTunnel') {
-        return listTunnelAdjacentActiveAccessTiles(tile);
+        return listTunnelAdjacentActiveAccessTiles(tile, settlementId);
     }
 
     const mode = getTaskAccessMode(taskType, tile);
 
     if (mode === 'adjacent_active') {
-        return listActiveAdjacentAccessTiles(tile);
+        return listActiveAdjacentAccessTiles(tile, settlementId);
     }
 
     if (mode === 'adjacent_walkable') {
-        return listAdjacentWalkableAccessTiles(tile);
+        return listAdjacentWalkableAccessTiles(tile, settlementId);
     }
 
     return tile ? [tile] : [];
@@ -157,36 +174,37 @@ export function findNearestTaskAccessTile(
     tile: Tile | null | undefined,
     fromQ: number,
     fromR: number,
+    settlementId: string | null | undefined = null,
 ) {
     if (!tile) return null;
 
     if (taskType === 'buildDock') {
-        return findNearestCandidateByDistance(listDockAdjacentActiveAccessTiles(tile), fromQ, fromR);
+        return findNearestCandidateByDistance(listDockAdjacentActiveAccessTiles(tile, settlementId), fromQ, fromR);
     }
 
     if (taskType === 'buildBridge') {
-        return findNearestCandidateByDistance(listBridgeAdjacentActiveAccessTiles(tile), fromQ, fromR);
+        return findNearestCandidateByDistance(listBridgeAdjacentActiveAccessTiles(tile, settlementId), fromQ, fromR);
     }
 
     if (taskType === 'buildTunnel') {
-        return findNearestCandidateByDistance(listTunnelAdjacentActiveAccessTiles(tile), fromQ, fromR);
+        return findNearestCandidateByDistance(listTunnelAdjacentActiveAccessTiles(tile, settlementId), fromQ, fromR);
     }
 
     const mode = getTaskAccessMode(taskType, tile);
 
     if (mode === 'adjacent_active') {
-        return findNearestActiveAdjacentAccessTile(tile, fromQ, fromR);
+        return findNearestActiveAdjacentAccessTile(tile, fromQ, fromR, settlementId);
     }
 
     if (mode === 'adjacent_walkable') {
-        return findNearestCandidateByDistance(listAdjacentWalkableAccessTiles(tile), fromQ, fromR);
+        return findNearestCandidateByDistance(listAdjacentWalkableAccessTiles(tile, settlementId), fromQ, fromR);
     }
 
     return tile;
 }
 
 export function isHeroAtTaskAccess(
-    hero: Pick<Hero, 'q' | 'r'> | null | undefined,
+    hero: Pick<Hero, 'q' | 'r' | 'settlementId'> | null | undefined,
     taskType: TaskType | string | null | undefined,
     tile: Tile | null | undefined,
 ) {
@@ -207,5 +225,5 @@ export function isHeroAtTaskAccess(
         return false;
     }
 
-    return listTaskAccessTiles(taskType, tile).some((candidate) => candidate.id === heroTile.id);
+    return listTaskAccessTiles(taskType, tile, hero.settlementId ?? null).some((candidate) => candidate.id === heroTile.id);
 }

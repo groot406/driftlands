@@ -6,6 +6,7 @@ import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites.ts';
 import { tileIndex } from '../../../src/shared/game/world.ts';
 import type { SetJobSiteEnabledMessage, TileUpdatedMessage } from '../../../src/shared/protocol.ts';
 import { refreshWorkforceState, resetJobSiteRuntime } from '../systems/jobSystem';
+import { playerSettlementState } from '../state/playerSettlementState';
 
 function isToggleableJobSite(tileId: string) {
     const tile = tileIndex[tileId];
@@ -24,12 +25,18 @@ export class ServerJobHandler {
         serverMessageRouter.on('jobs:set_site_enabled', this.handleSetJobSiteEnabled.bind(this));
     }
 
-    private handleSetJobSiteEnabled(_socket: Socket, message: SetJobSiteEnabledMessage): void {
+    private handleSetJobSiteEnabled(socket: Socket, message: SetJobSiteEnabledMessage): void {
         if (!isToggleableJobSite(message.tileId)) {
             return;
         }
 
         const tile = tileIndex[message.tileId]!;
+        const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+        const settlementId = playerSettlementState.getPlayerSettlement(playerId ?? '');
+        if (!canSettlementManageTile(tile, settlementId)) {
+            return;
+        }
+
         if (isJobSiteEnabled(tile) === message.enabled) {
             return;
         }
@@ -44,4 +51,23 @@ export class ServerJobHandler {
 
         refreshWorkforceState();
     }
+}
+
+function canSettlementManageTile(
+    tile: { id: string; terrain?: string | null; ownerSettlementId?: string | null; controlledBySettlementId?: string | null } | null | undefined,
+    settlementId: string | null | undefined,
+) {
+    if (!tile || !settlementId) {
+        return false;
+    }
+
+    if (tile.terrain === 'towncenter') {
+        return tile.id === settlementId;
+    }
+
+    if (tile.ownerSettlementId) {
+        return tile.ownerSettlementId === settlementId;
+    }
+
+    return tile.controlledBySettlementId === settlementId;
 }

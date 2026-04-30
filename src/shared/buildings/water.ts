@@ -7,6 +7,7 @@ import { findNearestWalkableNeighborToTerrain } from '../game/worldQueries';
 import { getBuildingDefinitionForTile, listBuildingDefinitions } from './registry';
 import { isTileActive } from '../game/state/settlementSupportStore';
 import { isBuildingOfflineFromCondition } from './maintenance.ts';
+import { isTileControlledBySettlement } from '../game/state/settlementSupportStore';
 
 function getNeighbors(tile: Tile) {
     return tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
@@ -59,7 +60,7 @@ export function canDrawWaterFromTile(tile: Tile | null | undefined): boolean {
     return false;
 }
 
-function findNearestWaterBuildingAccessTile(q: number, r: number): Tile | null {
+function findNearestWaterBuildingAccessTile(q: number, r: number, settlementId: string | null | undefined = null): Tile | null {
     let best: Tile | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
 
@@ -70,6 +71,7 @@ function findNearestWaterBuildingAccessTile(q: number, r: number): Tile | null {
             for (const tileId of getVariantSet(variantKey)) {
                 const tile = tileIndex[tileId];
                 if (!tile?.discovered || !isTileWalkable(tile)) continue;
+                if (settlementId && !isTileControlledBySettlement(tile, settlementId)) continue;
 
                 const distance = axialDistanceCoords(q, r, tile.q, tile.r);
                 if (distance < bestDistance) {
@@ -83,9 +85,9 @@ function findNearestWaterBuildingAccessTile(q: number, r: number): Tile | null {
     return best;
 }
 
-export function findNearestWaterAccessTile(q: number, r: number): Tile | null {
-    const shoreline = findNearestWalkableNeighborToTerrain(q, r, 'water');
-    const buildingSource = findNearestWaterBuildingAccessTile(q, r);
+export function findNearestWaterAccessTile(q: number, r: number, settlementId: string | null | undefined = null): Tile | null {
+    const shoreline = findNearestWalkableNeighborToTerrain(q, r, 'water', settlementId);
+    const buildingSource = findNearestWaterBuildingAccessTile(q, r, settlementId);
 
     if (!shoreline) return buildingSource;
     if (!buildingSource) return shoreline;

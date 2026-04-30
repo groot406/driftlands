@@ -7,12 +7,15 @@ import type { ScoutTargetType } from '../core/types/Scout.ts';
 import type {CoopPingKind, CoopPingSnapshot, CoopStateSnapshot} from "./coop/types.ts";
 import type {RunSnapshot} from "./goals/types.ts";
 import type {StorageSnapshot} from "./game/storage.ts";
+import type { SettlementResourceInventorySnapshot } from '../store/resourceStore.ts';
 import type {PopulationSnapshot} from "../store/populationStore.ts";
 import type { WorkforceSnapshot } from '../store/jobStore.ts';
 import type { StudyStateSnapshot } from '../store/studyStore.ts';
 import type { Settler } from '../core/types/Settler.ts';
 import type { HeroAbilityKey } from './heroes/heroAbilities.ts';
 import type { HeroSkillKey } from './heroes/heroSkills.ts';
+import type { SettlementStartCandidate, SettlementStartMarker, SettlementStartTerrainTile } from './multiplayer/settlementStart.ts';
+import type { PlayerEntitySnapshot } from './multiplayer/player.ts';
 
 export interface BaseMessage {
     type: string;
@@ -26,6 +29,7 @@ export interface PlayerJoinMessage extends BaseMessage {
     type: 'player:join';
     playerId: string;
     playerName: string;
+    playerColor?: string;
 }
 
 export interface PlayerLeaveMessage extends BaseMessage {
@@ -36,6 +40,12 @@ export interface PlayerLeaveMessage extends BaseMessage {
 export interface PlayerCountMessage extends BaseMessage {
     type: 'player:count';
     count: number;
+}
+
+export interface PlayerSnapshotMessage extends BaseMessage {
+    type: 'player:snapshot';
+    currentPlayerId: string | null;
+    players: PlayerEntitySnapshot[];
 }
 
 export interface ChatMessage extends BaseMessage {
@@ -92,6 +102,44 @@ export interface WorldRestartMessage extends BaseMessage {
     radius?: number;
 }
 
+export interface SettlementStartOptionsMessage extends BaseMessage {
+    type: 'settlement:start_options';
+    playerId: string;
+    currentSettlementId: string | null;
+    candidates: SettlementStartCandidate[];
+    settlements: SettlementStartMarker[];
+    terrainTiles?: SettlementStartTerrainTile[];
+}
+
+export interface SettlementStartRequestOptionsMessage extends BaseMessage {
+    type: 'settlement:request_start_options';
+}
+
+export interface SettlementFoundRequestMessage extends BaseMessage {
+    type: 'settlement:found_request';
+    candidateId: string;
+}
+
+export interface SettlementFoundResultMessage extends BaseMessage {
+    type: 'settlement:found_result';
+    success: boolean;
+    playerId: string;
+    settlementId: string | null;
+    q?: number;
+    r?: number;
+    message: string;
+}
+
+export interface SettlementPlayerFoundMessage extends BaseMessage {
+    type: 'settlement:player_found';
+    playerId: string;
+    playerName: string;
+    playerColor?: string | null;
+    settlementId: string;
+    q: number;
+    r: number;
+}
+
 export interface SetJobSiteEnabledMessage extends BaseMessage {
     type: 'jobs:set_site_enabled';
     tileId: string;
@@ -110,6 +158,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     settlers: Settler[];
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
+    settlementResources?: SettlementResourceInventorySnapshot[];
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
@@ -125,6 +174,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     settlers: Settler[];
     tasks: TaskInstance[];
     resources: Partial<Record<ResourceType, number>>;
+    settlementResources?: SettlementResourceInventorySnapshot[];
     storages: StorageSnapshot[];
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
@@ -214,6 +264,11 @@ export interface HeroAbilityUpdateMessage extends BaseMessage {
     skills: Partial<Record<HeroSkillKey, number>>;
 }
 
+export interface HeroRosterUpdateMessage extends BaseMessage {
+    type: 'hero:roster_update';
+    heroes: Hero[];
+}
+
 // Hero state updates
 export interface HeroPayloadUpdateMessage extends BaseMessage {
     type: 'hero:payload_update';
@@ -294,11 +349,13 @@ export interface TaskRemovedMessage {
 
 export interface RunSnapshotMessage extends BaseMessage {
     type: 'run:snapshot';
+    settlementId?: string | null;
     run: RunSnapshot;
 }
 
 export interface RunUpdateMessage extends BaseMessage {
     type: 'run:update';
+    settlementId?: string | null;
     run: RunSnapshot;
 }
 
@@ -343,6 +400,8 @@ export type ClientMessage =
     | CoopPingRequestMessage
     | WorldRequestMessage
     | WorldRestartMessage
+    | SettlementStartRequestOptionsMessage
+    | SettlementFoundRequestMessage
     | SetJobSiteEnabledMessage
     | SetActiveStudyMessage
     | MoveRequestMessage
@@ -357,9 +416,13 @@ export type ServerMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
     | PlayerCountMessage
+    | PlayerSnapshotMessage
     | ChatMessage
     | CoopSnapshotMessage
     | CoopPingMessage
+    | SettlementStartOptionsMessage
+    | SettlementFoundResultMessage
+    | SettlementPlayerFoundMessage
     | WorldSnapshotMessage
     | WorldSnapshotStartMessage
     | WorldSnapshotChunkMessage
@@ -376,6 +439,7 @@ export type ServerMessage =
     | HeroPayloadUpdateMessage
     | HeroScoutResourceUpdateMessage
     | HeroAbilityUpdateMessage
+    | HeroRosterUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
     | PopulationUpdateMessage

@@ -21,7 +21,17 @@
           <span>{{ previewStory.actLabel }}</span>
         </div>
 
-        <button class="title-menu__button" @click="joinGame">{{ primaryActionLabel }}</button>
+        <form class="title-menu__account" @submit.prevent="joinGame">
+          <label for="player-nickname">Nickname</label>
+          <input
+            id="player-nickname"
+            v-model="nickname"
+            type="text"
+            maxlength="24"
+            autocomplete="nickname"
+          />
+          <button class="title-menu__button" type="submit">{{ primaryActionLabel }}</button>
+        </form>
 
         <div class="title-menu__story">
           <p class="title-menu__eyebrow">Current Story</p>
@@ -79,12 +89,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import TitleBackground from './TitleBackground.vue';
 import Sprite from './Sprite.vue';
 import { resumeGame } from '../store/uiStore.ts';
 import { runSnapshot } from '../store/runStore.ts';
 import { musicManager } from '../core/musicManager.ts';
+import { connectWithNickname, getStoredPlayerName } from '../core/socket.ts';
 import { createStoryProgression } from '../shared/story/progression.ts';
 import { getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
 import logoArt from '../assets/ui/logo.png';
@@ -125,6 +136,7 @@ const avatarByKey: Record<string, string> = {
 };
 
 const currentRun = computed(() => runSnapshot.value);
+const nickname = ref(getStoredPlayerName());
 const previewStory = computed(() => currentRun.value?.chapter ?? openingStory);
 const currentProgression = computed(() => currentRun.value?.progression ?? openingProgression);
 const nextMilestone = computed(() => {
@@ -174,6 +186,7 @@ onBeforeUnmount(() => {
 });
 
 function joinGame() {
+  connectWithNickname(nickname.value);
   resumeGame();
 }
 
@@ -292,9 +305,8 @@ function retryTitleMusic() {
 }
 
 .title-menu__logo {
-  width: min(100%, 30rem);
   height: auto;
-  margin: 0 auto;
+  margin: 30px auto;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.45));
 }
 
@@ -318,10 +330,41 @@ function retryTitleMusic() {
   padding: 0.42rem 0.56rem;
 }
 
+.title-menu__account {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  text-align: left;
+}
+
+.title-menu__account label {
+  color: #f8e7a0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.title-menu__account input {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid rgba(248, 231, 160, 0.34);
+  border-radius: 8px;
+  background: rgba(2, 8, 10, 0.48);
+  color: #fff7df;
+  padding: 0 0.85rem;
+  font-size: 1rem;
+  outline: none;
+}
+
+.title-menu__account input:focus {
+  border-color: rgba(248, 231, 160, 0.72);
+  box-shadow: 0 0 0 3px rgba(248, 231, 160, 0.14);
+}
+
 .title-menu__button {
   width: 100%;
   min-height: 4rem;
-  margin-top: 1.2rem;
+  margin-top: 0.25rem;
   border: 2px solid #60330f55;
   border-radius: 16px;
   background: linear-gradient(180deg, #e8d966 0%, #dda845 53%, #9c5d1e 100%);

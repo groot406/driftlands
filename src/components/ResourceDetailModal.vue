@@ -104,13 +104,33 @@ import { getInventoryEntryDefinition, getInventoryKindLabel } from '../shared/ga
 import { workforceState } from '../store/clientJobStore';
 import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { populationState } from '../store/clientPopulationStore';
-import { resourceInventory } from '../store/resourceStore';
+import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
 import { settlers } from '../store/settlerStore.ts';
 import { closeResourceDetailModal, selectedResourceDetail } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 import NineSlicePanel from "./ui/NineSlicePanel.vue";
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.RESOURCE_MODAL));
+const playerPopulation = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+});
+const playerInventory = computed(() => {
+  resourceVersion.value;
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+});
+const playerTiles = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return Object.values(tileIndex).filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId);
+});
+const playerSettlers = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? settlers.filter((settler) => settler.settlementId === settlementId) : settlers;
+});
 
 function formatAmount(value: number) {
   return `${Math.floor(value)}`;
@@ -142,6 +162,11 @@ const activeResource = computed(() => {
     if (!building || site.assignedWorkers <= 0) continue;
 
     const tile = tileIndex[site.tileId] ?? null;
+    const settlementId = currentPlayerSettlementId.value;
+    if (settlementId && tile?.ownerSettlementId !== settlementId && tile?.controlledBySettlementId !== settlementId) {
+      continue;
+    }
+
     const flow = resolveBuildingJobResources(building, tile, site.assignedWorkers);
     const produced = getPerMinuteResources(flow.produces, 1, building.cycleMs);
     const consumed = getPerMinuteResources(flow.consumes, 1, building.cycleMs);
@@ -149,10 +174,10 @@ const activeResource = computed(() => {
     accumulateMatches(consumers, building.label, consumed, resourceType);
   }
 
-  if (resourceType === 'food' && populationState.current > 0) {
+  if (resourceType === 'food' && playerPopulation.value.current > 0) {
     consumers.unshift({
       label: 'Settlers',
-      amount: populationState.current * FOOD_PER_SETTLER_PER_MINUTE,
+      amount: playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE,
     });
   }
 
@@ -162,7 +187,7 @@ const activeResource = computed(() => {
   const netMagnitude = Math.floor(Math.abs(net));
   const meta = getInventoryEntryDefinition(resourceType);
   const kindLabel = getInventoryKindLabel(meta.kind);
-  const maintenanceOverview = getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
+  const maintenanceOverview = getMaintenanceOverview(playerTiles.value, playerSettlers.value, playerInventory.value);
   const maintenanceDemand = maintenanceOverview.backlogResources.find((resource) => resource.type === resourceType) ?? null;
 
   return {
@@ -171,7 +196,7 @@ const activeResource = computed(() => {
     icon: meta.icon,
     kindLabel,
     subtitle: `Current storage, production, and consumption for this ${kindLabel.toLowerCase()}.`,
-    stock: Math.floor(resourceInventory[resourceType] ?? 0),
+    stock: Math.floor(playerInventory.value[resourceType] ?? 0),
     produced: producedAmount,
     consumed: consumedAmount,
     net,

@@ -50,23 +50,23 @@
 
               <div class="task-list">
                 <button
-                  v-for="t in constructionTasks"
-                  :key="t.key"
+                  v-for="item in constructionTaskItems"
+                  :key="item.task.key"
                   class="task-list-row"
                   :class="{
-                    'task-list-row--selected': selectedTask?.key === t.key,
-                    'task-list-row--locked': isTaskLocked(t),
+                    'task-list-row--selected': selectedTask?.key === item.task.key,
+                    'task-list-row--locked': item.locked,
                   }"
-                  @click="handleTaskClick(t)"
-                  @pointerenter="hoverTask(t)"
-                  @pointerleave="unHoverTask(t)"
+                  @click="handleTaskClick(item.task)"
+                  @pointerenter="hoverTask(item.task)"
+                  @pointerleave="unHoverTask(item.task)"
                 >
                   <div class="task-list-row__info">
-                    <p class="task-list-row__title">{{ t.label }}</p>
-                    <p class="task-list-row__meta">{{ getBuildCategoryLabel(t) }}</p>
+                    <p class="task-list-row__title">{{ item.task.label }}</p>
+                    <p class="task-list-row__meta">{{ item.categoryLabel }}</p>
                   </div>
-                  <span class="task-list-row__state" :class="getBuildStateTone(t)">
-                    {{ getBuildStateLabel(t) }}
+                  <span class="task-list-row__state" :class="item.stateTone">
+                    {{ item.stateLabel }}
                   </span>
                 </button>
               </div>
@@ -91,23 +91,23 @@
 
               <div class="task-list">
                 <button
-                  v-for="t in actionTasks"
-                  :key="t.key"
+                  v-for="item in actionTaskItems"
+                  :key="item.task.key"
                   class="task-list-row task-list-row--action"
                   :class="{
-                    'task-list-row--selected': selectedTask?.key === t.key,
-                    'task-list-row--locked': isTaskLocked(t),
+                    'task-list-row--selected': selectedTask?.key === item.task.key,
+                    'task-list-row--locked': item.locked,
                   }"
-                  @click="handleTaskClick(t)"
-                  @pointerenter="hoverTask(t)"
-                  @pointerleave="unHoverTask(t)"
+                  @click="handleTaskClick(item.task)"
+                  @pointerenter="hoverTask(item.task)"
+                  @pointerleave="unHoverTask(item.task)"
                 >
                   <div class="task-list-row__info">
-                    <p class="task-list-row__title">{{ t.label }}</p>
-                    <p class="task-list-row__meta">{{ isTaskLocked(t) ? 'Locked action' : 'Available action' }}</p>
+                    <p class="task-list-row__title">{{ item.task.label }}</p>
+                    <p class="task-list-row__meta">{{ item.locked ? 'Locked action' : 'Available action' }}</p>
                   </div>
-                  <span class="task-list-row__state" :class="getBuildStateTone(t)">
-                    {{ isTaskLocked(t) ? 'Locked' : 'Ready' }}
+                  <span class="task-list-row__state" :class="item.stateTone">
+                    {{ item.locked ? 'Locked' : 'Ready' }}
                   </span>
                 </button>
               </div>
@@ -142,11 +142,11 @@
               <!-- Detail header -->
               <div class="task-detail-top">
                 <div>
-                  <span class="task-badge">{{ getBuildCategoryLabel(selectedTask) }}</span>
+                  <span class="task-badge">{{ selectedTaskUi?.categoryLabel ?? getBuildCategoryLabel(selectedTask) }}</span>
                   <h4 class="task-detail-title">{{ selectedTask.label }}</h4>
                 </div>
-                <span class="task-detail-state" :class="getBuildStateTone(selectedTask)">
-                  {{ getBuildStateLabel(selectedTask) }}
+                <span class="task-detail-state" :class="selectedTaskUi?.stateTone ?? getBuildStateTone(selectedTask)">
+                  {{ selectedTaskUi?.stateLabel ?? getBuildStateLabel(selectedTask) }}
                 </span>
               </div>
 
@@ -182,8 +182,24 @@
 
               <!-- Description (works for both building and action tasks) -->
               <p class="task-detail-copy">{{ getTaskSummary(selectedTask) }}</p>
-              <p v-if="getTaskLockHint(selectedTask)" class="task-lock-hint">{{ getTaskLockHint(selectedTask) }}</p>
+              <p v-if="selectedTaskUi?.lockHint" class="task-lock-hint">{{ selectedTaskUi.lockHint }}</p>
               <p v-else-if="selectedTaskHint" class="task-lock-hint">{{ selectedTaskHint }}</p>
+
+              <div v-if="!isBuildingTask(selectedTask) && getTaskRequiredResources(selectedTask).length" class="task-detail-grid">
+                <section class="task-detail-block">
+                  <p class="task-detail-block__label">Required Resources</p>
+                  <div class="task-costs">
+                    <span
+                      v-for="resource in getTaskRequiredResources(selectedTask)"
+                      :key="resource.type"
+                      class="task-cost-chip"
+                      :class="{ 'task-cost-chip-missing': isCostMissing(resource) }"
+                    >
+                      {{ resourceLabel(resource.type) }} {{ getWarehouseAmount(resource.type) }}/{{ resource.amount }}
+                    </span>
+                  </div>
+                </section>
+              </div>
 
               <!-- Cost / economy / upgrade blocks (for buildings) -->
               <div v-if="isBuildingTask(selectedTask)" class="task-detail-grid">
@@ -203,7 +219,7 @@
                       class="task-cost-chip"
                       :class="{ 'task-cost-chip-missing': !isPopulationMet(selectedTask) }"
                     >
-                      Population {{ populationState.current }}/{{ getPopulationRequirement(selectedTask) }}
+                      Population {{ playerPopulation.current }}/{{ getPopulationRequirement(selectedTask) }}
                     </span>
                     <span v-if="!getBuildingCosts(selectedTask).length && !getPopulationRequirement(selectedTask)" class="task-cost-chip">
                       No build cost
@@ -243,11 +259,11 @@
               <!-- Confirm button inside detail pane -->
               <button
                 class="task-confirm-btn"
-                :class="{ 'task-confirm-btn--disabled': isTaskLocked(selectedTask) }"
-                :disabled="isTaskLocked(selectedTask)"
+                :class="{ 'task-confirm-btn--disabled': selectedTaskUi?.locked ?? isTaskLocked(selectedTask) }"
+                :disabled="selectedTaskUi?.locked ?? isTaskLocked(selectedTask)"
                 @click.stop="confirmTask"
               >
-                {{ isTaskLocked(selectedTask) ? 'Locked' : `Send Hero — ${selectedTask.label}` }}
+                {{ (selectedTaskUi?.locked ?? isTaskLocked(selectedTask)) ? 'Locked' : `Send Hero — ${selectedTask.label}` }}
               </button>
             </template>
 
@@ -284,8 +300,9 @@ import {
 } from '../shared/buildings/registry';
 import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
 import { TERRAIN_DEFS } from '../core/terrainDefs';
-import { resourceInventory } from '../store/resourceStore';
+import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
 import { populationState } from '../store/clientPopulationStore';
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { currentPlayerId } from '../core/socket';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName } from '../store/playerStore';
@@ -319,10 +336,42 @@ const emit = defineEmits<{
   (e: 'hover', task: null | TaskDefinition): void;
 }>();
 
+const playerPopulation = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+});
+
+const playerInventory = computed(() => {
+  resourceVersion.value;
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+});
+
 const pathService = new PathService();
 const hoveredTask = ref<TaskDefinition | null>(null);
 const tappedTask = ref<TaskDefinition | null>(null);
 const isMobile = ref(false);
+let hoverFrame = 0;
+let pendingHoverTask: TaskDefinition | null = null;
+
+function canManageTile(tile: Tile | null | undefined) {
+  const settlementId = currentPlayerSettlementId.value;
+  if (!tile || !settlementId) {
+    return false;
+  }
+
+  if (tile.terrain === 'towncenter') {
+    return tile.id === settlementId;
+  }
+
+  if (tile.ownerSettlementId) {
+    return tile.ownerSettlementId === settlementId;
+  }
+
+  return tile.controlledBySettlementId === settlementId;
+}
 
 const heroAbilityOptions: Array<{ key: HeroAbilityKey; label: string; code: string; title: string }> = [
   { key: 'boostProduction', label: 'Boost', code: '+', title: 'Boost the staffed building on this tile for its next cycle.' },
@@ -358,6 +407,10 @@ const sortedTasks = computed(() => {
     return props.availableTasks ?? [];
   }
 
+  if (!canManageTile(tile)) {
+    return [];
+  }
+
   const availableByKey = new Map((props.availableTasks ?? []).map((task) => [task.key, task]));
   const tasks = listTaskDefinitions().filter((task) =>
     canStartTaskDefinition(task, tile, hero)
@@ -390,6 +443,15 @@ const sortedTasks = computed(() => {
 });
 const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
 const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
+
+interface TaskListItem {
+  task: TaskDefinition;
+  categoryLabel: string;
+  stateLabel: string;
+  stateTone: string;
+  locked: boolean;
+  lockHint: string | null;
+}
 
 interface TileSurveyTrait {
   kind: 'status' | 'modifier' | 'special';
@@ -530,7 +592,7 @@ const selectedTaskHint = computed(() => {
   const accessMode = getTaskAccessMode(task.key, tile);
 
   if (accessMode !== 'tile') {
-    const accessTile = hero ? findNearestTaskAccessTile(task.key, tile, hero.q, hero.r) : null;
+    const accessTile = hero ? findNearestTaskAccessTile(task.key, tile, hero.q, hero.r, hero.settlementId ?? null) : null;
     const isWater = tile.terrain === 'water';
     if (!accessTile) {
       if (accessMode === 'adjacent_walkable') {
@@ -618,7 +680,7 @@ const showHeroAbilities = computed(() =>
 function canUseHeroAbility(ability: HeroAbilityKey) {
   const hero = selectedHeroForAbilities.value;
   const tile = props.tile;
-  if (!hero || !tile || selectedHeroCharges.value <= 0 || !canControlHero(hero.id, currentPlayerId.value)) {
+  if (!hero || !tile || selectedHeroCharges.value <= 0 || !canControlHero(hero.id, currentPlayerId.value) || !canManageTile(tile)) {
     return false;
   }
 
@@ -836,12 +898,17 @@ function getBuildCategoryLabel(def: TaskDefinition) {
 }
 
 function getBuildingCosts(def: TaskDefinition): ResourceAmount[] {
-  if (!props.tile || (!getBuildingMeta(def) && !getUpgradeMeta(def))) return [];
-  return def.requiredResources?.(getTaskEconomyDistance()) ?? [];
+  if (!getBuildingMeta(def) && !getUpgradeMeta(def)) return [];
+  return getTaskRequiredResources(def);
+}
+
+function getTaskRequiredResources(def: TaskDefinition): ResourceAmount[] {
+  if (!props.tile) return [];
+  return def.requiredResources?.(getTaskEconomyDistance(), props.tile) ?? [];
 }
 
 function getWarehouseAmount(type: ResourceType) {
-  return Math.floor(resourceInventory[type] ?? 0);
+  return Math.floor(playerInventory.value[type] ?? 0);
 }
 
 function isCostMissing(resource: ResourceAmount) {
@@ -849,7 +916,7 @@ function isCostMissing(resource: ResourceAmount) {
 }
 
 function taskHasMissingCosts(def: TaskDefinition) {
-  return getBuildingCosts(def).some(isCostMissing);
+  return getTaskRequiredResources(def).some(isCostMissing);
 }
 
 function getPopulationRequirement(def: TaskDefinition): number | null {
@@ -859,7 +926,7 @@ function getPopulationRequirement(def: TaskDefinition): number | null {
 function isPopulationMet(def: TaskDefinition): boolean {
   const req = getPopulationRequirement(def);
   if (req == null) return true;
-  return populationState.current >= req;
+  return playerPopulation.value.current >= req;
 }
 
 function getBuildStateTone(def: TaskDefinition) {
@@ -875,7 +942,7 @@ function getBuildStateTone(def: TaskDefinition) {
 }
 
 function getBuildStateLabel(def: TaskDefinition) {
-  const unlockStatus = getTaskUnlockStatus(def.key);
+  const unlockStatus = getTaskUnlockStatus(def.key, currentPlayerSettlementId.value);
   if (!unlockStatus.unlocked) {
     return unlockStatus.lockingNode ? `Locked by ${unlockStatus.lockingNode.label}` : 'Locked';
   }
@@ -885,7 +952,7 @@ function getBuildStateLabel(def: TaskDefinition) {
     return requirement ? `Need ${requirement} settlers` : 'Need settlers';
   }
 
-  const costs = getBuildingCosts(def);
+  const costs = getTaskRequiredResources(def);
   const missing = costs.filter(isCostMissing);
 
   if (!missing.length) {
@@ -902,11 +969,11 @@ function getBuildStateLabel(def: TaskDefinition) {
 }
 
 function isTaskLocked(def: TaskDefinition) {
-  return !getTaskUnlockStatus(def.key).unlocked;
+  return !getTaskUnlockStatus(def.key, currentPlayerSettlementId.value).unlocked;
 }
 
 function getTaskLockHint(def: TaskDefinition) {
-  const unlockStatus = getTaskUnlockStatus(def.key);
+  const unlockStatus = getTaskUnlockStatus(def.key, currentPlayerSettlementId.value);
   if (unlockStatus.unlocked || !unlockStatus.lockingNode) {
     return null;
   }
@@ -918,6 +985,63 @@ function getTaskLockHint(def: TaskDefinition) {
 
   return `${unlockStatus.lockingNode.label}: ${unmetRequirement.label} (${unmetRequirement.currentLabel}).`;
 }
+
+function buildTaskListItem(def: TaskDefinition): TaskListItem {
+  const unlockStatus = getTaskUnlockStatus(def.key, currentPlayerSettlementId.value);
+  const locked = !unlockStatus.unlocked;
+  const categoryLabel = getBuildCategoryLabel(def);
+  const populationMet = isPopulationMet(def);
+  const missingCosts = taskHasMissingCosts(def);
+
+  let stateLabel = 'Ready';
+  if (locked) {
+    stateLabel = unlockStatus.lockingNode ? `Locked by ${unlockStatus.lockingNode.label}` : 'Locked';
+  } else if (!populationMet) {
+    const requirement = getPopulationRequirement(def);
+    stateLabel = requirement ? `Need ${requirement} settlers` : 'Need settlers';
+  } else {
+    const costs = getTaskRequiredResources(def);
+    const missing = costs.filter(isCostMissing);
+    if (missing.length === 1) {
+      const [resource] = missing;
+      const missingAmount = Math.floor(Math.max(0, resource.amount - getWarehouseAmount(resource.type)));
+      stateLabel = `Need ${missingAmount} ${resourceLabel(resource.type).toLowerCase()}`;
+    } else if (missing.length > 1) {
+      stateLabel = `Need ${missing.length} resources`;
+    }
+  }
+
+  let lockHint: string | null = null;
+  if (locked && unlockStatus.lockingNode) {
+    const unmetRequirement = unlockStatus.lockingNode.requirements.find((requirement) => !requirement.satisfied);
+    lockHint = unmetRequirement
+      ? `${unlockStatus.lockingNode.label}: ${unmetRequirement.label} (${unmetRequirement.currentLabel}).`
+      : `${unlockStatus.lockingNode.label} has not been reached yet.`;
+  }
+
+  return {
+    task: def,
+    categoryLabel,
+    stateLabel,
+    stateTone: locked
+      ? 'task-state--locked'
+      : (!populationMet || missingCosts ? 'task-state--blocked' : 'task-state--ready'),
+    locked,
+    lockHint,
+  };
+}
+
+const taskListItems = computed(() => sortedTasks.value.map(buildTaskListItem));
+const constructionTaskItems = computed(() => taskListItems.value.filter((item) => !!getBuildingMeta(item.task) || !!getUpgradeMeta(item.task)));
+const actionTaskItems = computed(() => taskListItems.value.filter((item) => !getBuildingMeta(item.task) && !getUpgradeMeta(item.task)));
+const selectedTaskUi = computed(() => {
+  const task = selectedTask.value;
+  if (!task) {
+    return null;
+  }
+
+  return taskListItems.value.find((item) => item.task.key === task.key) ?? buildTaskListItem(task);
+});
 
 function resourceLabel(type: ResourceType) {
   return resourceLabels[type] ?? type;
@@ -1113,11 +1237,22 @@ function confirmTask() {
 
 function selectTask(def: TaskDefinition) {
   if (!props.tile) return;
+  if (!canManageTile(props.tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign tile',
+      message: 'You can inspect another settlement, but only its owner can issue orders there.',
+      duration: 2800,
+    });
+    close();
+    return;
+  }
+
   if (isTaskLocked(def)) return;
   const hero = getSelectedHero();
   if (!hero) return;
   const accessMode = getTaskAccessMode(def.key, props.tile);
-  const accessTile = findNearestTaskAccessTile(def.key, props.tile, hero.q, hero.r);
+  const accessTile = findNearestTaskAccessTile(def.key, props.tile, hero.q, hero.r, hero.settlementId ?? null);
   if (accessMode === 'adjacent_walkable' && !accessTile) {
     addNotification({
       type: 'run_state',
@@ -1197,8 +1332,18 @@ function selectTask(def: TaskDefinition) {
 
 function hoverTask(t: TaskDefinition) {
   if (!isMobile.value) {
-    hoveredTask.value = t;
-    emit('hover', t);
+    pendingHoverTask = t;
+    if (hoverFrame) {
+      return;
+    }
+    hoverFrame = window.requestAnimationFrame(() => {
+      hoverFrame = 0;
+      if (hoveredTask.value?.key === pendingHoverTask?.key) {
+        return;
+      }
+      hoveredTask.value = pendingHoverTask;
+      emit('hover', pendingHoverTask);
+    });
   }
 }
 
@@ -1246,6 +1391,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
+  if (hoverFrame) {
+    window.cancelAnimationFrame(hoverFrame);
+    hoverFrame = 0;
+  }
 
   if (listenerActive) {
     window.removeEventListener('keydown', handleKeydown);
@@ -1580,14 +1729,14 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.9));
   text-align: left;
   cursor: pointer;
-  transition: transform .12s, border-color .12s, background .12s, box-shadow .12s;
+  transition: border-color .12s, background .12s;
 }
 
 .task-list-row:hover,
 .task-list-row:focus-visible {
-  transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.24);
-  box-shadow: 0 6px 14px rgba(2, 6, 23, 0.2);
+  background:
+    linear-gradient(180deg, rgba(21, 32, 58, 0.78), rgba(15, 23, 42, 0.94));
 }
 
 .task-list-row--selected {
@@ -1595,9 +1744,7 @@ onUnmounted(() => {
   background:
     linear-gradient(180deg, rgba(40, 54, 98, 0.82), rgba(15, 23, 42, 0.96)),
     linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent 64%);
-  box-shadow:
-    inset 0 0 0 1px rgba(250, 204, 21, 0.08),
-    0 8px 18px rgba(2, 6, 23, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.08);
 }
 
 .task-list-row--action {
@@ -1765,12 +1912,12 @@ onUnmounted(() => {
 }
 
 .task-preview-stage__layer--base {
-  filter: drop-shadow(0 10px 18px rgba(2, 6, 23, 0.42));
+  filter: none;
 }
 
 .task-preview-stage__layer--terrain-overlay,
 .task-preview-stage__layer--building-overlay {
-  filter: drop-shadow(0 10px 18px rgba(2, 6, 23, 0.32));
+  filter: none;
 }
 
 /* ── Detail grid (costs, economy, upgrades) ──────────── */

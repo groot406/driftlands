@@ -4,10 +4,39 @@ import type { ClientMessage, ServerMessage } from '../shared/protocol';
 import { clientMessageRouter } from './messageRouter';
 import { initializeClientHandlers } from './messageHandlers';
 import { addPlayer, removePlayer } from '../store/playerStore';
+import { sanitizePlayerNickname } from '../shared/multiplayer/player.ts';
 
+const PLAYER_ID_KEY = 'driftlands-player-id-v1';
 const PLAYER_NAME_KEY = 'driftlands-player-name-v1';
 
-function getStoredPlayerName() {
+function createTemporaryPlayerId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `temp:${crypto.randomUUID()}`;
+  }
+
+  return `temp:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function getStoredPlayerId() {
+  if (typeof window === 'undefined') {
+    return 'temp:server-preview';
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PLAYER_ID_KEY);
+    if (raw?.trim()) {
+      return raw.trim();
+    }
+
+    const created = createTemporaryPlayerId();
+    window.localStorage.setItem(PLAYER_ID_KEY, created);
+    return created;
+  } catch {
+    return createTemporaryPlayerId();
+  }
+}
+
+export function getStoredPlayerName() {
   if (typeof window === 'undefined') {
     return 'Pioneer';
   }
@@ -17,7 +46,7 @@ function getStoredPlayerName() {
   try {
     const raw = window.localStorage.getItem(PLAYER_NAME_KEY);
     if (raw && raw.trim()) {
-      return raw.trim();
+      return sanitizePlayerNickname(raw);
     }
 
     window.localStorage.setItem(PLAYER_NAME_KEY, fallbackName);
@@ -26,6 +55,16 @@ function getStoredPlayerName() {
   }
 
   return fallbackName;
+}
+
+export function setStoredPlayerName(name: string) {
+  const sanitized = sanitizePlayerNickname(name);
+  try {
+    window.localStorage.setItem(PLAYER_NAME_KEY, sanitized);
+  } catch {
+  }
+
+  return sanitized;
 }
 
 // Determine URL only in browser; Node lacks import.meta.env
@@ -37,7 +76,7 @@ const SOCKET_URL = isBrowser ? (env.VITE_SERVER_URL || undefined) : undefined;
 
 export const socket = io(SOCKET_URL, {
   path: '/socket.io',
-  autoConnect: isBrowser,
+  autoConnect: false,
 });
 export const currentPlayer = ref<{ id: string; name: string } | null>(null);
 export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);
@@ -45,6 +84,7 @@ export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);
 // Generic message sending function
 export function sendMessage(message: ClientMessage): void {
   if (socket.connected) {
+    console.debug('Sending message:', message);
     socket.emit('message', message);
   } else {
     console.warn('Cannot send message - socket not connected:', message);
@@ -56,8 +96,12 @@ initializeClientHandlers();
 
 socket.on('connect', () => {
   initializeClientHandlers();
+  join();
+});
 
-  const playerId = socket.id ?? `player-${Date.now()}`;
+function join() {
+  // TODO: Player id should be logged in WALLET
+  const playerId = getStoredPlayerName();
   const playerName = getStoredPlayerName();
 
   currentPlayer.value = {
@@ -66,16 +110,24 @@ socket.on('connect', () => {
   };
 
   addPlayer({ id: playerId, name: playerName });
-
-  const joinMessage: ClientMessage = {
+  sendMessage({
     type: 'player:join',
     playerId,
     playerName,
     timestamp: Date.now(),
-  };
+  });
+}
 
-  sendMessage(joinMessage);
-});
+export function connectWithNickname(nickname: string) {
+  setStoredPlayerName(nickname);
+
+  if (socket.connected) {
+    join();
+    return;
+  }
+
+  socket.connect();
+}
 
 export function getCurrentPlayerInfo(): { id: string; name: string } | null {
   return currentPlayer.value ? { ...currentPlayer.value } : null;

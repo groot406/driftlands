@@ -6,6 +6,7 @@ import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import {
     type PressureState,
     type SettlementSupportCounts,
+    type SettlementPopulationInput,
     computeControlledTileIds,
     computeControlledTileIdsForTC,
     computeControlledTileIdsForWatchtower,
@@ -60,8 +61,16 @@ export interface PopulationState {
     inactiveTileCount: number;
     /** Current colony pressure readout. */
     pressureState: PressureState;
-    /** Per-settlement support counts. */
-    settlements: SettlementSupportCounts[];
+    /** Per-settlement population and support counts. */
+    settlements: SettlementPopulationSnapshot[];
+}
+
+export interface SettlementPopulationSnapshot extends SettlementSupportCounts {
+    current: number;
+    max: number;
+    beds: number;
+    hungerMs: number;
+    pressureState: PressureState;
 }
 
 const state: PopulationState = {
@@ -77,11 +86,88 @@ const state: PopulationState = {
     settlements: [],
 };
 
+const settlementPopulation = new Map<string, PopulationState>();
+
+function createSettlementPopulationState(): PopulationState {
+    return {
+        current: MIN_POPULATION,
+        max: 0,
+        beds: 0,
+        hungerMs: 0,
+        lastFoodTickMs: 0,
+        supportCapacity: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        pressureState: 'stable',
+        settlements: [],
+    };
+}
+
+function cloneSettlementPopulationSnapshot(settlement: SettlementPopulationSnapshot): SettlementPopulationSnapshot {
+    return { ...settlement };
+}
+
+function refreshAggregatePopulation() {
+    state.current = Array.from(settlementPopulation.values())
+        .reduce((total, settlementState) => total + settlementState.current, 0);
+}
+
+function refreshSettlementPopulationSnapshots() {
+    state.settlements = state.settlements.map((settlement) => {
+        const settlementState = getOrCreateSettlementPopulationState(settlement.settlementId);
+        return {
+            ...settlement,
+            current: settlementState.current,
+            max: settlementState.max,
+            beds: settlementState.beds,
+            hungerMs: settlementState.hungerMs,
+            pressureState: settlementState.pressureState,
+        };
+    });
+}
+
+function getOrCreateSettlementPopulationState(settlementId: string) {
+    let settlementState = settlementPopulation.get(settlementId);
+    if (!settlementState) {
+        settlementState = createSettlementPopulationState();
+        settlementPopulation.set(settlementId, settlementState);
+    }
+
+    return settlementState;
+}
+
+export function getPopulationBySettlementInput(): SettlementPopulationInput {
+    const populationBySettlementId: Record<string, number> = {};
+    for (const [settlementId, settlementState] of settlementPopulation.entries()) {
+        populationBySettlementId[settlementId] = settlementState.current;
+    }
+
+    return populationBySettlementId;
+}
+
+export function getSettlementPopulationState(settlementId: string | null | undefined): Readonly<PopulationState> | null {
+    if (!settlementId) {
+        return null;
+    }
+
+    return settlementPopulation.get(settlementId) ?? null;
+}
+
+export function initializeSettlementPopulation(settlementId: string) {
+    const settlementState = getOrCreateSettlementPopulationState(settlementId);
+    settlementState.current = MIN_POPULATION;
+    settlementState.hungerMs = 0;
+    settlementState.lastFoodTickMs = Date.now();
+    recalculatePopulationLimits();
+    return settlementState;
+}
+
 export function getPopulationState(): Readonly<PopulationState> {
     return state;
 }
 
 export function resetPopulationState() {
+    settlementPopulation.clear();
     state.current = 0;
     state.max = 0;
     state.beds = 0;
@@ -159,6 +245,16 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
     const tcCount = terrainPositions.towncenter.size;
     const maxPop = tcCount * TC_BASE_POPULATION;
     const controlledTileIds = computeControlledTileIds();
+    const bedsBySettlementId = new Map<string, number>();
+    const maxBySettlementId = new Map<string, number>();
+
+    for (const tcId of terrainPositions.towncenter) {
+        const tile = tileIndex[tcId];
+        if (!tile?.discovered || tile.terrain !== 'towncenter') continue;
+        maxBySettlementId.set(tile.id, (maxBySettlementId.get(tile.id) ?? 0) + TC_BASE_POPULATION);
+        getOrCreateSettlementPopulationState(tile.id);
+    }
+
     let beds = 0;
     for (const variantKey of HOUSE_VARIANT_KEYS) {
         const positions = variantPositions[variantKey];
@@ -168,7 +264,12 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
             if (!tile || !controlledTileIds.has(tile.id)) {
                 continue;
             }
-            beds += HOUSE_BED_CAPACITY_BY_VARIANT[variantKey];
+            const houseBeds = HOUSE_BED_CAPACITY_BY_VARIANT[variantKey];
+            beds += houseBeds;
+            const settlementId = tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null;
+            if (settlementId) {
+                bedsBySettlementId.set(settlementId, (bedsBySettlementId.get(settlementId) ?? 0) + houseBeds);
+            }
         }
     }
 
@@ -179,6 +280,16 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
     if (state.current > state.max) {
         state.current = state.max;
     }
+
+    for (const [settlementId, settlementState] of settlementPopulation.entries()) {
+        settlementState.max = maxBySettlementId.get(settlementId) ?? 0;
+        settlementState.beds = bedsBySettlementId.get(settlementId) ?? 0;
+        if (settlementState.current > settlementState.max) {
+            settlementState.current = settlementState.max;
+        }
+    }
+    refreshAggregatePopulation();
+    refreshSettlementPopulationSnapshots();
 
     return { max: maxPop, beds };
 }
@@ -201,9 +312,32 @@ export function onBuildingCompleted() {
  * The caller (populationSystem) is responsible for checking food availability.
  * Returns true if a settler was added.
  */
-export function growPopulation(): boolean {
+export function growPopulation(settlementId?: string | null): boolean {
+    if (settlementId) {
+        const settlementState = getOrCreateSettlementPopulationState(settlementId);
+        if (settlementState.current >= settlementState.max) return false;
+        if (settlementState.current >= settlementState.beds) return false;
+
+        settlementState.current++;
+        refreshAggregatePopulation();
+        refreshSettlementPopulationSnapshots();
+        broadcastPopulationState();
+        return true;
+    }
+
     if (state.current >= state.max) return false;
     if (state.current >= state.beds) return false;
+
+    const candidate = Array.from(settlementPopulation.entries())
+        .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+        .find(([, settlementState]) => settlementState.current < settlementState.max && settlementState.current < settlementState.beds);
+    if (candidate) {
+        candidate[1].current++;
+        refreshAggregatePopulation();
+        refreshSettlementPopulationSnapshots();
+        broadcastPopulationState();
+        return true;
+    }
 
     state.current++;
     broadcastPopulationState();
@@ -213,9 +347,33 @@ export function growPopulation(): boolean {
 /**
  * Kill a settler (e.g. from hunger). Returns true if a settler died.
  */
-export function killSettler(): boolean {
+export function killSettler(settlementId?: string | null): boolean {
+    if (settlementId) {
+        const settlementState = settlementPopulation.get(settlementId);
+        if (!settlementState || settlementState.current <= MIN_POPULATION) {
+            return false;
+        }
+
+        settlementState.current--;
+        refreshAggregatePopulation();
+        refreshSettlementPopulationSnapshots();
+        broadcastPopulationState();
+        return true;
+    }
+
     if (state.current <= MIN_POPULATION) {
         return false;
+    }
+
+    const candidate = Array.from(settlementPopulation.entries())
+        .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+        .find(([, settlementState]) => settlementState.current > MIN_POPULATION);
+    if (candidate) {
+        candidate[1].current--;
+        refreshAggregatePopulation();
+        refreshSettlementPopulationSnapshots();
+        broadcastPopulationState();
+        return true;
     }
 
     state.current--;
@@ -236,7 +394,22 @@ export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSuppo
     state.activeTileCount = snapshot.activeTileCount;
     state.inactiveTileCount = snapshot.inactiveTileCount;
     state.pressureState = snapshot.pressureState;
-    state.settlements = snapshot.settlements.map((settlement) => ({ ...settlement }));
+    state.settlements = snapshot.settlements.map((settlement) => {
+        const settlementState = getOrCreateSettlementPopulationState(settlement.settlementId);
+        settlementState.supportCapacity = settlement.supportCapacity;
+        settlementState.activeTileCount = settlement.activeTileCount;
+        settlementState.inactiveTileCount = settlement.inactiveTileCount;
+        settlementState.pressureState = snapshot.pressureState;
+
+        return {
+            ...settlement,
+            current: settlementState.current,
+            max: settlementState.max,
+            beds: settlementState.beds,
+            hungerMs: settlementState.hungerMs,
+            pressureState: settlementState.pressureState,
+        };
+    });
 }
 
 /**
@@ -244,6 +417,7 @@ export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSuppo
  * Starts at zero; growth happens passively once houses provide beds.
  */
 export function initializePopulation() {
+    settlementPopulation.clear();
     recalculatePopulationLimits();
     state.current = MIN_POPULATION;
     state.hungerMs = 0;
@@ -262,7 +436,7 @@ export interface PopulationSnapshot {
     activeTileCount: number;
     inactiveTileCount: number;
     pressureState: PressureState;
-    settlements: SettlementSupportCounts[];
+    settlements: SettlementPopulationSnapshot[];
 }
 
 export function getPopulationSnapshot(): PopulationSnapshot {
@@ -275,11 +449,12 @@ export function getPopulationSnapshot(): PopulationSnapshot {
         activeTileCount: state.activeTileCount,
         inactiveTileCount: state.inactiveTileCount,
         pressureState: state.pressureState,
-        settlements: state.settlements.map((settlement) => ({ ...settlement })),
+        settlements: state.settlements.map(cloneSettlementPopulationSnapshot),
     };
 }
 
 export function loadPopulationSnapshot(snapshot: PopulationSnapshot) {
+    settlementPopulation.clear();
     state.current = snapshot.current;
     state.max = snapshot.max;
     state.beds = snapshot.beds ?? 0;
@@ -289,7 +464,19 @@ export function loadPopulationSnapshot(snapshot: PopulationSnapshot) {
     state.activeTileCount = snapshot.activeTileCount ?? 0;
     state.inactiveTileCount = snapshot.inactiveTileCount ?? 0;
     state.pressureState = snapshot.pressureState ?? 'stable';
-    state.settlements = snapshot.settlements?.map((settlement) => ({ ...settlement })) ?? [];
+    state.settlements = snapshot.settlements?.map(cloneSettlementPopulationSnapshot) ?? [];
+    for (const settlement of state.settlements) {
+        const settlementState = getOrCreateSettlementPopulationState(settlement.settlementId);
+        settlementState.current = settlement.current;
+        settlementState.max = settlement.max;
+        settlementState.beds = settlement.beds;
+        settlementState.hungerMs = settlement.hungerMs;
+        settlementState.lastFoodTickMs = Date.now();
+        settlementState.supportCapacity = settlement.supportCapacity;
+        settlementState.activeTileCount = settlement.activeTileCount;
+        settlementState.inactiveTileCount = settlement.inactiveTileCount;
+        settlementState.pressureState = state.pressureState;
+    }
 }
 
 // --- Broadcast ---
@@ -305,7 +492,7 @@ function broadcastPopulationUpdate() {
         activeTileCount: state.activeTileCount,
         inactiveTileCount: state.inactiveTileCount,
         pressureState: state.pressureState,
-        settlements: state.settlements.map((settlement) => ({ ...settlement })),
+        settlements: state.settlements.map(cloneSettlementPopulationSnapshot),
     });
 }
 

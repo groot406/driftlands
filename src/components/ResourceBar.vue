@@ -3,7 +3,7 @@
     <div class="inventory-strip inventory-strip-stocks">
       <NineSliceButton type="button" class="pop-bubble" title="Open settler overview" @click="openPopulationModal()">
         <span class="leading-none mr-4 text-xs">&#x1F465;</span>
-        <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50 pr-2 pb-1">{{ populationState.current }}/{{ populationState.max }}</span>
+        <span class="text-sm text-opacity-60 font-mono leading-none text-emerald-50 pr-2 pb-1">{{ playerPopulation.current }}/{{ playerPopulation.max }}</span>
       </NineSliceButton>
 
       <ResourceBubble
@@ -38,19 +38,33 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ResourceBubble from './ResourceBubble.vue';
-import {resourceInventory, resourceVersion} from '../store/resourceStore';
+import {getSettlementResourceInventory, resourceInventory, resourceVersion} from '../store/resourceStore';
 import {populationState} from '../store/clientPopulationStore';
 import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
 import { runSnapshot, runVersion } from '../store/runStore.ts';
 import { getVisibleInventoryEntries } from '../shared/game/inventoryPresentation.ts';
 import NineSliceButton from "./ui/NineSliceButton.vue";
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+
+const playerPopulation = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+});
+
+const playerInventory = computed(() => {
+  resourceVersion.value;
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+});
 
 const visibleEntries = computed(() => {
   resourceVersion.value;
   runVersion.value;
 
   return getVisibleInventoryEntries({
-    inventory: resourceInventory,
+    inventory: playerInventory.value,
     progression: runSnapshot.value?.progression ?? null,
   });
 });

@@ -19,6 +19,7 @@ import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
 import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
 import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
+import { ensureHeroSelected } from '../../store/uiStore';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -29,6 +30,7 @@ interface PendingWorldSnapshot {
     settlers: WorldSnapshotMessage['settlers'];
     tasks: WorldSnapshotMessage['tasks'];
     resources: WorldSnapshotMessage['resources'];
+    settlementResources: WorldSnapshotMessage['settlementResources'];
     storages: WorldSnapshotMessage['storages'];
     population: WorldSnapshotMessage['population'];
     jobs: WorldSnapshotMessage['jobs'];
@@ -57,7 +59,7 @@ class WorldHandler {
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
         loadWorld(message.tiles);
         for (const tile of message.tiles) {
             if (tile.discovered) {
@@ -65,6 +67,7 @@ class WorldHandler {
             }
         }
         loadHeroes(message.heroes);
+        ensureHeroSelected(false);
         loadSettlers(message.settlers ?? [], message.timestamp);
         loadTasks(message.tasks);
         const storages = message.storages ?? [];
@@ -92,6 +95,7 @@ class WorldHandler {
             settlers: message.settlers,
             tasks: message.tasks,
             resources: message.resources,
+            settlementResources: message.settlementResources ?? [],
             storages: message.storages,
             population: message.population,
             jobs: message.jobs,

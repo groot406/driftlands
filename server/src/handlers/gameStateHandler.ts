@@ -14,6 +14,7 @@ import type {
 } from '../../../src/shared/protocol';
 import { runState } from '../state/runState';
 import { coopState } from '../state/coopState';
+import { playerSettlementState } from '../state/playerSettlementState';
 
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
@@ -41,6 +42,7 @@ export class ServerGameStateHandler {
       settlers: snapshot.settlers,
       tasks: snapshot.tasks,
       resources: snapshot.resources,
+      settlementResources: snapshot.settlementResources,
       storages: snapshot.storages,
       population: snapshot.population,
       jobs: snapshot.jobs,
@@ -80,14 +82,17 @@ export class ServerGameStateHandler {
     });
   }
 
-  private buildRunSnapshotMessage(): RunSnapshotMessage | null {
-    const run = runState.getSnapshot();
+  private buildRunSnapshotMessage(socket?: Socket): RunSnapshotMessage | null {
+    const playerId = socket ? playerSettlementState.getSocketPlayerId(socket.id) : null;
+    const settlementId = playerId ? playerSettlementState.getPlayerSettlement(playerId) : null;
+    const run = settlementId ? runState.getSnapshotForSettlement(settlementId) : runState.getSnapshot();
     if (!run) {
       return null;
     }
 
     return {
       type: 'run:snapshot',
+      settlementId,
       run,
       timestamp: Date.now(),
     };
@@ -103,7 +108,7 @@ export class ServerGameStateHandler {
 
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     this.sendWorldSnapshotToSocket(socket);
-    const runSnapshot = this.buildRunSnapshotMessage();
+    const runSnapshot = this.buildRunSnapshotMessage(socket);
     if (runSnapshot) {
       sendToSocket(socket, runSnapshot);
     }

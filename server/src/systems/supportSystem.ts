@@ -8,6 +8,7 @@ import {
 } from '../../../src/shared/game/state/settlementSupportStore';
 import {
     broadcastPopulationState,
+    getPopulationBySettlementInput,
     getPopulationSnapshot,
     getPopulationState,
     recalculatePopulationLimits,
@@ -107,7 +108,7 @@ export const supportSystem = {
 
         const previousPopulation = getPopulationSnapshot();
         const populationState = getPopulationState();
-        const result = recalculateSettlementSupport(populationState.current, populationState.hungerMs);
+        const result = recalculateSettlementSupport(getPopulationBySettlementInput(), populationState.hungerMs);
 
         setSupportMetrics(result.snapshot);
         recalculatePopulationLimits();

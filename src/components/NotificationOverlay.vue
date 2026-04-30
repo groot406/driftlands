@@ -45,6 +45,10 @@
               v-else-if="notification.type === 'coop_state'"
               class="w-2 h-2 bg-violet-300 rounded-full"
             ></div>
+            <div
+              v-else-if="notification.type === 'settlement'"
+              class="w-2 h-2 bg-lime-300 rounded-full"
+            ></div>
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-white">{{ notification.title }}</p>
@@ -87,6 +91,8 @@ function getNotificationStyles(type: string) {
       return 'border-cyan-400/30';
     case 'coop_state':
       return 'border-violet-400/30';
+    case 'settlement':
+      return 'border-lime-300/35 bg-lime-300/10';
     default:
       return 'border-gray-500/30';
   }

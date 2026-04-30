@@ -57,11 +57,19 @@
             Back
           </button>
           <button
+            v-if="canGoForward"
+            class="story-popup__action"
+            type="button"
+            @click.stop="showNextEntry"
+          >
+            Next
+          </button>
+          <button
             class="story-popup__action story-popup__action--primary"
             type="button"
             @click.stop="advanceOrDismiss"
           >
-            {{ hasMoreUnread ? 'Continue' : 'Close' }}
+            {{ primaryActionLabel }}
           </button>
         </div>
         <span v-if="unreadCount > 1" class="story-popup__unread-badge">
@@ -157,7 +165,15 @@ const entryCounter = computed(() => {
 });
 
 const canGoBack = computed(() => entryIndex.value > 0);
+const canGoForward = computed(() => browseEntryId.value !== null && entryIndex.value >= 0 && entryIndex.value < entries.value.length - 1);
 const hasMoreUnread = computed(() => unreadEntries.value.length > 1 || browseEntryId.value !== null);
+const primaryActionLabel = computed(() => {
+  if (browseEntryId.value !== null) {
+    return unreadCount.value > 0 ? 'Resume' : 'Close';
+  }
+
+  return hasMoreUnread.value ? 'Continue' : 'Close';
+});
 
 // When new entries arrive, un-dismiss so the panel reappears automatically.
 watch(
@@ -209,6 +225,11 @@ function dismissAll() {
 function showPreviousEntry() {
   if (entryIndex.value <= 0) return;
   browseEntryId.value = entries.value[entryIndex.value - 1]?.id ?? null;
+}
+
+function showNextEntry() {
+  if (!canGoForward.value) return;
+  browseEntryId.value = entries.value[entryIndex.value + 1]?.id ?? null;
 }
 
 /** Re-open the conversation showing the most recent entry. */

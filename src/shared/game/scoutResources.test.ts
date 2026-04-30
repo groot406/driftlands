@@ -11,6 +11,7 @@ import { isTileScoutWalkable, isTileWalkable } from './navigation';
 import { PathService } from './PathService';
 import {
   doesScoutResourceMatchTerrain,
+  doesScoutResourceMatchTileForSettlement,
   getScoutSurveyMs,
   handleScoutResourceArrival,
   pickNextScoutTile,
@@ -80,6 +81,30 @@ function findHiddenGeneratedTileWithVariant(predicate: (terrain: Terrain, varian
   }
 
   throw new Error('Unable to find generated variant tile for scout resource test.');
+}
+
+function findOriginSensitiveTile(
+  origin: { q: number; r: number },
+  predicate: (originTerrain: Terrain, defaultTerrain: Terrain) => boolean,
+) {
+  for (let radius = 2; radius <= 18; radius++) {
+    for (let q = origin.q - radius; q <= origin.q + radius; q++) {
+      for (let r = origin.r - radius; r <= origin.r + radius; r++) {
+        const localDistance = Math.max(Math.abs(q - origin.q), Math.abs(r - origin.r), Math.abs((q - origin.q) + (r - origin.r)));
+        if (localDistance !== radius) {
+          continue;
+        }
+
+        const originTerrain = resolveWorldTile(q, r, origin).terrain;
+        const defaultTerrain = resolveWorldTile(q, r).terrain;
+        if (predicate(originTerrain, defaultTerrain)) {
+          return ensureTileExists(q, r);
+        }
+      }
+    }
+  }
+
+  throw new Error('Unable to find origin-sensitive scout tile.');
 }
 
 function findNonMatchingResource(terrain: Terrain) {
@@ -253,6 +278,28 @@ test('stale scout arrivals on hidden tiles return the hero to known walkable gro
 
   assert.equal(hero.scoutResourceIntent, undefined);
   assert.deepEqual(moves, [{ q: 0, r: 0, task: undefined, options: { allowScouted: true } }]);
+});
+
+test('settlement-scoped scout matching uses the settlement origin for hidden tiles', () => {
+  startWorldGeneration(1, 42);
+  loadWorld([
+    {
+      id: '20,0',
+      q: 20,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      ownerSettlementId: '20,0',
+      controlledBySettlementId: '20,0',
+    } satisfies Tile,
+  ]);
+
+  const tile = findOriginSensitiveTile({ q: 20, r: 0 }, (originTerrain, defaultTerrain) => originTerrain === 'water' && defaultTerrain !== 'water');
+
+  assert.equal(doesScoutResourceMatchTileForSettlement('water', tile, '20,0'), true);
 });
 
 test('scouting a matching hidden tile pings the find, stops the scout intent, and returns home', async () => {

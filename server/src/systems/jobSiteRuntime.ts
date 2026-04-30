@@ -10,7 +10,7 @@ import { planNearestStorageDeposits } from '../../../src/shared/buildings/storag
 import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
 import {
-    planResourceWithdrawalsAcrossStorages,
+    planResourceWithdrawalsAcrossStoragesForSettlement,
     resourceInventory,
     type StorageResourceTransfer,
 } from '../../../src/shared/game/state/resourceStore';
@@ -144,7 +144,7 @@ function buildFreedCapacityByTileId(resources: ResourceAmount[]) {
     const freedCapacityByTileId = new Map<string, number>();
 
     for (const resource of resources) {
-        const plannedTransfers = planResourceWithdrawalsAcrossStorages(resource.type, resource.amount);
+        const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null, resource.type, resource.amount);
         const plannedAmount = plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
         if (plannedAmount < resource.amount) {
             return null;
@@ -171,7 +171,8 @@ export function hasStorageCapacity(tile: Tile, inputs: ResourceAmount[], outputs
         return false;
     }
 
-    return planNearestStorageDeposits(tile.q, tile.r, outputs, freedCapacityByTileId).remaining.length === 0;
+    const settlementId = tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null;
+    return planNearestStorageDeposits(tile.q, tile.r, settlementId, outputs, freedCapacityByTileId).remaining.length === 0;
 }
 
 export function getSiteOperationalBlock(site: ResolvedJobSite, assignedWorkers: number): SiteOperationalBlock | null {

@@ -10,8 +10,23 @@ export function hasDiscoveredWaterTile(): boolean {
     return tiles.some((tile) => tile.discovered && tile.terrain === 'water');
 }
 
+function belongsToSettlement(tile: Tile, settlementId: string | null | undefined) {
+    return !settlementId
+        || tile.ownerSettlementId === settlementId
+        || tile.controlledBySettlementId === settlementId
+        || tile.id === settlementId;
+}
+
+export function hasDiscoveredWaterTileForSettlement(settlementId: string | null | undefined): boolean {
+    return tiles.some((tile) => tile.discovered && tile.terrain === 'water' && belongsToSettlement(tile, settlementId));
+}
+
 export function hasDiscoveredForestTile(): boolean {
     return tiles.some((tile) => tile.discovered && tile.terrain === 'forest');
+}
+
+export function hasDiscoveredForestTileForSettlement(settlementId: string | null | undefined): boolean {
+    return tiles.some((tile) => tile.discovered && tile.terrain === 'forest' && belongsToSettlement(tile, settlementId));
 }
 
 export function hasDiscoveredDirtTile(): boolean {
@@ -40,7 +55,7 @@ function findNearestUndiscoveredTerrainTile(
                     continue;
                 }
 
-                if ((tile?.terrain ?? resolveWorldTile(q, r).terrain) === terrain) {
+                if ((tile?.terrain ?? resolveWorldTile(q, r, origin).terrain) === terrain) {
                     return tile ?? ensureTileExists(q, r);
                 }
             }
@@ -67,8 +82,9 @@ export function findNearestUndiscoveredForestTile(
 export function getWaterDiscoveryHintTile(
     origin: { q: number; r: number } = { q: 0, r: 0 },
     maxRadius: number = DEFAULT_WATER_HINT_RADIUS,
+    settlementId?: string | null,
 ): Tile | null {
-    if (hasDiscoveredWaterTile()) {
+    if (settlementId ? hasDiscoveredWaterTileForSettlement(settlementId) : hasDiscoveredWaterTile()) {
         return null;
     }
 
@@ -78,8 +94,9 @@ export function getWaterDiscoveryHintTile(
 export function getForestDiscoveryHintTile(
     origin: { q: number; r: number } = { q: 0, r: 0 },
     maxRadius: number = DEFAULT_FOREST_HINT_RADIUS,
+    settlementId?: string | null,
 ): Tile | null {
-    if (hasDiscoveredForestTile()) {
+    if (settlementId ? hasDiscoveredForestTileForSettlement(settlementId) : hasDiscoveredForestTile()) {
         return null;
     }
 

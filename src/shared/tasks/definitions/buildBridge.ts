@@ -23,7 +23,7 @@ const buildBridgeTask: TaskDefinition = {
             return false;
         }
 
-        const accessTile = findNearestTaskAccessTile('buildBridge', tile, hero.q, hero.r);
+        const accessTile = findNearestTaskAccessTile('buildBridge', tile, hero.q, hero.r, hero.settlementId ?? null);
         return !!accessTile && !!resolveBridgeVariantFromAccessTile(tile, accessTile);
     },
 
@@ -44,7 +44,7 @@ const buildBridgeTask: TaskDefinition = {
     onStart(tile, instance, participants) {
         const starter = participants[0];
         const accessTile = starter
-            ? findNearestTaskAccessTile('buildBridge', tile, starter.q, starter.r)
+            ? findNearestTaskAccessTile('buildBridge', tile, starter.q, starter.r, starter.settlementId ?? null)
             : null;
         const bridgeVariant = resolveBridgeVariantFromAccessTile(tile, accessTile);
 

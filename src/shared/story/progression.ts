@@ -15,6 +15,7 @@ export type BuildingKey =
   | 'huntersHut'
   | 'granary'
   | 'bakery'
+  | 'apiary'
   | 'workshop'
   | 'library'
   | 'mine'
@@ -220,6 +221,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Turns stored grain into dependable food once workers staff it.',
     taskKey: 'buildBakery',
   },
+  apiary: {
+    label: 'Apiary',
+    description: 'Turns nearby forest and field forage into steady food with a staffed beekeeper.',
+    taskKey: 'buildApiary',
+  },
   workshop: {
     label: 'Workshop',
     description: 'Turns ore into tools for expansion and advanced upgrades.',
@@ -261,6 +267,10 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   explore: {
     label: 'Explore',
     description: 'Scout the unknown and push the frontier outward.',
+  },
+  gatherDriftwood: {
+    label: 'Gather Driftwood',
+    description: 'Collect slow wood from shoreline plains.',
   },
   chopWood: {
     label: 'Chop Wood',
@@ -446,7 +456,9 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'hero', key: 'h2' },
       { kind: 'building', key: 'campfire' },
       { kind: 'building', key: 'house' },
+      { kind: 'building', key: 'dock' },
       { kind: 'task', key: 'explore' },
+      { kind: 'task', key: 'gatherDriftwood' },
       { kind: 'task', key: 'chopWood' },
       { kind: 'task', key: 'clearRocks' },
       { kind: 'task', key: 'buildRoad' },
@@ -455,6 +467,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'task', key: 'campfireRations' },
       { kind: 'task', key: 'hunt' },
       { kind: 'task', key: 'breakDirtRock' },
+      { kind: 'task', key: 'plantTrees' },
       { kind: 'terrain', key: 'plains' },
       { kind: 'terrain', key: 'forest' },
       { kind: 'terrain', key: 'dirt' },
@@ -477,11 +490,9 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     ],
     sortOrder: 20,
     unlocks: [
-      { kind: 'building', key: 'dock' },
       { kind: 'task', key: 'harvestWaterLilies' },
       { kind: 'task', key: 'placeWaterLilies' },
       { kind: 'task', key: 'buildBridge' },
-      { kind: 'task', key: 'plantTrees' },
       { kind: 'task', key: 'removeTrunks' },
     ],
     storyHooks: {
@@ -533,6 +544,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'building', key: 'granary' },
       { kind: 'building', key: 'huntersHut' },
+      { kind: 'building', key: 'apiary' },
     ],
   },
   {

@@ -3,6 +3,7 @@ import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import { axialDistanceCoords } from '../shared/game/hex';
 import { getTileMoveCost, isEdgeBlocked, isTileScoutWalkable, isTileWalkable } from '../shared/game/navigation';
+import { isTileControlled, isTileControlledBySettlement } from '../shared/game/state/settlementSupportStore';
 
 export interface PathCoord {
     q: number;
@@ -11,6 +12,7 @@ export interface PathCoord {
 
 export interface PathFindOptions {
     allowScouted?: boolean;
+    settlementId?: string | null;
 }
 
 interface PathNode {
@@ -191,6 +193,10 @@ export class PathService {
 
     private isWalkable(q: number, r: number, options: PathFindOptions = {}) {
         const tile = tileIndex[axialKey(q, r)] ?? null;
+        if (options.settlementId && isTileControlled(tile) && !isTileControlledBySettlement(tile, options.settlementId)) {
+            return false;
+        }
+
         return options.allowScouted
             ? isTileScoutWalkable(tile)
             : isTileWalkable(tile);

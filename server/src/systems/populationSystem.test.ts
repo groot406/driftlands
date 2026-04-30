@@ -8,6 +8,7 @@ import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/g
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
+import { onGameplayEvent } from '../../../src/shared/gameplay/events';
 import { settlerSystem } from './settlerSystem';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
@@ -28,12 +29,14 @@ function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'te
   };
 }
 
-function createTowncenterTile(): Tile {
+function createTowncenterTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r'> = { id: '0,0', q: 0, r: 0 }): Tile {
   return createTile({
-    id: '0,0',
-    q: 0,
-    r: 0,
+    id: overrides.id,
+    q: overrides.q,
+    r: overrides.r,
     terrain: 'towncenter',
+    controlledBySettlementId: overrides.controlledBySettlementId ?? overrides.id,
+    ownerSettlementId: overrides.ownerSettlementId ?? overrides.id,
   });
 }
 
@@ -67,6 +70,182 @@ test.afterEach(() => {
   resetSettlerState();
   resetSettlementSupportState();
   resetWorkforceState();
+});
+
+test('new settlers spawn at a town center in their own settlement', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 30,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 15,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 1,
+        max: 15,
+        beds: 1,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+
+  settlerSystem.tick({
+    now: 1_000,
+    dt: 1_000,
+    tick: 1,
+    rng: {} as never,
+  });
+
+  assert.equal(settlers.length, 1);
+  assert.equal(settlers[0]?.settlementId, '20,0');
+  assert.equal(settlers[0]?.homeTileId, '20,0');
+  assert.equal(settlers[0]?.q, 20);
+  assert.equal(settlers[0]?.r, 0);
+});
+
+test('passive growth creates the settler in the settlement that grew', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 30,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 15,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 0,
+        max: 15,
+        beds: 1,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  depositResourceToStorage('20,0', 'food', 1);
+  settlerSystem.init();
+
+  tickAt(Date.now() + 61_000, 1_000);
+
+  assert.equal(settlers.length, 1);
+  assert.equal(settlers[0]?.settlementId, '20,0');
+  assert.equal(settlers[0]?.homeTileId, '20,0');
+  assert.equal(settlers[0]?.q, 20);
+  assert.equal(settlers[0]?.r, 0);
+});
+
+test('passive growth emits a settlement-scoped population change event', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 30,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 15,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 0,
+        max: 15,
+        beds: 1,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  depositResourceToStorage('20,0', 'food', 1);
+  const events: Array<{ type: string; settlementId?: string | null }> = [];
+  const unsubscribe = onGameplayEvent((event) => events.push(event));
+
+  try {
+    settlerSystem.init();
+    tickAt(Date.now() + 61_000, 1_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.ok(events.some((event) => event.type === 'population:changed' && event.settlementId === '20,0'));
 });
 
 test('settlers only consume food after they arrive at storage', () => {

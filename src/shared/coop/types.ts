@@ -3,6 +3,8 @@ export type CoopPingKind = 'assist' | 'gather' | 'scout';
 export interface CoopPlayerSnapshot {
   id: string;
   name: string;
+  color?: string;
+  settlementId?: string | null;
   ready: boolean;
   connectedAt: number;
   claimedHeroIds: string[];

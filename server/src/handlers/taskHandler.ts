@@ -5,8 +5,11 @@ import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../
 import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
+import { playerSettlementState } from '../state/playerSettlementState';
+import { isTileControlledBySettlement } from '../../../src/shared/game/state/settlementSupportStore';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
+import type { Tile } from '../../../src/core/types/Tile';
 
 export class ServerTaskHandler {
     constructor(_io: Server) {
@@ -22,14 +25,17 @@ export class ServerTaskHandler {
         const hero = getHero(heroId);
         if (!hero || !location) return;
         if (!coopState.canControlHero(_socket.id, heroId)) return;
+        const playerId = playerSettlementState.getSocketPlayerId(_socket.id);
+        if (!playerSettlementState.canPlayerControlHero(playerId, hero)) return;
 
         coopState.touchHeroActivity(heroId);
 
         const tile = getTileForTaskLocation(location, task);
         if (!tile) return;
+        if (!canSettlementUseTaskTile(tile, playerSettlementState.getPlayerSettlement(playerId ?? ''))) return;
 
         if (!isHeroAtTaskAccess(hero, task, tile)) return;
-        if (!isTaskUnlockedForUse(task)) return;
+        if (!isTaskUnlockedForUse(task, hero.settlementId ?? playerSettlementState.getPlayerSettlement(playerId ?? ''))) return;
 
         hero.pendingExploreTarget = normalizeExploreTarget(task, message.exploreTarget);
 
@@ -71,4 +77,23 @@ function getTileForTaskLocation(location: { q: number; r: number }, task: string
     }
 
     return getTile(location);
+}
+
+function canSettlementUseTaskTile(
+    tile: Tile | null | undefined,
+    settlementId: string | null | undefined,
+) {
+    if (!tile || !settlementId) {
+        return false;
+    }
+
+    if (tile.discovered && tile.terrain === 'towncenter') {
+        return tile.id === settlementId;
+    }
+
+    if (tile.discovered && tile.ownerSettlementId) {
+        return tile.ownerSettlementId === settlementId;
+    }
+
+    return isTileControlledBySettlement(tile, settlementId);
 }

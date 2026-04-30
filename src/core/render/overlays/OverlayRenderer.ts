@@ -35,6 +35,13 @@ interface DrawOptionsLike {
     clusterTileIds?: Set<string>;
     globalReachBoundary?: Array<{ q: number; r: number }>;
     globalReachTileIds?: Set<string>;
+    globalReachColor?: string;
+    settlementReachOutlines?: Array<{
+        boundary: Array<{ q: number; r: number }>;
+        tileIds: Set<string>;
+        color?: string | null;
+        isOwn?: boolean;
+    }>;
     storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean;
@@ -94,6 +101,7 @@ interface OverlayRendererDependencies {
         reachSet: Set<string>,
         alpha: number,
         hovered?: boolean,
+        color?: string | null,
     ): void;
     drawRoundedRect(
         ctx: CanvasRenderingContext2D,
@@ -325,8 +333,19 @@ export class OverlayRenderer {
         overlay.ctx.scale(deps.dpr, deps.dpr);
         deps.applyWorldTransform(overlay.ctx, translateX, translateY, frame.cameraFx);
 
-        if (opts.globalReachBoundary?.length) {
-            deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false);
+        if (opts.settlementReachOutlines?.length) {
+            for (const outline of opts.settlementReachOutlines) {
+                deps.drawReachOutline(
+                    overlay.ctx,
+                    outline.boundary,
+                    outline.tileIds,
+                    outline.isOwn ? 0.45 : 0.08,
+                    false,
+                    outline.color || undefined,
+                );
+            }
+        } else if (opts.globalReachBoundary?.length) {
+            deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false, opts.globalReachColor);
         }
 
         this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);

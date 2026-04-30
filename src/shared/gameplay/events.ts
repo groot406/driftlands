@@ -31,6 +31,10 @@ export type GameplayEvent =
       q: number;
       r: number;
       terrain: string | null;
+    }
+  | {
+      type: 'population:changed';
+      settlementId: string | null;
     };
 
 type GameplayListener = (event: GameplayEvent) => void;

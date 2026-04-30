@@ -18,6 +18,16 @@
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
+      v-if="hasTutorial"
+      class="tutorial-toggle-btn"
+      :class="{ 'tutorial-toggle-btn--active': isTutorialPanelOpen }"
+      @click="toggleTutorialPanel"
+      title="Open field guide"
+    >
+      <span class="tutorial-toggle-glyph">?</span>
+      <span v-if="!tutorialSnapshot.allCompleted" class="tutorial-toggle-badge">{{ visibleTutorialStepNumber }}</span>
+    </button>
+    <button
       v-if="hasGoals"
       class="goals-toggle-btn"
       :class="{ 'goals-toggle-btn--active': isGoalsPanelOpen }"
@@ -42,10 +52,13 @@
     <MusicPlayer />
     <OnlinePlayersIndicator />
   </div>
+  <InGameMiniMap />
   <!-- Goals panel (anchored bottom-right) -->
   <GoalsPanel />
+  <TutorialPanel />
   <!-- Centered conversation overlay -->
   <ChronicleBar />
+  <SettlementStartPicker />
   <PlayerModal />
   <PopulationOverviewModal />
   <ResourceDetailModal />
@@ -54,16 +67,19 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import MaintenanceAlert from './MaintenanceAlert.vue';
 import ChronicleBar from './ChronicleBar.vue';
+import SettlementStartPicker from './SettlementStartPicker.vue';
 import GoalsPanel from './GoalsPanel.vue';
+import TutorialPanel from './TutorialPanel.vue';
 import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';
 import FpsCounter from './FpsCounter.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
 import MusicPlayer from './MusicPlayer.vue';
+import InGameMiniMap from './InGameMiniMap.vue';
 import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
@@ -71,11 +87,18 @@ import SettlerModal from './SettlerModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
-import { chronicleHasEntries, openGoalsPanel, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
+import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
+import {
+  hasTutorial,
+  isTutorialPanelOpen,
+  toggleTutorialPanel,
+  tutorialSnapshot,
+  visibleTutorialStepNumber,
+} from '../store/tutorialStore';
 
 const showHelpers = ref(false);
-let autoOpenedGoalsForSeed: number | null = null;
+
 
 const hasGoals = computed(() => {
   const run = runSnapshot.value;
@@ -119,18 +142,6 @@ function handleKeyDown(e: KeyboardEvent) {
   if (e.code === 'KeyC') recallConversation();
   if (e.code === 'KeyG') toggleGoals();
 }
-
-function maybeOpenStartingGoals() {
-  const run = runSnapshot.value;
-  if (!run || !hasGoals.value || autoOpenedGoalsForSeed === run.seed) {
-    return;
-  }
-
-  autoOpenedGoalsForSeed = run.seed;
-  openGoalsPanel();
-}
-
-watch([runSnapshot, hasGoals], maybeOpenStartingGoals, { immediate: true });
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
@@ -220,6 +231,56 @@ onBeforeUnmount(() => {
   color: rgb(17 24 39);
   font-size: 10px;
   font-weight: 800;
+  line-height: 1;
+  padding: 0 5px;
+}
+
+.tutorial-toggle-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.36);
+  background:
+    linear-gradient(180deg, rgba(21, 128, 61, 0.84), rgba(15, 23, 42, 0.82));
+  color: rgb(209 250 229);
+  box-shadow: 0 8px 18px rgba(20, 42, 28, 0.22);
+  backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.tutorial-toggle-btn:hover,
+.tutorial-toggle-btn--active {
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.56);
+  background:
+    linear-gradient(180deg, rgba(146, 64, 14, 0.86), rgba(21, 83, 45, 0.88));
+  color: rgb(254 243 199);
+}
+
+.tutorial-toggle-glyph {
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tutorial-toggle-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(52 211 153);
+  color: rgb(15 23 42);
+  font-size: 10px;
+  font-weight: 900;
   line-height: 1;
   padding: 0 5px;
 }

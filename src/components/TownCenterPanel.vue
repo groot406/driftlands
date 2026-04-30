@@ -12,7 +12,7 @@
         <div class="tc-header">
           <div class="tc-header-copy">
             <p class="tc-kicker pixel-font">Settlement</p>
-            <h3 class="tc-title">Town Center</h3>
+            <h3 class="tc-title">{{ townCenterTitle }}</h3>
           </div>
           <button class="tc-close" @click.stop.prevent="close" title="Close">
             &#x2715;
@@ -25,7 +25,7 @@
           </div>
           <div class="tc-stat-grid">
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.current }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.current }}</span>
               <span class="tc-stat-label">Population</span>
             </div>
             <div class="tc-stat">
@@ -42,15 +42,15 @@
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.current }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.current }}</span>
               <span class="tc-stat-label">Settlers</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.beds }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.beds }}</span>
               <span class="tc-stat-label">Beds</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.max }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.max }}</span>
               <span class="tc-stat-label">Capacity</span>
             </div>
           </div>
@@ -66,15 +66,15 @@
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.activeTileCount }}/{{ ownedTiles }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.activeTileCount }}/{{ ownedTiles }}</span>
               <span class="tc-stat-label">Active / Owned</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.supportCapacity }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.supportCapacity }}</span>
               <span class="tc-stat-label">Support Capacity</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ populationState.inactiveTileCount }}</span>
+              <span class="tc-stat-value">{{ playerPopulation.inactiveTileCount }}</span>
               <span class="tc-stat-label">Inactive Tiles</span>
             </div>
           </div>
@@ -164,19 +164,19 @@
         <div class="tc-section tc-section-jobs">
           <div class="tc-section-row">
             <div class="tc-section-title">Job Sites</div>
-            <div class="tc-section-caption">{{ workforceState.assignedWorkers }}/{{ workforceState.availableWorkers }} staffed</div>
+            <div class="tc-section-caption">{{ inspectedWorkforce.assignedWorkers }}/{{ inspectedWorkforce.availableWorkers }} staffed</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ workforceState.availableWorkers }}</span>
+              <span class="tc-stat-value">{{ inspectedWorkforce.availableWorkers }}</span>
               <span class="tc-stat-label">Available</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ workforceState.assignedWorkers }}</span>
+              <span class="tc-stat-value">{{ inspectedWorkforce.assignedWorkers }}</span>
               <span class="tc-stat-label">Assigned</span>
             </div>
             <div class="tc-stat">
-              <span class="tc-stat-value">{{ workforceState.idleWorkers }}</span>
+              <span class="tc-stat-value">{{ inspectedWorkforce.idleWorkers }}</span>
               <span class="tc-stat-label">Idle</span>
             </div>
           </div>
@@ -219,7 +219,7 @@
               <div v-if="site.blockerText" class="tc-job-site-blocker">{{ site.blockerText }}</div>
             </div>
           </div>
-          <p v-else class="tc-placeholder-text">Build a dock, granary, bakery, lumber camp, library, or mine to create settler jobs.</p>
+          <p v-else class="tc-placeholder-text">Build a dock, granary, apiary, bakery, lumber camp, library, or mine to create settler jobs.</p>
         </div>
       </div>
 
@@ -254,7 +254,7 @@
               <span v-if="selectedJobSiteDetail.cycleLabel" class="tc-detail-pill">{{ selectedJobSiteDetail.cycleLabel }}</span>
             </div>
 
-            <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-action-row">
+            <div v-if="selectedJobSiteDetail.isJobSite && selectedJobSiteDetail.canManage" class="tc-detail-action-row">
               <button
                 class="tc-detail-toggle"
                 :class="{ 'tc-detail-toggle-off': !selectedJobSiteDetail.isEnabled }"
@@ -492,15 +492,16 @@ import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
 import { studyState, studyVersion } from '../store/clientStudyStore';
-import { resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
+import { getSettlementResourceInventory, resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
 import { settlers, settlerVersion } from '../store/settlerStore';
 import { getSelectedHero } from '../store/uiStore';
 import { detachHeroFromCurrentTask } from '../store/taskStore.ts';
 import { addNotification } from '../store/notificationStore';
-import { canControlHero, getHeroOwnerName } from '../store/playerStore';
+import { canControlHero, getHeroOwnerName, getPlayerEntities } from '../store/playerStore';
 import { sendMessage } from '../core/socket';
 import { currentPlayerId } from '../core/socket';
+import { currentPlayerSettlementId, settlementStartMarkers } from '../store/settlementStartStore.ts';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
@@ -509,6 +510,8 @@ import {
 
 interface Props {
   visible: boolean;
+  townCenterTileId?: string | null;
+  standaloneBuildingTileId?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -519,6 +522,102 @@ const emit = defineEmits<{
 const selectedJobSiteId = ref<string | null>(null);
 const detailOnlyMode = ref(false);
 const pathService = new PathService();
+
+const inspectedSettlementId = computed(() => props.townCenterTileId ?? currentPlayerSettlementId.value);
+
+const townCenterOwner = computed(() => {
+  const townCenterId = inspectedSettlementId.value;
+  if (!townCenterId) {
+    return null;
+  }
+
+  const player = getPlayerEntities.value.find((entry) => entry.settlementId === townCenterId);
+  if (player) {
+    return {
+      playerId: player.id,
+      playerName: player.nickname,
+    };
+  }
+
+  const marker = settlementStartMarkers.value.find((entry) => entry.settlementId === townCenterId);
+  if (marker?.playerId || marker?.playerName) {
+    return {
+      playerId: marker.playerId ?? null,
+      playerName: marker.playerName ?? null,
+    };
+  }
+
+  return null;
+});
+
+const townCenterTitle = computed(() => {
+  const townCenterId = inspectedSettlementId.value;
+  if (townCenterId && townCenterId === currentPlayerSettlementId.value) {
+    return 'Your towncenter';
+  }
+
+  const owner = townCenterOwner.value;
+  if (owner?.playerId && owner.playerId === currentPlayerId.value) {
+    return 'Your towncenter';
+  }
+
+  if (owner?.playerName) {
+    return `${owner.playerName}'s towncenter`;
+  }
+
+  return 'Town Center';
+});
+
+const playerPopulation = computed(() => {
+  const settlementId = inspectedSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+});
+
+const playerInventory = computed(() => {
+  void resourceVersion.value;
+  const settlementId = inspectedSettlementId.value;
+  return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+});
+
+const playerTiles = computed(() => {
+  const settlementId = inspectedSettlementId.value;
+  return Object.values(tileIndex).filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId);
+});
+
+const playerSettlers = computed(() => {
+  const settlementId = inspectedSettlementId.value;
+  return settlementId ? settlers.filter((settler) => settler.settlementId === settlementId) : settlers;
+});
+
+function storageBelongsToCurrentSettlement(storageTileId: string) {
+  const settlementId = inspectedSettlementId.value;
+  if (!settlementId) return true;
+
+  const tile = tileIndex[storageTileId];
+  return tile?.ownerSettlementId === settlementId
+    || tile?.controlledBySettlementId === settlementId
+    || (tile?.terrain === 'towncenter' && tile.id === settlementId);
+}
+
+function canManageTile(tile: { id: string; terrain?: string | null; ownerSettlementId?: string | null; controlledBySettlementId?: string | null } | null | undefined) {
+  const settlementId = currentPlayerSettlementId.value;
+  if (!tile || !settlementId) {
+    return false;
+  }
+
+  if (tile.terrain === 'towncenter') {
+    return tile.id === settlementId;
+  }
+
+  if (tile.ownerSettlementId) {
+    return tile.ownerSettlementId === settlementId;
+  }
+
+  return tile.controlledBySettlementId === settlementId;
+}
+
 const selectedHero = computed(() => getSelectedHero());
 
 function close() {
@@ -533,6 +632,16 @@ function clearJobSiteDetailState() {
 }
 
 function toggleJobSiteEnabled(tileId: string, enabled: boolean) {
+  if (!canManageTile(tileIndex[tileId] ?? null)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign site',
+      message: 'You can inspect this site, but only its owner can change it.',
+      duration: 2600,
+    });
+    return;
+  }
+
   sendMessage({
     type: 'jobs:set_site_enabled',
     tileId,
@@ -660,7 +769,7 @@ function formatMaintenanceBacklog(resource: {
 }
 
 function getWarehouseAmount(type: ResourceType) {
-  return Math.floor(resourceInventory[type] ?? 0);
+  return Math.floor(playerInventory.value[type] ?? 0);
 }
 
 function getActionSummary(def: TaskDefinition) {
@@ -702,7 +811,7 @@ function getTaskSummary(def: TaskDefinition) {
 }
 
 function getTaskLockHint(def: TaskDefinition) {
-  const unlockStatus = getTaskUnlockStatus(def.key);
+  const unlockStatus = getTaskUnlockStatus(def.key, inspectedSettlementId.value);
   if (unlockStatus.unlocked || !unlockStatus.lockingNode) {
     return null;
   }
@@ -721,51 +830,51 @@ const exploredTiles = computed(() => {
   return runSnapshot.value?.discoveredTiles ?? 0;
 });
 
-const ownedTiles = computed(() => populationState.activeTileCount + populationState.inactiveTileCount);
+const ownedTiles = computed(() => playerPopulation.value.activeTileCount + playerPopulation.value.inactiveTileCount);
 
 // --- Population ---
 
 const populationStatusClass = computed(() => {
-  if (populationState.hungerMs > 0) return 'tc-status-danger';
-  if (populationState.beds <= 0) return 'tc-status-warn';
-  if (populationState.current >= populationState.max) return 'tc-status-warn';
-  if (populationState.current >= populationState.beds) return 'tc-status-warn';
+  if (playerPopulation.value.hungerMs > 0) return 'tc-status-danger';
+  if (playerPopulation.value.beds <= 0) return 'tc-status-warn';
+  if (playerPopulation.value.current >= playerPopulation.value.max) return 'tc-status-warn';
+  if (playerPopulation.value.current >= playerPopulation.value.beds) return 'tc-status-warn';
   return 'tc-status-ok';
 });
 
 const populationStatusText = computed(() => {
-  if (populationState.hungerMs > 0) {
+  if (playerPopulation.value.hungerMs > 0) {
     const graceMs = HUNGER_GRACE_MINUTES * 60_000;
-    const remaining = Math.max(0, graceMs - populationState.hungerMs);
+    const remaining = Math.max(0, graceMs - playerPopulation.value.hungerMs);
     const remainingSec = Math.ceil(remaining / 1000);
     const min = Math.floor(remainingSec / 60);
     const sec = remainingSec % 60;
     return `Starving — ${min}:${String(sec).padStart(2, '0')} until settler lost`;
   }
-  if (populationState.beds <= 0) {
+  if (playerPopulation.value.beds <= 0) {
     return 'No beds — build houses to attract settlers';
   }
-  if (populationState.current >= populationState.max) {
+  if (playerPopulation.value.current >= playerPopulation.value.max) {
     return 'At TC capacity — build another town center';
   }
-  if (populationState.current >= populationState.beds) {
+  if (playerPopulation.value.current >= playerPopulation.value.beds) {
     return 'All beds full — build houses to grow';
   }
-  const effectiveCap = Math.min(populationState.max, populationState.beds);
-  const slots = effectiveCap - populationState.current;
+  const effectiveCap = Math.min(playerPopulation.value.max, playerPopulation.value.beds);
+  const slots = effectiveCap - playerPopulation.value.current;
   return `Growing — ${slots} bed${slots !== 1 ? 's' : ''} available`;
 });
 
 const supportStatusClass = computed(() => {
-  if (populationState.pressureState === 'collapsing') return 'tc-status-danger';
-  if (populationState.pressureState === 'strained') return 'tc-status-warn';
+  if (playerPopulation.value.pressureState === 'collapsing') return 'tc-status-danger';
+  if (playerPopulation.value.pressureState === 'strained') return 'tc-status-warn';
   return 'tc-status-ok';
 });
 
 const supportStatusText = computed(() => {
-  switch (populationState.pressureState) {
+  switch (playerPopulation.value.pressureState) {
     case 'collapsing':
-      return `Collapsing — ${populationState.inactiveTileCount} tile${populationState.inactiveTileCount === 1 ? '' : 's'} offline`;
+      return `Collapsing — ${playerPopulation.value.inactiveTileCount} tile${playerPopulation.value.inactiveTileCount === 1 ? '' : 's'} offline`;
     case 'strained':
       return `Strained — fringe tiles are at risk, restore support before expanding again`;
     case 'stable':
@@ -773,7 +882,7 @@ const supportStatusText = computed(() => {
       if (ownedTiles.value <= 0) {
         return 'Stable — claim more territory to build a larger district';
       }
-      return `Stable — ${populationState.activeTileCount} of ${ownedTiles.value} owned tiles remain online`;
+      return `Stable — ${playerPopulation.value.activeTileCount} of ${ownedTiles.value} owned tiles remain online`;
   }
 });
 
@@ -782,11 +891,11 @@ const supportStatusText = computed(() => {
 const foodStock = computed(() => {
   // Force reactivity on resourceVersion
   void resourceVersion.value;
-  return resourceInventory.food ?? 0;
+  return playerInventory.value.food ?? 0;
 });
 
 const foodPerMinute = computed(() => {
-  return populationState.current * FOOD_PER_SETTLER_PER_MINUTE;
+  return playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE;
 });
 
 const minutesOfFood = computed(() => {
@@ -816,7 +925,7 @@ const foodStatusClass = computed(() => {
 });
 
 const foodStatusText = computed(() => {
-  if (populationState.current <= 0) return 'No settlers to feed';
+  if (playerPopulation.value.current <= 0) return 'No settlers to feed';
   if (foodStock.value <= 0) return 'No food — settlers are starving!';
   if (minutesOfFood.value === Infinity) return 'No consumption';
   const mins = Math.floor(minutesOfFood.value);
@@ -831,7 +940,7 @@ const maintenanceSummary = computed(() => {
   void resourceVersion.value;
   void settlerVersion.value;
   void worldVersion.value;
-  return getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
+  return getMaintenanceOverview(playerTiles.value, playerSettlers.value, playerInventory.value);
 });
 
 const maintenanceStatusClass = computed(() => {
@@ -844,7 +953,7 @@ const maintenanceStatusClass = computed(() => {
 
 const totalFreeStorage = computed(() => {
   void resourceVersion.value;
-  return Object.values(storageInventories).reduce((sum, storage) => {
+  return Object.values(storageInventories).filter((storage) => storageBelongsToCurrentSettlement(storage.tileId)).reduce((sum, storage) => {
     const used = Object.values(storage.resources).reduce((resourceSum, amount) => resourceSum + (amount ?? 0), 0);
     return sum + Math.max(0, storage.capacity - used);
   }, 0);
@@ -852,7 +961,11 @@ const totalFreeStorage = computed(() => {
 
 const jobSites = computed(() => {
   void worldVersion.value;
-  return workforceState.sites.map((site) => {
+  return workforceState.sites.filter((site) => {
+    const settlementId = inspectedSettlementId.value;
+    const tile = tileIndex[site.tileId] ?? null;
+    return !settlementId || tile?.ownerSettlementId === settlementId || tile?.controlledBySettlementId === settlementId;
+  }).map((site) => {
     const building = getBuildingDefinitionByKey(site.buildingKey);
     const status = getJobSiteStatusDescriptor(site.status);
     const tile = tileIndex[site.tileId] ?? null;
@@ -882,6 +995,16 @@ const jobSites = computed(() => {
   });
 });
 
+const inspectedWorkforce = computed(() => {
+  const assignedWorkers = jobSites.value.reduce((sum, site) => sum + site.assignedWorkers, 0);
+  const availableWorkers = playerPopulation.value.current;
+  return {
+    availableWorkers,
+    assignedWorkers,
+    idleWorkers: Math.max(0, availableWorkers - assignedWorkers),
+  };
+});
+
 const selectedJobSiteDetail = computed(() => {
   void worldVersion.value;
   void studyVersion.value;
@@ -909,12 +1032,12 @@ const selectedJobSiteDetail = computed(() => {
   const currentInputRates = building ? getPerMinuteResources(currentInputs, 1, building.cycleMs) : [];
   const currentOutputRates = building ? getPerMinuteResources(currentOutputs, 1, building.cycleMs) : [];
   const fullOutputRates = building ? getPerMinuteResources(fullOutputs, 1, building.cycleMs) : [];
-  const shortages = building ? getMissingInputResources(currentInputs, 1, resourceInventory) : [];
+  const shortages = building ? getMissingInputResources(currentInputs, 1, playerInventory.value) : [];
   const conditionPercent = typeof tile?.condition === 'number' ? Math.round(tile.condition) : null;
   const conditionState = conditionPercent !== null ? tile?.conditionState ?? 'healthy' : null;
   const repairResources = tile ? building?.repairResources ?? [] : [];
   const repairNeeded = conditionPercent !== null ? Math.max(0, 100 - conditionPercent) : 0;
-  const repairShortages = getMissingInputResources(repairResources, 1, resourceInventory);
+  const repairShortages = getMissingInputResources(repairResources, 1, playerInventory.value);
   const activeStudy = building?.key === 'library'
     ? (studyState.studies.find((study) => study.active) ?? null)
     : null;
@@ -963,22 +1086,23 @@ const selectedJobSiteDetail = computed(() => {
       building,
       site,
       population: {
-        current: populationState.current,
-        max: populationState.max,
-        beds: populationState.beds,
-        hungerMs: populationState.hungerMs,
-        pressureState: populationState.pressureState,
-        inactiveTileCount: populationState.inactiveTileCount,
+        current: playerPopulation.value.current,
+        max: playerPopulation.value.max,
+        beds: playerPopulation.value.beds,
+        hungerMs: playerPopulation.value.hungerMs,
+        pressureState: playerPopulation.value.pressureState,
+        inactiveTileCount: playerPopulation.value.inactiveTileCount,
       },
       workforce: {
-        availableWorkers: workforceState.availableWorkers,
-        idleWorkers: workforceState.idleWorkers,
+        availableWorkers: inspectedWorkforce.value.availableWorkers,
+        idleWorkers: inspectedWorkforce.value.idleWorkers,
       },
-      resourceInventory,
+      resourceInventory: playerInventory.value,
       totalFreeStorage: totalFreeStorage.value,
     })
     : [];
   const isEnabled = tile?.jobSiteEnabled !== false;
+  const canManage = canManageTile(tile);
   const hero = selectedHero.value;
   const inspectorHero = hero ?? createInspectorHero(tile);
   const availableActions = listTaskDefinitions()
@@ -990,7 +1114,7 @@ const selectedJobSiteDetail = computed(() => {
       label: task.label,
       summary: getActionSummary(task),
       costs: getTaskCosts(task),
-      unlocked: isTaskUnlockedForUse(task.key),
+      unlocked: isTaskUnlockedForUse(task.key, inspectedSettlementId.value),
       lockHint: getTaskLockHint(task),
     }));
   const isInfrastructure = !building && (isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile));
@@ -1015,6 +1139,7 @@ const selectedJobSiteDetail = computed(() => {
     label: site?.label ?? getStructureLabel(tile.id),
     summary: site?.summary ?? getStructureSummary(tile.id),
     isJobSite: hasJobSite,
+    canManage,
     cycleLabel: formatCycleDuration(building?.cycleMs),
     studyProgress,
     studyOptions,
@@ -1054,10 +1179,10 @@ const selectedJobSiteDetail = computed(() => {
       missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing for repairs`,
     })),
     advice,
-    availableActions,
+    availableActions: canManage ? availableActions : [],
     actionHint: hero
-      ? 'No hero orders are available on this structure right now.'
-      : 'Select a hero to issue the order shown here.',
+      ? (canManage ? 'No hero orders are available on this structure right now.' : 'Only this settlement owner can issue orders here.')
+      : (canManage ? 'Select a hero to issue the order shown here.' : 'Only this settlement owner can issue orders here.'),
   };
 });
 
@@ -1096,7 +1221,17 @@ function getTaskCosts(def: TaskDefinition) {
 
 function startBuildingAction(tileId: string, def: TaskDefinition) {
   const tile = tileIndex[tileId] ?? null;
-  if (!isTaskUnlockedForUse(def.key)) {
+  if (!canManageTile(tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign site',
+      message: 'You can inspect this structure, but only its owner can issue orders here.',
+      duration: 2800,
+    });
+    return;
+  }
+
+  if (!isTaskUnlockedForUse(def.key, inspectedSettlementId.value)) {
     return;
   }
   const hero = selectedHero.value;
@@ -1114,7 +1249,7 @@ function startBuildingAction(tileId: string, def: TaskDefinition) {
   }
 
   const accessMode = getTaskAccessMode(def.key, tile);
-  const accessTile = findNearestTaskAccessTile(def.key, tile, hero.q, hero.r);
+  const accessTile = findNearestTaskAccessTile(def.key, tile, hero.q, hero.r, hero.settlementId ?? null);
   if ((accessMode === 'adjacent_walkable' || accessMode === 'adjacent_active') && !accessTile) {
     addNotification({
       type: 'run_state',
@@ -1175,27 +1310,27 @@ defineExpose({
 });
 
 const jobsStatusClass = computed(() => {
-  if (populationState.hungerMs > 0 && workforceState.sites.length > 0) {
+  if (playerPopulation.value.hungerMs > 0 && jobSites.value.length > 0) {
     return 'tc-status-danger';
   }
-  if (!workforceState.sites.length || workforceState.idleWorkers > 0) {
+  if (!jobSites.value.length || inspectedWorkforce.value.idleWorkers > 0) {
     return 'tc-status-warn';
   }
   return 'tc-status-ok';
 });
 
 const jobsStatusText = computed(() => {
-  if (!workforceState.sites.length) {
+  if (!jobSites.value.length) {
     return 'No job buildings online yet';
   }
-  if (populationState.hungerMs > 0) {
+  if (playerPopulation.value.hungerMs > 0) {
     return 'The colony is hungry, but staffed jobs keep running';
   }
-  if (workforceState.availableWorkers <= 0) {
+  if (inspectedWorkforce.value.availableWorkers <= 0) {
     return 'No settlers are available for work';
   }
-  if (workforceState.idleWorkers > 0) {
-    return `${workforceState.idleWorkers} worker${workforceState.idleWorkers === 1 ? '' : 's'} waiting for more job slots`;
+  if (inspectedWorkforce.value.idleWorkers > 0) {
+    return `${inspectedWorkforce.value.idleWorkers} worker${inspectedWorkforce.value.idleWorkers === 1 ? '' : 's'} waiting for more job slots`;
   }
   return 'Every available worker is assigned';
 });
@@ -1234,6 +1369,18 @@ watch(() => props.visible, (isVisible) => {
     listenerActive = false;
   }
 }, { immediate: true });
+
+watch(
+  () => [props.visible, props.standaloneBuildingTileId] as const,
+  ([isVisible, tileId]) => {
+    if (!isVisible || !tileId) {
+      return;
+    }
+
+    openStandaloneBuildingDetail(tileId);
+  },
+  { immediate: true },
+);
 
 watch(selectedJobSiteDetail, (detail) => {
   if (!detail && selectedJobSiteId.value) {

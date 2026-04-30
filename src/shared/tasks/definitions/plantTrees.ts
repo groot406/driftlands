@@ -4,7 +4,7 @@ import { terrainPositions } from '../../../core/terrainRegistry';
 import { applyVariant } from '../../../core/variants';
 import type {Hero} from "../../../core/types/Hero";
 
-// Task: Restore chopped_forest back into forest.
+// Task: restore chopped forest or plant new saplings on open plains.
 // Heroes collectively spend time replanting; progress rate uses ATK only.
 const plantTreesTask: TaskDefinition = {
     key: 'plantTrees',
@@ -29,8 +29,16 @@ const plantTreesTask: TaskDefinition = {
         // No special per-hero flags needed.
     },
     onComplete(tile, _instance, _participants) {
+        if (tile.terrain === 'plains' && tile.isBaseTile) {
+            terrainPositions.plains.delete(tile.id);
+            terrainPositions.forest.add(tile.id);
+            tile.terrain = 'forest';
+            applyVariant(tile, 'young_forest', { stagger: false, respectBiome: true });
+            return;
+        }
+
         // Only convert if still chopped_forest (another task might have altered it).
-        if (tile.variant === 'chopped_forest') {
+        if (tile.terrain === 'forest' && tile.variant === 'chopped_forest') {
             applyVariant(tile, 'young_forest', { stagger: false, respectBiome: true });
             terrainPositions.forest.add(tile.id);
         }

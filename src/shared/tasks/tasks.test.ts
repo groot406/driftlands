@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import type { Hero } from '../../core/types/Hero.ts';
 import type { TaskInstance } from '../../core/types/Task.ts';
 import type { Tile } from '../../core/types/Tile.ts';
+import { terrainPositions } from '../../core/terrainRegistry.ts';
 import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
@@ -375,6 +376,57 @@ test('deferred chop wood chaining skips young forest targets', () => {
   assert.equal(target.r, 0);
 });
 
+test('plant trees turns base plains into a growing young forest', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const tile = tileIndex['0,0']!;
+  const plantTrees = getTaskDefinition('plantTrees');
+
+  assert.equal(plantTrees?.canStart(tile, {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  }), true);
+
+  plantTrees?.onComplete?.(tile, {
+    id: 'task-plant',
+    type: 'plantTrees',
+    tileId: tile.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, []);
+
+  assert.equal(tile.terrain, 'forest');
+  assert.equal(tile.variant, 'young_forest');
+  assert.equal(tile.isBaseTile, false);
+  assert.equal(typeof tile.variantSetMs, 'number');
+  assert.equal(typeof tile.variantAgeMs, 'number');
+  assert.ok(terrainPositions.forest.has(tile.id));
+  assert.equal(terrainPositions.plains.has(tile.id), false);
+});
+
 test('dismantle is available on inactive constructed tiles so blocked buildings can be cleared', () => {
   loadWorld([
     {
@@ -675,6 +727,80 @@ test('road, bridge, and tunnel tasks require town center, road, bridge, or tunne
   assert.equal(buildTunnel?.canStart(tileIndex['0,2']!, hero), true);
   assert.equal(buildTunnel?.canStart(tileIndex['1,2']!, hero), true);
   assert.equal(buildTunnel?.canStart(tileIndex['6,2']!, hero), false);
+});
+
+test('watchtowers can be placed on snow and desert frontier tiles', () => {
+  const buildWatchtower = getTaskDefinition('buildWatchtower');
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(buildWatchtower?.canStart({
+    id: '1,0',
+    q: 1,
+    r: 0,
+    biome: 'snow',
+    terrain: 'snow',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile, hero), true);
+
+  assert.equal(buildWatchtower?.canStart({
+    id: '2,0',
+    q: 2,
+    r: 0,
+    biome: 'dessert',
+    terrain: 'dessert',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile, hero), true);
+
+  const snowTile = {
+    id: '3,0',
+    q: 3,
+    r: 0,
+    biome: 'snow',
+    terrain: 'snow',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile;
+  const desertTile = {
+    id: '4,0',
+    q: 4,
+    r: 0,
+    biome: 'dessert',
+    terrain: 'dessert',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile;
+
+  buildWatchtower?.onComplete?.(snowTile, {} as never, [hero]);
+  buildWatchtower?.onComplete?.(desertTile, {} as never, [hero]);
+
+  assert.equal(snowTile.variant, 'snow_watchtower');
+  assert.equal(desertTile.variant, 'dessert_watchtower');
 });
 
 test('dock tasks only start on water tiles that touch active land', () => {

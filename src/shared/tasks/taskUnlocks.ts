@@ -43,7 +43,7 @@ function resolveContentForTask(taskKey: TaskType | string) {
   };
 }
 
-export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefined): TaskUnlockStatus {
+export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefined, settlementId?: string | null): TaskUnlockStatus {
   if (!taskKey) {
     return {
       unlocked: false,
@@ -71,11 +71,11 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
     };
   }
 
-  const progression = getStoryProgressionState();
+  const progression = getStoryProgressionState(settlementId);
   const content = resolveContentForTask(taskKey);
   const lockingNode = getUnlockingNodeSnapshotForContent(progression, content.kind, content.key);
   const storyUnlocked = content.kind === 'task'
-    ? isStoryTaskUnlocked(taskKey as TaskType)
+    ? isStoryTaskUnlocked(taskKey as TaskType, settlementId)
     : !!lockingNode?.unlocked;
   const studyUnlocked = content.kind === 'task' || content.kind === 'building' || content.kind === 'upgrade'
     ? isContentUnlockedByStudies(content)
@@ -90,6 +90,6 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   };
 }
 
-export function isTaskUnlockedForUse(taskKey: TaskType | string | null | undefined) {
-  return getTaskUnlockStatus(taskKey).unlocked;
+export function isTaskUnlockedForUse(taskKey: TaskType | string | null | undefined, settlementId?: string | null) {
+  return getTaskUnlockStatus(taskKey, settlementId).unlocked;
 }

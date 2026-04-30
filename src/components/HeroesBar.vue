@@ -1,103 +1,104 @@
 <template>
   <div class="heroes-bar pointer-events-none">
-    <div ref="stripRef" class="heroes-avatar-strip pointer-events-none">
+    <div ref="stripRef" class="heroes-avatar-strip pointer-events-none overflow-hidden">
       <template v-if="heroes.length">
-        <div
+        <template
           v-for="(hero, index) in heroes"
           :key="hero.id"
           :data-hero-id="hero.id"
-          class="hero-card pointer-events-auto"
-          :class="cardClass(hero.id)"
-          :style="cardStyle(index)"
           :aria-current="selectedHeroId === hero.id ? 'true' : undefined"
           @click="select(hero)"
         >
-          <div class="hero-card-shine" aria-hidden="true"></div>
-          <div class="hero-card-header">
-            <span class="hero-card-name">
-              {{ hero.name }}
-            </span>
-            <div class="hero-card-actions">
-              <span class="hero-status-pill" :class="statusClass(hero.id)">
-                {{ heroStatus(hero.id) }}
+          <div v-if="hero.playerId === currentPlayerId" class="hero-card pointer-events-auto"
+               :class="cardClass(hero.id)"
+               :style="cardStyle(index)">
+            <div class="hero-card-shine" aria-hidden="true"></div>
+            <div class="hero-card-header">
+              <span class="hero-card-name">
+                {{ hero.name }}
               </span>
-              <button
-                v-if="canClaim(hero.id)"
-                class="hero-action-pill hero-action-pill-claim"
-                @click.stop="claim(hero.id)"
-              >
-                Claim
-              </button>
-              <button
-                v-else-if="isMine(hero.id)"
-                class="hero-action-pill hero-action-pill-release"
-                @click.stop="release(hero.id)"
-              >
-                Release
-              </button>
+<!--              <div class="hero-card-actions">-->
+<!--                <span class="hero-status-pill" :class="statusClass(hero.id)">-->
+<!--                  {{ heroStatus(hero.id) }}-->
+<!--                </span>-->
+<!--                <button-->
+<!--                  v-if="canClaim(hero.id)"-->
+<!--                  class="hero-action-pill hero-action-pill-claim"-->
+<!--                  @click.stop="claim(hero.id)"-->
+<!--                >-->
+<!--                  Claim-->
+<!--                </button>-->
+<!--                <button-->
+<!--                  v-else-if="isMine(hero.id)"-->
+<!--                  class="hero-action-pill hero-action-pill-release"-->
+<!--                  @click.stop="release(hero.id)"-->
+<!--                >-->
+<!--                  Release-->
+<!--                </button>-->
+<!--              </div>-->
             </div>
-          </div>
 
-          <div class="hero-card-portrait">
-            <div class="hero-card-portrait-frame">
-              <div class="hero-card-sprite">
-                <Sprite :sprite="'src/assets/heroes/' + hero.avatar + '.png'" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
+            <div class="hero-card-portrait">
+              <div class="hero-card-portrait-frame">
+                <div class="hero-card-sprite">
+                  <Sprite :sprite="'src/assets/heroes/' + hero.avatar + '.png'" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
+                </div>
+              </div>
+              <div class="hero-card-xp">
+                <span>XP</span>
+                <strong>{{ hero.stats.xp }}</strong>
               </div>
             </div>
-            <div class="hero-card-xp">
-              <span>XP</span>
-              <strong>{{ hero.stats.xp }}</strong>
+
+            <div class="hero-card-controls" :class="{ 'hero-card-controls-visible': showHeroControls(hero) }">
+              <div class="scout-controls" :class="{ 'scout-controls-open': isScoutMenuOpen(hero) }" @click.stop>
+                <button
+                  type="button"
+                  class="scout-menu-trigger"
+                  :class="{ 'scout-menu-trigger-active': !!hero.scoutResourceIntent }"
+                  :style="{ '--scout-color': getActiveScoutOption(hero)?.color ?? '#e2e8f0' }"
+                  :title="scoutTriggerTitle(hero)"
+                  :aria-label="scoutTriggerTitle(hero)"
+                  :aria-expanded="isScoutMenuOpen(hero)"
+                  :disabled="!showScoutControls(hero) || !!hero.carryingPayload"
+                  @pointerdown.stop
+                  @click.stop="toggleScoutMenu(hero, $event)"
+                >
+                  <span class="scout-trigger-icon" aria-hidden="true">
+                    <span class="scout-trigger-dot"></span>
+                    <span class="scout-trigger-sweep"></span>
+                  </span>
+                  <span class="scout-trigger-copy">
+                    <span class="scout-trigger-kicker">Scout</span>
+                    <span class="scout-trigger-label">{{ getActiveScoutOption(hero)?.label ?? 'Choose' }}</span>
+                  </span>
+                  <span class="scout-trigger-caret" aria-hidden="true"></span>
+                </button>
+              </div>
+
+              <div class="skill-controls" :class="{ 'skill-controls-open': isSkillMenuOpen(hero) }" @click.stop>
+                <button
+                  type="button"
+                  class="skill-menu-trigger"
+                  :class="{ 'skill-menu-trigger-ready': getHeroSkillPoints(hero) > 0 }"
+                  :title="skillTriggerTitle(hero)"
+                  :aria-label="skillTriggerTitle(hero)"
+                  :aria-expanded="isSkillMenuOpen(hero)"
+                  :disabled="!showSkillControls(hero)"
+                  @pointerdown.stop
+                  @click.stop="toggleSkillMenu(hero, $event)"
+                >
+                  <span class="skill-trigger-code" aria-hidden="true">+</span>
+                  <span class="skill-trigger-copy">
+                    <span class="skill-trigger-kicker">Skills</span>
+                    <span class="skill-trigger-label">{{ hero.skillPoints ?? 0 }} · {{ getSkillProgressLabel(hero) }}</span>
+                  </span>
+                  <span class="skill-trigger-caret" aria-hidden="true"></span>
+                </button>
+              </div>
             </div>
           </div>
-
-          <div class="hero-card-controls" :class="{ 'hero-card-controls-visible': showHeroControls(hero) }">
-            <div class="scout-controls" :class="{ 'scout-controls-open': isScoutMenuOpen(hero) }" @click.stop>
-              <button
-                type="button"
-                class="scout-menu-trigger"
-                :class="{ 'scout-menu-trigger-active': !!hero.scoutResourceIntent }"
-                :style="{ '--scout-color': getActiveScoutOption(hero)?.color ?? '#e2e8f0' }"
-                :title="scoutTriggerTitle(hero)"
-                :aria-label="scoutTriggerTitle(hero)"
-                :aria-expanded="isScoutMenuOpen(hero)"
-                :disabled="!showScoutControls(hero) || !!hero.carryingPayload"
-                @pointerdown.stop
-                @click.stop="toggleScoutMenu(hero, $event)"
-              >
-                <span class="scout-trigger-icon" aria-hidden="true">
-                  <span class="scout-trigger-dot"></span>
-                  <span class="scout-trigger-sweep"></span>
-                </span>
-                <span class="scout-trigger-copy">
-                  <span class="scout-trigger-kicker">Scout</span>
-                  <span class="scout-trigger-label">{{ getActiveScoutOption(hero)?.label ?? 'Choose' }}</span>
-                </span>
-                <span class="scout-trigger-caret" aria-hidden="true"></span>
-              </button>
-            </div>
-
-            <div class="skill-controls" :class="{ 'skill-controls-open': isSkillMenuOpen(hero) }" @click.stop>
-              <button
-                type="button"
-                class="skill-menu-trigger"
-                :class="{ 'skill-menu-trigger-ready': getHeroSkillPoints(hero) > 0 }"
-                :title="skillTriggerTitle(hero)"
-                :aria-label="skillTriggerTitle(hero)"
-                :aria-expanded="isSkillMenuOpen(hero)"
-                :disabled="!showSkillControls(hero)"
-                @pointerdown.stop
-                @click.stop="toggleSkillMenu(hero, $event)"
-              >
-                <span class="skill-trigger-code" aria-hidden="true">+</span>
-                <span class="skill-trigger-copy">
-                  <span class="skill-trigger-kicker">Skills</span>
-                  <span class="skill-trigger-label">{{ hero.skillPoints ?? 0 }} · {{ getSkillProgressLabel(hero) }}</span>
-                </span>
-                <span class="skill-trigger-caret" aria-hidden="true"></span>
-              </button>
-            </div>
-          </div>
-        </div>
+        </template>
       </template>
       <div v-else class="text-xs opacity-70 px-2 py-1">No heroes recruited yet.</div>
     </div>
@@ -356,7 +357,7 @@ function select(hero: Hero) {
     requestHeroClaim(hero.id);
   }
 
-  selectHero(hero, true);
+  selectHero(hero, false);
 }
 
 function claim(heroId: string) {

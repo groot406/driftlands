@@ -35,6 +35,12 @@ export function axialKey(q: number, r: number) {
     return `${q},${r}`;
 }
 
+export interface DiscoveryContext {
+    q: number;
+    r: number;
+    settlementId?: string | null;
+}
+
 function bumpWorldRenderVersion() {
     worldRenderVersion++;
     worldVersion.value++;
@@ -245,12 +251,60 @@ export function resolveGeneratedTileVariant(tile: Tile, terrain: TerrainKey): st
     return null;
 }
 
-export function discoverTile(tile: Tile) {
+function resolveDiscoverySettlementId(origin: DiscoveryContext): string | null {
+    if (origin.settlementId) {
+        return origin.settlementId;
+    }
+
+    const originTile = tileIndex[axialKey(origin.q, origin.r)];
+    if (!originTile) {
+        return null;
+    }
+
+    return originTile.ownerSettlementId
+        ?? originTile.controlledBySettlementId
+        ?? (originTile.terrain === 'towncenter' ? originTile.id : null)
+        ?? null;
+}
+
+function resolveDiscoveryGenerationOrigin(origin: DiscoveryContext, discoverySettlementId: string | null) {
+    if (!discoverySettlementId) {
+        return { q: origin.q, r: origin.r };
+    }
+
+    const settlementTile = tileIndex[discoverySettlementId];
+    if (settlementTile) {
+        return { q: settlementTile.q, r: settlementTile.r };
+    }
+
+    const separatorIndex = discoverySettlementId.indexOf(',');
+    if (separatorIndex === -1) {
+        return { q: origin.q, r: origin.r };
+    }
+
+    const q = Number(discoverySettlementId.slice(0, separatorIndex));
+    const r = Number(discoverySettlementId.slice(separatorIndex + 1));
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+        return { q: origin.q, r: origin.r };
+    }
+
+    return { q, r };
+}
+
+export function discoverTile(tile: Tile, origin: DiscoveryContext = { q:0, r: 0}) {
     if (tile.discovered && tile.terrain) return;
+    const discoverySettlementId = resolveDiscoverySettlementId(origin);
+    const generationOrigin = resolveDiscoveryGenerationOrigin(origin, discoverySettlementId);
+
     if (tile.q === 0 && tile.r === 0) {
         tile.terrain = 'towncenter';
         tile.variant = null;
         tile.isBaseTile = true;
+        if (discoverySettlementId) {
+            tile.controlledBySettlementId = discoverySettlementId;
+            tile.ownerSettlementId = discoverySettlementId;
+        }
+
         tile.discovered = true;
         if (!tileIndex[tile.id]) indexTile(tile);
         ensureTileNeighbors(tile);
@@ -269,7 +323,7 @@ export function discoverTile(tile: Tile) {
         bumpWorldRenderVersion();
         return;
     }
-    const generated = resolveWorldTile(tile.q, tile.r);
+    const generated = resolveWorldTile(tile.q, tile.r, generationOrigin);
 
     tile.biome = generated.biome;
     tile.terrain = generated.terrain;
@@ -280,6 +334,10 @@ export function discoverTile(tile: Tile) {
     tile.specialActivated = false;
     tile.discovered = true;
     tile.isBaseTile = true;
+    if (discoverySettlementId) {
+        tile.ownerSettlementId = discoverySettlementId;
+        tile.controlledBySettlementId = discoverySettlementId;
+    }
     if (!tileIndex[tile.id]) indexTile(tile);
     ensureTileNeighbors(tile);
     if (tile.terrain) terrainPositions[tile.terrain].add(tile.id);

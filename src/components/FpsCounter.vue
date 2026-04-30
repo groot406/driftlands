@@ -42,6 +42,10 @@
       <span>World Ver</span>
       <strong>{{ renderDebugState.worldRenderVersion }}</strong>
     </div>
+    <div class="fps-row" v-if="renderDebugState.settlementReachCount">
+      <span>Other Reach</span>
+      <strong :title="renderDebugState.settlementReachInfo">{{ renderDebugState.settlementReachCount }}</strong>
+    </div>
     <div class="fps-row">
       <span>Passes</span>
       <strong>{{ passTimingSummary }}</strong>

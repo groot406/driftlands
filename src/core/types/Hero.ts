@@ -41,6 +41,9 @@ export interface Hero {
     id: string;
     name: string;
     avatar: string; // asset path for sprite sheet
+    playerId?: string;
+    playerName?: string;
+    settlementId?: string | null;
     q: number; // axial coordinate q
     r: number; // axial coordinate r
     stats: HeroStats;

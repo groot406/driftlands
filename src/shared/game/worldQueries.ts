@@ -4,6 +4,7 @@ import type { TerrainKey } from './terrainDefs';
 import { axialDistanceCoords, axialDistanceFromOrigin } from './hex';
 import { isTileWalkable } from './navigation';
 import { ensureTileExists, tileIndex } from './world';
+import { isTileControlledBySettlement } from '../../store/settlementSupportStore';
 
 function findNearestTile(
   q: number,
@@ -69,6 +70,7 @@ export function findNearestWalkableNeighborToTerrain(
   q: number,
   r: number,
   terrain: TerrainKey,
+  settlementId: string | null | undefined = null,
 ): Tile | null {
   let best: Tile | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
@@ -83,6 +85,7 @@ export function findNearestWalkableNeighborToTerrain(
     for (const side of SIDE_NAMES) {
       const neighbor = neighbors[side];
       if (!neighbor?.discovered || !isTileWalkable(neighbor)) continue;
+      if (settlementId && !isTileControlledBySettlement(neighbor, settlementId)) continue;
 
       const dist = axialDistanceCoords(q, r, neighbor.q, neighbor.r);
       if (dist < bestDist) {

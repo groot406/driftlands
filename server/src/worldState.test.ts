@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 
 import type { Hero } from '../../src/core/types/Hero.ts';
 import type { TaskInstance } from '../../src/core/types/Task.ts';
-import { hexDistance, tiles } from '../../src/shared/game/world.ts';
+import { hexDistance, tileIndex, tiles } from '../../src/shared/game/world.ts';
 import { getWorldGenerationSeed } from '../../src/core/worldVariation.ts';
 import { heroes, loadHeroes } from '../../src/shared/game/state/heroStore.ts';
 import { settlers, loadSettlers } from '../../src/shared/game/state/settlerStore.ts';
 import { loadTasks, taskStore } from '../../src/shared/game/state/taskStore.ts';
+import { getPopulationSnapshot } from '../../src/shared/game/state/populationStore.ts';
+import { getStorageResourceAmount } from '../../src/shared/game/state/resourceStore.ts';
+import { axialDistanceCoords } from '../../src/shared/game/hex.ts';
 import { setIo } from './messages/messageRouter.ts';
 import { runState } from './state/runState.ts';
 import { worldState } from './worldState.ts';
@@ -136,4 +139,39 @@ test('worldState.init clamps oversized debug world radius', async () => {
 
   assert.equal(Math.max(...discoveredRings), 64);
   assert.equal(discoveredTiles.length, 12481);
+});
+
+test('worldState.foundSettlementAt reveals a landing, creates a town center, and stocks it', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42);
+
+  const founded = worldState.foundSettlementAt(18, -4);
+
+  assert.deepEqual(founded, { settlementId: '18,-4', q: 18, r: -4 });
+  assert.equal(tileIndex['18,-4']?.terrain, 'towncenter');
+  assert.equal(tileIndex['18,-4']?.discovered, true);
+  assert.equal(getStorageResourceAmount('18,-4', 'food'), 12);
+  assert.equal(getPopulationSnapshot().max, 30);
+
+  const revealedLandingTiles = tiles.filter((tile) => (
+    tile.discovered && axialDistanceCoords(tile.q, tile.r, 18, -4) <= 3
+  ));
+  assert.equal(revealedLandingTiles.length, 37);
+});
+
+test('worldState.foundSettlementAt can spawn a founder hero for the owning player', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42);
+
+  const founded = worldState.foundSettlementAt(22, -5, { playerId: 'player-ada', playerName: 'Ada' });
+
+  assert.equal(founded?.founderHeroId, 'founder:player-ada');
+  const founder = heroes.find((hero) => hero.id === founded?.founderHeroId);
+  assert.ok(founder);
+  assert.equal(founder.q, 22);
+  assert.equal(founder.r, -5);
+  assert.equal(founder.playerId, 'player-ada');
+  assert.equal(founder.playerName, 'Ada');
 });

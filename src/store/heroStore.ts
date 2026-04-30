@@ -1,12 +1,10 @@
 // Seed heroes at town center (future differentiation can randomize slight offsets)
 import type {Hero} from "../core/types/Hero.ts";
 import { reactive } from 'vue';
-import { createHeroFromTemplate } from '../shared/story/heroRoster.ts';
+import { createHeroFromTemplate, getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
 import { getInitialUnlockedStoryHeroIds } from '../shared/story/progressionState.ts';
 
-const seedHeroes: Hero[] = getInitialUnlockedStoryHeroIds()
-    .map((heroId) => createHeroFromTemplate(heroId))
-    .filter((hero): hero is Hero => !!hero);
+const seedHeroes: Hero[] = [];
 
 export const heroes = reactive<Hero[]>(seedHeroes);
 
@@ -42,6 +40,7 @@ export function loadHeroes(newHeroes: Hero[]): void {
 
 export function syncHeroRoster(heroIds: string[], spawn: { q: number; r: number } = { q: 0, r: 0 }): void {
     const previousById = new Map(heroes.map((hero) => [hero.id, hero]));
+    const preservedCustomHeroes = heroes.filter((hero) => !getStoryHeroTemplate(hero.id));
     heroes.length = 0;
 
     for (const heroId of heroIds) {
@@ -55,6 +54,10 @@ export function syncHeroRoster(heroIds: string[], spawn: { q: number; r: number 
         if (templateHero) {
             heroes.push(templateHero);
         }
+    }
+
+    for (const customHero of preservedCustomHeroes) {
+        heroes.push(customHero);
     }
 }
 

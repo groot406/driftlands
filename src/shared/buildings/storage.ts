@@ -36,9 +36,20 @@ export function canUseWarehouseAtTile(tile: Tile | null | undefined) {
     return !!getStorageKindForTile(tile);
 }
 
+function belongsToSettlement(tile: Tile | null | undefined, settlementId: string | null | undefined) {
+    if (!tile || !settlementId) {
+        return !settlementId;
+    }
+
+    return tile.ownerSettlementId === settlementId
+        || tile.controlledBySettlementId === settlementId
+        || (tile.terrain === 'towncenter' && tile.id === settlementId);
+}
+
 function findNearestStorageTile(
     q: number,
     r: number,
+    settlementId: string | null | undefined = null,
     predicate?: (tile: Tile) => boolean,
     excludedTileIds: Set<string> = new Set(),
 ): Tile | null {
@@ -47,6 +58,10 @@ function findNearestStorageTile(
 
     const considerTile = (tile: Tile | null | undefined) => {
         if (!tile || excludedTileIds.has(tile.id) || !canUseWarehouseAtTile(tile)) {
+            return;
+        }
+
+        if (settlementId && !belongsToSettlement(tile, settlementId)) {
             return;
         }
 
@@ -78,13 +93,14 @@ function findNearestStorageTile(
     return best;
 }
 
-export function findNearestWarehouseAccessTile(q: number, r: number): Tile | null {
-    return findNearestStorageTile(q, r);
+export function findNearestWarehouseAccessTile(q: number, r: number, settlementId: string | null | undefined = null): Tile | null {
+    return findNearestStorageTile(q, r, settlementId);
 }
 
 export function findNearestWarehouseWithResource(
     q: number,
     r: number,
+    settlementId: string | null | undefined,
     resourceType: ResourceType,
     requiredAmount: number = 1,
     excludeTileIds: Iterable<string> = [],
@@ -92,22 +108,23 @@ export function findNearestWarehouseWithResource(
     const excluded = new Set(excludeTileIds);
 
     return (
-        findNearestStorageTile(q, r, (tile) => getStorageResourceAmount(tile.id, resourceType) >= requiredAmount, excluded)
-        ?? findNearestStorageTile(q, r, (tile) => getStorageResourceAmount(tile.id, resourceType) > 0, excluded)
+        findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) >= requiredAmount, excluded)
+        ?? findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) > 0, excluded)
     );
 }
 
 export function findNearestWarehouseWithCapacity(
     q: number,
     r: number,
+    settlementId: string | null | undefined,
     requiredFreeCapacity: number = 1,
     excludeTileIds: Iterable<string> = [],
 ): Tile | null {
     const excluded = new Set(excludeTileIds);
 
     return (
-        findNearestStorageTile(q, r, (tile) => getStorageFreeCapacity(tile.id) >= requiredFreeCapacity, excluded)
-        ?? findNearestStorageTile(q, r, (tile) => getStorageFreeCapacity(tile.id) > 0, excluded)
+        findNearestStorageTile(q, r, settlementId, (tile) => getStorageFreeCapacity(tile.id) >= requiredFreeCapacity, excluded)
+        ?? findNearestStorageTile(q, r, settlementId, (tile) => getStorageFreeCapacity(tile.id) > 0, excluded)
     );
 }
 
@@ -148,6 +165,10 @@ function listUsableStorageTiles() {
     return Array.from(candidates.values());
 }
 
+function listUsableStorageTilesForSettlement(settlementId: string | null | undefined = null) {
+    return listUsableStorageTiles().filter((tile) => belongsToSettlement(tile, settlementId));
+}
+
 function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
     const distanceA = axialDistanceCoords(q, r, a.q, a.r);
     const distanceB = axialDistanceCoords(q, r, b.q, b.r);
@@ -167,6 +188,7 @@ function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
 export function depositResourceIntoNearestStorages(
     q: number,
     r: number,
+    settlementId: string | null | undefined,
     resourceType: ResourceType,
     amount: number,
 ): { transfers: StorageDepositTransfer[]; remaining: number } {
@@ -175,7 +197,7 @@ export function depositResourceIntoNearestStorages(
     let remaining = Math.max(0, amount);
 
     while (remaining > 0) {
-        const storageTile = findNearestWarehouseWithCapacity(q, r, remaining, excluded);
+        const storageTile = findNearestWarehouseWithCapacity(q, r, settlementId, remaining, excluded);
         if (!storageTile) {
             break;
         }
@@ -206,12 +228,13 @@ export function depositResourceIntoNearestStorages(
 export function planNearestStorageDeposits(
     q: number,
     r: number,
+    settlementId: string | null | undefined,
     resources: Array<{ type: ResourceType; amount: number }>,
     freeCapacityOverrides?: Map<string, number>,
 ) {
     const transfers: PlannedStorageDepositTransfer[] = [];
     const remaining: Array<{ type: ResourceType; amount: number }> = [];
-    const storageTiles = listUsableStorageTiles().sort((a, b) => compareStorageDistance(q, r, a, b));
+    const storageTiles = listUsableStorageTilesForSettlement(settlementId).sort((a, b) => compareStorageDistance(q, r, a, b));
     const freeCapacityByTileId = new Map<string, number>();
     for (const tile of storageTiles) {
         const baseFreeCapacity = getStorageFreeCapacity(tile.id);

@@ -13,6 +13,7 @@ import { SETTLER_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBal
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import {
     depositResourceToStorage,
+    getSettlementResourceInventory,
     getStorageResourceAmount,
     resourceInventory,
     withdrawResourceFromStorage,
@@ -50,6 +51,7 @@ const SETTLER_STEP_BASE_MS = 900;
 
 let nextSettlerId = 1;
 let lastGrowthCheckMs = 0;
+let lastGrowthCheckMsPerSettlement = {};
 
 function seedFromString(value: string) {
     let hash = 2166136261;
@@ -82,9 +84,10 @@ function getHomeFallbackTile(settlementId?: string | null) {
     return townCenters[0] ?? tileIndex['0,0'] ?? null;
 }
 
-function createSettler(now: number): Settler {
-    const fallback = getHomeFallbackTile();
+function createSettler(now: number, settlementId?: string | null): Settler {
+    const fallback = getHomeFallbackTile(settlementId);
     const id = `settler-${nextSettlerId++}`;
+    const fallbackSettlementId = settlementId ?? fallback?.id ?? '0,0';
 
     return {
         id,
@@ -95,7 +98,7 @@ function createSettler(now: number): Settler {
         appearanceSeed: seedFromString(id),
         homeTileId: fallback?.id ?? '0,0',
         homeAccessTileId: fallback?.id ?? '0,0',
-        settlementId: fallback?.id ?? '0,0',
+        settlementId: fallbackSettlementId,
         assignedWorkTileId: null,
         assignedRole: null,
         workTileId: null,
@@ -228,7 +231,7 @@ function startMovement(settler: Settler, target: Tile, activity: SettlerActivity
         return true;
     }
 
-    const path = pathService.findWalkablePath(settler.q, settler.r, target.q, target.r);
+    const path = pathService.findWalkablePath(settler.q, settler.r, target.q, target.r, { settlementId: settler.settlementId });
     if (!path.length) {
         return false;
     }
@@ -331,7 +334,7 @@ function getWorkAccessTile(settler: Settler, tile: Tile | null | undefined) {
         return null;
     }
 
-    return findNearestTaskAccessTile(null, tile, settler.q, settler.r)
+    return findNearestTaskAccessTile(null, tile, settler.q, settler.r, settler.settlementId)
         ?? (isTileWalkable(tile) ? tile : null);
 }
 
@@ -511,9 +514,47 @@ function completeRepairCycle(settler: Settler, repairTile: Tile, now: number) {
 
 export function syncSettlerPopulation(now: number) {
     refreshSettlerIdCounter();
-    const target = Math.max(0, getPopulationState().current);
+    const population = getPopulationState();
+    const target = Math.max(0, population.current);
     const originalLength = settlers.length;
     const changed = ensureSettlerNameSeeds(now);
+
+    if (population.settlements.length > 0) {
+        let changedBySettlement = changed;
+        const targetBySettlementId = new Map(
+            population.settlements.map((settlement) => [settlement.settlementId, Math.max(0, settlement.current)]),
+        );
+
+        for (const [settlementId, settlementTarget] of targetBySettlementId.entries()) {
+            let settlementSettlers = settlers.filter((settler) => settler.settlementId === settlementId).length;
+            while (settlementSettlers < settlementTarget) {
+                settlers.push(createSettler(now, settlementId));
+                settlementSettlers++;
+                changedBySettlement = true;
+            }
+        }
+
+        for (const [settlementId, settlementTarget] of targetBySettlementId.entries()) {
+            let settlementSettlers = settlers.filter((settler) => settler.settlementId === settlementId).length;
+            while (settlementSettlers > settlementTarget) {
+                const index = settlers.findLastIndex((settler) => settler.settlementId === settlementId);
+                if (index < 0) {
+                    break;
+                }
+                settlers.splice(index, 1);
+                settlementSettlers--;
+                changedBySettlement = true;
+            }
+        }
+
+        while (settlers.length > target) {
+            const index = settlers.findLastIndex((settler) => !settler.settlementId || !targetBySettlementId.has(settler.settlementId));
+            settlers.splice(index >= 0 ? index : settlers.length - 1, 1);
+            changedBySettlement = true;
+        }
+
+        return changedBySettlement || settlers.length !== originalLength;
+    }
 
     while (settlers.length < target) {
         settlers.push(createSettler(now));
@@ -546,7 +587,8 @@ function buildHomeSlots() {
         .sort((a, b) => a.id.localeCompare(b.id));
 
     for (const house of houses) {
-        const accessTile = findNearestTaskAccessTile(null, house, house.q, house.r);
+        const settlementId = house.ownerSettlementId ?? house.controlledBySettlementId ?? null;
+        const accessTile = findNearestTaskAccessTile(null, house, house.q, house.r, settlementId);
         if (!accessTile) {
             continue;
         }
@@ -557,7 +599,7 @@ function buildHomeSlots() {
                 key: `${house.id}:${slotIndex}`,
                 homeTileId: house.id,
                 accessTileId: accessTile.id,
-                settlementId: house.ownerSettlementId ?? house.controlledBySettlementId ?? null,
+                settlementId,
             });
         }
     }
@@ -748,10 +790,11 @@ function chooseDeliveryStorage(settler: Settler) {
     const storage = findNearestWarehouseWithCapacity(
         settler.q,
         settler.r,
+        settler.settlementId,
         settler.carryingPayload.amount,
     );
 
-    return storage ?? findNearestWarehouseWithCapacity(settler.q, settler.r, 1);
+    return storage ?? findNearestWarehouseWithCapacity(settler.q, settler.r, settler.settlementId, 1);
 }
 
 function handleStorageArrival(settler: Settler, storageTile: Tile, now: number) {
@@ -791,7 +834,7 @@ function maybeStartSleep(settler: Settler, now: number) {
 }
 
 function maybeFetchFood(settler: Settler, now: number) {
-    const storage = findNearestWarehouseWithResource(settler.q, settler.r, 'food', FOOD_PER_SETTLER_PER_MINUTE);
+    const storage = findNearestWarehouseWithResource(settler.q, settler.r, settler.settlementId, 'food', FOOD_PER_SETTLER_PER_MINUTE);
     if (!storage) {
         return false;
     }
@@ -850,6 +893,7 @@ function maybeFetchInput(settler: Settler, now: number) {
     const storage = findNearestWarehouseWithResource(
         settler.q,
         settler.r,
+        settler.settlementId,
         input.type,
         input.amount,
     );
@@ -1125,20 +1169,46 @@ function tryGrowPopulation(now: number) {
         return false;
     }
 
-    if (now - lastGrowthCheckMs < POPULATION_GROWTH_INTERVAL_MS) {
+
+    const settlement = population.settlements
+        .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
+        .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
+        .find((entry) => {
+            const currentFood = getSettlementResourceInventory(entry.settlementId).food ?? 0;
+            const foodNeededNow = entry.current * FOOD_PER_SETTLER_PER_MINUTE;
+            const foodNeededNext = (entry.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
+            return currentFood >= foodNeededNow + foodNeededNext;
+        });
+
+    if (now - lastGrowthCheckMsPerSettlement[settlement.settlementId] < POPULATION_GROWTH_INTERVAL_MS) {
         return false;
     }
 
-    lastGrowthCheckMs = now;
-
-    const currentFood = resourceInventory.food ?? 0;
-    const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
-    const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
-    if (currentFood < foodNeededNow + foodNeededNext) {
-        return false;
+    if (settlement) {
+        lastGrowthCheckMsPerSettlement[settlement.settlementId] = now;
+        const grew = growPopulation(settlement.settlementId);
+        if (grew) {
+            emitGameplayEvent({ type: 'population:changed', settlementId: settlement.settlementId });
+        }
+        return grew;
     }
 
-    return growPopulation();
+    if (population.settlements.length === 0) {
+        const currentFood = resourceInventory.food ?? 0;
+        const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
+        const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
+        if (currentFood < foodNeededNow + foodNeededNext) {
+            return false;
+        }
+
+        const grew = growPopulation();
+        if (grew) {
+            emitGameplayEvent({ type: 'population:changed', settlementId: null });
+        }
+        return grew;
+    }
+
+    return false;
 }
 
 export const settlerSystem = {
@@ -1158,14 +1228,14 @@ export const settlerSystem = {
         changed = reconcileHomes() || changed;
         changed = reconcileAssignments() || changed;
 
-        const settlersToKill: string[] = [];
+        const settlersToKill: Array<{ id: string; settlementId: string | null }> = [];
 
         for (const settler of settlers) {
             applyNeeds(settler, ctx.dt);
             changed = updateMovement(settler, ctx.now) || changed;
 
             if (getStarvationMs(settler) >= SETTLER_STARVATION_MS) {
-                settlersToKill.push(settler.id);
+                settlersToKill.push({ id: settler.id, settlementId: settler.settlementId });
                 continue;
             }
 
@@ -1180,10 +1250,10 @@ export const settlerSystem = {
             changed = planSettler(settler, ctx.now, ctx.dt) || changed;
         }
 
-        for (const settlerId of settlersToKill) {
-            if (removeSettler(settlerId)) {
+        for (const settler of settlersToKill) {
+            if (removeSettler(settler.id)) {
                 changed = true;
-                killSettler();
+                killSettler(settler.settlementId);
             }
         }
 

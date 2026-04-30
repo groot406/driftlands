@@ -1,10 +1,26 @@
-import { startWorldGeneration, tiles } from '../../src/shared/game/world';
+import { discoverTile, ensureTileExists, startWorldGeneration, tiles, tileIndex } from '../../src/shared/game/world';
 import { heroes, loadHeroes } from "../../src/shared/game/state/heroStore";
 import { loadTasks, taskStore } from "../../src/shared/game/state/taskStore";
-import { depositResourceToStorage, listStorageSnapshots, resetResourceState, resourceInventory } from "../../src/shared/game/state/resourceStore";
+import {
+  depositResourceToStorage,
+  getStorageUsedCapacity,
+  listSettlementResourceSnapshots,
+  listStorageSnapshots,
+  resetResourceState,
+  resourceInventory,
+} from "../../src/shared/game/state/resourceStore";
 import { getWorkforceSnapshot, resetWorkforceState } from '../../src/shared/game/state/jobStore';
 import { getStudySnapshot, resetStudyState } from '../../src/store/studyStore';
-import { getPopulationSnapshot, getPopulationState, initializePopulation, resetPopulationState } from "../../src/shared/game/state/populationStore";
+import {
+  broadcastPopulationState,
+  getPopulationSnapshot,
+  getPopulationBySettlementInput,
+  getPopulationState,
+  initializePopulation,
+  initializeSettlementPopulation,
+  recalculatePopulationLimits,
+  resetPopulationState,
+} from "../../src/shared/game/state/populationStore";
 import { getSettlerSnapshot, loadSettlers, resetSettlerState } from '../../src/shared/game/state/settlerStore';
 import { recalculateSettlementSupport, resetSettlementSupportState } from '../../src/shared/game/state/settlementSupportStore';
 import { setSupportMetrics } from '../../src/shared/game/state/populationStore';
@@ -12,18 +28,26 @@ import type { Tile } from "../../src/shared/game/types/Tile";
 import type { Hero } from "../../src/shared/game/types/Hero";
 import type { Settler } from '../../src/shared/game/types/Settler';
 import type { TaskInstance } from "../../src/shared/game/types/Task";
-import type { ResourceType } from "../../src/shared/game/types/Resource";
+import type { ResourceAmount, ResourceType } from "../../src/shared/game/types/Resource";
 import type { StorageSnapshot } from '../../src/shared/game/storage';
 import type { PopulationSnapshot } from '../../src/store/populationStore';
 import type { WorkforceSnapshot } from '../../src/store/jobStore';
 import type { StudyStateSnapshot } from '../../src/store/studyStore';
 import { runState } from "./state/runState";
 import { resetMineReserveState } from './state/mineReserveState';
-import { resetStoryProgression } from '../../src/shared/story/progressionState';
+import { loadStoryProgression, resetStoryProgression } from '../../src/shared/story/progressionState';
+import { createInitialProgressionSnapshot } from '../../src/shared/story/progression';
 import { tickEngine } from './tick';
 import { syncSettlerPopulation } from './systems/settlerSystem';
+import { promoteTileToTowncenter } from '../../src/shared/buildings/registry';
+import { broadcastGameMessage as broadcast } from '../../src/shared/game/runtime';
+import { createHeroFromTemplate, type StoryHeroId } from '../../src/shared/story/heroRoster';
+import type { HeroRosterUpdateMessage, ResourceDepositMessage, TileUpdatedMessage } from '../../src/shared/protocol';
 
 const STARTING_FOOD = 12;
+const SETTLEMENT_START_REVEAL_RADIUS = 3;
+const SETTLEMENT_STARTER_RESOURCES: ResourceAmount[] = [{ type: 'food', amount: STARTING_FOOD }];
+const SETTLEMENT_STARTER_HERO_TEMPLATES: StoryHeroId[] = ['h2', 'h3', 'h4', 'h1'];
 const MAX_UINT32 = 0xffffffff;
 const DEFAULT_WORLD_DISCOVER_RADIUS = 1;
 // Keep debug restarts below snapshot sizes that can overwhelm the dev server.
@@ -102,6 +126,9 @@ function serializeHero(hero: Hero): Hero {
     id: hero.id,
     name: hero.name,
     avatar: hero.avatar,
+    playerId: hero.playerId,
+    playerName: hero.playerName,
+    settlementId: hero.settlementId ?? null,
     q: hero.q,
     r: hero.r,
     stats: { ...hero.stats },
@@ -218,7 +245,7 @@ class WorldState {
     syncSettlerPopulation(Date.now());
     depositResourceToStorage('0,0', 'food', STARTING_FOOD);
     const population = getPopulationState();
-    const support = recalculateSettlementSupport(population.current, population.hungerMs);
+    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
     setSupportMetrics(support.snapshot);
     runState.initialize(resolvedSeed);
     return Promise.resolve();
@@ -228,13 +255,129 @@ class WorldState {
     return this.activeSeed;
   }
 
-  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot } {
+  private ensureFounderHero(founder: { playerId: string; playerName: string } | null | undefined, q: number, r: number, settlementId: string) {
+    if (!founder) {
+      return null;
+    }
+
+    const founderHeroId = `founder:${founder.playerId}`;
+    const existingHero = heroes.find((hero) => hero.id === founderHeroId || hero.playerId === founder.playerId);
+    if (existingHero) {
+      existingHero.settlementId = settlementId;
+      return existingHero;
+    }
+
+    const templateId = SETTLEMENT_STARTER_HERO_TEMPLATES[heroes.length % SETTLEMENT_STARTER_HERO_TEMPLATES.length] ?? 'h2';
+    const hero = createHeroFromTemplate(templateId, { q, r });
+    if (!hero) {
+      return null;
+    }
+
+    hero.id = founderHeroId;
+    hero.name = `${founder.playerName}'s Founder`;
+    hero.playerId = founder.playerId;
+    hero.playerName = founder.playerName;
+    hero.settlementId = settlementId;
+    heroes.push(hero);
+
+    broadcast({
+      type: 'hero:roster_update',
+      heroes: heroes.map(serializeHero),
+      timestamp: Date.now(),
+    } satisfies HeroRosterUpdateMessage);
+
+    return hero;
+  }
+
+  foundSettlementAt(
+    q: number,
+    r: number,
+    founder?: { playerId: string; playerName: string } | null,
+  ): { settlementId: string; q: number; r: number; founderHeroId?: string } | null {
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+      return null;
+    }
+
+    const centerQ = Math.trunc(q);
+    const centerR = Math.trunc(r);
+    const centerTile = ensureTileExists(centerQ, centerR);
+    const wasTownCenter = centerTile.discovered && centerTile.terrain === 'towncenter';
+    const hadStarterStorage = getStorageUsedCapacity(centerTile.id) > 0;
+
+    for (let dq = -SETTLEMENT_START_REVEAL_RADIUS; dq <= SETTLEMENT_START_REVEAL_RADIUS; dq++) {
+      for (
+        let dr = Math.max(-SETTLEMENT_START_REVEAL_RADIUS, -dq - SETTLEMENT_START_REVEAL_RADIUS);
+        dr <= Math.min(SETTLEMENT_START_REVEAL_RADIUS, -dq + SETTLEMENT_START_REVEAL_RADIUS);
+        dr++
+      ) {
+        discoverTile(ensureTileExists(centerQ + dq, centerR + dr), {
+          q: centerQ,
+          r: centerR,
+          settlementId: centerTile.id,
+        });
+      }
+    }
+
+    if (centerTile.terrain !== 'towncenter') {
+      promoteTileToTowncenter(centerTile);
+    } else if (!wasTownCenter) {
+      broadcast({ type: 'tile:updated', tile: centerTile } satisfies TileUpdatedMessage);
+    }
+
+    initializeSettlementPopulation(centerTile.id);
+    loadStoryProgression(createInitialProgressionSnapshot(), centerTile.id);
+    runState.initializeSettlement(centerTile.id, this.activeSeed);
+
+    if (!wasTownCenter || !hadStarterStorage) {
+      for (const resource of SETTLEMENT_STARTER_RESOURCES) {
+        const depositedAmount = depositResourceToStorage(centerTile.id, resource.type, resource.amount);
+        if (depositedAmount > 0) {
+          broadcast({
+            type: 'resource:deposit',
+            heroId: 'settlement-start',
+            storageTileId: centerTile.id,
+            resource: { type: resource.type, amount: depositedAmount },
+          } satisfies ResourceDepositMessage);
+        }
+      }
+    }
+
+    const population = getPopulationState();
+    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
+    setSupportMetrics(support.snapshot);
+    recalculatePopulationLimits();
+
+    for (const tileId of support.changedTileIds) {
+      const tile = tileIndex[tileId];
+      if (tile) {
+        broadcast({ type: 'tile:updated', tile } satisfies TileUpdatedMessage);
+      }
+    }
+
+    broadcastPopulationState();
+
+    const founderHero = this.ensureFounderHero(founder, centerTile.q, centerTile.r, centerTile.id);
+
+    const result: { settlementId: string; q: number; r: number; founderHeroId?: string } = {
+      settlementId: centerTile.id,
+      q: centerTile.q,
+      r: centerTile.r,
+    };
+    if (founderHero) {
+      result.founderHeroId = founderHero.id;
+    }
+
+    return result;
+  }
+
+  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, settlementResources: ReturnType<typeof listSettlementResourceSnapshots>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot } {
     const resources: Partial<Record<ResourceType, number>> = {};
     for (const [k, v] of Object.entries(resourceInventory)) {
       (resources as any)[k] = v as number;
     }
 
     const storages = listStorageSnapshots();
+    const settlementResources = listSettlementResourceSnapshots();
     const population = getPopulationSnapshot();
     const jobs = getWorkforceSnapshot();
     const studies = getStudySnapshot();
@@ -246,6 +389,7 @@ class WorldState {
       settlers: settlers.map(serializeSettler),
       tasks: taskStore.tasks.map(serializeTask),
       resources,
+      settlementResources,
       storages,
       population,
       jobs,

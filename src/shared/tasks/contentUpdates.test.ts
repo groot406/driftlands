@@ -142,6 +142,50 @@ test('hunter hut builds on forest and produces steady food', () => {
   assert.deepEqual(resources.produces, [{ type: 'food', amount: 1 }]);
 });
 
+test('apiary builds beside active forage and scales with nearby forest or grain', () => {
+  const buildApiary = getTaskDefinition('buildApiary');
+  const apiary = getBuildingDefinitionByKey('apiary');
+  assert.ok(buildApiary);
+  assert.ok(apiary);
+
+  const forest = tile({ id: '1,0', q: 1, r: 0, terrain: 'forest' });
+  const grain = tile({ id: '0,1', q: 0, r: 1, terrain: 'grain' });
+  const apiaryTile = tile({
+    terrain: 'plains',
+    neighbors: {
+      a: forest,
+      b: grain,
+    } as any,
+  });
+  const isolated = tile({ terrain: 'plains', neighbors: {} as any });
+  const inactiveForage = tile({
+    terrain: 'plains',
+    neighbors: {
+      a: tile({ id: '2,0', q: 2, r: 0, terrain: 'forest', activationState: 'inactive' }),
+    } as any,
+  });
+
+  assert.equal(canStartTaskDefinition(buildApiary, apiaryTile, hero), true);
+  assert.equal(canStartTaskDefinition(buildApiary, isolated, hero), false);
+  assert.equal(canStartTaskDefinition(buildApiary, inactiveForage, hero), false);
+
+  const resources = resolveBuildingJobResources(apiary, apiaryTile, 1);
+  assert.deepEqual(resources.produces, [{ type: 'food', amount: 2 }]);
+
+  buildApiary.onComplete?.(apiaryTile, {
+    id: 'apiary',
+    type: 'buildApiary',
+    tileId: apiaryTile.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+  assert.equal(apiaryTile.variant, 'plains_apiary');
+});
+
 test('glass house upgrade raises house beds to six', () => {
   const upgrade = getUpgradeDefinitionByKey('glass_house_upgrade');
   assert.ok(upgrade);

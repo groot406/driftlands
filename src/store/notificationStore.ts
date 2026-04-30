@@ -8,7 +8,8 @@ export type NotificationType =
   | 'hero_skill'
   | 'run_state'
   | 'coop_ping'
-  | 'coop_state';
+  | 'coop_state'
+  | 'settlement';
 
 export interface Notification {
   id: string;

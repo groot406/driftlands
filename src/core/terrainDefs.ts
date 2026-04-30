@@ -142,6 +142,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             { key: 'plains_depot', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_warehouse', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_bakery', weight: 0, assetKey: 'plains', connectsToRoad: true },
+            { key: 'plains_apiary', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_workshop', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_library', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_oven', weight: 0, assetKey: 'plains_bakery', connectsToRoad: true },
@@ -249,6 +250,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_depot', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_warehouse', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_bakery', weight: 0, assetKey: 'dirt', connectsToRoad: true},
+            {key: 'dirt_apiary', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_workshop', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_library', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_oven', weight: 0, assetKey: 'dirt_bakery', connectsToRoad: true},
@@ -298,6 +300,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         decorativeBaseWeight: 32,
         variations: [
             { key: 'snow_rock', weight: 5, minRuggedness: 0.3, decorative: true },
+            { key: 'snow_watchtower', weight: 0, assetKey: 'snow', walkable: false, connectsToRoad: true },
         ]
     },
     dessert: {
@@ -311,6 +314,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         },
         decorativeBaseWeight: 54,
         variations: [
+            { key: 'dessert_watchtower', weight: 0, assetKey: 'dessert', walkable: false, connectsToRoad: true },
             { key: 'dessert_rock', weight: 8, minRuggedness: 0.34, decorative: true },
             { key: 'dessert_rock2', weight: 8, minRuggedness: 0.44, decorative: true },
             { key: 'cactus', weight: 7, minTemperature: 0.58, maxMoisture: 0.42, decorative: true },

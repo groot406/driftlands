@@ -10,6 +10,8 @@ interface CoopPlayerState {
   socketId: string;
   id: string;
   name: string;
+  color?: string;
+  settlementId?: string | null;
   ready: boolean;
   connectedAt: number;
   claimedHeroIds: Set<string>;
@@ -30,13 +32,15 @@ class CoopState {
     this.heroLastCommandAt.clear();
   }
 
-  upsertPlayer(socket: Socket, name: string) {
+  upsertPlayer(socket: Socket, name: string, playerId: string = socket.id, color?: string, settlementId?: string | null) {
     const existing = this.playersBySocket.get(socket.id);
 
     this.playersBySocket.set(socket.id, {
       socketId: socket.id,
-      id: socket.id,
+      id: playerId,
       name,
+      color,
+      settlementId: settlementId ?? null,
       ready: existing?.ready ?? false,
       connectedAt: existing?.connectedAt ?? Date.now(),
       claimedHeroIds: existing?.claimedHeroIds ?? new Set<string>(),
@@ -71,6 +75,14 @@ class CoopState {
 
     player.ready = ready;
     return true;
+  }
+
+  updatePlayerSettlement(playerId: string, settlementId: string | null) {
+    for (const player of this.playersBySocket.values()) {
+      if (player.id === playerId) {
+        player.settlementId = settlementId;
+      }
+    }
   }
 
   claimHero(socketId: string, heroId: string) {
@@ -178,6 +190,8 @@ class CoopState {
       .map((player) => ({
         id: player.id,
         name: player.name,
+        color: player.color,
+        settlementId: player.settlementId ?? null,
         ready: player.ready,
         connectedAt: player.connectedAt,
         claimedHeroIds: Array.from(player.claimedHeroIds).filter((heroId) => this.heroClaims.get(heroId) === player.id),

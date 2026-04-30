@@ -18,6 +18,8 @@
     <TownCenterPanel
       ref="townCenterPanel"
       :visible="showTownCenterPanel"
+      :townCenterTileId="selectedTownCenterTileId"
+      :standaloneBuildingTileId="selectedBuildingDetailTileId"
       @close="closeTownCenterPanel"
     />
     <div
@@ -30,12 +32,13 @@
       <div class="coop-ping-label">{{ ping.playerName }} · {{ ping.label }}</div>
     </div>
     <div
-      v-for="hint in renderedStoryHints"
+      v-for="hint in renderedMapHints"
       :key="hint.id"
       class="story-tile-hint"
+      :class="`story-tile-hint--${hint.source}`"
       :style="hint.style"
       @pointerdown.stop.prevent="handleStoryHintPointerDown"
-      @pointerup.stop.prevent="handleStoryHintPointerUp(hint)"
+      @pointerup.stop.prevent="handleMapHintPointerUp(hint)"
     >
       <div class="story-tile-hint-ring"></div>
       <div class="story-tile-hint-label">{{ hint.label }}</div>
@@ -50,6 +53,7 @@ import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovem
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
+import {updateRenderDebugState} from '../store/renderDebugStore';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
 import { isRoadTile } from '../shared/game/roads.ts';
@@ -85,19 +89,30 @@ import type {TaskDefinition} from "../core/types/Task.ts";
 import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/gameFeel';
 import {addNotification} from '../store/notificationStore';
 import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
-import {canControlHero, getActiveCoopPings, getHeroOwnerName, isHeroClaimedByOtherPlayer} from '../store/playerStore';
+import {canControlHero, getActiveCoopPings, getHeroOwnerName, getPlayerEntities, isHeroClaimedByOtherPlayer} from '../store/playerStore';
 import {populationVersion} from '../store/clientPopulationStore';
 import {runSnapshot, runVersion} from '../store/runStore';
 import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
+import { tutorialMapHints, type TutorialMapHintAction } from '../store/tutorialStore';
 import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
 import { isUndiscoveredFrontierTile, listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
 import { getScoutCancelMovementPathOptions } from '../shared/game/scoutResources';
 import {
-  computeControlledTileIds,
-  isPositionControlled,
+  computeControlledTileIdsForTC,
+  computeControlledTileIdsForSettlement,
+  getCachedReach,
+  clearReachCache,
   isTileActive,
 } from '../store/settlementSupportStore';
+import {
+  currentPlayerReachColor,
+  currentPlayerSettlementId,
+  isPositionInCurrentPlayerTerritory,
+  isTileInCurrentPlayerTerritory,
+  settlementStartMarkers,
+} from '../store/settlementStartStore';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
+import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
 
 import { detachHeroFromCurrentTask } from '../store/taskStore';
 
@@ -123,13 +138,21 @@ const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
 const taskMenuTile = ref<Tile | null>(null);
 const showTownCenterPanel = ref(false);
+const selectedTownCenterTileId = ref<string | null>(null);
+const selectedBuildingDetailTileId = ref<string | null>(null);
 const townCenterPanel = ref<InstanceType<typeof TownCenterPanel> | null>(null);
 const containerSize = ref({width: 0, height: 0});
 const clusterBoundaryTiles = ref<Tile[]>([]); // boundary tiles for same-terrain cluster highlighting
 const clusterTiles = ref<Set<string>>(new Set()); // all tiles in cluster (id set)
 const hoveredTask = ref<TaskDefinition | null>(null);
-const globalReachBoundary = ref<Array<{q: number; r: number}>>([]); // always-visible reach outline (all TCs)
+const globalReachBoundary = ref<Array<{q: number; r: number}>>([]);
 const globalReachTileIds = ref<Set<string>>(new Set());
+const settlementReachOutlines = ref<Array<{
+  boundary: Array<{q: number; r: number}>;
+  tileIds: Set<string>;
+  color?: string | null;
+  isOwn?: boolean;
+}>>([]);
 const showSupportOverlay = ref(false);
 let lastGlobalReachComputeMs = 0;
 
@@ -139,6 +162,20 @@ const pathService = new PathService();
 const useCanvasDropShadow = shouldUseCanvasDropShadow();
 const FOREST_DISCOVERY_HINT_ID = 'story:forest-nearby';
 const WATER_DISCOVERY_HINT_ID = 'story:water-nearby';
+
+type RenderedTileHint = {
+  id: string;
+  source: 'story' | 'tutorial';
+  action: TutorialMapHintAction;
+  q: number;
+  r: number;
+  label: string;
+  taskKey?: string;
+  style: {
+    left: string;
+    top: string;
+  };
+};
 
 function findMovementPathForHero(hero: Hero, target: { q: number; r: number }, taskType?: string | null) {
   return pathService.findWalkablePath(
@@ -166,16 +203,48 @@ const renderedPings = computed(() => {
   });
 });
 
-const storyHintTiles = computed(() => (
-  getActiveStoryTileHints.value
-    .map((hint) => tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r))
-));
+const mapHintTiles = computed(() => {
+  const seen = new Set<string>();
+  const hintTiles: Tile[] = [];
 
-const renderedStoryHints = computed(() => {
+  for (const hint of [...getActiveStoryTileHints.value, ...tutorialMapHints.value]) {
+    const tile = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
+    if (seen.has(tile.id)) {
+      continue;
+    }
+
+    seen.add(tile.id);
+    hintTiles.push(tile);
+  }
+
+  return hintTiles;
+});
+
+const renderedMapHints = computed<RenderedTileHint[]>(() => {
   const cameraPx = axialToPixel(camera.q, camera.r);
   const { width, height } = containerSize.value;
+  const hints = [
+    ...getActiveStoryTileHints.value.map((hint) => ({
+      id: hint.id,
+      source: 'story' as const,
+      action: 'explore' as const,
+      q: hint.q,
+      r: hint.r,
+      label: hint.label,
+      taskKey: 'explore',
+    })),
+    ...tutorialMapHints.value.map((hint) => ({
+      id: hint.id,
+      source: 'tutorial' as const,
+      action: hint.action,
+      q: hint.q,
+      r: hint.r,
+      label: hint.label,
+      taskKey: hint.taskKey,
+    })),
+  ];
 
-  return getActiveStoryTileHints.value.map((hint) => {
+  return hints.map((hint) => {
     const tilePx = axialToPixel(hint.q, hint.r);
 
     return {
@@ -189,7 +258,20 @@ const renderedStoryHints = computed(() => {
 });
 
 function hasBuiltHouse() {
-  return Object.values(tileIndex).some((tile) => getBuildingDefinitionForTile(tile)?.key === 'house');
+  const settlementId = currentPlayerSettlementId.value;
+  return Object.values(tileIndex).some((tile) => {
+    if (settlementId && tile.ownerSettlementId !== settlementId && tile.controlledBySettlementId !== settlementId) {
+      return false;
+    }
+
+    return getBuildingDefinitionForTile(tile)?.key === 'house';
+  });
+}
+
+function getCurrentSettlementOrigin() {
+  const settlementId = currentPlayerSettlementId.value;
+  const townCenter = settlementId ? tileIndex[settlementId] : null;
+  return townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
 }
 
 function setStoryTerrainHint(id: string, kind: 'forest' | 'water', label: string, target: Tile) {
@@ -210,7 +292,9 @@ function syncStoryDiscoveryHint() {
     return;
   }
 
-  const forestTarget = getForestDiscoveryHintTile();
+  const settlementId = currentPlayerSettlementId.value;
+  const origin = getCurrentSettlementOrigin();
+  const forestTarget = getForestDiscoveryHintTile(origin, undefined, settlementId);
   if (forestTarget) {
     clearStoryTileHint(WATER_DISCOVERY_HINT_ID);
     setStoryTerrainHint(FOREST_DISCOVERY_HINT_ID, 'forest', 'Forest nearby', forestTarget);
@@ -219,7 +303,7 @@ function syncStoryDiscoveryHint() {
 
   clearStoryTileHint(FOREST_DISCOVERY_HINT_ID);
 
-  const waterTarget = hasBuiltHouse() ? getWaterDiscoveryHintTile() : null;
+  const waterTarget = hasBuiltHouse() ? getWaterDiscoveryHintTile(origin, undefined, settlementId) : null;
   if (waterTarget) {
     setStoryTerrainHint(WATER_DISCOVERY_HINT_ID, 'water', 'Water nearby', waterTarget);
     return;
@@ -279,7 +363,12 @@ function hasMatchingPathPreview(hero: Hero, tile: Tile) {
 }
 
 function isActiveStoryHintTile(tile: Tile) {
-  return getActiveStoryTileHints.value.some((hint) => hint.q === tile.q && hint.r === tile.r);
+  return getActiveStoryTileHints.value.some((hint) => hint.q === tile.q && hint.r === tile.r)
+    || tutorialMapHints.value.some((hint) => (
+      hint.action === 'explore'
+      && hint.q === tile.q
+      && hint.r === tile.r
+    ));
 }
 
 function setPathPreview(path: { q: number; r: number }[], hero: Hero, tile: Tile, nowMs: number = Date.now()) {
@@ -302,11 +391,11 @@ function getControlledUndiscoveredHintStep(target: Tile, hero: Hero): Tile | nul
       continue;
     }
 
-    if (!isPositionControlled(candidate.q, candidate.r)) {
+    if (!isPositionInCurrentPlayerTerritory(candidate.q, candidate.r)) {
       continue;
     }
 
-    const accessTile = findNearestTaskAccessTile('explore', candidate, hero.q, hero.r);
+    const accessTile = findNearestTaskAccessTile('explore', candidate, hero.q, hero.r, hero.settlementId ?? null);
     if (!accessTile) {
       continue;
     }
@@ -336,7 +425,7 @@ function buildStoryHintExplorationRoute(
   taskTile: Tile,
   hero: Hero,
 ) {
-  const accessTile = findNearestTaskAccessTile('explore', taskTile, hero.q, hero.r) ?? taskTile;
+  const accessTile = findNearestTaskAccessTile('explore', taskTile, hero.q, hero.r, hero.settlementId ?? null) ?? taskTile;
   const path = (accessTile.q === hero.q && accessTile.r === hero.r)
     ? []
     : findMovementPathForHero(hero, accessTile, 'explore');
@@ -355,7 +444,7 @@ function getStoryHintExplorationRoute(target: Tile, hero: Hero) {
     return null;
   }
 
-  if (isPositionControlled(target.q, target.r)) {
+  if (isPositionInCurrentPlayerTerritory(target.q, target.r)) {
     const directRoute = buildStoryHintExplorationRoute(target, hero);
     if (directRoute) {
       return directRoute;
@@ -433,13 +522,73 @@ function handleStoryHintPointerDown() {
   resetCameraPointerState(mouseDown);
 }
 
-function handleStoryHintPointerUp(hint: { id: string; kind: string; q: number; r: number }) {
+function openTaskMenuForTile(tile: Tile, tasks: TaskDefinition[]) {
+  cancelPendingMenu();
+  taskMenuTile.value = tile;
+  availableTasks.value = tasks;
+  showTaskMenu.value = true;
+  openWindow(WINDOW_IDS.TASK_MENU);
+  lastMenuOpenTime = Date.now();
+}
+
+function requestSelectedHeroOpenTutorialTaskHint(hint: RenderedTileHint, target: Tile) {
+  const selHero = getSelectedHero();
+  const selectedHeroControllable = selHero ? canControlHero(selHero.id, currentPlayerId.value) : false;
+
+  if (!selHero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Choose a hero before opening tutorial orders.',
+      duration: 2800,
+    });
+    return false;
+  }
+
+  if (!selectedHeroControllable) {
+    addNotification({
+      type: 'coop_state',
+      title: `${selHero.name} is occupied`,
+      message: `${getHeroOwnerName(selHero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    return false;
+  }
+
+  const tasks = getAvailableTasks(target, selHero);
+  const hasRequestedTask = hint.taskKey
+    ? tasks.some((task) => task.key === hint.taskKey)
+    : tasks.length > 0;
+
+  if (!hasRequestedTask) {
+    addNotification({
+      type: 'run_state',
+      title: 'Order unavailable',
+      message: 'That tutorial order is no longer available on this tile.',
+      duration: 3200,
+    });
+    return false;
+  }
+
+  closeTownCenterPanel();
+  hoveredTile.value = target;
+  openTaskMenuForTile(target, tasks);
+  return true;
+}
+
+function handleMapHintPointerUp(hint: RenderedTileHint) {
   const wasCameraDrag = mouseDown.value && dragging;
   resetCameraPointerState(mouseDown);
   if (isPaused() || wasCameraDrag) {
     return;
   }
+
   const target = tileIndex[`${hint.q},${hint.r}`] ?? ensureTileExists(hint.q, hint.r);
+  if (hint.action === 'open-task-menu') {
+    requestSelectedHeroOpenTutorialTaskHint(hint, target);
+    return;
+  }
+
   requestSelectedHeroExploreStoryHint(target, 'story-hint');
 }
 
@@ -503,12 +652,14 @@ function animationLoop() {
       clusterTileIds: clusterTiles.value,
       globalReachBoundary: globalReachBoundary.value,
       globalReachTileIds: globalReachTileIds.value,
-      storyHintTiles: storyHintTiles.value,
+      globalReachColor: currentPlayerReachColor.value ?? undefined,
+      settlementReachOutlines: settlementReachOutlines.value,
+      storyHintTiles: mapHintTiles.value,
       showSupportOverlay: showSupportOverlay.value,
       hoveredTileInReach: hoveredTile.value
         ? (hoveredTile.value.discovered
           ? isTileActive(hoveredTile.value)
-          : isPositionControlled(hoveredTile.value.q, hoveredTile.value.r))
+          : isPositionInCurrentPlayerTerritory(hoveredTile.value.q, hoveredTile.value.r))
         : true,
     }, {
       effectNowMs,
@@ -565,11 +716,16 @@ function updatePath(force = false, nowMs: number = Date.now()) {
       return;
     }
 
-    const accessTile = findNearestTaskAccessTile('explore', hoveredTile.value, hero.q, hero.r) ?? hoveredTile.value;
+    const accessTile = findNearestTaskAccessTile('explore', hoveredTile.value, hero.q, hero.r, hero.settlementId ?? null) ?? hoveredTile.value;
     const previewPath = (accessTile.q === hero.q && accessTile.r === hero.r)
       ? []
       : findMovementPathForHero(hero, accessTile, 'explore');
     setPathPreview(previewPath, hero, hoveredTile.value, nowMs);
+    return;
+  }
+
+  if (!isTileInCurrentPlayerTerritory(hoveredTile.value)) {
+    setPathPreview([], hero, hoveredTile.value, nowMs);
     return;
   }
 
@@ -595,8 +751,8 @@ function handleTaskMenuClose() {
     }
 
     const selHero = getSelectedHero();
-    if (selHero && canControlHero(selHero.id, currentPlayerId.value)) {
-      const goalTile = findNearestTaskAccessTile(null, closedTile, selHero.q, selHero.r);
+    if (selHero && canControlHero(selHero.id, currentPlayerId.value) && isTileInCurrentPlayerTerritory(closedTile)) {
+      const goalTile = findNearestTaskAccessTile(null, closedTile, selHero.q, selHero.r, selHero.settlementId ?? null);
       if (goalTile) {
         closeTownCenterPanel();
         const path = findMovementPathForHero(selHero, goalTile);
@@ -614,6 +770,8 @@ function handleTaskMenuClose() {
 
 function closeTownCenterPanel() {
   showTownCenterPanel.value = false;
+  selectedTownCenterTileId.value = null;
+  selectedBuildingDetailTileId.value = null;
   closeWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
 }
 
@@ -621,11 +779,19 @@ function isInspectableBuildingTile(tile: Tile) {
   return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
 }
 
-async function openJobSiteDetailFromTile(tile: Tile) {
+function getTileSettlementId(tile: Tile) {
+  if (tile.terrain === 'towncenter') {
+    return tile.id;
+  }
+
+  return tile.ownerSettlementId ?? tile.controlledBySettlementId ?? currentPlayerSettlementId.value;
+}
+
+function openJobSiteDetailFromTile(tile: Tile) {
+  selectedTownCenterTileId.value = getTileSettlementId(tile);
+  selectedBuildingDetailTileId.value = tile.id;
   showTownCenterPanel.value = true;
   openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
-  await nextTick();
-  townCenterPanel.value?.openStandaloneBuildingDetail(tile.id);
 }
 
 function getJoinableActiveTask(tile: Tile, hero: Hero): TaskInstance | null {
@@ -654,7 +820,7 @@ function requestSelectedHeroJoinActiveTask(tile: Tile) {
     return false;
   }
 
-  const accessTile = findNearestTaskAccessTile(task.type, tile, selHero.q, selHero.r) ?? tile;
+  const accessTile = findNearestTaskAccessTile(task.type, tile, selHero.q, selHero.r, selHero.settlementId ?? null) ?? tile;
   const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
     ? []
     : findMovementPathForHero(selHero, accessTile, task.type);
@@ -703,7 +869,7 @@ function handleClick(e: PointerEvent) {
     if (selHero && dblTile.discovered
       && canControlHero(selHero.id, currentPlayerId.value)) {
       // For non-walkable tiles (e.g. resources), resolve the nearest walkable neighbor
-      const goalTile = findNearestTaskAccessTile(null, dblTile, selHero.q, selHero.r);
+      const goalTile = findNearestTaskAccessTile(null, dblTile, selHero.q, selHero.r, selHero.settlementId ?? null);
       if (goalTile) {
         if (showTaskMenu.value) {
           showTaskMenu.value = false;
@@ -737,7 +903,7 @@ function handleClick(e: PointerEvent) {
   }
 
   const hero = service.pickHero(e.clientX, e.clientY);
-  if (hero) {
+  if (hero && canControlHero(hero.id, currentPlayerId.value)) {
     closeTownCenterPanel();
     if (!isHeroClaimedByOtherPlayer(hero.id, currentPlayerId.value)) {
       requestHeroClaim(hero.id);
@@ -789,9 +955,11 @@ function handleClick(e: PointerEvent) {
       }
     }
 
-    if (showTownCenterPanel.value) {
+    if (showTownCenterPanel.value && selectedTownCenterTileId.value === tile.id) {
       closeTownCenterPanel();
     } else {
+      selectedTownCenterTileId.value = tile.id;
+      selectedBuildingDetailTileId.value = null;
       showTownCenterPanel.value = true;
       openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
     }
@@ -840,12 +1008,12 @@ function handleClick(e: PointerEvent) {
     }
 
     // Block actions on tiles outside reach
-    if (!isPositionControlled(tile.q, tile.r)) {
+    if (!isPositionInCurrentPlayerTerritory(tile.q, tile.r)) {
       clearPathPreview();
       return;
     }
 
-    const accessTile = findNearestTaskAccessTile('explore', tile, selHero.q, selHero.r) ?? tile;
+    const accessTile = findNearestTaskAccessTile('explore', tile, selHero.q, selHero.r, selHero.settlementId ?? null) ?? tile;
     const path = (accessTile.q === selHero.q && accessTile.r === selHero.r)
       ? []
       : findMovementPathForHero(selHero, accessTile, 'explore');
@@ -867,6 +1035,17 @@ function handleClick(e: PointerEvent) {
     return;
   }
 
+  if (!isTileInCurrentPlayerTerritory(tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Closed border',
+      message: 'This tile belongs outside your settlement reach.',
+      duration: 2500,
+    });
+    clearPathPreview();
+    return;
+  }
+
   // Refresh available tasks for this tile & hero
   availableTasks.value = getAvailableTasks(tile, selHero);
 
@@ -881,11 +1060,7 @@ function handleClick(e: PointerEvent) {
       const pendingTasks = availableTasks.value;
       pendingMenuTimer = setTimeout(() => {
         pendingMenuTimer = null;
-        taskMenuTile.value = pendingTile;
-        availableTasks.value = pendingTasks;
-        showTaskMenu.value = true;
-        openWindow(WINDOW_IDS.TASK_MENU);
-        lastMenuOpenTime = Date.now();
+        openTaskMenuForTile(pendingTile, pendingTasks);
       }, 200);
     }
 
@@ -943,7 +1118,7 @@ function updateHoverAt(clientX: number, clientY: number) {
   }
 
   const hero = service.pickHero(clientX, clientY);
-  if (hero) {
+  if (hero && canControlHero(hero.id, currentPlayerId.value)) {
     hoveredHero.value = hero;
     hoveredSettler.value = null;
     hoveredTile.value = null;
@@ -1061,34 +1236,69 @@ function handleTaskHover(task: TaskDefinition | null) {
   hoveredTask.value = task;
 }
 
-// Axial neighbor deltas matching side order a..f (same as world.ts AXIAL_NEIGHBOR_DELTAS)
-const AXIAL_DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
+function getKnownSettlementMarkers() {
+  const markersBySettlementId = new Map<string, SettlementStartMarker>();
 
-/** Extract boundary coordinates from a set of tile IDs (pure math, no world tile creation). */
-function findBoundaryCoords(ids: Set<string>): Array<{q: number; r: number}> {
-  const result: Array<{q: number; r: number}> = [];
-  for (const tileId of ids) {
-    const sep = tileId.indexOf(',');
-    const tq = Number(tileId.substring(0, sep));
-    const tr = Number(tileId.substring(sep + 1));
-    for (const [dq, dr] of AXIAL_DELTAS) {
-      if (!ids.has(`${tq + dq},${tr + dr}`)) {
-        result.push({q: tq, r: tr});
-        break;
-      }
-    }
+  for (const marker of settlementStartMarkers.value) {
+    markersBySettlementId.set(marker.settlementId, { ...marker });
   }
-  return result;
+
+  for (const player of getPlayerEntities.value) {
+    if (!player.settlementId) {
+      continue;
+    }
+
+    const existing = markersBySettlementId.get(player.settlementId);
+    const separatorIndex = player.settlementId.indexOf(',');
+    const q = existing?.q ?? Number(player.settlementId.slice(0, separatorIndex));
+    const r = existing?.r ?? Number(player.settlementId.slice(separatorIndex + 1));
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+      continue;
+    }
+
+    markersBySettlementId.set(player.settlementId, {
+      settlementId: player.settlementId,
+      q,
+      r,
+      playerId: player.id,
+      playerName: player.nickname,
+      playerColor: player.color,
+    });
+  }
+
+  return Array.from(markersBySettlementId.values());
 }
 
-/** Recompute the always-visible global reach outline (all TCs combined). Cached for 2s. */
+/** Recompute the always-visible settlement reach outlines. Cached for 2s. */
 function recomputeGlobalReach(force = false) {
   const now = Date.now();
   if (!force && now - lastGlobalReachComputeMs < 2000) return;
   lastGlobalReachComputeMs = now;
-  const ids = computeControlledTileIds();
-  globalReachTileIds.value = ids;
-  globalReachBoundary.value = findBoundaryCoords(ids);
+
+  if (force) {
+    clearReachCache();
+  }
+
+  const ownReach = getCachedReach(currentPlayerSettlementId.value || '');
+  globalReachTileIds.value = ownReach.reach;
+  globalReachBoundary.value = ownReach.boundary;
+
+  settlementReachOutlines.value = getKnownSettlementMarkers()
+    .map((settlement) => {
+      const cached = getCachedReach(settlement.settlementId);
+      return {
+        boundary: cached.boundary,
+        tileIds: cached.reach,
+        color: settlement.playerColor,
+        isOwn: settlement.settlementId === currentPlayerSettlementId.value,
+      };
+    })
+    .filter((outline) => outline.boundary.length > 0);
+
+  updateRenderDebugState({
+    settlementReachCount: settlementReachOutlines.value.length,
+    settlementReachInfo: settlementReachOutlines.value.map(o => `${o.tileIds.size}t`).join(', '),
+  });
 }
 
 function shouldIgnoreShortcut(event: KeyboardEvent) {
@@ -1126,6 +1336,22 @@ watch(hoveredTile, (tile, previousTile) => {
 watch(populationVersion, () => {
   recomputeGlobalReach(true);
 });
+
+watch(worldVersion, () => {
+  recomputeGlobalReach(true);
+});
+
+watch(currentPlayerSettlementId, () => {
+  recomputeGlobalReach(true);
+});
+
+watch(getPlayerEntities, () => {
+  recomputeGlobalReach(true);
+}, { deep: true });
+
+watch(settlementStartMarkers, () => {
+  recomputeGlobalReach(true);
+}, { deep: true });
 
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
@@ -1268,6 +1494,19 @@ onBeforeUnmount(() => {
   bottom: calc(100% + 0.45rem);
 }
 
+.story-tile-hint--tutorial .story-tile-hint-ring {
+  border-color: rgba(252, 211, 77, 0.98);
+  background: rgba(120, 53, 15, 0.58);
+  box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.58);
+  animation-name: tutorial-hint-pulse;
+}
+
+.story-tile-hint--tutorial .story-tile-hint-label {
+  background: rgba(69, 26, 3, 0.9);
+  border-color: rgba(252, 211, 77, 0.44);
+  color: rgb(254, 243, 199);
+}
+
 @keyframes coop-ping-pulse {
   0% {
     transform: scale(0.9);
@@ -1295,6 +1534,21 @@ onBeforeUnmount(() => {
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(125, 211, 252, 0);
+  }
+}
+
+@keyframes tutorial-hint-pulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.58);
+  }
+  70% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 18px rgba(252, 211, 77, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(252, 211, 77, 0);
   }
 }
 </style>

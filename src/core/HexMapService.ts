@@ -102,6 +102,8 @@ import {
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './render/entities/settlerRender';
+import {canControlHero} from "../store/playerStore.ts";
+import {currentPlayerId} from "./socket.ts";
 
 const TEXT_INDICATOR_STACK_GAP_PX = 18;
 
@@ -179,6 +181,13 @@ interface DrawOptions {
     clusterTileIds?: Set<string>; // all tile ids in cluster to suppress interior edges
     globalReachBoundary?: Array<{q: number; r: number}>; // always-visible reach outline (all TCs, dimmed)
     globalReachTileIds?: Set<string>;
+    globalReachColor?: string;
+    settlementReachOutlines?: Array<{
+        boundary: Array<{q: number; r: number}>;
+        tileIds: Set<string>;
+        color?: string | null;
+        isOwn?: boolean;
+    }>;
     storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
@@ -665,6 +674,7 @@ export class HexMapService {
         this.publishRenderDebugInfo(frame, passContext, motionBlur);
     }
 
+
     private ensureRenderArchitecture() {
         const self = this as any;
         void this._terrainChunkCache;
@@ -714,31 +724,6 @@ export class HexMapService {
         return new EffectPipeline([
             new MotionBlurEffect(),
             this._cloudShadowEffect,
-            this._peacefulAtmosphereEffect,
-            new BloomEffect({
-                hexSize: this.HEX_SIZE,
-                getDpr: () => this._dpr,
-                getBloomSurface: () => (
-                    this._bloomCtx && this._bloomCanvas
-                        ? this.toRenderSurface(this._bloomCanvas, this._bloomCtx)
-                        : null
-                ),
-                getFrame: (context) => this.getLegacyFrameFromPassContext(context),
-                getDrawOptions: (context) => this.getDrawOptionsFromPassContext(context),
-                getCanvasCenter: () => this.getCanvasCenter(),
-                applyWorldTransform: (ctx, translateX, translateY, cameraFx) => {
-                    this.applyWorldTransform(ctx, translateX, translateY, cameraFx as CameraCompositeState);
-                },
-                computeFade: (dist, inner, radius) => this.computeFade(dist, inner, radius),
-                getTileImageKey: (tile) => this.getTileImageKey(tile),
-                getTileOverlayKey: (tile) => this.getTileOverlayKey(tile),
-                getHeroInterpolatedPixelPosition: (hero, now) => this.getHeroInterpolatedPixelPosition(hero, now),
-            }),
-            new VignetteEffect({
-                getFrame: (context) => this.getLegacyFrameFromPassContext(context),
-            }),
-            this._fogShimmerEffect,
-            this._auraEffect,
             new ResourceFlightEffect<CameraCompositeState>({
                 getFrame: (context) => this.getLegacyFrameFromPassContext(context),
                 projectWorldToScreenPixels: (worldX, worldY, cameraFx) => this.projectWorldToScreenPixels(worldX, worldY, cameraFx),
@@ -931,8 +916,8 @@ export class HexMapService {
                         drawGrowthTileMotion: (ctx, tiles, nowMs) => {
                             this.drawGrowthTileMotion(ctx, tiles, nowMs);
                         },
-                        drawReachOutline: (ctx, boundary, reachSet, alpha, hovered) => {
-                            this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered);
+                        drawReachOutline: (ctx, boundary, reachSet, alpha, hovered, color) => {
+                            this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered, color);
                         },
                         drawRoundedRect: (ctx, x, y, w, h, r) => {
                             this.drawRoundedRect(ctx, x, y, w, h, r);
@@ -1003,8 +988,8 @@ export class HexMapService {
                                 drawGrowthTileMotion: (highlightCtx, tiles, nowMs) => {
                                     this.drawGrowthTileMotion(highlightCtx, tiles, nowMs);
                                 },
-                                drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered) => {
-                                    this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered);
+                                drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered, color) => {
+                                    this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered, color);
                                 },
                                 drawRoundedRect: (highlightCtx, x, y, w, h, r) => {
                                     this.drawRoundedRect(highlightCtx, x, y, w, h, r);
@@ -1212,6 +1197,8 @@ export class HexMapService {
             clusterTileIds: opts.clusterTileIds,
             globalReachBoundary: opts.globalReachBoundary,
             globalReachTileIds: opts.globalReachTileIds,
+            globalReachColor: opts.globalReachColor,
+            settlementReachOutlines: opts.settlementReachOutlines,
             storyHintTiles: opts.storyHintTiles?.map((tile) => ({ q: tile.q, r: tile.r })),
             showSupportOverlay: opts.showSupportOverlay,
             hoveredTileInReach: opts.hoveredTileInReach,
@@ -1308,7 +1295,7 @@ export class HexMapService {
         const radiusTiles = getTilesInRadius(cq, cr, camera.radius)
             .filter((tile) => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
-        const visibleTiles = this.filterTilesToViewport(radiusTiles, cameraFx);
+        const visibleTiles = this.getVisibleTiles(cq, cr, camera.radius, storyHintTileIds);
         const dirtyTiles = consumePendingRenderDirtyTiles();
         const discoveredTileIds = consumePendingRenderDiscoveredTileIds();
         const dirtyChunkKeys = getDirtyChunkKeysForTiles(dirtyTiles, this._renderConfig.terrainChunkSize);
@@ -1614,7 +1601,7 @@ export class HexMapService {
         nowMs: number,
         discoveredTileIds: ReadonlySet<string> = new Set(),
     ) {
-        if (!dirtyTiles.length) {
+        if (!dirtyTiles.length || dirtyTiles.length > 14) {
             return;
         }
 
@@ -2236,6 +2223,7 @@ export class HexMapService {
         reachSet: Set<string>,
         alpha: number,
         hovered: boolean = false,
+        color?: string | null,
     ) {
         const DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
 
@@ -2324,42 +2312,43 @@ export class HexMapService {
         ctx.lineCap = 'round';
         for (const loop of loops) {
             const expandedLoop = this.offsetLoopOutward(loop, hovered ? 5 : 4);
+            const hasPlayerColor = !!color;
             if (!this._currentRenderQuality.enableReachGlow) {
                 ctx.globalAlpha = alpha * 0.9;
                 ctx.shadowBlur = 0;
                 ctx.shadowColor = 'transparent';
-                ctx.strokeStyle = hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach;
-                ctx.lineWidth = hovered ? 2.1 : 1.25;
+                ctx.strokeStyle = color ?? (hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach);
+                ctx.lineWidth = hovered ? 2.1 : (hasPlayerColor ? 2.6 : 1.25);
                 this.strokeSmoothLoop(ctx, expandedLoop);
                 continue;
             }
 
             // Dark drop shadow for contrast against tiles
-            ctx.globalAlpha = alpha * 0.7;
+            ctx.globalAlpha = alpha * (hasPlayerColor ? 0.8 : 0.7);
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 2;
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = 'rgba(0,0,0,0.6)';
-            ctx.strokeStyle = 'rgba(0,0,0,0.01)';
-            ctx.lineWidth = hovered ? 8 : 6;
+            ctx.shadowBlur = hasPlayerColor ? 16 : 12;
+            ctx.shadowColor = hasPlayerColor ? 'rgba(0,0,0,0.82)' : 'rgba(0,0,0,0.6)';
+            ctx.strokeStyle = hasPlayerColor ? 'rgba(4,7,12,0.4)' : 'rgba(0,0,0,0.01)';
+            ctx.lineWidth = hovered ? 8 : (hasPlayerColor ? 7 : 6);
             this.strokeSmoothLoop(ctx, expandedLoop);
 
             // Diffuse glow pass
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
             ctx.globalAlpha = alpha;
-            ctx.shadowColor = hovered ? 'rgba(255,241,166,0.42)' : 'rgba(235,224,174,0.32)';
-            ctx.shadowBlur = hovered ? 18 : 13;
-            ctx.strokeStyle = hovered ? 'rgba(255,241,166,0.32)' : 'rgba(235,224,174,0.24)';
-            ctx.lineWidth = hovered ? 5.4 : 4;
+            ctx.shadowColor = color ?? (hovered ? 'rgba(255,241,166,0.42)' : 'rgba(235,224,174,0.32)');
+            ctx.shadowBlur = hovered ? 18 : (hasPlayerColor ? 18 : 13);
+            ctx.strokeStyle = color ?? (hovered ? 'rgba(255,241,166,0.32)' : 'rgba(235,224,174,0.24)');
+            ctx.lineWidth = hovered ? 5.4 : (hasPlayerColor ? 5 : 4);
             this.strokeSmoothLoop(ctx, expandedLoop);
 
             // Core line — bright and crisp
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
-            ctx.globalAlpha = alpha * 0.85;
-            ctx.strokeStyle = hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach;
-            ctx.lineWidth = hovered ? 2.1 : 1.25;
+            ctx.globalAlpha = alpha * (hasPlayerColor ? 1.0 : 0.85);
+            ctx.strokeStyle = color ?? (hovered ? GROWTH_HYBRID_STYLE.outlines.reachHover : GROWTH_HYBRID_STYLE.outlines.reach);
+            ctx.lineWidth = hovered ? 2.1 : (hasPlayerColor ? 2.6 : 1.25);
             this.strokeSmoothLoop(ctx, expandedLoop);
         }
         ctx.restore();
@@ -2451,8 +2440,7 @@ export class HexMapService {
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
         const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
-        const visibleTiles = precomputedVisibleTiles ?? getTilesInRadius(cq, cr, camera.radius)
-            .filter((tile) => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
+        const visibleTiles = precomputedVisibleTiles ?? this.getVisibleTiles(cq, cr, camera.radius, storyHintTileIds);
         const allowInteractiveHighlights = !forMotionBlur;
         const allowPersistentWorldUi = allowInteractiveHighlights && !suppressWorldUi;
         ctx.save();
@@ -2617,10 +2605,14 @@ export class HexMapService {
         // Reach outline — rendered on top of tiles, particles, and highlights.
         // Draws smooth bezier curves through hex boundary corners.
         if (allowPersistentWorldUi) {
-            // Global reach (all TCs combined) — always visible
-            if (opts.globalReachBoundary && opts.globalReachBoundary.length) {
+            const outlines = opts.settlementReachOutlines ?? [];
+            for (const outline of outlines) {
+                if (!outline.boundary.length) continue;
+                this.drawReachOutline(ctx, outline.boundary, outline.tileIds, outline.isOwn ? 0.88 : 0.24, false, outline.color ?? undefined);
+            }
+            if (opts.globalReachBoundary && opts.globalReachBoundary.length && !outlines.some(o => o.tileIds === opts.globalReachTileIds)) {
                 const reachSet = opts.globalReachTileIds || new Set<string>();
-                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false);
+                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false, opts.globalReachColor);
             }
         }
 
@@ -2649,7 +2641,6 @@ export class HexMapService {
         includeDiscoveredTerrain: boolean = true,
         suppressWorldUi: boolean = false,
     ) {
-        return ;
         for (const t of tiles) {
             const dist = hexDistance(camera, t);
             const opacity = this.getSupportAwareTileOpacity(t, this.getTileOpacity(dist, applyCameraFade));
@@ -3652,6 +3643,31 @@ export class HexMapService {
                 this._heroTrailEmitMs.delete(heroId);
             }
         }
+    }
+
+    private _visibleTilesCacheKey = '';
+
+    private _visibleTilesCache: Tile[] = [];
+
+    private getVisibleTiles(cq: number, cr: number, radius: number, storyHintTileIds: Set<string>) {
+
+        const worldVersion = getWorldRenderVersion();
+        const key = `${worldVersion}-${cq},${cr},${radius},${[...storyHintTileIds].join('|')}`;
+
+        if (key === this._visibleTilesCacheKey) {
+
+            return this._visibleTilesCache;
+
+        }
+
+        this._visibleTilesCacheKey = key;
+
+        this._visibleTilesCache = getTilesInRadius(cq, cr, radius)
+
+            .filter(tile => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
+
+        return this._visibleTilesCache;
+
     }
 
     private drawWalkingDust(
@@ -5673,19 +5689,6 @@ export class HexMapService {
         ctx.globalAlpha = opacity * 0.85 * reachDim;
         ctx.drawImage(fogCanvas, x - this.HEX_SIZE, y - this.HEX_SIZE);
 
-        if (this._currentRenderQuality.enableFogShimmer) {
-            this._fogShimmerEffect.drawTileShimmer(
-                ctx,
-                t.q,
-                t.r,
-                x,
-                y,
-                this.TILE_DRAW_SIZE,
-                this.HEX_SIZE,
-                reachDim,
-                (targetCtx, hexX, hexY) => this.drawHexPath(targetCtx, hexX, hexY),
-            );
-        }
 
         if (t.scouted) {
             this.drawHexHighlight(

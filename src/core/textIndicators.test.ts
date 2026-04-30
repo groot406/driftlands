@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { axialToPixel } from './camera';
-import { addTextIndicator, getTextIndicators } from './textIndicators';
+import { currentPlayer } from './socket';
+import { addTextIndicator, clearTextIndicators, getTextIndicators } from './textIndicators';
+import { currentPlayerSettlementId } from '../store/settlementStartStore';
 
 function resetIndicators() {
-    const indicators = getTextIndicators();
-    indicators.splice(0, indicators.length);
+    clearTextIndicators();
 }
+
+test.afterEach(() => {
+    resetIndicators();
+    currentPlayer.value = null;
+    currentPlayerSettlementId.value = null;
+});
 
 test('addTextIndicator captures a stable tile anchor from the spawn position', () => {
     resetIndicators();
@@ -37,8 +44,6 @@ test('addTextIndicator captures a stable tile anchor from the spawn position', (
         x: base.x + 6 - 8,
         y: base.y - 3 - 32,
     });
-
-    resetIndicators();
 });
 
 test('getTextIndicators stacks messages that share the same snapped anchor', () => {
@@ -53,6 +58,18 @@ test('getTextIndicators stacks messages that share the same snapped anchor', () 
     assert.equal(indicators[0]?.stackIndex, 0);
     assert.equal(indicators[1]?.stackIndex, 1);
     assert.equal(indicators[2]?.stackIndex, 0);
+});
 
-    resetIndicators();
+test('getTextIndicators hides indicators from other players and settlements', () => {
+    currentPlayer.value = { id: 'player-a', name: 'Player A' };
+    currentPlayerSettlementId.value = '10,0';
+
+    addTextIndicator({ q: 0, r: 0, playerId: 'player-a', settlementId: '10,0' }, '+1 XP', '#ffd700', 1800);
+    addTextIndicator({ q: 1, r: 0, playerId: 'player-b', settlementId: '20,0' }, '+1 XP', '#ffd700', 1800);
+    addTextIndicator({ q: 2, r: 0, ownerSettlementId: '10,0', controlledBySettlementId: '10,0' }, '+2', '#fff1a8', 1800);
+    addTextIndicator({ q: 3, r: 0, ownerSettlementId: '20,0', controlledBySettlementId: '20,0' }, '+2', '#fff1a8', 1800);
+
+    const indicators = getTextIndicators();
+    assert.equal(indicators.length, 2);
+    assert.deepEqual(indicators.map((indicator) => indicator.position.q), [0, 2]);
 });

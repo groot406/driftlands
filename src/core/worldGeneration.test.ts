@@ -130,6 +130,44 @@ test('discovering the same far tiles in a different order resolves to the same b
   assert.deepEqual(forward, reverse);
 });
 
+test('discoverTile uses the settlement origin for terrain generation when settlement ownership is provided', () => {
+  startWorldGeneration(0, 42);
+  const settlementId = '20,0';
+  const settlementTile = ensureTileExists(20, 0);
+  settlementTile.discovered = true;
+  settlementTile.terrain = 'towncenter';
+  settlementTile.biome = 'plains';
+  settlementTile.ownerSettlementId = settlementId;
+  settlementTile.controlledBySettlementId = settlementId;
+  tileIndex[settlementId] = settlementTile;
+
+  let target: { q: number; r: number } | null = null;
+  for (let radius = 1; radius <= 18 && !target; radius++) {
+    for (let q = 20 - radius; q <= 20 + radius && !target; q++) {
+      for (let r = -radius; r <= radius; r++) {
+        const localDistance = Math.max(Math.abs(q - 20), Math.abs(r), Math.abs((q - 20) + r));
+        if (localDistance !== radius) {
+          continue;
+        }
+
+        const settlementTerrain = resolveWorldTile(q, r, { q: 20, r: 0 }).terrain;
+        const localTerrain = resolveWorldTile(q, r, { q, r }).terrain;
+        if (settlementTerrain !== localTerrain) {
+          target = { q, r };
+          break;
+        }
+      }
+    }
+  }
+
+  assert.ok(target, 'expected an origin-sensitive tile');
+
+  const tile = ensureTileExists(target.q, target.r);
+  discoverTile(tile, { q: target.q, r: target.r, settlementId });
+
+  assert.equal(tile.terrain, resolveWorldTile(target.q, target.r, { q: 20, r: 0 }).terrain);
+});
+
 test('neighboring tiles mostly stay inside the same biome family', () => {
   const deltas: Array<[number, number]> = [
     [1, 0],
@@ -184,6 +222,30 @@ test('world generation produces multiple terrain families across a wider frontie
   assert.ok((earlyCounts.get('forest') ?? 0) > 0);
   assert.ok((innerCounts.get('plains') ?? 0) > (innerCounts.get('mountain') ?? 0));
   assert.ok(((innerCounts.get('plains') ?? 0) + (innerCounts.get('forest') ?? 0) + (innerCounts.get('dirt') ?? 0)) > (innerCounts.get('water') ?? 0));
+});
+
+test('representative seeds favor land over water in the early world', () => {
+  const seeds = [1, 7, 42, 99, 123456789, 987654321, 20260405, 0xdecafbad];
+
+  for (const seed of seeds) {
+    setWorldGenerationSeed(seed);
+    let waterCount = 0;
+    let total = 0;
+
+    for (let q = -30; q <= 30; q++) {
+      for (let r = Math.max(-30, -q - 30); r <= Math.min(30, -q + 30); r++) {
+        total++;
+        if (resolveWorldTile(q, r).terrain === 'water') {
+          waterCount++;
+        }
+      }
+    }
+
+    const waterRatio = waterCount / Math.max(total, 1);
+    assert.ok(waterRatio < 0.35, `expected less water-heavy generation for seed ${seed}, got ratio ${waterRatio.toFixed(3)}`);
+  }
+
+  setWorldGenerationSeed(123456789);
 });
 
 test('the first four rings always include some forest across representative seeds', () => {
