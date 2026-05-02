@@ -936,6 +936,7 @@ function reconcileAssignments() {
     const siteById = new Map(sites.map((site) => [site.tile.id, site]));
     const repairTargets = listRepairTargets();
     const repairTargetIds = new Set(repairTargets.map((tile) => tile.id));
+    const assignedRepairTargetIds = new Set<string>();
     const availableWorkers = Math.max(0, Math.min(getPopulationState().current, settlers.length));
     const eligibleSettlers = settlers
         .slice()
@@ -957,11 +958,13 @@ function reconcileAssignments() {
                 !settler.assignedWorkTileId
                 || !repairTargetIds.has(settler.assignedWorkTileId)
                 || !canSettlerServeTile(settler, repairTile)
+                || assignedRepairTargetIds.has(settler.assignedWorkTileId)
             ) {
                 changed = clearSettlerAssignment(settler) || changed;
                 continue;
             }
 
+            assignedRepairTargetIds.add(settler.assignedWorkTileId);
             changed = refreshSettlerWorkPresentation(settler) || changed;
             continue;
         }
@@ -1011,6 +1014,9 @@ function reconcileAssignments() {
     }
 
     for (const repairTile of repairTargets) {
+        if (assignedRepairTargetIds.has(repairTile.id)) {
+            continue;
+        }
         const candidates = eligibleSettlers
             .filter((settler) => !settler.assignedWorkTileId)
             .filter((settler) => canSettlerServeTile(settler, repairTile))
@@ -1022,6 +1028,7 @@ function reconcileAssignments() {
 
         candidate.assignedWorkTileId = repairTile.id;
         candidate.assignedRole = 'repair';
+        assignedRepairTargetIds.add(repairTile.id);
         refreshSettlerWorkPresentation(candidate);
         changed = true;
     }
@@ -1151,9 +1158,13 @@ function getSocialDrinkAmount(settlementId: string | null | undefined, resourceT
     return Math.max(0, inventory[resourceType] ?? 0);
 }
 
-function getPubWorkerCount(tileId: string) {
+function getPubWorkerCount(tileId: string, excludeSettlerId?: string | null) {
     return settlers.filter((candidate) => (
-        candidate.assignedRole === 'job'
+        candidate.id !== excludeSettlerId
+        && candidate.activity !== 'socializing'
+        && candidate.activity !== 'commuting_social'
+        && candidate.activity !== 'sleeping'
+        && candidate.assignedRole === 'job'
         && candidate.assignedWorkTileId === tileId
     )).length;
 }
@@ -1171,7 +1182,7 @@ function chooseSocialVenue(settler: Settler) {
         .sort(compareResolvedSites);
 
     for (const site of pubs) {
-        if (getPubWorkerCount(site.tile.id) <= 0) {
+        if (getPubWorkerCount(site.tile.id, settler.id) <= 0) {
             continue;
         }
         if (getPubVisitorCount(site.tile.id) >= Math.max(1, site.building.serviceCapacity ?? 3)) {

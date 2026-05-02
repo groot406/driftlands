@@ -28,6 +28,8 @@ function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'te
     ownerSettlementId: overrides.ownerSettlementId ?? '0,0',
     supportBand: overrides.supportBand ?? 'stable',
     jobSiteEnabled: overrides.jobSiteEnabled ?? null,
+    condition: overrides.condition,
+    conditionState: overrides.conditionState,
   };
 }
 
@@ -275,6 +277,46 @@ test('settlers do not take repair work from another settlement', () => {
 
   assert.equal(settlers[0]?.assignedRole ?? null, null);
   assert.equal(settlers[0]?.assignedWorkTileId ?? null, null);
+});
+
+test('repair targets only reserve one idle settler at a time', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      condition: 50,
+      conditionState: 'worn',
+    }),
+  ]);
+  loadPopulation(3, 3);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+    createSettler({ id: 'settler-2', q: 0, r: 0, settlementId: '0,0' }),
+    createSettler({ id: 'settler-3', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(2_000, 1_000);
+
+  const repairAssignees = settlers.filter((settler) => settler.assignedRole === 'repair');
+  assert.equal(repairAssignees.length, 1);
+  assert.equal(repairAssignees[0]?.assignedWorkTileId, '1,0');
+  assert.deepEqual(
+    settlers.map((settler) => ({ id: settler.id, assignedRole: settler.assignedRole ?? null, assignedWorkTileId: settler.assignedWorkTileId ?? null })),
+    [
+      { id: 'settler-1', assignedRole: 'repair', assignedWorkTileId: '1,0' },
+      { id: 'settler-2', assignedRole: null, assignedWorkTileId: null },
+      { id: 'settler-3', assignedRole: null, assignedWorkTileId: null },
+    ],
+  );
 });
 
 test('job input status uses the owning settlement inventory', () => {
