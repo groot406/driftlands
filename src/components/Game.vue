@@ -1,6 +1,6 @@
 <template>
   <div class="h-screen flex bg-slate-900 text-slate-100 select-none">
-    <TitleBackground :move="false" :blur="40" />
+    <TitleBackground :move="false" :background-image="gameBackgroundTexture" />
     <div class="flex-1 overflow-hidden w-full h-full">
       <HexMap @tile-doubleclick="moveToPosition" />
       <LoadingOverlay />
@@ -19,6 +19,7 @@ import GameGui from './GameGui.vue';
 import { isPlaying, getSelectedHero, selectHero } from '../store/uiStore';
 import { computed, onMounted, onUnmounted } from 'vue';
 import TitleBackground from "./TitleBackground.vue";
+import gameBackgroundTexture from '../assets/ui/game-background-texture.png';
 import { soundService } from '../core/soundService';
 import { musicManager } from '../core/musicManager';
 import { heroes } from '../store/heroStore';

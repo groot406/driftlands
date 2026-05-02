@@ -1,5 +1,5 @@
 <template>
-  <div class="heroes-bar pointer-events-none">
+  <div class="heroes-bar pointer-events-none overflow-hidden">
     <div ref="stripRef" class="heroes-avatar-strip pointer-events-none overflow-hidden">
       <template v-if="heroes.length">
         <template
@@ -7,10 +7,10 @@
           :key="hero.id"
           :data-hero-id="hero.id"
           :aria-current="selectedHeroId === hero.id ? 'true' : undefined"
-          @click="select(hero)"
         >
           <div v-if="hero.playerId === currentPlayerId" class="hero-card pointer-events-auto"
                :class="cardClass(hero.id)"
+               @click="select(hero)"
                :style="cardStyle(index)">
             <div class="hero-card-shine" aria-hidden="true"></div>
             <div class="hero-card-header">
@@ -762,7 +762,7 @@ watch(selectedHeroId, () => {
   display: flex;
   align-items: flex-end;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   padding: 0 0.75rem;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;

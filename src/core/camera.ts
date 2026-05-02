@@ -464,6 +464,21 @@ export function moveCamera(q: number, r: number) {
     clampCameraTargets();
 }
 
+export function jumpCamera(q: number, r: number) {
+    camera.q = q;
+    camera.r = r;
+    camera.targetQ = q;
+    camera.targetR = r;
+    camera.velQ = 0;
+    camera.velR = 0;
+    camera.speed = 0;
+    camera.screenVelocityX = 0;
+    camera.screenVelocityY = 0;
+    lastQ = q;
+    lastR = r;
+    clampCameraTargets();
+}
+
 export function nudgeCameraTowards(q: number, r: number, strength: number = 0.12, maxDistance: number = 1.4) {
     const deltaQ = q - camera.targetQ;
     const deltaR = r - camera.targetR;

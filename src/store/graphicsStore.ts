@@ -43,28 +43,46 @@ function loadGraphicsSettings(): GraphicsSettingsData {
 
 export const graphicsStore = reactive<GraphicsSettingsData>(loadGraphicsSettings());
 
+export function isSafariBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    const ua = navigator.userAgent;
+    return /Safari/i.test(ua)
+        && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/i.test(ua);
+}
+
+export function shouldUseSafariLightRendering() {
+    return isSafariBrowser();
+}
+
 export function isMotionBlurEffectEnabled() {
-    return graphicsStore.motionBlur;
+    return graphicsStore.motionBlur && !shouldUseSafariLightRendering();
 }
 
 export function isBloomEffectEnabled() {
-    return graphicsStore.bloom;
+    return graphicsStore.bloom && !shouldUseSafariLightRendering();
 }
 
 export function shouldUseCanvasDropShadow() {
     return false;
 }
 
+export function shouldUseManualCanvasShadowComposite() {
+    return !shouldUseSafariLightRendering();
+}
+
 export function shouldUseEdgeVignette() {
-    return true;
+    return !shouldUseSafariLightRendering();
 }
 
 export function shouldUseParticleGlowPass() {
-    return true;
+    return !shouldUseSafariLightRendering();
 }
 
 export function getEffectiveParticleBudget() {
-    return 420;
+    return shouldUseSafariLightRendering() ? 160 : 420;
 }
 
 export function persistGraphicsSettings() {

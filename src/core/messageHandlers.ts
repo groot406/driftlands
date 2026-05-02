@@ -12,7 +12,7 @@ import { clientMessageRouter } from './messageRouter';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
-  clientMessageRouter.on('*', (message) => console.debug('Received message:', message));
+  //clientMessageRouter.on('*', (message) => console.debug('Received message:', message));
 
   playerMessageHandler.init();
   chatMessageHandler.init();

@@ -1,6 +1,7 @@
 <template>
   <div
     v-if="terrainTiles.length > 0"
+    ref="shellEl"
     class="ingame-minimap-shell"
     :class="{ 'ingame-minimap-shell--expanded': expanded }"
   >
@@ -36,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import WorldMiniMap, { type MiniMapHotspot, type MiniMapTerrainTile } from './WorldMiniMap.vue';
 import { heroes } from '../store/heroStore.ts';
 import { getPlayerColor } from '../store/playerStore.ts';
@@ -47,6 +48,7 @@ import { moveCamera } from '../core/camera.ts';
 import { tiles, worldVersion } from '../core/world.ts';
 
 const expanded = ref(false);
+const shellEl = ref<HTMLElement | null>(null);
 const viewportCenter = ref<{ q: number; r: number } | null>(null);
 
 const terrainTiles = computed<MiniMapTerrainTile[]>(() => {
@@ -147,6 +149,26 @@ function handlePanelClick() {
     return;
   }
 }
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!expanded.value) {
+    return;
+  }
+
+  const shell = shellEl.value;
+  const target = event.target;
+  if (shell && target instanceof Node && !shell.contains(target)) {
+    expanded.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+});
 </script>
 
 <style scoped>

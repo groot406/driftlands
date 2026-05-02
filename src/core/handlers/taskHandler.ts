@@ -218,7 +218,7 @@ class ClientTaskHandler {
             const isLocalCompletion = participantHeroes.some((hero) => isLocalHero(hero));
             this.lastWorkImpactMsByTaskId.delete(task.id);
 
-            if (tile && task.type !== 'explore') {
+            if (tile && task.type !== 'explore' && isLocalCompletion) {
                 triggerGameplayImpact({
                     q: tile.q,
                     r: tile.r,

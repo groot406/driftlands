@@ -52,6 +52,7 @@ import {
     consumePendingCameraNudges,
     consumePendingTerrainBursts,
     getActiveImpactRings,
+    getActiveResourceFlights,
     getActiveTileFlashes,
     getHeroImpactOffset,
 } from './gameFeel';
@@ -1087,9 +1088,10 @@ export class HexMapService {
             },
             {
                 name: 'EffectPass',
-                isEnabled: () => true,
+                isEnabled: (scene, quality) => this.hasActiveCanvasEffects(scene, quality),
                 execute: (context) => {
                     const frame = this.getLegacyFrameFromPassContext(context);
+                    context.runtime.effectSurfaceHasContent = true;
                     context.runtime.motionBlur = this._compositeRenderer.renderEffects(context, frame, {
                         applyEffectPipeline: (ctx) => this._effectPipeline.apply(ctx),
                     });
@@ -1107,10 +1109,29 @@ export class HexMapService {
                 isEnabled: () => true,
                 execute: (context) => {
                     const frame = this.getLegacyFrameFromPassContext(context);
-                    this._compositeRenderer.compositeToFinal(frame);
+                    this._compositeRenderer.compositeToFinal(frame, context.runtime.effectSurfaceHasContent === true);
+                },
+            },
+            {
+                name: 'ScreenOverlayPass',
+                isEnabled: () => true,
+                execute: (context) => {
+                    const frame = this.getLegacyFrameFromPassContext(context);
+                    if (!this._ctx) return;
+
+                    this._ctx.save();
+                    this._ctx.scale(this._dpr, this._dpr);
+                    this.drawTextIndicators(this._ctx, frame.effectNowMs, frame.cameraFx);
+                    this._ctx.restore();
                 },
             },
         ];
+    }
+
+    private hasActiveCanvasEffects(scene: RenderScene, quality: RenderQualityProfile) {
+        return quality.enableMotionBlur
+            || quality.enableClouds
+            || getActiveResourceFlights(scene.frameInfo.effectNowMs).length > 0;
     }
 
     private createRendererPassContext(frame: RenderFrameContext, opts: DrawOptions): RendererPassContext {

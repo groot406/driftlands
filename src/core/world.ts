@@ -13,6 +13,7 @@ import { emitGameplayEvent } from '../shared/gameplay/events';
 import { resolveWorldTile } from './worldGeneration';
 import { setWorldGenerationSeed, worldNoise01 } from './worldVariation';
 import { resolveGeneratedTileModifier, resolveGeneratedTileSpecial } from '../shared/game/tileFeatures.ts';
+import { getTileSettlementId } from '../shared/game/settlement';
 
 // Side names clockwise starting at +q (matching first axial delta) then proceeding.
 // World data containers
@@ -261,10 +262,7 @@ function resolveDiscoverySettlementId(origin: DiscoveryContext): string | null {
         return null;
     }
 
-    return originTile.ownerSettlementId
-        ?? originTile.controlledBySettlementId
-        ?? (originTile.terrain === 'towncenter' ? originTile.id : null)
-        ?? null;
+    return getTileSettlementId(originTile);
 }
 
 function resolveDiscoveryGenerationOrigin(origin: DiscoveryContext, discoverySettlementId: string | null) {

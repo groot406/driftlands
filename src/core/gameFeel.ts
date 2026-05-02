@@ -262,12 +262,12 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
         intensity: options.kind === 'complete' ? 1 : options.kind === 'handin' ? 0.78 : options.kind === 'work' ? 0.55 : 0.7,
     });
 
-    if (!isWorkImpact) {
+    if (options.kind === 'complete') {
         pendingCameraNudges.push({
             id: makeId(),
             q: options.q,
             r: options.r,
-            strength: options.kind === 'complete' ? 0.72 : 0.45,
+            strength: 0.72,
         });
     }
 

@@ -5,6 +5,7 @@ import type { TerrainKey } from '../../core/terrainDefs.ts';
 import { axialDistanceCoords } from '../game/hex.ts';
 import {
   generateSettlementStartCandidates,
+  generateSettlementStartTerrainTiles,
   getSettlementIdFromStartCandidateId,
   getSettlementStartCandidateId,
 } from './settlementStart.ts';
@@ -76,4 +77,17 @@ test('settlement start candidates reject waterlocked island starts', () => {
     candidates.map((candidate) => candidate.distanceBand),
     ['home'],
   );
+});
+
+test('settlement start terrain preview resolves tiles from the nearest candidate origin', () => {
+  const terrainTiles = generateSettlementStartTerrainTiles({
+    settlements: [{ settlementId: '0,0', q: 0, r: 0 }],
+    candidates: [{ q: 30, r: 0 }],
+    resolveTerrain(q, _r, origin): TerrainKey {
+      return origin?.q === 30 && q >= 27 ? 'water' : 'plains';
+    },
+  });
+
+  assert.equal(terrainTiles.find((tile) => tile.id === '30,0')?.terrain, 'water');
+  assert.equal(terrainTiles.find((tile) => tile.id === '0,0')?.terrain, 'plains');
 });

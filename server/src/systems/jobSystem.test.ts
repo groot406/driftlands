@@ -5,7 +5,7 @@ import type { Tile } from '../../../src/shared/game/types/Tile';
 import { loadWorld } from '../../../src/shared/game/world';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
-import { loadSettlers, resetSettlerState } from '../../../src/shared/game/state/settlerStore';
+import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { getStudySnapshot, resetStudyState } from '../../../src/store/studyStore';
@@ -39,6 +39,23 @@ function createTowncenterTile(): Tile {
   });
 }
 
+function createSettlementPopulation(settlementId: string, current: number, beds: number, max: number = 15) {
+  return {
+    settlementId,
+    current,
+    max,
+    beds,
+    hungerMs: 0,
+    supportCapacity: 0,
+    ownedTileCount: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    fragileTileCount: 0,
+    uncontrolledTileCount: 0,
+    pressureState: 'stable' as const,
+  };
+}
+
 function loadPopulation(current: number, beds: number) {
   loadPopulationSnapshot({
     current,
@@ -51,6 +68,46 @@ function loadPopulation(current: number, beds: number) {
     pressureState: 'stable',
     settlements: [],
   });
+}
+
+function loadSettlementPopulation(settlements: ReturnType<typeof createSettlementPopulation>[]) {
+  loadPopulationSnapshot({
+    current: settlements.reduce((sum, settlement) => sum + settlement.current, 0),
+    max: settlements.reduce((sum, settlement) => sum + settlement.max, 0),
+    beds: settlements.reduce((sum, settlement) => sum + settlement.beds, 0),
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements,
+  });
+}
+
+function createSettler(overrides: {
+  id: string;
+  q: number;
+  r: number;
+  settlementId: string;
+  assignedWorkTileId?: string | null;
+}) {
+  return {
+    id: overrides.id,
+    q: overrides.q,
+    r: overrides.r,
+    facing: 'down' as const,
+    appearanceSeed: 1,
+    homeTileId: overrides.settlementId,
+    homeAccessTileId: overrides.settlementId,
+    settlementId: overrides.settlementId,
+    assignedWorkTileId: overrides.assignedWorkTileId ?? null,
+    activity: 'idle' as const,
+    stateSinceMs: 0,
+    hungerMs: 0,
+    fatigueMs: 0,
+    workProgressMs: 0,
+    carryingKind: null,
+  };
 }
 
 function tickAll(now: number, dt: number = 1_000) {
@@ -156,6 +213,146 @@ test('no workers can staff docks before houses provide beds', () => {
   assert.equal(snapshot.idleWorkers, 0);
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.assignedWorkers, 0);
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'unstaffed');
+});
+
+test('settlers do not staff job sites owned by another settlement', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '20,0', q: 20, r: 0, terrain: 'towncenter', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+    createTile({ id: '21,0', q: 21, r: 0, terrain: 'water', variant: 'water_dock_a', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+  ]);
+  loadSettlementPopulation([
+    createSettlementPopulation('0,0', 1, 1),
+    createSettlementPopulation('20,0', 0, 0),
+  ]);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.assignedWorkTileId ?? null, null);
+  const snapshot = getWorkforceSnapshot();
+  const dockSite = snapshot.sites.find((site) => site.tileId === '21,0');
+  assert.equal(dockSite?.assignedWorkers, 0);
+  assert.equal(dockSite?.status, 'unstaffed');
+});
+
+test('settlers do not take repair work from another settlement', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '20,0', q: 20, r: 0, terrain: 'towncenter', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+    createTile({
+      id: '21,0',
+      q: 21,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      controlledBySettlementId: '20,0',
+      ownerSettlementId: '20,0',
+      condition: 50,
+      conditionState: 'worn',
+    }),
+  ]);
+  loadSettlementPopulation([
+    createSettlementPopulation('0,0', 1, 1),
+    createSettlementPopulation('20,0', 0, 0),
+  ]);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.assignedRole ?? null, null);
+  assert.equal(settlers[0]?.assignedWorkTileId ?? null, null);
+});
+
+test('job input status uses the owning settlement inventory', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '20,0', q: 20, r: 0, terrain: 'towncenter', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+    createTile({ id: '21,0', q: 21, r: 0, terrain: 'plains', variant: 'plains_bakery', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+  ]);
+  loadSettlementPopulation([
+    createSettlementPopulation('0,0', 0, 0),
+    createSettlementPopulation('20,0', 1, 1),
+  ]);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 20, r: 0, settlementId: '20,0' }),
+  ]);
+  depositResourceToStorage('0,0', 'grain', 1);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  const bakerySite = getWorkforceSnapshot().sites.find((site) => site.tileId === '21,0');
+  assert.equal(bakerySite?.assignedWorkers, 1);
+  assert.equal(bakerySite?.status, 'missing_input');
+  assert.deepEqual(bakerySite?.blockerReason, {
+    code: 'missing_input',
+    resourceType: 'grain',
+    amount: 1,
+    tileId: '21,0',
+  });
+});
+
+test('settlers skip unreachable storage and fetch inputs from the next reachable storage', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({
+      id: '2,0',
+      q: 2,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_warehouse',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+    }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'plains' }),
+    createTile({ id: '0,2', q: 0, r: 2, terrain: 'plains' }),
+    createTile({ id: '0,3', q: 0, r: 3, terrain: 'plains', variant: 'plains_warehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,4', q: 0, r: 4, terrain: 'plains', variant: 'plains_bakery' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  depositResourceToStorage('2,0', 'grain', 1);
+  depositResourceToStorage('0,3', 'grain', 1);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'fetching_input');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 0, r: 3 });
+  assert.equal(settlers[0]?.blockerReason ?? null, null);
+});
+
+test('settlers work docks from reachable shore access instead of entering a blocked dock side', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'water', variant: 'water_dock_d' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.assignedWorkTileId, '0,1');
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.blockerReason ?? null, null);
 });
 
 test('granary and bakery form a settler-driven production chain', () => {

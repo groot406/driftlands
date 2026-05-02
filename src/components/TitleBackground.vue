@@ -1,6 +1,12 @@
 <template>
   <div class="title-bg" ref="wrapper">
-    <canvas ref="canvas" class="absolute inset-0 w-full h-full" />
+    <div
+      v-if="backgroundImage"
+      class="title-bg__image"
+      :style="{ backgroundImage: `url(${backgroundImage})` }"
+    />
+    <canvas v-else ref="canvas" class="absolute inset-0 w-full h-full" />
+    <div v-if="backgroundImage" class="title-bg__vignette" />
   </div>
 </template>
 
@@ -30,7 +36,10 @@ const props = defineProps<{
   move: boolean
   speed?: number;
   blur?: number
+  backgroundImage?: string
 }>();
+
+const backgroundImage = props.backgroundImage;
 
 // Scroll configuration
 const SCROLL_SPEED = props.speed ?? (props.move ? 50 : 0); // reduced speed for subtle motion
@@ -189,6 +198,10 @@ function handleVisibility() {
 }
 
 onMounted(() => {
+  if (backgroundImage) {
+    return;
+  }
+
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   document.addEventListener('visibilitychange', handleVisibility);
@@ -215,4 +228,27 @@ onBeforeUnmount(() => {
   z-index: 0;
 }
 canvas { display: block; }
+
+.title-bg__image,
+.title-bg__vignette {
+  position: absolute;
+  inset: 0;
+}
+
+.title-bg__image {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(112%) contrast(112%) brightness(54%);
+  transform: scale(1.02);
+}
+
+.title-bg__vignette {
+  background:
+    radial-gradient(ellipse at center, rgba(2, 20, 50, 0.08) 0%, rgba(2, 20, 50, 0.2) 60%, rgba(1, 10, 40, 0.52) 86%, rgba(0, 10, 30, 0.92) 100%),
+    linear-gradient(180deg, rgba(0, 5, 6, 0.48) 0%, rgba(0, 5, 6, 0.06) 28%, rgba(0, 5, 6, 0.36) 100%);
+
+  background-blend-mode: overlay;
+  opacity: 0.9;
+}
 </style>

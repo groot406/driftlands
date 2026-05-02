@@ -7,6 +7,7 @@ import {
     isTileActive,
     isTileControlled,
 } from '../game/state/settlementSupportStore';
+import { getTileSettlementId } from '../game/settlement';
 import type { Hero } from '../../core/types/Hero';
 import type { ResourceAmount } from '../../core/types/Resource';
 import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
@@ -217,9 +218,7 @@ function countApiaryForageTiles(tile: Tile) {
 }
 
 function revealTilesAround(tile: Tile, radius: number) {
-    const settlementId = tile.ownerSettlementId
-        ?? tile.controlledBySettlementId
-        ?? (tile.terrain === 'towncenter' ? tile.id : null);
+    const settlementId = getTileSettlementId(tile);
 
     for (let dq = -radius; dq <= radius; dq++) {
         for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
@@ -233,7 +232,7 @@ function revealTilesAround(tile: Tile, radius: number) {
     }
 }
 
-export function promoteTileToTowncenter(tile: Tile) {
+export function promoteTileToTowncenter(tile: Tile, settlementId: string | null = getTileSettlementId(tile) ?? tile.id) {
     const previousTerrain = tile.terrain;
     const previousVariant = tile.variant;
     if (previousTerrain && previousTerrain !== 'towncenter') {
@@ -245,8 +244,8 @@ export function promoteTileToTowncenter(tile: Tile) {
     tile.isBaseTile = true;
     tile.variantSetMs = undefined;
     tile.discovered = true;
-    tile.ownerSettlementId = tile.id;
-    tile.controlledBySettlementId = tile.id;
+    tile.ownerSettlementId = settlementId;
+    tile.controlledBySettlementId = settlementId;
     terrainPositions.towncenter.add(tile.id);
     updateTileVariantIndex(tile.id, previousVariant, null);
 
@@ -405,8 +404,11 @@ const buildings: BuildingDefinition[] = [
                 { type: 'food', amount: 18 },
             ];
         },
-        onComplete(tile) {
-            promoteTileToTowncenter(tile);
+        onComplete(tile, _instance, participants) {
+            const settlementId = participants.find((hero) => !!hero.settlementId)?.settlementId
+                ?? getTileSettlementId(tile)
+                ?? tile.id;
+            promoteTileToTowncenter(tile, settlementId);
             onPopulationBuildingCompleted();
         },
     },

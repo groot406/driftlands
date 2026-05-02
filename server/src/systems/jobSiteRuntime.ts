@@ -10,6 +10,7 @@ import { planNearestStorageDeposits } from '../../../src/shared/buildings/storag
 import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
 import {
+    getSettlementResourceInventory,
     planResourceWithdrawalsAcrossStoragesForSettlement,
     resourceInventory,
     type StorageResourceTransfer,
@@ -73,6 +74,13 @@ export function listResolvedJobSites() {
     return resolved;
 }
 
+export function getJobSiteSettlementId(tile: Tile | null | undefined) {
+    return tile?.ownerSettlementId
+        ?? tile?.controlledBySettlementId
+        ?? (tile?.terrain === 'towncenter' ? tile.id : null)
+        ?? null;
+}
+
 export function isOnlineJobSite(tile: Tile) {
     return tile.discovered
         && !!tile.controlledBySettlementId
@@ -122,12 +130,18 @@ export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: numb
     };
 }
 
-function hasMissingInputs(resources: ResourceAmount[]) {
-    return resources.some((resource) => (resourceInventory[resource.type] ?? 0) < resource.amount);
+function getAvailableResourceAmount(tile: Tile, resource: ResourceAmount) {
+    const settlementId = getJobSiteSettlementId(tile);
+    const inventory = settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+    return inventory[resource.type] ?? 0;
 }
 
-function getMissingInputReason(resources: ResourceAmount[], tileId: string): SettlerBlockerReason | null {
-    const missing = resources.find((resource) => (resourceInventory[resource.type] ?? 0) < resource.amount);
+function hasMissingInputs(tile: Tile, resources: ResourceAmount[]) {
+    return resources.some((resource) => getAvailableResourceAmount(tile, resource) < resource.amount);
+}
+
+function getMissingInputReason(tile: Tile, resources: ResourceAmount[]): SettlerBlockerReason | null {
+    const missing = resources.find((resource) => getAvailableResourceAmount(tile, resource) < resource.amount);
     if (!missing) {
         return null;
     }
@@ -135,16 +149,16 @@ function getMissingInputReason(resources: ResourceAmount[], tileId: string): Set
     return {
         code: 'missing_input',
         resourceType: missing.type,
-        amount: Math.max(0, missing.amount - (resourceInventory[missing.type] ?? 0)),
-        tileId,
+        amount: Math.max(0, missing.amount - getAvailableResourceAmount(tile, missing)),
+        tileId: tile.id,
     };
 }
 
-function buildFreedCapacityByTileId(resources: ResourceAmount[]) {
+function buildFreedCapacityByTileId(tile: Tile, resources: ResourceAmount[]) {
     const freedCapacityByTileId = new Map<string, number>();
 
     for (const resource of resources) {
-        const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null, resource.type, resource.amount);
+        const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(getJobSiteSettlementId(tile), resource.type, resource.amount);
         const plannedAmount = plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
         if (plannedAmount < resource.amount) {
             return null;
@@ -166,12 +180,12 @@ export function hasStorageCapacity(tile: Tile, inputs: ResourceAmount[], outputs
         return true;
     }
 
-    const freedCapacityByTileId = buildFreedCapacityByTileId(inputs);
+    const freedCapacityByTileId = buildFreedCapacityByTileId(tile, inputs);
     if (freedCapacityByTileId === null) {
         return false;
     }
 
-    const settlementId = tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null;
+    const settlementId = getJobSiteSettlementId(tile);
     return planNearestStorageDeposits(tile.q, tile.r, settlementId, outputs, freedCapacityByTileId).remaining.length === 0;
 }
 
@@ -185,7 +199,7 @@ export function getSiteOperationalBlock(site: ResolvedJobSite, assignedWorkers: 
     }
 
     const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
-    if (hasMissingInputs(scaledInputs)) {
+    if (hasMissingInputs(site.tile, scaledInputs)) {
         return 'missing_input';
     }
 
@@ -231,7 +245,7 @@ export function getSiteBlockerReason(site: ResolvedJobSite, assignedWorkers: num
     }
 
     const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
-    const missingInput = getMissingInputReason(scaledInputs, site.tile.id);
+    const missingInput = getMissingInputReason(site.tile, scaledInputs);
     if (missingInput) {
         return missingInput;
     }

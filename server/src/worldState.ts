@@ -49,6 +49,7 @@ const SETTLEMENT_START_REVEAL_RADIUS = 3;
 const SETTLEMENT_STARTER_RESOURCES: ResourceAmount[] = [{ type: 'food', amount: STARTING_FOOD }];
 const SETTLEMENT_STARTER_HERO_TEMPLATES: StoryHeroId[] = ['h2', 'h3', 'h4', 'h1'];
 const MAX_UINT32 = 0xffffffff;
+const SETTLEMENT_STARTER_HERO_COUNT = 2;
 const DEFAULT_WORLD_DISCOVER_RADIUS = 1;
 // Keep debug restarts below snapshot sizes that can overwhelm the dev server.
 const MAX_WORLD_DISCOVER_RADIUS = 64;
@@ -255,45 +256,67 @@ class WorldState {
     return this.activeSeed;
   }
 
-  private ensureFounderHero(founder: { playerId: string; playerName: string } | null | undefined, q: number, r: number, settlementId: string) {
+  private getStarterHeroId(playerId: string, slot: number) {
+    return slot === 0 ? `founder:${playerId}` : `founder:${playerId}:${slot + 1}`;
+  }
+
+  private ensureStarterHeroes(founder: { playerId: string; playerName: string } | null | undefined, q: number, r: number, settlementId: string) {
     if (!founder) {
-      return null;
+      return [];
     }
 
-    const founderHeroId = `founder:${founder.playerId}`;
-    const existingHero = heroes.find((hero) => hero.id === founderHeroId || hero.playerId === founder.playerId);
-    if (existingHero) {
-      existingHero.settlementId = settlementId;
-      return existingHero;
+    const starterHeroes: Hero[] = [];
+    const starterHeroIdSet = new Set<string>();
+    let createdHero = false;
+
+    for (let slot = 0; slot < SETTLEMENT_STARTER_HERO_COUNT; slot++) {
+      const starterHeroId = this.getStarterHeroId(founder.playerId, slot);
+      const existingHero = heroes.find((hero) => (
+        hero.id === starterHeroId || (hero.playerId === founder.playerId && !starterHeroIdSet.has(hero.id))
+      ));
+
+      if (existingHero) {
+        existingHero.playerId = founder.playerId;
+        existingHero.playerName = founder.playerName;
+        existingHero.settlementId = settlementId;
+        starterHeroes.push(existingHero);
+        starterHeroIdSet.add(existingHero.id);
+        continue;
+      }
+
+      const templateId = SETTLEMENT_STARTER_HERO_TEMPLATES[heroes.length % SETTLEMENT_STARTER_HERO_TEMPLATES.length] ?? 'h2';
+      const hero = createHeroFromTemplate(templateId, { q, r });
+      if (!hero) {
+        continue;
+      }
+
+      hero.id = starterHeroId;
+      hero.name = `${founder.playerName}'s ${slot === 0 ? 'Founder' : 'Scout'}`;
+      hero.playerId = founder.playerId;
+      hero.playerName = founder.playerName;
+      hero.settlementId = settlementId;
+      heroes.push(hero);
+      starterHeroes.push(hero);
+      starterHeroIdSet.add(hero.id);
+      createdHero = true;
     }
 
-    const templateId = SETTLEMENT_STARTER_HERO_TEMPLATES[heroes.length % SETTLEMENT_STARTER_HERO_TEMPLATES.length] ?? 'h2';
-    const hero = createHeroFromTemplate(templateId, { q, r });
-    if (!hero) {
-      return null;
+    if (createdHero) {
+      broadcast({
+        type: 'hero:roster_update',
+        heroes: heroes.map(serializeHero),
+        timestamp: Date.now(),
+      } satisfies HeroRosterUpdateMessage);
     }
 
-    hero.id = founderHeroId;
-    hero.name = `${founder.playerName}'s Founder`;
-    hero.playerId = founder.playerId;
-    hero.playerName = founder.playerName;
-    hero.settlementId = settlementId;
-    heroes.push(hero);
-
-    broadcast({
-      type: 'hero:roster_update',
-      heroes: heroes.map(serializeHero),
-      timestamp: Date.now(),
-    } satisfies HeroRosterUpdateMessage);
-
-    return hero;
+    return starterHeroes;
   }
 
   foundSettlementAt(
     q: number,
     r: number,
     founder?: { playerId: string; playerName: string } | null,
-  ): { settlementId: string; q: number; r: number; founderHeroId?: string } | null {
+  ): { settlementId: string; q: number; r: number; founderHeroId?: string; founderHeroIds?: string[] } | null {
     if (!Number.isFinite(q) || !Number.isFinite(r)) {
       return null;
     }
@@ -311,10 +334,10 @@ class WorldState {
         dr++
       ) {
         discoverTile(ensureTileExists(centerQ + dq, centerR + dr), {
-          q: centerQ,
-          r: centerR,
+      q: centerQ,
+      r: centerR,
           settlementId: centerTile.id,
-        });
+    });
       }
     }
 
@@ -356,15 +379,16 @@ class WorldState {
 
     broadcastPopulationState();
 
-    const founderHero = this.ensureFounderHero(founder, centerTile.q, centerTile.r, centerTile.id);
+    const starterHeroes = this.ensureStarterHeroes(founder, centerTile.q, centerTile.r, centerTile.id);
 
-    const result: { settlementId: string; q: number; r: number; founderHeroId?: string } = {
+    const result: { settlementId: string; q: number; r: number; founderHeroId?: string; founderHeroIds?: string[] } = {
       settlementId: centerTile.id,
       q: centerTile.q,
       r: centerTile.r,
     };
-    if (founderHero) {
-      result.founderHeroId = founderHero.id;
+    if (starterHeroes.length > 0) {
+      result.founderHeroId = starterHeroes[0].id;
+      result.founderHeroIds = starterHeroes.map((hero) => hero.id);
     }
 
     return result;

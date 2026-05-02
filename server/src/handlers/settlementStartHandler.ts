@@ -16,6 +16,7 @@ import type {
   SettlementPlayerFoundMessage,
   SettlementStartOptionsMessage,
   SettlementStartRequestOptionsMessage,
+  WorldSnapshotMessage,
   RunSnapshotMessage,
   WorldRestartMessage,
 } from '../../../src/shared/protocol';
@@ -197,7 +198,12 @@ export class ServerSettlementStartHandler {
 
     const owner = playerSettlementState.getSettlementOwner(founded.settlementId);
     coopState.updatePlayerSettlement(playerId, founded.settlementId);
-    if (founded.founderHeroId && coopState.claimHero(socket.id, founded.founderHeroId)) {
+    const starterHeroIds = founded.founderHeroIds ?? (founded.founderHeroId ? [founded.founderHeroId] : []);
+    let claimedStarterHero = false;
+    for (const heroId of starterHeroIds) {
+      claimedStarterHero = coopState.claimHero(socket.id, heroId) || claimedStarterHero;
+    }
+    if (claimedStarterHero) {
       this.broadcastCoopSnapshot();
     }
 
@@ -221,6 +227,12 @@ export class ServerSettlementStartHandler {
         timestamp: Date.now(),
       } satisfies RunSnapshotMessage);
     }
+
+    sendToSocket(socket, {
+      type: 'world:snapshot',
+      ...worldState.getSnapshot(),
+      timestamp: Date.now(),
+    } satisfies WorldSnapshotMessage);
 
     this.io.emit('message', {
       type: 'settlement:player_found',

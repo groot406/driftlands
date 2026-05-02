@@ -33,20 +33,24 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
     ) {
         const surface = frame.effectSurface;
         surface.ctx.clearRect(0, 0, surface.canvas.width, surface.canvas.height);
-        this.ensureScratchWorldComposite(frame);
+        if (frame.quality.enableMotionBlur) {
+            this.ensureScratchWorldComposite(frame);
+        }
 
         deps.applyEffectPipeline(context);
         return context.runtime.motionBlur ?? null;
     }
 
-    compositeToFinal(frame: TFrame) {
-        this.ensureScratchWorldComposite(frame);
+    compositeToFinal(frame: TFrame, includeEffectSurface = true) {
         const ctx = frame.finalCtx;
         ctx.globalAlpha = 1;
         ctx.filter = 'none';
         ctx.imageSmoothingEnabled = false;
 
-        if (frame.quality.enableManualShadowComposite) {
+        if (!frame.quality.enableManualShadowComposite && !frame.quality.enableMotionBlur) {
+            this.drawWorldLayers(ctx, frame);
+        } else if (frame.quality.enableManualShadowComposite) {
+            this.ensureScratchWorldComposite(frame);
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 3;
             ctx.shadowBlur = 8;
@@ -70,10 +74,13 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
         } else {
+            this.ensureScratchWorldComposite(frame);
             ctx.drawImage(frame.worldCanvas, 0, 0);
         }
 
-        ctx.drawImage(frame.effectSurface.canvas, 0, 0);
+        if (includeEffectSurface) {
+            ctx.drawImage(frame.effectSurface.canvas, 0, 0);
+        }
     }
 
     private ensureScratchWorldComposite(frame: TFrame) {
@@ -90,11 +97,15 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
         frame.worldCtx.globalAlpha = 1;
         frame.worldCtx.filter = 'none';
         frame.worldCtx.imageSmoothingEnabled = false;
-        frame.worldCtx.drawImage(frame.terrainSurface.canvas, 0, 0);
-        frame.worldCtx.drawImage(frame.overlayUnderlaySurface.canvas, 0, 0);
-        frame.worldCtx.drawImage(frame.particleUnderlaySurface.canvas, 0, 0);
-        frame.worldCtx.drawImage(frame.entitySurface.canvas, 0, 0);
-        frame.worldCtx.drawImage(frame.overlayTopSurface.canvas, 0, 0);
-        frame.worldCtx.drawImage(frame.particleOverlaySurface.canvas, 0, 0);
+        this.drawWorldLayers(frame.worldCtx, frame);
+    }
+
+    private drawWorldLayers(ctx: CanvasRenderingContext2D, frame: TFrame) {
+        ctx.drawImage(frame.terrainSurface.canvas, 0, 0);
+        ctx.drawImage(frame.overlayUnderlaySurface.canvas, 0, 0);
+        ctx.drawImage(frame.particleUnderlaySurface.canvas, 0, 0);
+        ctx.drawImage(frame.entitySurface.canvas, 0, 0);
+        ctx.drawImage(frame.overlayTopSurface.canvas, 0, 0);
+        ctx.drawImage(frame.particleOverlaySurface.canvas, 0, 0);
     }
 }

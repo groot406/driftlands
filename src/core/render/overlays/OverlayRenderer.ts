@@ -6,7 +6,6 @@ import { getStorageCapacity } from '../../../shared/game/storage';
 import { getScoutSurveyProgress } from '../../../shared/game/scoutResources';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../../../shared/buildings/storage';
 import { camera, axialToPixel, hexDistance } from '../../camera';
-import { getTextIndicators } from '../../textIndicators';
 import type { Hero } from '../../types/Hero';
 import type { ResourceType } from '../../types/Resource';
 import type { TaskInstance } from '../../types/Task';
@@ -14,7 +13,6 @@ import type { Tile } from '../../types/Tile';
 import type { RenderPassContext } from '../RenderPassContext';
 import { GROWTH_HYBRID_STYLE } from '../visualStyle';
 
-const TEXT_INDICATOR_STACK_GAP_PX = 18;
 const SCOUTED_TILE_STYLE = {
     stroke: 'rgba(203, 213, 225, 0.46)',
     foundStroke: 'rgba(125, 211, 252, 0.82)',
@@ -129,7 +127,6 @@ export class OverlayRenderer {
     ) {
         this.drawUnderlay(context, frame, opts, deps);
         this.drawTop(context, frame, opts, deps);
-        this.drawScreen(context, frame, deps);
     }
 
     drawDepthEdgeHighlights(
@@ -501,20 +498,6 @@ export class OverlayRenderer {
         }
     }
 
-    private drawScreen(
-        context: RenderPassContext,
-        frame: RenderFrameLike,
-        deps: OverlayRendererDependencies,
-    ) {
-        const overlay = context.overlayTopSurface;
-        if (!overlay) return;
-
-        overlay.ctx.save();
-        overlay.ctx.scale(deps.dpr, deps.dpr);
-        this.drawTextIndicators(overlay.ctx, frame.effectNowMs, frame.cameraFx, deps);
-        overlay.ctx.restore();
-    }
-
     private drawActiveTaskHighlights(
         ctx: CanvasRenderingContext2D,
         tiles: Tile[],
@@ -820,57 +803,4 @@ export class OverlayRenderer {
         ctx.restore();
     }
 
-    private drawTextIndicators(
-        ctx: CanvasRenderingContext2D,
-        nowMs: number,
-        cameraFx: CameraCompositeStateLike,
-        deps: OverlayRendererDependencies,
-    ) {
-        for (const indicator of getTextIndicators()) {
-            const anchorQ = indicator.position.q;
-            const anchorR = indicator.position.r;
-            const dist = hexDistance(camera, { q: anchorQ, r: anchorR });
-            if (dist > camera.radius + 1) continue;
-
-            let worldAnchor = indicator.worldAnchor;
-            if (!worldAnchor) {
-                const { x, y } = axialToPixel(anchorQ, anchorR);
-                const pos = indicator.position.currentOffset || { x: 0, y: 0 };
-                worldAnchor = {
-                    x: x + pos.x - (deps.heroFrameSize / 2),
-                    y: y + pos.y - (deps.heroFrameSize * 1.5) - 8,
-                };
-                indicator.worldAnchor = worldAnchor;
-            }
-
-            const progress = Math.min(1, (nowMs - indicator.created) / indicator.duration);
-            const anchor = deps.projectWorldToScreenPixels(worldAnchor.x, worldAnchor.y, cameraFx);
-            const stackOffsetY = (indicator.stackIndex ?? 0) * TEXT_INDICATOR_STACK_GAP_PX;
-            const floatY = anchor.y - stackOffsetY - (progress * 28);
-            const alpha = 1 - progress;
-
-            if (deps.canvas) {
-                const width = deps.canvas.width / deps.dpr;
-                const height = deps.canvas.height / deps.dpr;
-                const margin = 48;
-                if (anchor.x < -margin || anchor.x > width + margin || floatY < -margin || floatY > height + margin) {
-                    continue;
-                }
-            }
-
-            ctx.save();
-            ctx.globalAlpha = Math.max(0, alpha);
-            ctx.font = "12px 'Press Start 2P', 'VT323', 'Courier New', monospace";
-            ctx.fillStyle = indicator.color || '#ffe066';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(24, 16, 8, 0.45)';
-            ctx.strokeText(indicator.text, anchor.x, floatY);
-            ctx.shadowColor = 'rgba(24, 16, 8, 0.7)';
-            ctx.shadowBlur = 4;
-            ctx.fillText(indicator.text, anchor.x, floatY);
-            ctx.restore();
-        }
-    }
 }

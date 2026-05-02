@@ -341,6 +341,7 @@ function cancelPendingMenu() {
 let lastDrawTime = 0;
 const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
+const FRAME_INTERVAL_TOLERANCE_MS = 0.5;
 
 function clearPathPreview() {
   pathCoords.value = [];
@@ -620,10 +621,26 @@ function handlePointerLeaveEvent() {
   clearPathPreview();
 }
 
-function animationLoop() {
+function shouldDrawFrame(frameNowMs: number) {
+  if (lastDrawTime === 0) {
+    lastDrawTime = frameNowMs;
+    return true;
+  }
+
+  const elapsedMs = frameNowMs - lastDrawTime;
+  if (elapsedMs + FRAME_INTERVAL_TOLERANCE_MS < FRAME_INTERVAL) {
+    return false;
+  }
+
+  lastDrawTime = elapsedMs > FRAME_INTERVAL * 4
+    ? frameNowMs
+    : lastDrawTime + FRAME_INTERVAL;
+  return true;
+}
+
+function animationLoop(frameNowMs = performance.now()) {
   const movementNowMs = Date.now();
   const effectNowMs = sampleGameFeelTime(movementNowMs);
-  const deltaTime = movementNowMs - lastDrawTime;
   const hitStopActive = isHitStopActive(movementNowMs);
   const cameraMoving = isCameraMoving();
 
@@ -631,9 +648,7 @@ function animationLoop() {
   updateHeroMovements(movementNowMs);
 
   // Cap rendering separately from movement updates.
-  if (deltaTime >= FRAME_INTERVAL) {
-    lastDrawTime = movementNowMs;
-
+  if (shouldDrawFrame(frameNowMs)) {
     if (!hitStopActive && lastPointerClient && !showTaskMenu.value && (isKeyboardNavigating() || cameraMoving)) {
       updateHoverAt(lastPointerClient.x, lastPointerClient.y);
     }

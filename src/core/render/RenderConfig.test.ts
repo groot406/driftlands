@@ -27,6 +27,7 @@ function makeEnvironment(overrides: Partial<RenderQualityEnvironment> = {}): Ren
         bloomEnabled: true,
         edgeVignetteEnabled: true,
         manualShadowComposite: true,
+        expensiveEffectsEnabled: true,
         ...overrides,
     };
 }
@@ -82,4 +83,26 @@ test('getResolvedRenderQualityProfile exposes tile relief as a feature override'
     renderFeatureOverrideStore.tileRelief = 'off';
     const disabledProfile = getResolvedRenderQualityProfile(0, makeEnvironment());
     assert.equal(disabledProfile.enableTileRelief, false);
+});
+
+test('getResolvedRenderQualityProfile disables filter-heavy effects when expensive effects are unsupported', () => {
+    resetRenderFeatureOverrides();
+
+    const profile = getResolvedRenderQualityProfile(0, makeEnvironment({
+        motionBlurEnabled: false,
+        bloomEnabled: false,
+        edgeVignetteEnabled: false,
+        manualShadowComposite: false,
+        expensiveEffectsEnabled: false,
+    }));
+
+    assert.equal(profile.enableMotionBlur, false);
+    assert.equal(profile.enableBloom, false);
+    assert.equal(profile.enableClouds, false);
+    assert.equal(profile.cloudsEnabled, false);
+    assert.equal(profile.enableBackdropGlows, false);
+    assert.equal(profile.enableHeroAuras, false);
+    assert.equal(profile.enableFogShimmer, false);
+    assert.equal(profile.enableManualShadowComposite, false);
+    assert.equal(profile.overlaySoftness, 0);
 });

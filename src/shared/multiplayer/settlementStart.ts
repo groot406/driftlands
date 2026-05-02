@@ -420,6 +420,21 @@ export function generateSettlementStartTerrainTiles(options: {
     return [];
   }
 
+  const resolvePreviewOrigin = (q: number, r: number) => {
+    let best = points[0]!;
+    let bestDistance = axialDistanceCoords(q, r, best.q, best.r);
+
+    for (const point of points.slice(1)) {
+      const distance = axialDistanceCoords(q, r, point.q, point.r);
+      if (distance < bestDistance) {
+        best = point;
+        bestDistance = distance;
+      }
+    }
+
+    return { q: best.q, r: best.r };
+  };
+
   const projected = points.map((point) => ({
     x: point.q + point.r * 0.5,
     y: point.r * 0.866,
@@ -447,7 +462,7 @@ export function generateSettlementStartTerrainTiles(options: {
         id: createSettlementId(q, r),
         q,
         r,
-        terrain: options.resolveTerrain(q, r),
+        terrain: options.resolveTerrain(q, r, resolvePreviewOrigin(q, r)),
       });
     }
   }

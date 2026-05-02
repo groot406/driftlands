@@ -5,11 +5,25 @@ import type {
 } from '../../shared/protocol.ts';
 import { addNotification } from '../../store/notificationStore.ts';
 import { applySettlementFoundResult, replaceSettlementStartOptions, upsertSettlementStartMarker } from '../../store/settlementStartStore.ts';
+import { jumpCamera } from '../camera.ts';
 import { clientMessageRouter } from '../messageRouter.ts';
 import { currentPlayerId } from '../socket.ts';
 
 class SettlementStartHandler {
   private initialized = false;
+
+  private focusCameraOnSettlement(settlementId: string | null, settlements: Array<{ settlementId: string; q: number; r: number }>): void {
+    if (!settlementId) {
+      return;
+    }
+
+    const settlement = settlements.find((marker) => marker.settlementId === settlementId);
+    if (!settlement) {
+      return;
+    }
+
+    jumpCamera(settlement.q, settlement.r);
+  }
 
   init(): void {
     if (this.initialized) {
@@ -33,6 +47,7 @@ class SettlementStartHandler {
       settlements: message.settlements,
       ...(message.terrainTiles ? { terrainTiles: message.terrainTiles } : {}),
     });
+    this.focusCameraOnSettlement(message.currentSettlementId, message.settlements);
   }
 
   private handleFoundResult(message: SettlementFoundResultMessage): void {
@@ -59,6 +74,7 @@ class SettlementStartHandler {
     });
 
     if (message.playerId === currentPlayerId.value) {
+      jumpCamera(message.q, message.r);
       addNotification({
         type: 'settlement',
         title: 'Settlement founded',

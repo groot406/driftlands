@@ -3,8 +3,9 @@ import {
     graphicsStore,
     isBloomEffectEnabled,
     isMotionBlurEffectEnabled,
-    shouldUseCanvasDropShadow,
     shouldUseEdgeVignette,
+    shouldUseManualCanvasShadowComposite,
+    shouldUseSafariLightRendering,
 } from '../../store/graphicsStore';
 import { isRenderFeatureForcedOn, resolveRenderFeatureEnabled } from '../../store/renderFeatureStore';
 import type { DebugQualityLabel, RenderQualityName, RenderQualityProfile, RenderStressTier } from './RenderTypes';
@@ -17,6 +18,7 @@ export interface RenderQualityEnvironment {
     bloomEnabled: boolean;
     edgeVignetteEnabled: boolean;
     manualShadowComposite: boolean;
+    expensiveEffectsEnabled: boolean;
 }
 
 export interface RenderConfig {
@@ -181,7 +183,8 @@ export function getDefaultRenderQualityEnvironment(): RenderQualityEnvironment {
         motionBlurEnabled: isMotionBlurEffectEnabled(),
         bloomEnabled: isBloomEffectEnabled(),
         edgeVignetteEnabled: shouldUseEdgeVignette(),
-        manualShadowComposite: !shouldUseCanvasDropShadow(),
+        manualShadowComposite: shouldUseManualCanvasShadowComposite(),
+        expensiveEffectsEnabled: !shouldUseSafariLightRendering(),
     };
 }
 
@@ -194,6 +197,7 @@ export function getResolvedRenderQualityProfile(
     const bloomEnabled = baseProfile.enableBloom && environment.bloomEnabled;
     const edgeVignetteEnabled = baseProfile.enableEdgeVignette && environment.edgeVignetteEnabled;
     const particlesEnabled = baseProfile.enableParticles && environment.particlesEnabled;
+    const expensiveEffectsEnabled = environment.expensiveEffectsEnabled;
 
     return applyRenderFeatureOverrides({
         ...baseProfile,
@@ -206,7 +210,16 @@ export function getResolvedRenderQualityProfile(
         enableBloom: bloomEnabled,
         enableParticles: particlesEnabled,
         enableEdgeVignette: edgeVignetteEnabled,
-        enableManualShadowComposite: environment.manualShadowComposite,
+        enableBackdropGlows: baseProfile.enableBackdropGlows && expensiveEffectsEnabled,
+        enableClouds: baseProfile.enableClouds && expensiveEffectsEnabled,
+        cloudsEnabled: baseProfile.cloudsEnabled && expensiveEffectsEnabled,
+        enableHeroAuras: baseProfile.enableHeroAuras && expensiveEffectsEnabled,
+        auraEnabled: baseProfile.auraEnabled && expensiveEffectsEnabled,
+        enableFogShimmer: baseProfile.enableFogShimmer && expensiveEffectsEnabled,
+        fogShimmerEnabled: baseProfile.fogShimmerEnabled && expensiveEffectsEnabled,
+        expensiveAtmosphere: baseProfile.expensiveAtmosphere && expensiveEffectsEnabled,
+        overlaySoftness: expensiveEffectsEnabled ? baseProfile.overlaySoftness : 0,
+        enableManualShadowComposite: environment.manualShadowComposite && expensiveEffectsEnabled,
     });
 }
 
