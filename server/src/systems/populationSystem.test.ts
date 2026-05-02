@@ -433,6 +433,96 @@ test('settlers prefer their favored pub drink when both options are stocked', ()
   assert.ok((settlers[0]?.happiness ?? 0) > 40);
 });
 
+test('settlers do not use a pub without an assigned worker', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 40,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'beer', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.notEqual(settlers[0]?.activity, 'commuting_social');
+  assert.notEqual(settlers[0]?.activity, 'socializing');
+  assert.equal(resourceInventory.beer, 1);
+});
+
+test('settlers do not use a pub when no drinks are stocked', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 40,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'publican',
+      q: 1,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.notEqual(settlers[0]?.activity, 'commuting_social');
+  assert.notEqual(settlers[0]?.activity, 'socializing');
+  assert.equal(settlers[0]?.socialTileId ?? null, null);
+});
+
 test('settlers only consume food after they arrive at storage', () => {
   loadWorld([
     createTowncenterTile(),
