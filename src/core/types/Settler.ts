@@ -6,12 +6,28 @@ export type SettlerActivity =
     | 'sleeping'
     | 'commuting_home'
     | 'commuting_work'
+    | 'commuting_social'
     | 'working'
+    | 'socializing'
     | 'repairing'
     | 'fetching_food'
     | 'fetching_input'
     | 'delivering'
     | 'waiting';
+
+export type DrinkPreference = 'beer' | 'wine' | 'either';
+
+export type SettlerTrait =
+    | 'long_worker'
+    | 'short_worker'
+    | 'light_sleeper'
+    | 'heavy_sleeper'
+    | 'social'
+    | 'independent'
+    | 'easy_to_please'
+    | 'hard_to_please'
+    | 'big_eater'
+    | 'small_eater';
 
 export type SettlerBlockerCode =
     | 'missing_input'
@@ -49,8 +65,12 @@ export interface Settler {
     stateSinceMs: number;
     hungerMs: number;
     fatigueMs: number;
+    happiness: number;
+    drinkPreference?: DrinkPreference;
+    traits?: SettlerTrait[];
     workProgressMs: number;
     carryingKind: 'input' | 'output' | null;
+    socialTileId?: string | null;
     movement?: HeroMovementState;
     carryingPayload?: ResourceAmount;
 }

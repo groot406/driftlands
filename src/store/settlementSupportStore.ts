@@ -2,6 +2,8 @@ import { terrainPositions, variantPositions } from '../core/terrainRegistry';
 import { worldVersion, tileIndex } from '../core/world';
 import { axialDistanceCoords } from '../shared/game/hex';
 import { isTileWalkable } from '../shared/game/navigation';
+import { getTileSettlementId as getTileSettlementKey } from '../shared/game/settlement';
+import { isTileSupportEnabled, testModeSettings } from '../shared/game/testMode.ts';
 import { SIDE_NAMES, type Tile, type TileActivationState, type TileSupportBand } from '../core/types/Tile';
 
 // Mission 4 asks the first settlement to push to 100 discovered tiles before
@@ -164,6 +166,28 @@ function getWatchtowerTiles(): Tile[] {
     return watchtowerTiles;
 }
 
+function getTownCenterSettlementId(tile: Tile | null | undefined) {
+    return getTileSettlementId(tile) ?? tile?.id ?? null;
+}
+
+function buildTownCentersBySettlementId(townCenters: Tile[]) {
+    const townCentersBySettlementId = new Map<string, Tile[]>();
+
+    for (const townCenter of townCenters) {
+        const settlementId = getTownCenterSettlementId(townCenter);
+        if (!settlementId) {
+            continue;
+        }
+
+        const settlementTownCenters = townCentersBySettlementId.get(settlementId) ?? [];
+        settlementTownCenters.push(townCenter);
+        settlementTownCenters.sort((a, b) => compareTileIds(a.id, b.id));
+        townCentersBySettlementId.set(settlementId, settlementTownCenters);
+    }
+
+    return townCentersBySettlementId;
+}
+
 function getCampfireTiles(): Tile[] {
     const campfireTiles: Tile[] = [];
     for (const variantKey of CAMPFIRE_VARIANT_KEYS) {
@@ -226,7 +250,7 @@ function isInfrastructureTile(tile: Tile | null | undefined) {
 }
 
 function getTileSettlementId(tile: Tile | null | undefined) {
-    return tile?.ownerSettlementId ?? tile?.controlledBySettlementId ?? null;
+    return getTileSettlementKey(tile);
 }
 
 function settlementCanClaimTile(tile: Tile | null | undefined, settlementId: string | null = null) {
@@ -236,6 +260,23 @@ function settlementCanClaimTile(tile: Tile | null | undefined, settlementId: str
 
     const tileSettlementId = getTileSettlementId(tile);
     return !tileSettlementId || tileSettlementId === settlementId;
+}
+
+function computeSettlementReachFromTownCenters(
+    townCenters: Array<Pick<Tile, 'q' | 'r'>>,
+    settlementId: string,
+    canActivateWatchtower: (tile: Tile) => boolean,
+    requireActiveInfrastructure: boolean = true,
+) {
+    if (!townCenters.length) {
+        return new Set<string>();
+    }
+
+    return extendReachWithInfrastructure(
+        computeReachTileIdsFromTownCenters(townCenters, canActivateWatchtower),
+        settlementId,
+        requireActiveInfrastructure,
+    );
 }
 
 function extendReachWithInfrastructure(
@@ -491,17 +532,8 @@ function selectActiveTiles(
 ): SupportSelectionResult {
     const activeNonTowncenterIds = new Set<string>();
     const activeWatchtowerIds = new Set<string>();
-    const remainingCapacityBySettlementId = new Map<string, number>();
-    const supportCapacityBySettlementId = new Map<string, number>();
-
-    for (const townCenter of townCenters) {
-        const settlers = typeof populationCurrent === 'number'
-            ? populationCurrent
-            : populationCurrent[townCenter.id] ?? 0;
-        const baseCapacity = TC_FREE_ACTIVE_TILES + (Math.max(0, settlers) * SUPPORT_PER_SETTLER);
-        remainingCapacityBySettlementId.set(townCenter.id, baseCapacity);
-        supportCapacityBySettlementId.set(townCenter.id, baseCapacity);
-    }
+    const remainingCapacityBySettlementId = getBaseSupportCapacityBySettlementId(townCenters, populationCurrent);
+    const supportCapacityBySettlementId = new Map(remainingCapacityBySettlementId);
 
     const candidates = Array.from(controlledTileIds)
         .map((tileId) => tileIndex[tileId])
@@ -549,6 +581,40 @@ function selectActiveTiles(
     };
 }
 
+function selectAllControlledTiles(
+    controlledTileIds: Set<string>,
+    activeWatchtowerIds: Set<string>,
+    ownerByTileId: Map<string, string | null>,
+): SupportSelectionResult {
+    const activeNonTowncenterIds = new Set<string>();
+    const supportCapacityBySettlementId = new Map<string, number>();
+
+    for (const tileId of controlledTileIds) {
+        const tile = tileIndex[tileId];
+        if (!tile || tile.terrain === 'towncenter') {
+            continue;
+        }
+
+        activeNonTowncenterIds.add(tile.id);
+        const settlementId = ownerByTileId.get(tile.id);
+        if (!settlementId || !isSupportCountedTile(tile)) {
+            continue;
+        }
+
+        supportCapacityBySettlementId.set(
+            settlementId,
+            (supportCapacityBySettlementId.get(settlementId) ?? 0) + getSupportTileCost(tile),
+        );
+    }
+
+    return {
+        supportCapacity: Array.from(supportCapacityBySettlementId.values()).reduce((sum, capacity) => sum + capacity, 0),
+        supportCapacityBySettlementId,
+        activeNonTowncenterIds,
+        activeWatchtowerIds: new Set(activeWatchtowerIds),
+    };
+}
+
 function getOwnedDiscoveredTiles() {
     return Object.values(tileIndex)
         .filter((tile) => tile.discovered && !!tile.terrain);
@@ -560,7 +626,7 @@ function chooseOwnerSettlement(
     townCenters: Tile[],
 ): string | null {
     if (tile.terrain === 'towncenter') {
-        return tile.id;
+        return getTownCenterSettlementId(tile);
     }
 
     if (tile.ownerSettlementId) {
@@ -572,19 +638,24 @@ function chooseOwnerSettlement(
 
     for (const townCenter of townCenters) {
         if (townCenter.id === tile.id && tile.terrain === 'towncenter') continue; // Should not happen given check above
-        
-        const reach = staticReachBySettlementId.get(townCenter.id);
+
+        const settlementId = getTownCenterSettlementId(townCenter);
+        if (!settlementId) {
+            continue;
+        }
+
+        const reach = staticReachBySettlementId.get(settlementId);
         if (!reach?.has(tile.id)) continue;
 
         const distance = axialDistanceCoords(tile.q, tile.r, townCenter.q, townCenter.r);
         if (distance < bestDistance) {
             bestDistance = distance;
-            bestSettlementId = townCenter.id;
+            bestSettlementId = settlementId;
             continue;
         }
 
-        if (distance === bestDistance && bestSettlementId && townCenter.id < bestSettlementId) {
-            bestSettlementId = townCenter.id;
+        if (distance === bestDistance && bestSettlementId && settlementId < bestSettlementId) {
+            bestSettlementId = settlementId;
         }
     }
 
@@ -697,9 +768,16 @@ function getSettlementPopulation(populationCurrent: SettlementPopulationInput, s
 function getBaseSupportCapacityBySettlementId(townCenters: Tile[], populationCurrent: SettlementPopulationInput) {
     const supportCapacityBySettlementId = new Map<string, number>();
     for (const townCenter of townCenters) {
+        const settlementId = getTownCenterSettlementId(townCenter);
+        if (!settlementId) {
+            continue;
+        }
+
         supportCapacityBySettlementId.set(
-            townCenter.id,
-            TC_FREE_ACTIVE_TILES + (Math.max(0, getSettlementPopulation(populationCurrent, townCenter.id)) * SUPPORT_PER_SETTLER),
+            settlementId,
+            (supportCapacityBySettlementId.get(settlementId) ?? 0)
+                + TC_FREE_ACTIVE_TILES
+                + (Math.max(0, getSettlementPopulation(populationCurrent, settlementId)) * SUPPORT_PER_SETTLER),
         );
     }
 
@@ -707,18 +785,18 @@ function getBaseSupportCapacityBySettlementId(townCenters: Tile[], populationCur
 }
 
 export function recalculateSettlementSupport(populationCurrent: SettlementPopulationInput, hungerMs: number): RecalculateResult {
+    const supportAllControlledTiles = isTileSupportEnabled(testModeSettings);
     const townCenters = getTownCenters();
-    const townCenterBySettlementId = new Map<string, Tile>(townCenters.map((townCenter) => [townCenter.id, townCenter]));
+    const townCentersBySettlementId = buildTownCentersBySettlementId(townCenters);
+    const townCenterBySettlementId = new Map<string, Tile>(
+        Array.from(townCentersBySettlementId.entries()).map(([settlementId, settlementTownCenters]) => [settlementId, settlementTownCenters[0]!]),
+    );
     const baseSupportCapacityBySettlementId = getBaseSupportCapacityBySettlementId(townCenters, populationCurrent);
     const staticReachBySettlementId = new Map<string, Set<string>>();
-    for (const townCenter of townCenters) {
+    for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
         staticReachBySettlementId.set(
-            townCenter.id,
-            extendReachWithInfrastructure(
-                computeReachTileIdsFromTownCenters([townCenter], () => true),
-                townCenter.id,
-                false,
-            ),
+            settlementId,
+            computeSettlementReachFromTownCenters(settlementTownCenters, settlementId, () => true, false),
         );
     }
 
@@ -727,7 +805,11 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
         ownerByTileId.set(tile.id, chooseOwnerSettlement(tile, staticReachBySettlementId, townCenters));
     }
 
-    let activeWatchtowerIds = new Set(getWatchtowerTiles().map((tile) => tile.id));
+    let activeWatchtowerIds = new Set(
+        supportAllControlledTiles
+            ? getWatchtowerTiles().map((tile) => tile.id)
+            : getWatchtowerTiles().map((tile) => tile.id),
+    );
     let controlledByTileId = new Map<string, string | null>();
     let baseSelection: SupportSelectionResult = {
         supportCapacity: Array.from(baseSupportCapacityBySettlementId.values()).reduce((sum, capacity) => sum + capacity, 0),
@@ -738,15 +820,13 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
 
     for (let iteration = 0; iteration <= getWatchtowerTiles().length + 1; iteration++) {
         const liveReachBySettlementId = new Map<string, Set<string>>();
-        for (const townCenter of townCenters) {
+        for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
             liveReachBySettlementId.set(
-                townCenter.id,
-                extendReachWithInfrastructure(
-                    computeReachTileIdsFromTownCenters(
-                        [townCenter],
-                        (watchtower) => activeWatchtowerIds.has(watchtower.id),
-                    ),
-                    townCenter.id,
+                settlementId,
+                computeSettlementReachFromTownCenters(
+                    settlementTownCenters,
+                    settlementId,
+                    (watchtower) => activeWatchtowerIds.has(watchtower.id),
                 ),
             );
         }
@@ -773,13 +853,15 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
             }
         }
 
-        baseSelection = selectActiveTiles(
-            townCenters,
-            populationCurrent,
-            controlledTileIds,
-            townCenterBySettlementId,
-            ownerByTileId,
-        );
+        baseSelection = supportAllControlledTiles
+            ? selectAllControlledTiles(controlledTileIds, activeWatchtowerIds, ownerByTileId)
+            : selectActiveTiles(
+                townCenters,
+                populationCurrent,
+                controlledTileIds,
+                townCenterBySettlementId,
+                ownerByTileId,
+            );
 
         if (setsEqual(baseSelection.activeWatchtowerIds, activeWatchtowerIds)) {
             activeWatchtowerIds = baseSelection.activeWatchtowerIds;
@@ -945,22 +1027,16 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
 export function computeControlledTileIds() {
     const allReach = new Set<string>();
     const townCenters = getTownCenters();
-    const townCenterBySettlementId = new Map<string, Tile>(townCenters.map((townCenter) => [townCenter.id, townCenter]));
+    const townCentersBySettlementId = buildTownCentersBySettlementId(townCenters);
 
     // Use recalculate logic to ensure non-overlap
     const staticReachBySettlementId = new Map<string, Set<string>>();
-    for (const townCenter of townCenters) {
+    for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
         staticReachBySettlementId.set(
-            townCenter.id,
-            extendReachWithInfrastructure(
-                computeReachTileIdsFromTownCenters([townCenter], () => true),
-                townCenter.id,
-                false,
-            ),
+            settlementId,
+            computeSettlementReachFromTownCenters(settlementTownCenters, settlementId, () => true, false),
         );
     }
-
-    const ownerByTileId = new Map<string, string | null>();
     for (const tile of getOwnedDiscoveredTiles()) {
         const ownerSettlementId = chooseOwnerSettlement(tile, staticReachBySettlementId, townCenters);
         if (ownerSettlementId) {
@@ -1021,29 +1097,33 @@ export function computeControlledTileIdsForSettlement(settlementId: string | nul
         return new Set<string>();
     }
 
-    const townCenter = tileIndex[settlementId];
-    // If we have the town center in memory, we can use it.
-    // If not discovered, we still want to compute the reach if we know the coordinates.
-    let q: number, r: number;
-    if (townCenter) {
-        q = townCenter.q;
-        r = townCenter.r;
-    } else {
-        const separatorIndex = settlementId.indexOf(',');
-        if (separatorIndex === -1) return new Set<string>();
-        q = Number(settlementId.slice(0, separatorIndex));
-        r = Number(settlementId.slice(separatorIndex + 1));
-        if (!Number.isFinite(q) || !Number.isFinite(r)) return new Set<string>();
-    }
-
-    // Ensure we use a settlement-restricted reach calculation
-    const reach = extendReachWithInfrastructure(
-        computeReachTileIdsFromTownCenters(
-            [{ q, r }],
+    const settlementTownCenters = getTownCenters().filter((townCenter) => getTownCenterSettlementId(townCenter) === settlementId);
+    const reach = settlementTownCenters.length > 0
+        ? computeSettlementReachFromTownCenters(
+            settlementTownCenters,
+            settlementId,
             (watchtower) => isTileActive(watchtower),
-        ),
-        settlementId,
-    );
+        )
+        : (() => {
+            const townCenter = tileIndex[settlementId];
+            let q: number, r: number;
+            if (townCenter) {
+                q = townCenter.q;
+                r = townCenter.r;
+            } else {
+                const separatorIndex = settlementId.indexOf(',');
+                if (separatorIndex === -1) return new Set<string>();
+                q = Number(settlementId.slice(0, separatorIndex));
+                r = Number(settlementId.slice(separatorIndex + 1));
+                if (!Number.isFinite(q) || !Number.isFinite(r)) return new Set<string>();
+            }
+
+            return computeSettlementReachFromTownCenters(
+                [{ q, r }],
+                settlementId,
+                (watchtower) => isTileActive(watchtower),
+            );
+        })();
 
     for (const tile of getOwnedDiscoveredTiles()) {
         if (tile.ownerSettlementId === settlementId) {
@@ -1090,7 +1170,8 @@ export function computeOwnedTileIdsForSettlement(settlementId: string | null | u
 }
 
 export function computeOwnedTileIdsForTC(tcQ: number, tcR: number) {
-    return computeOwnedTileIdsForSettlement(`${tcQ},${tcR}`);
+    const settlementId = getTileSettlementId(tileIndex[`${tcQ},${tcR}`]) ?? `${tcQ},${tcR}`;
+    return computeOwnedTileIdsForSettlement(settlementId);
 }
 
 function findSettlementIdForWatchtower(wtQ: number, wtR: number) {
@@ -1100,12 +1181,11 @@ function findSettlementIdForWatchtower(wtQ: number, wtR: number) {
 
 export function computeControlledTileIdsForWatchtower(wtQ: number, wtR: number) {
     const settlementId = findSettlementIdForWatchtower(wtQ, wtR);
-    const townCenter = settlementId ? tileIndex[settlementId] : null;
-    if (!townCenter) {
+    if (!settlementId) {
         return new Set<string>();
     }
 
-    return computeControlledTileIdsForTC(townCenter.q, townCenter.r);
+    return computeControlledTileIdsForSettlement(settlementId);
 }
 
 export function isPositionControlled(q: number, r: number) {
@@ -1137,7 +1217,7 @@ export function isTileControlledBySettlement(tile: Tile | null | undefined, sett
     }
 
     if (tile.terrain === 'towncenter') {
-        return tile.id === settlementId;
+        return getTileSettlementId(tile) === settlementId;
     }
 
     if (typeof tile.controlledBySettlementId !== 'undefined') {

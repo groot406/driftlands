@@ -29,6 +29,7 @@ import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/tas
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { addHeroAbilityProgress } from '../shared/heroes/heroAbilities.ts';
 import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
+import { isInstantBuildEnabled, isUnlimitedResourcesEnabled, testModeSettings } from '../shared/game/testMode.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -333,7 +334,9 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 
     const economyDistance = getTaskEconomyDistance();
     const tileDistance = getDistanceToNearestTowncenter(tile.q, tile.r);
-    const requiredResources = def.requiredResources?.(economyDistance, tile);
+    const requiredResources = isUnlimitedResourcesEnabled(testModeSettings)
+        ? []
+        : def.requiredResources?.(economyDistance, tile);
     const collectedResources: ResourceAmount[] = [];
 
     if (!taskStore.tasksByTile[tile.id]) {
@@ -350,7 +353,7 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
         type,
         tileId: tile.id,
         progressXp: 0,
-        requiredXp: def.requiredXp(tileDistance),
+        requiredXp: isInstantBuildEnabled(testModeSettings) ? 0 : def.requiredXp(tileDistance),
         createdMs: nowMs,
         lastUpdateMs: nowMs,
         participants: {},
@@ -382,6 +385,9 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     starter.pendingTask = undefined;
 
     fetchResourcesIfNeeded(starter, inst);
+    if (!inst.completedMs && inst.requiredXp <= 0 && getRemainingResources(inst).length === 0) {
+        completeTask(inst, def, tile, [starter]);
+    }
 
     return inst;
 }

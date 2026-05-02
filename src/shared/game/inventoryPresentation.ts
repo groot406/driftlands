@@ -7,17 +7,23 @@ import type {
   ProgressionSnapshot,
   UpgradeKey,
 } from '../story/progression.ts';
+import {
+  getResourceDefinition,
+  RESOURCE_GROUP_DEFINITIONS,
+  getResourceGroupDefinition,
+  type ResourceCategory,
+  type ResourceGroup,
+} from './resourceDefinitions.ts';
 
 export type InventoryDisplayGroup = 'stock' | 'item';
 export type InventoryKind = InventoryDisplayGroup | 'inventory';
+export type InventorySelectionKey = ResourceType | ResourceGroup;
 
 export interface InventoryEntryDefinition {
   key: ResourceType;
-  label: string;
-  icon: string;
   kind: InventoryKind;
-  hudGroup: InventoryDisplayGroup | null;
   sortOrder: number;
+  topBarGroup: ResourceGroup;
   alwaysVisible?: boolean;
   relevantWhen?: {
     nodes?: ProgressionNodeKey[];
@@ -32,8 +38,20 @@ export interface VisibleInventoryEntry {
   key: ResourceType;
   label: string;
   icon: string;
-  group: InventoryDisplayGroup;
+  group: ResourceGroup;
+  category: ResourceCategory;
+  kind: InventoryKind;
+  isConsumable: boolean;
   value: number;
+}
+
+export interface VisibleInventoryGroup {
+  key: ResourceGroup;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  value: number;
+  entries: VisibleInventoryEntry[];
 }
 
 export interface InventoryVisibilityContext {
@@ -44,47 +62,82 @@ export interface InventoryVisibilityContext {
 export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = [
   {
     key: 'food',
-    label: 'Food',
-    icon: '\uD83C\uDF56',
     kind: 'stock',
-    hudGroup: 'stock',
     sortOrder: 10,
+    topBarGroup: 'food',
     alwaysVisible: true,
   },
   {
-    key: 'wood',
-    label: 'Wood',
-    icon: '\uD83C\uDF32',
+    key: 'bread',
     kind: 'stock',
-    hudGroup: 'stock',
+    sortOrder: 11,
+    topBarGroup: 'food',
+  },
+  {
+    key: 'meat',
+    kind: 'stock',
+    sortOrder: 12,
+    topBarGroup: 'food',
+  },
+  {
+    key: 'beer',
+    kind: 'stock',
+    sortOrder: 13,
+    topBarGroup: 'food',
+  },
+  {
+    key: 'wine',
+    kind: 'stock',
+    sortOrder: 14,
+    topBarGroup: 'food',
+  },
+  {
+    key: 'grain',
+    kind: 'stock',
     sortOrder: 20,
+    topBarGroup: 'crops',
+    alwaysVisible: true,
+  },
+  {
+    key: 'hops',
+    kind: 'stock',
+    sortOrder: 21,
+    topBarGroup: 'crops',
+    relevantWhen: {
+      buildings: ['brewery'],
+      tasks: ['seedHops', 'harvestHops'],
+      nodes: ['brewing'],
+    },
+  },
+  {
+    key: 'grapes',
+    kind: 'stock',
+    sortOrder: 22,
+    topBarGroup: 'crops',
+    relevantWhen: {
+      tasks: ['seedGrapes', 'harvestGrapes'],
+      nodes: ['brewing'],
+    },
+  },
+  {
+    key: 'wood',
+    kind: 'stock',
+    sortOrder: 30,
+    topBarGroup: 'materials',
     alwaysVisible: true,
   },
   {
     key: 'stone',
-    label: 'Stone',
-    icon: '\uD83E\uDEA8',
     kind: 'stock',
-    hudGroup: 'stock',
-    sortOrder: 30,
-    alwaysVisible: true,
-  },
-  {
-    key: 'grain',
-    label: 'Grain',
-    icon: '\uD83C\uDF3E',
-    kind: 'stock',
-    hudGroup: 'stock',
-    sortOrder: 40,
+    sortOrder: 31,
+    topBarGroup: 'materials',
     alwaysVisible: true,
   },
   {
     key: 'ore',
-    label: 'Ore',
-    icon: '\u26CF\uFE0F',
     kind: 'stock',
-    hudGroup: 'stock',
-    sortOrder: 50,
+    sortOrder: 32,
+    topBarGroup: 'materials',
     relevantWhen: {
       nodes: ['mountain_frontier', 'toolmaking'],
       terrains: ['mountain'],
@@ -94,11 +147,9 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
   },
   {
     key: 'sand',
-    label: 'Sand',
-    icon: '\u2301',
     kind: 'stock',
-    hudGroup: 'stock',
-    sortOrder: 60,
+    sortOrder: 33,
+    topBarGroup: 'materials',
     relevantWhen: {
       nodes: ['harsh_frontier', 'desert_industry'],
       terrains: ['dessert'],
@@ -108,24 +159,21 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     },
   },
   {
-    key: 'water_lily',
-    label: 'Water Lilies',
-    icon: '\uD83E\uDEB7',
-    kind: 'item',
-    hudGroup: 'item',
-    sortOrder: 110,
+    key: 'glass',
+    kind: 'stock',
+    sortOrder: 34,
+    topBarGroup: 'materials',
     relevantWhen: {
-      nodes: ['shoreline'],
-      tasks: ['harvestWaterLilies', 'placeWaterLilies', 'buildBridge'],
+      nodes: ['desert_industry'],
+      buildings: ['oven'],
+      upgrades: ['glass_house_upgrade'],
     },
   },
   {
     key: 'tools',
-    label: 'Tools',
-    icon: '\uD83D\uDEE0\uFE0F',
     kind: 'item',
-    hudGroup: 'item',
-    sortOrder: 120,
+    sortOrder: 40,
+    topBarGroup: 'crafted_goods',
     relevantWhen: {
       nodes: ['toolmaking', 'expansion'],
       buildings: ['workshop', 'townCenter', 'oven'],
@@ -134,41 +182,32 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     },
   },
   {
-    key: 'glass',
-    label: 'Glass',
-    icon: '\u25C7',
+    key: 'water',
+    kind: 'stock',
+    sortOrder: 50,
+    topBarGroup: 'utility',
+  },
+  {
+    key: 'water_lily',
     kind: 'item',
-    hudGroup: 'item',
-    sortOrder: 130,
+    sortOrder: 51,
+    topBarGroup: 'crops',
     relevantWhen: {
-      nodes: ['desert_industry'],
-      buildings: ['oven'],
-      upgrades: ['glass_house_upgrade'],
+      nodes: ['shoreline'],
+      tasks: ['harvestWaterLilies', 'placeWaterLilies', 'buildBridge'],
     },
   },
   {
-    key: 'water',
-    label: 'Water',
-    icon: '\uD83D\uDCA7',
-    kind: 'stock',
-    hudGroup: null,
-    sortOrder: 210,
-  },
-  {
     key: 'crystal',
-    label: 'Crystal',
-    icon: '\uD83D\uDC8E',
-    kind: 'stock',
-    hudGroup: null,
-    sortOrder: 220,
+    kind: 'inventory',
+    sortOrder: 52,
+    topBarGroup: 'utility',
   },
   {
     key: 'artifact',
-    label: 'Artifact',
-    icon: '\uD83C\uDFFA',
     kind: 'inventory',
-    hudGroup: null,
-    sortOrder: 230,
+    sortOrder: 53,
+    topBarGroup: 'utility',
   },
 ] as const;
 
@@ -177,13 +216,20 @@ const INVENTORY_ENTRY_BY_KEY = new Map<ResourceType, InventoryEntryDefinition>(
 );
 
 export function getInventoryEntryDefinition(key: ResourceType) {
-  return INVENTORY_ENTRY_BY_KEY.get(key) ?? {
+  const entry = INVENTORY_ENTRY_BY_KEY.get(key);
+  const resource = getResourceDefinition(key);
+  return {
     key,
-    label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-    icon: '?',
-    kind: 'inventory',
-    hudGroup: null,
-    sortOrder: 999,
+    label: resource.label,
+    icon: resource.icon,
+    kind: entry?.kind ?? 'inventory',
+    sortOrder: entry?.sortOrder ?? 999,
+    topBarGroup: entry?.topBarGroup ?? resource.group,
+    group: resource.group,
+    category: resource.category,
+    isConsumable: resource.isConsumable,
+    alwaysVisible: entry?.alwaysVisible ?? false,
+    relevantWhen: entry?.relevantWhen,
   };
 }
 
@@ -217,10 +263,6 @@ function hasRelevantUnlock(entry: InventoryEntryDefinition, progression: Progres
 }
 
 function shouldShowEntry(entry: InventoryEntryDefinition, context: InventoryVisibilityContext) {
-  if (!entry.hudGroup) {
-    return false;
-  }
-
   const amount = context.inventory[entry.key] ?? 0;
   return amount > 0 || entry.alwaysVisible === true || hasRelevantUnlock(entry, context.progression);
 }
@@ -229,11 +271,52 @@ export function getVisibleInventoryEntries(context: InventoryVisibilityContext):
   return INVENTORY_ENTRY_DEFINITIONS
     .filter((entry) => shouldShowEntry(entry, context))
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((entry) => ({
-      key: entry.key,
-      label: entry.label,
-      icon: entry.icon,
-      group: entry.hudGroup as InventoryDisplayGroup,
-      value: Math.floor(context.inventory[entry.key] ?? 0),
-    }));
+    .map((entry) => {
+      const resource = getResourceDefinition(entry.key);
+      return {
+        key: entry.key,
+        label: resource.label,
+        icon: resource.icon,
+        group: entry.topBarGroup,
+        category: resource.category,
+        kind: entry.kind,
+        isConsumable: resource.isConsumable,
+        value: Math.floor(context.inventory[entry.key] ?? 0),
+      };
+    });
+}
+
+export function getVisibleInventoryGroups(context: InventoryVisibilityContext): VisibleInventoryGroup[] {
+  const entries = getVisibleInventoryEntries(context);
+  const entryMap = new Map<ResourceGroup, VisibleInventoryEntry[]>();
+
+  for (const groupDefinition of RESOURCE_GROUP_DEFINITIONS) {
+    entryMap.set(groupDefinition.key, []);
+  }
+
+  for (const entry of entries) {
+    entryMap.get(entry.group)?.push(entry);
+  }
+
+  return RESOURCE_GROUP_DEFINITIONS
+    .map((groupDefinition) => ({
+      key: groupDefinition.key,
+      label: groupDefinition.label,
+      shortLabel: groupDefinition.shortLabel,
+      icon: groupDefinition.icon,
+      entries: (entryMap.get(groupDefinition.key) ?? []).sort((a, b) => {
+        const left = INVENTORY_ENTRY_BY_KEY.get(a.key)?.sortOrder ?? 999;
+        const right = INVENTORY_ENTRY_BY_KEY.get(b.key)?.sortOrder ?? 999;
+        return left - right;
+      }),
+    }))
+    .map((group) => ({
+      ...group,
+      value: group.entries.reduce((sum, entry) => sum + entry.value, 0),
+    }))
+    .sort((a, b) => {
+      const left = getResourceGroupDefinition(a.key).sortOrder;
+      const right = getResourceGroupDefinition(b.key).sortOrder;
+      return left - right;
+    });
 }

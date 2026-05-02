@@ -7,6 +7,7 @@ import { applyVariant } from '../../../src/core/variants';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
 import type { BaseMessage } from '../../../src/shared/protocol';
 import type { Tile } from '../../../src/shared/game/types/Tile';
+import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
 
 function withCapturedBroadcasts() {
   const messages: BaseMessage[] = [];
@@ -21,6 +22,7 @@ function withCapturedBroadcasts() {
 test.afterEach(() => {
   loadWorld([]);
   resetGameRuntime();
+  resetTestModeSettings();
 });
 
 test('growthSystem keeps ranged growth duration stable across ticks and matures young forest', () => {
@@ -106,6 +108,59 @@ test('growthSystem advances fixed-duration tilled soil into draught state', () =
   assert.equal(tile.variant, 'dirt_tilled_draught');
   assert.equal(tile.variantSetMs, undefined);
   assert.equal(tile.variantAgeMs, undefined);
+});
+
+test('fast growth test mode matures tiles using the accelerated active duration', () => {
+  loadWorld([
+    {
+      id: 'growth-fast',
+      q: 2,
+      r: 0,
+      biome: 'dessert',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: true,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const tile = tileIndex['growth-fast']!;
+  withCapturedBroadcasts();
+
+  applyVariant(tile, 'dirt_tilled', { stagger: false, respectBiome: true });
+
+  assert.equal(tile.variantAgeMs, 180000);
+
+  growthSystem.tick({
+    now: tile.variantSetMs! + 2999,
+    dt: 2999,
+    tick: 1,
+    rng: {} as never,
+  });
+
+  assert.equal(tile.variant, 'dirt_tilled');
+
+  growthSystem.tick({
+    now: tile.variantSetMs! + 3000,
+    dt: 1,
+    tick: 2,
+    rng: {} as never,
+  });
+
+  assert.equal(tile.variant, 'dirt_tilled_draught');
 });
 
 test('active adjacent volcanoes reduce nearby growth duration', () => {

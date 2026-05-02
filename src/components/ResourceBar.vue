@@ -7,29 +7,17 @@
       </NineSliceButton>
 
       <ResourceBubble
-        v-for="r in stockEntries"
-        :key="r.key"
-        :resource-key="r.key"
-        :icon="r.icon"
-        :label="r.label"
-        :value="r.value"
+        v-for="group in groupedEntries"
+        :key="group.key"
+        :resource-key="group.entries[0]?.key ?? 'food'"
+        :resource-keys="group.entries.map((entry) => entry.key)"
+        :icon="group.icon"
+        :label="group.shortLabel"
+        :value="group.value"
+        :breakdown="group.entries"
+        show-label
         clickable
-        @select="openResourceDetailModal(r.key)"
-      />
-
-    </div>
-
-    <div v-if="itemEntries.length" class="inventory-strip inventory-strip-items" aria-label="Items">
-      <ResourceBubble
-        v-for="r in itemEntries"
-        :key="r.key"
-        :resource-key="r.key"
-        :icon="r.icon"
-        :label="r.label"
-        :value="r.value"
-        compact
-        clickable
-        @select="openResourceDetailModal(r.key)"
+        @select="openResourceDetailModal(group.key)"
       />
     </div>
   </div>
@@ -42,7 +30,7 @@ import {getSettlementResourceInventory, resourceInventory, resourceVersion} from
 import {populationState} from '../store/clientPopulationStore';
 import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
 import { runSnapshot, runVersion } from '../store/runStore.ts';
-import { getVisibleInventoryEntries } from '../shared/game/inventoryPresentation.ts';
+import { getVisibleInventoryGroups } from '../shared/game/inventoryPresentation.ts';
 import NineSliceButton from "./ui/NineSliceButton.vue";
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 
@@ -59,18 +47,15 @@ const playerInventory = computed(() => {
   return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
 });
 
-const visibleEntries = computed(() => {
+const groupedEntries = computed(() => {
   resourceVersion.value;
   runVersion.value;
 
-  return getVisibleInventoryEntries({
+  return getVisibleInventoryGroups({
     inventory: playerInventory.value,
     progression: runSnapshot.value?.progression ?? null,
   });
 });
-
-const stockEntries = computed(() => visibleEntries.value.filter((entry) => entry.group === 'stock'));
-const itemEntries = computed(() => visibleEntries.value.filter((entry) => entry.group === 'item'));
 </script>
 
 <script lang="ts">
@@ -94,11 +79,6 @@ export default {name: 'ResourceBar'};
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.inventory-strip-items {
-  padding-left: 6px;
-  border-left: 1px solid rgba(196, 228, 151, 0.28);
 }
 
 .pop-bubble {

@@ -10,10 +10,10 @@ import type { ScoutTargetType } from './types/Scout.ts';
 import {addTextIndicator} from "./textIndicators.ts";
 import {playPositionalSound} from "../store/soundStore.ts";
 import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
-import { HERO_MOVEMENT_SPEED_ADJ } from '../shared/game/movementBalance';
 import { SCOUT_RESOURCE_TASK_TYPE, shouldStopScoutResourceForMovement } from '../shared/game/scoutResources';
 import type { HeroAbilityKey } from '../shared/heroes/heroAbilities.ts';
 import type { HeroSkillKey } from '../shared/heroes/heroSkills.ts';
+import { getHeroMovementSpeedAdj } from '../shared/game/testMode.ts';
 
 type AxialCoord = { q: number; r: number };
 
@@ -223,7 +223,7 @@ function actuallyStartHeroMovement(
     let cumulative: number[] | undefined = options?.cumulative && options.cumulative.length === path.length ? options.cumulative.slice() : undefined;
 
     if (!stepDurations || !cumulative) {
-        const timings = computePathTimings(path, origin, HERO_MOVEMENT_SPEED_ADJ);
+        const timings = computePathTimings(path, origin, getHeroMovementSpeedAdj());
         stepDurations = timings.durations;
         cumulative = timings.cumulative;
     }
@@ -455,7 +455,7 @@ function samePath(a: AxialCoord[], b: AxialCoord[]) {
 function hasMovementAlreadyElapsed(path: AxialCoord[], origin: AxialCoord, options?: StartHeroMovementOptions) {
     const totalDuration = options?.cumulative?.[options.cumulative.length - 1]
         ?? options?.stepDurations?.reduce((sum, duration) => sum + duration, 0)
-        ?? computePathTimings(path, origin, HERO_MOVEMENT_SPEED_ADJ).totalDuration;
+        ?? computePathTimings(path, origin, getHeroMovementSpeedAdj()).totalDuration;
     const startMs = typeof options?.startAt === 'number'
         ? options.startAt
         : Date.now() + (options?.startDelayMs || 0);

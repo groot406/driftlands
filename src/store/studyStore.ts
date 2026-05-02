@@ -38,6 +38,14 @@ const state: StudyState = {
   completedStudyKeys: [],
   progressByKey: {},
 };
+let studyOverrideCompletedKeys: StudyKey[] = [];
+
+function getEffectiveCompletedStudyKeys() {
+  return normalizeCompletedKeys([
+    ...state.completedStudyKeys,
+    ...studyOverrideCompletedKeys,
+  ]);
+}
 
 function normalizeProgress(study: StudyDefinition, progressMs: number | null | undefined, completed: boolean) {
   if (completed) {
@@ -48,7 +56,9 @@ function normalizeProgress(study: StudyDefinition, progressMs: number | null | u
 }
 
 function cloneStudyProgress(study: StudyDefinition): StudyProgressSnapshot {
-  const completed = state.completedStudyKeys.includes(study.key);
+  const completedStudyKeys = getEffectiveCompletedStudyKeys();
+  const completed = completedStudyKeys.includes(study.key);
+  const activeStudyKey = chooseActiveStudyKey(state.activeStudyKey, completedStudyKeys);
 
   return {
     key: study.key,
@@ -57,7 +67,7 @@ function cloneStudyProgress(study: StudyDefinition): StudyProgressSnapshot {
     requiredProgressMs: study.requiredProgressMs,
     progressMs: normalizeProgress(study, state.progressByKey[study.key], completed),
     completed,
-    active: state.activeStudyKey === study.key,
+    active: activeStudyKey === study.key,
     unlocks: study.unlocks.map((unlock) => ({ ...unlock })),
     effects: study.effects.map((effect) => ({ ...effect })),
   };
@@ -90,6 +100,7 @@ export function resetStudyState() {
   state.completedStudyKeys = [];
   state.progressByKey = {};
   state.activeStudyKey = getInitialStudyKey();
+  studyOverrideCompletedKeys = [];
 }
 
 export function loadStudySnapshot(snapshot: StudyStateSnapshot | null | undefined) {
@@ -117,25 +128,33 @@ export function loadStudySnapshot(snapshot: StudyStateSnapshot | null | undefine
   state.activeStudyKey = chooseActiveStudyKey(snapshot.activeStudyKey, state.completedStudyKeys);
 }
 
+export function setStudyOverrides(completedStudyKeys: readonly string[] | null | undefined) {
+  studyOverrideCompletedKeys = normalizeCompletedKeys(completedStudyKeys);
+}
+
 export function getStudySnapshot(): StudyStateSnapshot {
+  const completedStudyKeys = getEffectiveCompletedStudyKeys();
+  const activeStudyKey = chooseActiveStudyKey(state.activeStudyKey, completedStudyKeys);
+
   return {
-    activeStudyKey: state.activeStudyKey,
-    completedStudyKeys: state.completedStudyKeys.slice(),
+    activeStudyKey,
+    completedStudyKeys,
     studies: listStudyDefinitions().map(cloneStudyProgress),
   };
 }
 
 export function getActiveStudyProgress() {
-  const activeStudy = getStudyDefinition(state.activeStudyKey);
+  const activeStudy = getStudyDefinition(chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys()));
   return activeStudy ? cloneStudyProgress(activeStudy) : null;
 }
 
 export function hasActiveStudy() {
-  return !!getStudyDefinition(state.activeStudyKey);
+  return !!getStudyDefinition(chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys()));
 }
 
 export function addStudyProgress(progressMs: number) {
-  const activeStudy = getStudyDefinition(state.activeStudyKey);
+  const resolvedActiveStudyKey = chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys());
+  const activeStudy = getStudyDefinition(resolvedActiveStudyKey);
   if (!activeStudy || progressMs <= 0) {
     return null;
   }
@@ -156,13 +175,13 @@ export function addStudyProgress(progressMs: number) {
   }
 
   state.progressByKey[activeStudy.key] = activeStudy.requiredProgressMs;
-  state.activeStudyKey = getNextStudyKey(state.completedStudyKeys);
+  state.activeStudyKey = getNextStudyKey(getEffectiveCompletedStudyKeys());
   return activeStudy;
 }
 
 export function selectActiveStudy(studyKey: string | null | undefined) {
   const study = getStudyDefinition(studyKey);
-  if (!study || state.completedStudyKeys.includes(study.key)) {
+  if (!study || getEffectiveCompletedStudyKeys().includes(study.key)) {
     return false;
   }
 
@@ -175,14 +194,14 @@ export function selectActiveStudy(studyKey: string | null | undefined) {
 }
 
 export function isContentUnlockedByStudies(content: Parameters<typeof studyUnlocksContent>[1]) {
-  return state.completedStudyKeys.some((studyKey) => {
+  return getEffectiveCompletedStudyKeys().some((studyKey) => {
     const study = getStudyDefinition(studyKey);
     return !!study && studyUnlocksContent(study, content);
   });
 }
 
 export function getStudyJobOutputMultiplier() {
-  return state.completedStudyKeys.reduce((multiplier, studyKey) => {
+  return getEffectiveCompletedStudyKeys().reduce((multiplier, studyKey) => {
     const study = getStudyDefinition(studyKey);
     if (!study) {
       return multiplier;

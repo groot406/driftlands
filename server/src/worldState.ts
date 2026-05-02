@@ -201,8 +201,12 @@ function serializeSettler(settler: Settler): Settler {
     stateSinceMs: settler.stateSinceMs,
     hungerMs: settler.hungerMs,
     fatigueMs: settler.fatigueMs,
+    happiness: settler.happiness,
+    traits: settler.traits ? [...settler.traits] : undefined,
+    drinkPreference: settler.drinkPreference,
     workProgressMs: settler.workProgressMs,
     carryingKind: settler.carryingKind ?? null,
+    socialTileId: settler.socialTileId ?? null,
     movement: settler.movement
       ? {
           path: settler.movement.path.map((step) => ({ ...step })),

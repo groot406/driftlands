@@ -8,6 +8,7 @@ import {
   recalculateSettlementSupport,
   resetSettlementSupportState,
 } from './settlementSupportStore.ts';
+import { loadTestModeSettings, resetTestModeSettings } from '../shared/game/testMode.ts';
 
 function createTowncenterTile(): Tile {
   return {
@@ -99,6 +100,7 @@ function createSortedFrontierCoords(reserved: Set<string> = new Set()) {
 test.afterEach(() => {
   loadWorld([]);
   resetSettlementSupportState();
+  resetTestModeSettings();
 });
 
 test('a fully housed starter town can sustain a 100-tile frontier push', () => {
@@ -126,6 +128,31 @@ test('inactive tiles automatically restore once support rises again', () => {
   assert.equal(recovered.snapshot.inactiveTileCount, 0);
   assert.deepEqual(recovered.newlyActiveTileIds, [restoredTileId]);
   assert.deepEqual(recovered.restoredTileIds, [restoredTileId]);
+});
+
+test('support tiles test mode keeps controlled frontier tiles active beyond normal support capacity', () => {
+  loadWorld([
+    createTowncenterTile(),
+    ...createFrontierTiles(85),
+  ]);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    supportTiles: true,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const result = recalculateSettlementSupport(0, 0);
+
+  assert.equal(result.snapshot.inactiveTileCount, 0);
+  assert.equal(result.newlyInactiveTileIds.length, 0);
 });
 
 test('each settlement spends only its own population support capacity', () => {

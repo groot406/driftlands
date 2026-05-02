@@ -503,6 +503,7 @@ import { sendMessage } from '../core/socket';
 import { currentPlayerId } from '../core/socket';
 import { currentPlayerSettlementId, settlementStartMarkers } from '../store/settlementStartStore.ts';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
+import { getTileSettlementId, isTileInSettlement } from '../shared/game/settlement';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
   HUNGER_GRACE_MINUTES,
@@ -596,9 +597,7 @@ function storageBelongsToCurrentSettlement(storageTileId: string) {
   if (!settlementId) return true;
 
   const tile = tileIndex[storageTileId];
-  return tile?.ownerSettlementId === settlementId
-    || tile?.controlledBySettlementId === settlementId
-    || (tile?.terrain === 'towncenter' && tile.id === settlementId);
+  return isTileInSettlement(tile, settlementId);
 }
 
 function canManageTile(tile: { id: string; terrain?: string | null; ownerSettlementId?: string | null; controlledBySettlementId?: string | null } | null | undefined) {
@@ -608,7 +607,7 @@ function canManageTile(tile: { id: string; terrain?: string | null; ownerSettlem
   }
 
   if (tile.terrain === 'towncenter') {
-    return tile.id === settlementId;
+    return getTileSettlementId(tile) === settlementId;
   }
 
   if (tile.ownerSettlementId) {
@@ -709,6 +708,26 @@ function formatRateList(resources: ResourceAmount[], emptyText: string) {
   return resources
     .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}/min`)
     .join(' • ');
+}
+
+function formatAlternativeResourceList(resources: ResourceAmount[], emptyText: string) {
+  if (!resources.length) {
+    return emptyText;
+  }
+
+  return resources
+    .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}`)
+    .join(' or ');
+}
+
+function formatAlternativeRateList(resources: ResourceAmount[], emptyText: string) {
+  if (!resources.length) {
+    return emptyText;
+  }
+
+  return resources
+    .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}/min`)
+    .join(' or ');
 }
 
 function getStatusClassFromTone(tone: 'ok' | 'warn' | 'danger') {
@@ -1023,16 +1042,42 @@ const selectedJobSiteDetail = computed(() => {
   const hasJobSite = !!site && !!building;
   const currentWorkerCount = site?.assignedWorkers ?? 0;
   const fullWorkerCount = site?.slots ?? Math.max(1, building?.jobSlots ?? 0);
+  const buildingServiceInputs = building?.jobKind === 'service'
+    ? (building.serviceConsumes ?? []).map((resource) => ({
+      ...resource,
+      amount: resource.amount * Math.max(1, currentWorkerCount || 1),
+    }))
+    : [];
+  const buildingFullServiceInputs = building?.jobKind === 'service'
+    ? (building.serviceConsumes ?? []).map((resource) => ({
+      ...resource,
+      amount: resource.amount * Math.max(1, fullWorkerCount || 1),
+    }))
+    : [];
+  const acceptsAnyServiceInput = building?.jobKind === 'service' && building.serviceConsumeMode === 'any';
   const { consumes: currentInputs, produces: currentOutputs } = building
     ? resolveBuildingJobResources(building, tile, currentWorkerCount)
     : { consumes: [], produces: [] };
   const { consumes: fullInputs, produces: fullOutputs } = building
     ? resolveBuildingJobResources(building, tile, fullWorkerCount)
     : { consumes: [], produces: [] };
-  const currentInputRates = building ? getPerMinuteResources(currentInputs, 1, building.cycleMs) : [];
+  const resolvedCurrentInputs = building?.jobKind === 'service' ? buildingServiceInputs : currentInputs;
+  const resolvedFullInputs = building?.jobKind === 'service' ? buildingFullServiceInputs : fullInputs;
+  const currentInputRates = building ? getPerMinuteResources(resolvedCurrentInputs, 1, building.cycleMs) : [];
   const currentOutputRates = building ? getPerMinuteResources(currentOutputs, 1, building.cycleMs) : [];
   const fullOutputRates = building ? getPerMinuteResources(fullOutputs, 1, building.cycleMs) : [];
-  const shortages = building ? getMissingInputResources(currentInputs, 1, playerInventory.value) : [];
+  const shortages = !building
+    ? []
+    : acceptsAnyServiceInput
+      ? resolvedCurrentInputs.some((resource) => (playerInventory.value[resource.type] ?? 0) >= resource.amount)
+        ? []
+        : [{
+          type: resolvedCurrentInputs[0]?.type ?? 'beer',
+          required: resolvedCurrentInputs[0]?.amount ?? 1,
+          available: 0,
+          missing: resolvedCurrentInputs[0]?.amount ?? 1,
+        }]
+      : getMissingInputResources(resolvedCurrentInputs, 1, playerInventory.value);
   const conditionPercent = typeof tile?.condition === 'number' ? Math.round(tile.condition) : null;
   const conditionState = conditionPercent !== null ? tile?.conditionState ?? 'healthy' : null;
   const repairResources = tile ? building?.repairResources ?? [] : [];
@@ -1153,15 +1198,23 @@ const selectedJobSiteDetail = computed(() => {
     maxThroughputLabel: studyProgress
       ? 'More scholars complete subjects sooner'
       : formatRateList(fullOutputRates, 'No output defined'),
-    currentInputLabel: formatResourceList(currentInputs, 'No input required'),
+    currentInputLabel: acceptsAnyServiceInput
+      ? formatAlternativeResourceList(resolvedCurrentInputs, 'No input required')
+      : formatResourceList(resolvedCurrentInputs, 'No input required'),
     currentOutputLabel: formatResourceList(currentOutputs, 'No output while idle'),
-    inputRateLabel: formatRateList(currentInputRates, 'Consumes nothing per minute'),
+    inputRateLabel: acceptsAnyServiceInput
+      ? formatAlternativeRateList(currentInputRates, 'Consumes nothing per minute')
+      : formatRateList(currentInputRates, 'Consumes nothing per minute'),
     outputRateLabel: formatRateList(currentOutputRates, 'Produces nothing per minute'),
-    fullInputLabel: formatResourceList(fullInputs, 'No input required'),
+    fullInputLabel: acceptsAnyServiceInput
+      ? formatAlternativeResourceList(resolvedFullInputs, 'No input required')
+      : formatResourceList(resolvedFullInputs, 'No input required'),
     fullOutputLabel: formatResourceList(fullOutputs, 'No output defined'),
     shortages: shortages.map((shortage) => ({
       ...shortage,
-      missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing`,
+      missingLabel: acceptsAnyServiceInput
+        ? 'Beer or wine missing'
+        : `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing`,
     })),
     conditionPercent,
     conditionLabel: conditionState ? getConditionLabel(conditionState) : null,

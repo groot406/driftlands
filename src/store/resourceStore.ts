@@ -1,7 +1,13 @@
 import type {Tile} from "../core/types/Tile.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import { getStorageKindForBuildingTile } from '../shared/buildings/state.ts';
+import { getTileSettlementId } from '../shared/game/settlement';
 import { getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
+import {
+    isUnlimitedResourcesEnabled,
+    testModeSettings,
+    TEST_MODE_VIRTUAL_RESOURCE_AMOUNT,
+} from '../shared/game/testMode.ts';
 import { tileIndex } from '../core/world.ts';
 import { reactive, ref } from 'vue';
 
@@ -11,10 +17,16 @@ const RESOURCE_TYPES: ResourceType[] = [
     'stone',
     'tools',
     'food',
+    'bread',
+    'meat',
+    'beer',
+    'wine',
     'crystal',
     'artifact',
     'water',
     'grain',
+    'hops',
+    'grapes',
     'water_lily',
     'sand',
     'glass',
@@ -27,10 +39,16 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         stone: 0,
         tools: 0,
         food: 0,
+        bread: 0,
+        meat: 0,
+        beer: 0,
+        wine: 0,
         crystal: 0,
         artifact: 0,
         water: 0,
         grain: 0,
+        hops: 0,
+        grapes: 0,
         water_lily: 0,
         sand: 0,
         glass: 0,
@@ -42,6 +60,19 @@ function cloneInventory(values: Partial<Record<ResourceType, number>> | undefine
 
     for (const resourceType of RESOURCE_TYPES) {
         inventory[resourceType] = Math.max(0, values?.[resourceType] ?? 0);
+    }
+
+    return inventory;
+}
+
+function withUnlimitedResources(values: Partial<Record<ResourceType, number>> | undefined) {
+    const inventory = cloneInventory(values);
+    if (!isUnlimitedResourcesEnabled(testModeSettings)) {
+        return inventory;
+    }
+
+    for (const resourceType of RESOURCE_TYPES) {
+        inventory[resourceType] = Math.max(inventory[resourceType] ?? 0, TEST_MODE_VIRTUAL_RESOURCE_AMOUNT);
     }
 
     return inventory;
@@ -125,7 +156,7 @@ function getStorageCapacityForTileId(tileId: string) {
 
 function getStorageSettlementId(tileId: string) {
     const tile = tileIndex[tileId];
-    return tile?.ownerSettlementId ?? tile?.controlledBySettlementId ?? (tile?.terrain === 'towncenter' ? tile.id : null) ?? null;
+    return getTileSettlementId(tile);
 }
 
 function ensureSettlementResourceInventory(settlementId: string): SettlementResourceInventorySnapshot {
@@ -200,11 +231,15 @@ export function listSettlementResourceSnapshots(): SettlementResourceInventorySn
 }
 
 export function getSettlementResourceInventory(settlementId: string | null | undefined) {
+    return getEffectiveResourceInventory(settlementId);
+}
+
+export function getEffectiveResourceInventory(settlementId: string | null | undefined = null) {
     if (!settlementId) {
-        return createEmptyInventory();
+        return withUnlimitedResources(resourceInventory);
     }
 
-    return cloneInventory(settlementResourceInventories[settlementId]?.resources);
+    return withUnlimitedResources(settlementResourceInventories[settlementId]?.resources);
 }
 
 export function ensureStorageSnapshotForTile(tile: Tile | null | undefined) {

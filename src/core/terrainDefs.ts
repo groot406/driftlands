@@ -77,6 +77,8 @@ interface TerrainDefsMap {
     dessert: TerrainDef;
     vulcano: TerrainDef;
     grain: TerrainDef;
+    hops: TerrainDef;
+    grapes: TerrainDef;
 }
 
 export const TERRAIN_DEFS: TerrainDefsMap = {
@@ -142,6 +144,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             { key: 'plains_depot', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_warehouse', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_bakery', weight: 0, assetKey: 'plains', connectsToRoad: true },
+            { key: 'plains_brewery', weight: 0, assetKey: 'plains', connectsToRoad: true },
+            { key: 'plains_winery', weight: 0, assetKey: 'plains', connectsToRoad: true },
+            { key: 'plains_pub', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_apiary', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_workshop', weight: 0, assetKey: 'plains', connectsToRoad: true },
             { key: 'plains_library', weight: 0, assetKey: 'plains', connectsToRoad: true },
@@ -250,6 +255,9 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'dirt_depot', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_warehouse', weight: 0, assetKey: 'dirt'},
             {key: 'dirt_bakery', weight: 0, assetKey: 'dirt', connectsToRoad: true},
+            {key: 'dirt_brewery', weight: 0, assetKey: 'dirt', connectsToRoad: true},
+            {key: 'dirt_winery', weight: 0, assetKey: 'dirt', connectsToRoad: true},
+            {key: 'dirt_pub', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_apiary', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_workshop', weight: 0, assetKey: 'dirt', connectsToRoad: true},
             {key: 'dirt_library', weight: 0, assetKey: 'dirt', connectsToRoad: true},
@@ -278,13 +286,55 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             { key: 'grain_granary', weight: 0, assetKey: 'grain-v2', overlayAssetKey: false, heroOffset: { x: 0, y: 8 } },
             { key: 'grain_dense', weight: 7, minMoisture: 0.42, maxTemperature: 0.74, decorative: true },
             { key: 'grain_bloom', weight: 5, minMoisture: 0.5, minTemperature: 0.4, maxRuggedness: 0.46, decorative: true },
-            {key: 'grain_planted', weight: 3, growth: {next: 'grain_small', ageMs: 100000}, overlayAssetKey: false},
-            {key: 'grain_small', weight: 3, growth: {next: 'grain_small2', ageMs: 100000}, overlayAssetKey: false},
-            {key: 'grain_small2', weight: 3, growth: {next: null, ageMs: 100000}, overlayAssetKey: false},
+            {key: 'grain_planted', weight: 3, growth: {next: 'grain_small', ageMs: 60000}, overlayAssetKey: false},
+            {key: 'grain_small', weight: 3, growth: {next: 'grain_small2', ageMs: 60000}, overlayAssetKey: false},
+            {key: 'grain_small2', weight: 3, growth: {next: null, ageMs: 60000}, overlayAssetKey: false},
         ],
         overlayAssetKey: 'grain_overhang',
         overlayOffset: { x: 0, y: 6 },
         decorativeBaseWeight: 18,
+    },
+    hops: {
+        minDistanceFromCenter: 6,
+        color: '#65a30d',
+        baseWeight: 16,
+        assetKey: 'grain',
+        walkable: true,
+        adjacency: {
+            plains: 4,
+            dirt: 3,
+            grain: 12,
+            hops: 50,
+        },
+        variations: [
+            { key: 'hops_planted', weight: 3, assetKey: 'grain_planted', growth: { next: 'hops_small', ageMs: 100000 }, overlayAssetKey: false },
+            { key: 'hops_small', weight: 3, assetKey: 'grain_small', growth: { next: 'hops_small2', ageMs: 100000 }, overlayAssetKey: false },
+            { key: 'hops_small2', weight: 3, assetKey: 'grain_small2', growth: { next: null, ageMs: 100000 }, overlayAssetKey: false },
+        ],
+        overlayAssetKey: 'grain_overhang',
+        overlayOffset: { x: 0, y: 6 },
+        decorativeBaseWeight: 12,
+    },
+    grapes: {
+        minDistanceFromCenter: 6,
+        color: '#7c3aed',
+        baseWeight: 14,
+        assetKey: 'grain_patchwork',
+        walkable: true,
+        adjacency: {
+            plains: 4,
+            dirt: 3,
+            grain: 8,
+            grapes: 50,
+        },
+        variations: [
+            { key: 'grapes_planted', weight: 3, assetKey: 'grain_planted', growth: { next: 'grapes_small', ageMs: 140000 }, overlayAssetKey: false },
+            { key: 'grapes_small', weight: 3, assetKey: 'grain_small', growth: { next: 'grapes_small2', ageMs: 140000 }, overlayAssetKey: false },
+            { key: 'grapes_small2', weight: 3, assetKey: 'grain_small2', growth: { next: null, ageMs: 140000 }, overlayAssetKey: false },
+        ],
+        overlayAssetKey: 'grain_overhang',
+        overlayOffset: { x: 0, y: 6 },
+        decorativeBaseWeight: 10,
     },
     snow: {
         minDistanceFromCenter: 15,

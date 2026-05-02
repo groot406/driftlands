@@ -10,6 +10,7 @@ import { planNearestStorageDeposits } from '../../../src/shared/buildings/storag
 import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
 import {
+    getEffectiveResourceInventory,
     getSettlementResourceInventory,
     planResourceWithdrawalsAcrossStoragesForSettlement,
     resourceInventory,
@@ -21,6 +22,8 @@ import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
 import type { SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { tileIndex } from '../../../src/shared/game/world';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
+import { isUnlimitedResourcesEnabled, testModeSettings } from '../../../src/shared/game/testMode.ts';
 import { extractMineOre, getExtractableMineOre, getMineClusterReserve } from '../state/mineReserveState';
 
 export interface ResolvedJobSite {
@@ -37,6 +40,7 @@ export function isJobBuilding(building: BuildingDefinition | null | undefined): 
         && (building.cycleMs ?? 0) > 0
         && (
             building.jobKind === 'study'
+            || building.jobKind === 'service'
             || (building.produces?.length ?? 0) > 0
             || typeof building.getJobResources === 'function'
         );
@@ -75,10 +79,7 @@ export function listResolvedJobSites() {
 }
 
 export function getJobSiteSettlementId(tile: Tile | null | undefined) {
-    return tile?.ownerSettlementId
-        ?? tile?.controlledBySettlementId
-        ?? (tile?.terrain === 'towncenter' ? tile.id : null)
-        ?? null;
+    return getTileSettlementId(tile);
 }
 
 export function isOnlineJobSite(tile: Tile) {
@@ -132,15 +133,54 @@ export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: numb
 
 function getAvailableResourceAmount(tile: Tile, resource: ResourceAmount) {
     const settlementId = getJobSiteSettlementId(tile);
-    const inventory = settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+    const inventory = settlementId ? getSettlementResourceInventory(settlementId) : getEffectiveResourceInventory();
     return inventory[resource.type] ?? 0;
 }
 
-function hasMissingInputs(tile: Tile, resources: ResourceAmount[]) {
+function hasMissingInputs(tile: Tile, resources: ResourceAmount[], mode: 'all' | 'any' = 'all') {
+    if (!resources.length) {
+        return false;
+    }
+
+    if (mode === 'any') {
+        return !resources.some((resource) => getAvailableResourceAmount(tile, resource) >= resource.amount);
+    }
+
     return resources.some((resource) => getAvailableResourceAmount(tile, resource) < resource.amount);
 }
 
-function getMissingInputReason(tile: Tile, resources: ResourceAmount[]): SettlerBlockerReason | null {
+function getServiceConsumes(site: ResolvedJobSite, assignedWorkers: number) {
+    if (site.building.jobKind !== 'service') {
+        return [];
+    }
+
+    const baseResources = site.building.serviceConsumes ?? [];
+    if (assignedWorkers <= 0) {
+        return baseResources;
+    }
+
+    return baseResources.map((resource) => ({
+        ...resource,
+        amount: resource.amount * assignedWorkers,
+    }));
+}
+
+function getMissingInputReason(tile: Tile, resources: ResourceAmount[], mode: 'all' | 'any' = 'all'): SettlerBlockerReason | null {
+    if (mode === 'any') {
+        const hasAnyInput = resources.some((resource) => getAvailableResourceAmount(tile, resource) >= resource.amount);
+        if (hasAnyInput || !resources.length) {
+            return null;
+        }
+
+        const primary = resources[0];
+        return primary ? {
+            code: 'missing_input',
+            resourceType: primary.type,
+            amount: primary.amount,
+            tileId: tile.id,
+        } : null;
+    }
+
     const missing = resources.find((resource) => getAvailableResourceAmount(tile, resource) < resource.amount);
     if (!missing) {
         return null;
@@ -180,7 +220,9 @@ export function hasStorageCapacity(tile: Tile, inputs: ResourceAmount[], outputs
         return true;
     }
 
-    const freedCapacityByTileId = buildFreedCapacityByTileId(tile, inputs);
+    const freedCapacityByTileId = isUnlimitedResourcesEnabled(testModeSettings)
+        ? new Map<string, number>()
+        : buildFreedCapacityByTileId(tile, inputs);
     if (freedCapacityByTileId === null) {
         return false;
     }
@@ -199,8 +241,16 @@ export function getSiteOperationalBlock(site: ResolvedJobSite, assignedWorkers: 
     }
 
     const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
-    if (hasMissingInputs(site.tile, scaledInputs)) {
+    const operationalConsumes = site.building.jobKind === 'service'
+        ? getServiceConsumes(site, assignedWorkers)
+        : scaledInputs;
+    const consumeMode = site.building.jobKind === 'service' ? (site.building.serviceConsumeMode ?? 'all') : 'all';
+    if (hasMissingInputs(site.tile, operationalConsumes, consumeMode)) {
         return 'missing_input';
+    }
+
+    if (site.building.jobKind === 'service') {
+        return null;
     }
 
     if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
@@ -245,9 +295,17 @@ export function getSiteBlockerReason(site: ResolvedJobSite, assignedWorkers: num
     }
 
     const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
-    const missingInput = getMissingInputReason(site.tile, scaledInputs);
+    const operationalConsumes = site.building.jobKind === 'service'
+        ? getServiceConsumes(site, assignedWorkers)
+        : scaledInputs;
+    const consumeMode = site.building.jobKind === 'service' ? (site.building.serviceConsumeMode ?? 'all') : 'all';
+    const missingInput = getMissingInputReason(site.tile, operationalConsumes, consumeMode);
     if (missingInput) {
         return missingInput;
+    }
+
+    if (site.building.jobKind === 'service') {
+        return null;
     }
 
     if (!hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {

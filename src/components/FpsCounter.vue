@@ -1,5 +1,5 @@
 <template>
-  <div class="fps-counter mt-60">
+  <div class="fps-counter">
     <div class="fps-header">
       <span>{{ fps }} FPS</span>
       <span class="quality-badge" :class="`quality-${renderDebugState.qualityLabel}`">
@@ -155,9 +155,7 @@ onUnmounted(() => {
 
 <style scoped>
 .fps-counter {
-  position: fixed;
-  top: 10px;
-  right: 10px;
+  position: relative;
   background: rgba(2, 6, 23, 0.82);
   color: #fff;
   padding: 8px 10px;
@@ -165,10 +163,11 @@ onUnmounted(() => {
   border: 1px solid rgba(148, 163, 184, 0.24);
   font-size: 12px;
   font-family: monospace;
-  z-index: 1000;
-  pointer-events: none;
+  pointer-events: auto;
   user-select: none;
   min-width: 220px;
+  max-width: min(24rem, calc(100vw - 1rem));
+  align-self: flex-end;
   display: flex;
   flex-direction: column;
   gap: 4px;

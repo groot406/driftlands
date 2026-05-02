@@ -6,6 +6,7 @@ import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import { isTileControlledBySettlement } from '../../../src/shared/game/state/settlementSupportStore';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
@@ -88,7 +89,7 @@ function canSettlementUseTaskTile(
     }
 
     if (tile.discovered && tile.terrain === 'towncenter') {
-        return tile.id === settlementId;
+        return getTileSettlementId(tile) === settlementId;
     }
 
     if (tile.discovered && tile.ownerSettlementId) {

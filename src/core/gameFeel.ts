@@ -75,12 +75,18 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     stone: {icon: getInventoryEntryDefinition('stone').icon, color: '#b9b3a1'},
     tools: {icon: getInventoryEntryDefinition('tools').icon, color: '#d8b46a'},
     food: {icon: getInventoryEntryDefinition('food').icon, color: '#ffb56e'},
+    bread: {icon: getInventoryEntryDefinition('bread').icon, color: '#f6c572'},
+    meat: {icon: getInventoryEntryDefinition('meat').icon, color: '#e78974'},
+    beer: {icon: getInventoryEntryDefinition('beer').icon, color: '#f2b948'},
+    wine: {icon: getInventoryEntryDefinition('wine').icon, color: '#cc7fe7'},
     crystal: {icon: getInventoryEntryDefinition('crystal').icon, color: '#8cd6ff'},
     artifact: {icon: getInventoryEntryDefinition('artifact').icon, color: '#e5d489'},
     sand: {icon: getInventoryEntryDefinition('sand').icon, color: '#e7c979'},
     glass: {icon: getInventoryEntryDefinition('glass').icon, color: '#b7f2ff'},
     water: {icon: getInventoryEntryDefinition('water').icon, color: '#70d6ff'},
     grain: {icon: getInventoryEntryDefinition('grain').icon, color: '#f4d36b'},
+    hops: {icon: getInventoryEntryDefinition('hops').icon, color: '#7ccb70'},
+    grapes: {icon: getInventoryEntryDefinition('grapes').icon, color: '#aa77ec'},
     water_lily: {icon: getInventoryEntryDefinition('water_lily').icon, color: '#8fd9a8'},
 };
 

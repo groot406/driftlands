@@ -62,3 +62,18 @@ test('active adjacent volcanoes increase nearby job-site output', () => {
   const resources = quarrySite ? resolveJobResources(quarrySite, 1) : null;
   assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 3.75 }]);
 });
+
+test('winery sites resolve into grape-to-wine job sites', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_winery' }),
+  ]);
+
+  const winerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+
+  assert.equal(winerySite?.building.key, 'winery');
+
+  const resources = winerySite ? resolveJobResources(winerySite, 1) : null;
+  assert.deepEqual(resources?.consumes, [{ type: 'grapes', amount: 2 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 1 }]);
+});

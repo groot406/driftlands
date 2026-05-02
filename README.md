@@ -32,8 +32,14 @@ Then open:
 - client: `http://localhost:5173`
 - server: `http://localhost:3000`
 
-`npm start` runs both the client and the server together, which is the fastest way to get the game running for local development.
+`npm start` runs both the client and the server together with debug/test helpers disabled, which is the default play mode for local development.
 The Vite client and Socket.IO server also bind to your local network, so you can open the game from another device on the same Wi-Fi.
+
+To start in debug/test mode with the helper panels enabled:
+
+```bash
+npm test
+```
 
 To play on an iPad or another device on your LAN:
 
@@ -43,7 +49,7 @@ To play on an iPad or another device on your LAN:
 
 To play from outside your network through router port forwarding:
 
-1. Start the client and server together with `npm start`, or run `npm run start:server` next to `npm run preview`
+1. Start the client and server together with `npm start`, or run `npm run start:server:no-debug` next to `npm run preview`
 2. Forward external port `5173` to this computer's port `5173`
 3. Open `http://<your-public-ip-or-hostname>:5173`
 
@@ -51,13 +57,18 @@ Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards t
 
 ## Run Scripts
 
-- `npm start` starts client and server together
-- `npm run dev` does the same as `npm start`
+- `npm start` starts client and server together with debug/test helpers disabled
+- `npm test` starts client and server together with debug/test helpers enabled
+- `npm run dev` starts client and server together with debug/test helpers enabled
+- `npm run dev:no-debug` starts client and server together with debug/test helpers disabled
 - `npm run client` starts only the Vite client
 - `npm run server` starts only the Socket.IO server with `nodemon`
+- `npm run server:no-debug` starts only the Socket.IO server with debug/test helpers disabled
 - `npm run dev:client` keeps backward-compatible client startup
 - `npm run dev:server` keeps backward-compatible server startup
 - `npm run start:server` starts the server once without file watching
+- `npm run start:server:no-debug` starts the server once with debug/test helpers disabled
+- `npm run test:unit` runs the automated test suite
 - `npm run build` builds the client for production
 - `npm run preview` previews the built client
 
@@ -80,8 +91,9 @@ Helpful notes:
 - the client talks to the local game server over Socket.IO
 - Vite proxies `/socket.io` requests to `http://localhost:3000` during development and preview, including when the page is opened via your LAN IP or a forwarded public `5173` port
 - the client can also target a custom server with `VITE_SERVER_URL`
-- the server supports `HOST`, `PORT`, `FRONTEND_ORIGIN`, `SERVER_TPS`, and `SERVER_SEED`
+- the server supports `HOST`, `PORT`, `FRONTEND_ORIGIN`, `SERVER_TPS`, `SERVER_SEED`, and `SERVER_DEBUG_MODE`
 - omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run
+- set `SERVER_DEBUG_MODE=0` to disable Tab helper panels, render/debug controls, test-mode controls, and debug restart handling for connected clients
 - `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost plus common LAN origins by default
 
 ## What You Can Do In-Game
@@ -97,7 +109,7 @@ Helpful notes:
 - click a hero or hero portrait to select it
 - press `1-9` to select a hero directly
 - press `[` or `]` to cycle heroes
-- press `Tab` to show playtest/debug controls
+- press `Tab` to show playtest/debug controls when the server allows debug mode
 - click a tile to move or open its task menu
 - drag to move the camera
 - press `Escape` to open the in-game menu

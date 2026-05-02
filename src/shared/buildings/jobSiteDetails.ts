@@ -9,7 +9,7 @@ export interface JobSiteStatusDescriptor {
 }
 
 export interface JobSiteAdviceContext {
-    building: Pick<BuildingDefinition, 'key' | 'consumes' | 'produces' | 'jobSlots' | 'cycleMs'>;
+    building: Pick<BuildingDefinition, 'key' | 'consumes' | 'produces' | 'jobSlots' | 'cycleMs' | 'jobKind' | 'serviceConsumes' | 'serviceConsumeMode'>;
     site: Pick<JobSiteSnapshot, 'status' | 'assignedWorkers' | 'slots'>;
     population: {
         current: number;
@@ -151,6 +151,7 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
         || (building.produces ?? []).some((resource) => resource.type === 'stone');
     const buildingProducesTools = building.key === 'workshop'
         || (building.produces ?? []).some((resource) => resource.type === 'tools');
+    const buildingRunsHospitality = building.jobKind === 'service' || building.key === 'pub';
 
     switch (site.status) {
         case 'offline':
@@ -185,6 +186,9 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
             if (building.key === 'bakery') {
                 pushAdvice(advice, 'Bakery output depends on staffed granaries upstream, so keep grain production online as well as storage stocked.');
             }
+            if (buildingRunsHospitality) {
+                pushAdvice(advice, 'Pubs only help if drinks are stocked in storage, so keep the brewery running and colony stores supplied.');
+            }
             pushAdvice(advice, 'Inputs can be drawn from any colony storage, so keep town centers and depots topped up instead of letting one site run dry.');
             break;
         case 'storage_full':
@@ -217,6 +221,8 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 }
             } else if ((building.consumes?.length ?? 0) > 0) {
                 pushAdvice(advice, 'Keep input stockpiles and storage space healthy so this site does not stall between completed cycles.');
+            } else if (buildingRunsHospitality) {
+                pushAdvice(advice, 'This hall only needs a worker and drinks in storage; unhappy settlers will visit on their own when morale drops.');
             } else {
                 pushAdvice(advice, 'This site only needs workers and storage room, so scaling it mostly comes down to staffing and logistics.');
             }

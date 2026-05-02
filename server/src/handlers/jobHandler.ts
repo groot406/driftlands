@@ -3,6 +3,7 @@ import { serverMessageRouter } from '../messages/messageRouter';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import { getBuildingDefinitionForTile } from '../../../src/shared/buildings/registry.ts';
 import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites.ts';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import { tileIndex } from '../../../src/shared/game/world.ts';
 import type { SetJobSiteEnabledMessage, TileUpdatedMessage } from '../../../src/shared/protocol.ts';
 import { refreshWorkforceState, resetJobSiteRuntime } from '../systems/jobSystem';
@@ -62,7 +63,7 @@ function canSettlementManageTile(
     }
 
     if (tile.terrain === 'towncenter') {
-        return tile.id === settlementId;
+        return getTileSettlementId(tile) === settlementId;
     }
 
     if (tile.ownerSettlementId) {

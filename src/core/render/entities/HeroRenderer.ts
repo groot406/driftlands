@@ -70,6 +70,7 @@ function isSettlerWalking(settler: Settler) {
     return !!settler.movement
         || settler.activity === 'commuting_home'
         || settler.activity === 'commuting_work'
+        || settler.activity === 'commuting_social'
         || settler.activity === 'fetching_food'
         || settler.activity === 'fetching_input'
         || settler.activity === 'delivering';

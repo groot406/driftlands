@@ -99,6 +99,28 @@ test('food economy chain unlocks irrigation, stores, and baking from real colony
   assert.ok(taskKeys.includes('buildBakery'));
 });
 
+test('brewing unlocks brewery, winery, pub, and specialty crops once food is established', () => {
+  const previous = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    population: 6,
+    buildingCounts: {
+      bakery: 1,
+    },
+  }), previous.unlockedNodeKeys);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.ok(progression.unlockedNodeKeys.includes('brewing'));
+  assert.ok(progression.unlocked.buildings.includes('brewery'));
+  assert.ok(progression.unlocked.buildings.includes('winery'));
+  assert.ok(progression.unlocked.buildings.includes('pub'));
+  assert.ok(taskKeys.includes('buildBrewery'));
+  assert.ok(taskKeys.includes('buildWinery'));
+  assert.ok(taskKeys.includes('buildPub'));
+  assert.ok(taskKeys.includes('seedHops'));
+  assert.ok(taskKeys.includes('seedGrapes'));
+});
+
 test('frontier and logistics milestones unlock mining, depots, and the fourth hero', () => {
   const previous = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({

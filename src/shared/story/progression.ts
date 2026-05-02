@@ -15,6 +15,9 @@ export type BuildingKey =
   | 'huntersHut'
   | 'granary'
   | 'bakery'
+  | 'brewery'
+  | 'winery'
+  | 'pub'
   | 'apiary'
   | 'workshop'
   | 'library'
@@ -39,6 +42,7 @@ export type ProgressionNodeKey =
   | 'irrigation'
   | 'stores'
   | 'baking'
+  | 'brewing'
   | 'security'
   | 'mountain_frontier'
   | 'logistics'
@@ -221,6 +225,21 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Turns stored grain into dependable food once workers staff it.',
     taskKey: 'buildBakery',
   },
+  brewery: {
+    label: 'Brewery',
+    description: 'Turns grain, hops, and water into beer for the colony.',
+    taskKey: 'buildBrewery',
+  },
+  winery: {
+    label: 'Winery',
+    description: 'Turns grapes into wine for settlers who need a stronger morale boost.',
+    taskKey: 'buildWinery',
+  },
+  pub: {
+    label: 'Pub',
+    description: 'Gives settlers a staffed place to socialize and restore happiness.',
+    taskKey: 'buildPub',
+  },
   apiary: {
     label: 'Apiary',
     description: 'Turns nearby forest and field forage into steady food with a staffed beekeeper.',
@@ -343,6 +362,22 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   harvestGrain: {
     label: 'Harvest Grain',
     description: 'Cut ripe grain into usable crop stock.',
+  },
+  seedHops: {
+    label: 'Plant Hops',
+    description: 'Seed prepared earth with hops for brewing.',
+  },
+  harvestHops: {
+    label: 'Harvest Hops',
+    description: 'Cut mature hops into brewing stock.',
+  },
+  seedGrapes: {
+    label: 'Plant Grapes',
+    description: 'Seed prepared earth with grape vines for future luxury drink production.',
+  },
+  harvestGrapes: {
+    label: 'Harvest Grapes',
+    description: 'Gather ripe grapes from mature vines.',
   },
   fishAtDock: {
     label: 'Fish At Dock',
@@ -560,6 +595,32 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 60,
     unlocks: [
       { kind: 'building', key: 'bakery' },
+    ],
+  },
+  {
+    key: 'brewing',
+    label: 'Brewing',
+    category: 'Food',
+    description: 'Once food is stable, the colony can spare crops and labor for morale.',
+    requirements: [
+      { kind: 'population_at_least', amount: 6 },
+      {
+        kind: 'any_of',
+        requirements: [
+          { kind: 'building_count_at_least', buildingKey: 'bakery', amount: 1 },
+          { kind: 'building_count_at_least', buildingKey: 'granary', amount: 1 },
+        ],
+      },
+    ],
+    sortOrder: 65,
+    unlocks: [
+      { kind: 'building', key: 'brewery' },
+      { kind: 'building', key: 'winery' },
+      { kind: 'building', key: 'pub' },
+      { kind: 'task', key: 'seedHops' },
+      { kind: 'task', key: 'harvestHops' },
+      { kind: 'task', key: 'seedGrapes' },
+      { kind: 'task', key: 'harvestGrapes' },
     ],
   },
   {

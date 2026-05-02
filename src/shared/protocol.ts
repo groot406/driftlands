@@ -16,6 +16,9 @@ import type { HeroAbilityKey } from './heroes/heroAbilities.ts';
 import type { HeroSkillKey } from './heroes/heroSkills.ts';
 import type { SettlementStartCandidate, SettlementStartMarker, SettlementStartTerrainTile } from './multiplayer/settlementStart.ts';
 import type { PlayerEntitySnapshot } from './multiplayer/player.ts';
+import type { ProgressionNodeKey } from './story/progression.ts';
+import type { StudyKey } from './studies/studies.ts';
+import type { TestModeSettingsSnapshot } from './game/testMode.ts';
 
 export interface BaseMessage {
     type: string;
@@ -151,6 +154,21 @@ export interface SetActiveStudyMessage extends BaseMessage {
     studyKey: string;
 }
 
+export interface TestSetSettingsMessage extends BaseMessage {
+    type: 'test:set_settings';
+    enabled?: boolean;
+    instantBuild?: boolean;
+    unlimitedResources?: boolean;
+    fastHeroMovement?: boolean;
+    fastGrowth?: boolean;
+    fastPopulationGrowth?: boolean;
+    fastSettlerCycles?: boolean;
+    supportTiles?: boolean;
+    settlementId?: string | null;
+    unlockedNodeKeys?: ProgressionNodeKey[];
+    completedStudyKeys?: StudyKey[];
+}
+
 export interface WorldSnapshotMessage extends BaseMessage {
     type: 'world:snapshot';
     tiles: Tile[];
@@ -163,6 +181,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
+    debugModeEnabled?: boolean;
 }
 
 export interface WorldSnapshotStartMessage extends BaseMessage {
@@ -179,6 +198,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
+    debugModeEnabled?: boolean;
 }
 
 export interface WorldSnapshotChunkMessage extends BaseMessage {
@@ -385,6 +405,11 @@ export interface StudiesUpdateMessage extends BaseMessage {
     studies: StudyStateSnapshot;
 }
 
+export interface TestUpdateMessage extends BaseMessage {
+    type: 'test:update';
+    settings: TestModeSettingsSnapshot;
+}
+
 export interface SettlersUpdateMessage extends BaseMessage {
     type: 'settlers:update';
     settlers: Settler[];
@@ -404,6 +429,7 @@ export type ClientMessage =
     | SettlementFoundRequestMessage
     | SetJobSiteEnabledMessage
     | SetActiveStudyMessage
+    | TestSetSettingsMessage
     | MoveRequestMessage
     | HeroScoutResourceRequestMessage
     | HeroAbilityUseMessage
@@ -445,4 +471,5 @@ export type ServerMessage =
     | PopulationUpdateMessage
     | JobsUpdateMessage
     | StudiesUpdateMessage
+    | TestUpdateMessage
     | SettlersUpdateMessage;

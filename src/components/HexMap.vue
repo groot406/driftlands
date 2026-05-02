@@ -111,6 +111,7 @@ import {
   isTileInCurrentPlayerTerritory,
   settlementStartMarkers,
 } from '../store/settlementStartStore';
+import { getTileSettlementId as getSettlementIdForTile } from '../shared/game/settlement';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
 import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
 
@@ -795,11 +796,7 @@ function isInspectableBuildingTile(tile: Tile) {
 }
 
 function getTileSettlementId(tile: Tile) {
-  if (tile.terrain === 'towncenter') {
-    return tile.id;
-  }
-
-  return tile.ownerSettlementId ?? tile.controlledBySettlementId ?? currentPlayerSettlementId.value;
+  return getSettlementIdForTile(tile) ?? currentPlayerSettlementId.value;
 }
 
 function openJobSiteDetailFromTile(tile: Tile) {

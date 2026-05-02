@@ -44,8 +44,11 @@ export interface BuildingDefinition {
     consumes?: ResourceAmount[];
     produces?: ResourceAmount[];
     jobLabel?: string;
-    jobKind?: 'production' | 'study';
+    jobKind?: 'production' | 'study' | 'service';
     jobPresentation?: 'indoor' | 'outdoor' | 'field';
+    serviceConsumes?: ResourceAmount[];
+    serviceConsumeMode?: 'all' | 'any';
+    serviceCapacity?: number;
     repairResources?: ResourceAmount[];
     maintenanceDecayPerMinute?: number;
     getJobResources?(tile: Tile, assignedWorkers: number): { consumes?: ResourceAmount[]; produces?: ResourceAmount[] };
@@ -567,7 +570,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'huntersHut',
         label: 'Hunter Hut',
-        summary: 'Claims a forest tile as a permanent hunting site whose food output scales with nearby woods.',
+        summary: 'Claims a forest tile as a permanent hunting site whose meat output scales with nearby woods.',
         categoryLabel: 'Food',
         buildTaskKey: 'buildHuntersHut',
         buildTaskLabel: 'Build Hunter Hut',
@@ -577,7 +580,7 @@ const buildings: BuildingDefinition[] = [
         overlayAssetKey: 'building_hunters_hut',
         jobSlots: 1,
         cycleMs: 60_000,
-        produces: [{ type: 'food', amount: 1 }],
+        produces: [{ type: 'meat', amount: 1 }],
         jobLabel: 'Hunter',
         jobPresentation: 'field',
         repairResources: [{ type: 'wood', amount: 1 }],
@@ -588,7 +591,7 @@ const buildings: BuildingDefinition[] = [
                 ? 1
                 : 0;
             return {
-                produces: [{ type: 'food', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
+                produces: [{ type: 'meat', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -655,7 +658,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'bakery',
         label: 'Bakery',
-        summary: 'Turns stored grain into food once a settler staffs the ovens.',
+        summary: 'Turns stored grain into bread once a settler staffs the ovens.',
         categoryLabel: 'Agriculture',
         buildTaskKey: 'buildBakery',
         buildTaskLabel: 'Build Bakery',
@@ -667,7 +670,7 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         consumes: [{ type: 'grain', amount: 1 }],
-        produces: [{ type: 'food', amount: 3 }],
+        produces: [{ type: 'bread', amount: 2 }],
         jobLabel: 'Baker',
         jobPresentation: 'indoor',
         repairResources: [{ type: 'stone', amount: 1 }],
@@ -692,6 +695,144 @@ const buildings: BuildingDefinition[] = [
                 applyVariant(tile, 'plains_bakery', { stagger: false, respectBiome: false });
             } else if (tile.terrain === 'dirt') {
                 applyVariant(tile, 'dirt_bakery', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'brewery',
+        label: 'Brewery',
+        summary: 'Turns grain, hops, and water into beer for colony morale.',
+        categoryLabel: 'Hospitality',
+        buildTaskKey: 'buildBrewery',
+        buildTaskLabel: 'Build Brewery',
+        sortOrder: 36.2,
+        requiredPopulation: 6,
+        variantKeys: ['plains_brewery', 'dirt_brewery'],
+        overlayAssetKey: 'building_bakery',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        consumes: [
+            { type: 'grain', amount: 2 },
+            { type: 'hops', amount: 1 },
+            { type: 'water', amount: 1 },
+        ],
+        produces: [{ type: 'beer', amount: 1 }],
+        jobLabel: 'Brewer',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.7,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3600;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 8 },
+                { type: 'stone', amount: 4 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_brewery', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_brewery', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'winery',
+        label: 'Winery',
+        summary: 'Turns ripe grapes into wine for stronger colony morale.',
+        categoryLabel: 'Hospitality',
+        buildTaskKey: 'buildWinery',
+        buildTaskLabel: 'Build Winery',
+        sortOrder: 36.25,
+        requiredPopulation: 6,
+        variantKeys: ['plains_winery', 'dirt_winery'],
+        overlayAssetKey: 'building_bakery',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 90_000,
+        consumes: [{ type: 'grapes', amount: 2 }],
+        produces: [{ type: 'wine', amount: 1 }],
+        jobLabel: 'Vintner',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.7,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3800;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 8 },
+                { type: 'stone', amount: 4 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_winery', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_winery', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'pub',
+        label: 'Pub',
+        summary: 'A staffed social hall where settlers recover happiness over shared drinks.',
+        categoryLabel: 'Hospitality',
+        buildTaskKey: 'buildPub',
+        buildTaskLabel: 'Build Pub',
+        sortOrder: 36.3,
+        requiredPopulation: 6,
+        variantKeys: ['plains_pub', 'dirt_pub'],
+        overlayAssetKey: 'building_hunters_hut',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 20_000,
+        jobKind: 'service',
+        serviceConsumes: [
+            { type: 'beer', amount: 1 },
+            { type: 'wine', amount: 1 },
+        ],
+        serviceConsumeMode: 'any',
+        serviceCapacity: 3,
+        jobLabel: 'Publican',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.4,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3200;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 7 },
+                { type: 'stone', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_pub', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_pub', { stagger: false, respectBiome: false });
             }
         },
     },

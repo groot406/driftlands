@@ -48,6 +48,18 @@
             </div>
           </section>
 
+          <section v-if="activeResource.breakdown.length" class="resource-detail-section">
+            <div class="resource-detail-section-head">
+              <h3 class="resource-detail-section-title">{{ activeResource.breakdownTitle }}</h3>
+            </div>
+            <div class="resource-detail-list">
+              <div v-for="entry in activeResource.breakdown" :key="entry.key" class="resource-detail-list-row">
+                <span>{{ entry.icon }} {{ entry.label }}</span>
+                <span>{{ entry.stock }} · {{ formatSigned(entry.net) }}/min</span>
+              </div>
+            </div>
+          </section>
+
           <section class="resource-detail-section">
             <div class="resource-detail-section-head">
               <h3 class="resource-detail-section-title">Where It Comes From</h3>
@@ -101,6 +113,12 @@ import { getPerMinuteResources } from '../shared/buildings/jobSiteDetails.ts';
 import { resolveBuildingJobResources } from '../shared/buildings/registry.ts';
 import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
 import { getInventoryEntryDefinition, getInventoryKindLabel } from '../shared/game/inventoryPresentation.ts';
+import {
+  getResourceDefinition,
+  getResourceGroupDefinition,
+  listResourceDefinitions,
+  type ResourceGroup,
+} from '../shared/game/resourceDefinitions.ts';
 import { workforceState } from '../store/clientJobStore';
 import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { populationState } from '../store/clientPopulationStore';
@@ -150,10 +168,7 @@ function accumulateMatches(matches: Array<{ label: string; amount: number }>, la
   matches.push({ label, amount: match.amount });
 }
 
-const activeResource = computed(() => {
-  const resourceType = selectedResourceDetail.value;
-  if (!resourceType) return null;
-
+function buildResourceInsight(resourceType: ResourceType) {
   const producers: Array<{ label: string; amount: number }> = [];
   const consumers: Array<{ label: string; amount: number }> = [];
 
@@ -181,29 +196,95 @@ const activeResource = computed(() => {
     });
   }
 
-  const producedAmount = producers.reduce((sum, entry) => sum + entry.amount, 0);
-  const consumedAmount = consumers.reduce((sum, entry) => sum + entry.amount, 0);
-  const net = producedAmount - consumedAmount;
-  const netMagnitude = Math.floor(Math.abs(net));
-  const meta = getInventoryEntryDefinition(resourceType);
-  const kindLabel = getInventoryKindLabel(meta.kind);
+  const produced = producers.reduce((sum, entry) => sum + entry.amount, 0);
+  const consumed = consumers.reduce((sum, entry) => sum + entry.amount, 0);
+  const net = produced - consumed;
   const maintenanceOverview = getMaintenanceOverview(playerTiles.value, playerSettlers.value, playerInventory.value);
   const maintenanceDemand = maintenanceOverview.backlogResources.find((resource) => resource.type === resourceType) ?? null;
 
   return {
     key: resourceType,
-    label: meta.label,
-    icon: meta.icon,
-    kindLabel,
-    subtitle: `Current storage, production, and consumption for this ${kindLabel.toLowerCase()}.`,
+    label: getResourceDefinition(resourceType).label,
+    icon: getResourceDefinition(resourceType).icon,
     stock: Math.floor(playerInventory.value[resourceType] ?? 0),
-    produced: producedAmount,
-    consumed: consumedAmount,
+    produced,
+    consumed,
     net,
     producers,
     consumers,
     maintenanceDemand,
-    netClass: netMagnitude <= 0 ? 'resource-detail-neutral' : net > 0 ? 'resource-detail-good' : 'resource-detail-bad',
+  };
+}
+
+function isResourceGroupKey(value: string): value is ResourceGroup {
+  return ['food', 'crops', 'materials', 'crafted_goods', 'utility'].includes(value);
+}
+
+const activeResource = computed(() => {
+  const selection = selectedResourceDetail.value;
+  if (!selection) return null;
+
+  if (isResourceGroupKey(selection)) {
+    const group = getResourceGroupDefinition(selection);
+    const breakdown = listResourceDefinitions()
+      .filter((resource) => resource.group === selection)
+      .map((resource) => buildResourceInsight(resource.type))
+      .filter((resource) => resource.stock > 0 || resource.produced > 0 || resource.consumed > 0);
+    const produced = breakdown.reduce((sum, entry) => sum + entry.produced, 0);
+    const settlerDemand = selection === 'food' ? playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE : 0;
+    const consumed = breakdown.reduce((sum, entry) => sum + entry.consumed, 0) + settlerDemand;
+    const net = produced - consumed;
+    const producers = new Map<string, number>();
+    const consumers = new Map<string, number>();
+    for (const entry of breakdown) {
+      for (const producer of entry.producers) {
+        producers.set(producer.label, (producers.get(producer.label) ?? 0) + producer.amount);
+      }
+      for (const consumer of entry.consumers) {
+        consumers.set(consumer.label, (consumers.get(consumer.label) ?? 0) + consumer.amount);
+      }
+    }
+    if (settlerDemand > 0) {
+      consumers.set('Settlers', (consumers.get('Settlers') ?? 0) + settlerDemand);
+    }
+
+    return {
+      key: selection,
+      label: group.label,
+      icon: group.icon,
+      kindLabel: 'Group',
+      subtitle: `Combined storage and resource flow for the ${group.label.toLowerCase()} group.`,
+      stock: breakdown.reduce((sum, entry) => sum + entry.stock, 0),
+      produced,
+      consumed,
+      net,
+      maintenanceDemand: null,
+      breakdownTitle: `${group.label} Breakdown`,
+      breakdown: breakdown.sort((a, b) => b.stock - a.stock || a.label.localeCompare(b.label)),
+      producers: Array.from(producers.entries()).map(([label, amount]) => ({ label, amount })),
+      consumers: Array.from(consumers.entries()).map(([label, amount]) => ({ label, amount })),
+      netClass: Math.floor(Math.abs(net)) <= 0 ? 'resource-detail-neutral' : net > 0 ? 'resource-detail-good' : 'resource-detail-bad',
+    };
+  }
+
+  const meta = getInventoryEntryDefinition(selection);
+  const detail = buildResourceInsight(selection);
+  return {
+    key: selection,
+    label: meta.label,
+    icon: meta.icon,
+    kindLabel: getInventoryKindLabel(meta.kind),
+    subtitle: `Current storage, production, and consumption for this ${getInventoryKindLabel(meta.kind).toLowerCase()}.`,
+    stock: detail.stock,
+    produced: detail.produced,
+    consumed: detail.consumed,
+    net: detail.net,
+    producers: detail.producers,
+    consumers: detail.consumers,
+    maintenanceDemand: detail.maintenanceDemand,
+    breakdownTitle: 'Breakdown',
+    breakdown: [],
+    netClass: Math.floor(Math.abs(detail.net)) <= 0 ? 'resource-detail-neutral' : detail.net > 0 ? 'resource-detail-good' : 'resource-detail-bad',
   };
 });
 

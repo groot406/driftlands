@@ -7,12 +7,12 @@
       <div class="pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
-      <div class="pointer-events-auto gap-2 flex flex-col justify-end justify-items-end" v-if="showHelpers">
+      <div class="pointer-events-auto gap-2 flex flex-col items-end" v-if="showHelpers && serverDebugModeEnabled">
         <WorldControls/>
+        <FpsCounter />
       </div>
     </div>
     <HeroesBar />
-    <FpsCounter v-if="showHelpers" />
   </div>
   <!-- Bottom-right toolbar -->
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
+import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import MaintenanceAlert from './MaintenanceAlert.vue';
 import ChronicleBar from './ChronicleBar.vue';
@@ -89,6 +89,7 @@ import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
 import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
+import { serverDebugModeEnabled } from '../store/serverConfigStore.ts';
 import {
   hasTutorial,
   isTutorialPanelOpen,
@@ -131,6 +132,9 @@ function handleKeyDown(e: KeyboardEvent) {
   if (isInput) return;
 
   if (e.key === 'Tab') {
+    if (!serverDebugModeEnabled.value) {
+      return;
+    }
     e.preventDefault();
     e.stopImmediatePropagation();
     showHelpers.value = !showHelpers.value;
@@ -149,6 +153,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown);
+});
+
+watch(serverDebugModeEnabled, (enabled) => {
+  if (!enabled) {
+    showHelpers.value = false;
+  }
 });
 </script>
 

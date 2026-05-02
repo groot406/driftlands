@@ -15,6 +15,7 @@ import { boostTaskProgress, getTaskById, getTasksAtTile } from '../../../src/sha
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime.ts';
 import { revealTileFeatures } from '../../../src/shared/game/tileFeatures.ts';
 import { getBuildingDefinitionForTile } from '../../../src/shared/buildings/registry.ts';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import {
     getProductionBoostConfig,
     getStabilizeDurationMs,
@@ -198,7 +199,7 @@ function canSettlementManageTile(tile: Tile | null | undefined, settlementId: st
     }
 
     if (tile.terrain === 'towncenter') {
-        return tile.id === settlementId;
+        return getTileSettlementId(tile) === settlementId;
     }
 
     if (tile.ownerSettlementId) {

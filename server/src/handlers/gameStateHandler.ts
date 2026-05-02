@@ -15,6 +15,8 @@ import type {
 import { runState } from '../state/runState';
 import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
+import { testModeState } from '../state/testModeState';
+import { serverDebugModeEnabled } from '../config/serverMode';
 
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
@@ -24,7 +26,9 @@ export class ServerGameStateHandler {
   init(): void {
     worldState.init();
     serverMessageRouter.on('world:request', this.handleWorldRequest.bind(this));
-    serverMessageRouter.on('world:restart', this.handleWorldRestart.bind(this));
+    if (serverDebugModeEnabled) {
+      serverMessageRouter.on('world:restart', this.handleWorldRestart.bind(this));
+    }
     serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
@@ -47,6 +51,7 @@ export class ServerGameStateHandler {
       population: snapshot.population,
       jobs: snapshot.jobs,
       studies: snapshot.studies,
+      debugModeEnabled: serverDebugModeEnabled,
       timestamp: Date.now(),
     });
 
@@ -108,6 +113,7 @@ export class ServerGameStateHandler {
 
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     this.sendWorldSnapshotToSocket(socket);
+    testModeState.sendUpdate(socket);
     const runSnapshot = this.buildRunSnapshotMessage(socket);
     if (runSnapshot) {
       sendToSocket(socket, runSnapshot);
@@ -117,6 +123,7 @@ export class ServerGameStateHandler {
 
   private handleWorldRestart(_socket: Socket, message: WorldRestartMessage): void {
     worldState.init(message.seed, message.radius);
+    testModeState.reapplyWorldState();
     coopState.resetHeroClaims();
     this.broadcastWorldSnapshot();
     broadcast(this.buildCoopSnapshotMessage());

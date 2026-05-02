@@ -9,6 +9,8 @@ import { depositResourceToStorage, resetResourceState, resourceInventory } from 
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { onGameplayEvent } from '../../../src/shared/gameplay/events';
+import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
+import { DRINK_PREFERENCES, SETTLER_TRAITS } from '../../../src/shared/game/settlerPreferences.ts';
 import { settlerSystem } from './settlerSystem';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
@@ -70,6 +72,7 @@ test.afterEach(() => {
   resetSettlerState();
   resetSettlementSupportState();
   resetWorkforceState();
+  resetTestModeSettings();
 });
 
 test('new settlers spawn at a town center in their own settlement', () => {
@@ -246,6 +249,188 @@ test('passive growth emits a settlement-scoped population change event', () => {
   }
 
   assert.ok(events.some((event) => event.type === 'population:changed' && event.settlementId === '20,0'));
+});
+
+test('fast population growth test mode reduces the passive growth interval to 6 seconds', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 30,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 15,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 0,
+        max: 15,
+        beds: 1,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  depositResourceToStorage('20,0', 'food', 1);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: true,
+    fastSettlerCycles: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+
+  tickAt(Date.now() + 6_000, 1_000);
+
+  assert.equal(settlers.length, 1);
+  assert.equal(settlers[0]?.settlementId, '20,0');
+  assert.ok((settlers[0]?.traits?.length ?? 0) >= 1);
+  assert.ok(SETTLER_TRAITS.includes(settlers[0]?.traits?.[0] ?? 'long_worker'));
+  assert.ok(DRINK_PREFERENCES.includes(settlers[0]?.drinkPreference ?? 'either'));
+});
+
+test('appetite traits change how fast settlers become hungry', () => {
+  loadWorld([createTowncenterTile()]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'big-eater',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      traits: ['big_eater'],
+      drinkPreference: 'either',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'small-eater',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      traits: ['small_eater'],
+      drinkPreference: 'either',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+
+  tickAt(60_000, 60_000);
+
+  assert.ok((settlers[0]?.hungerMs ?? 0) > (settlers[1]?.hungerMs ?? 0));
+});
+
+test('settlers prefer their favored pub drink when both options are stocked', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'wine-lover',
+      q: 1,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 40,
+      traits: ['easy_to_please'],
+      drinkPreference: 'wine',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'publican',
+      q: 1,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      traits: ['long_worker'],
+      drinkPreference: 'beer',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'beer', 1);
+  depositResourceToStorage('0,0', 'wine', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(resourceInventory.wine, 0);
+  assert.equal(resourceInventory.beer, 1);
+  assert.equal(settlers[0]?.activity, 'socializing');
+  assert.ok((settlers[0]?.happiness ?? 0) > 40);
 });
 
 test('settlers only consume food after they arrive at storage', () => {

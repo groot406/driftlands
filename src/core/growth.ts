@@ -5,6 +5,7 @@ import {BIOME_DEFS} from './biomes';
 import { updateTileVariantIndex } from './terrainRegistry';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import { getVolcanicGrowthDurationMultiplier } from '../shared/game/tileFeatures.ts';
+import { getGrowthSpeedMultiplier } from '../shared/game/testMode.ts';
 
 // Track tiles with aging variants
 const agingTiles = new Set<string>();
@@ -91,6 +92,10 @@ export function resolveTileGrowthDurationMs(
     return effectiveAge;
 }
 
+function getActiveTileGrowthDurationMs(durationMs: number) {
+    return Math.max(1, Math.round(durationMs / getGrowthSpeedMultiplier()));
+}
+
 export function updateTileGrowth(nowMs: number = Date.now()) {
     if (agingTiles.size === 0) return;
 
@@ -113,7 +118,7 @@ export function updateTileGrowth(nowMs: number = Date.now()) {
             continue;
         }
         const {next} = variantDef.growth;
-        const effectiveAge = resolveTileGrowthDurationMs(t, variantDef.growth);
+        const effectiveAge = getActiveTileGrowthDurationMs(resolveTileGrowthDurationMs(t, variantDef.growth));
         if (nowMs - started >= effectiveAge) {
             // Transition
             const prevVariant = t.variant;

@@ -28,6 +28,7 @@ import { emitGameplayEvent } from '../gameplay/events';
 import { canDrawWaterFromTile } from '../buildings/water';
 import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../buildings/storage';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
+import { isUnlimitedResourcesEnabled, testModeSettings } from '../game/testMode.ts';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
 import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from './taskAvailability.ts';
@@ -203,6 +204,18 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
             }
 
             const remainingAmount = carriedAmount - depositedAmount;
+            if (remainingAmount > 0 && isUnlimitedResourcesEnabled(testModeSettings)) {
+                clearHeroPayload(hero);
+                hero.movement = undefined;
+                if (!arrivalTask && pending) {
+                    attemptDeferredChain(hero, pending);
+                    hero.pendingChain = undefined;
+                }
+                if (depositedAmount > 0) {
+                    resumeWaitingTasksForResource(carriedType, tile.id);
+                }
+                return;
+            }
             if (remainingAmount <= 0) {
                 clearHeroPayload(hero);
                 hero.movement = undefined;

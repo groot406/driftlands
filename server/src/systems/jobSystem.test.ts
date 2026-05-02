@@ -9,6 +9,7 @@ import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/g
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { getStudySnapshot, resetStudyState } from '../../../src/store/studyStore';
+import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
 import { jobSystem } from './jobSystem';
 import { settlerSystem } from './settlerSystem';
 
@@ -105,6 +106,7 @@ function createSettler(overrides: {
     stateSinceMs: 0,
     hungerMs: 0,
     fatigueMs: 0,
+    happiness: 100,
     workProgressMs: 0,
     carryingKind: null,
   };
@@ -133,6 +135,7 @@ test.afterEach(() => {
   resetSettlementSupportState();
   resetWorkforceState();
   resetStudyState();
+  resetTestModeSettings();
 });
 
 test('workforce snapshots reflect assigned settlers per site', () => {
@@ -158,6 +161,7 @@ test('workforce snapshots reflect assigned settlers per site', () => {
       stateSinceMs: 0,
       hungerMs: 0,
       fatigueMs: 0,
+      happiness: 100,
       workProgressMs: 0,
       carryingKind: null,
     },
@@ -175,6 +179,7 @@ test('workforce snapshots reflect assigned settlers per site', () => {
       stateSinceMs: 0,
       hungerMs: 0,
       fatigueMs: 0,
+      happiness: 100,
       workProgressMs: 0,
       carryingKind: null,
     },
@@ -377,6 +382,7 @@ test('granary and bakery form a settler-driven production chain', () => {
       stateSinceMs: 0,
       hungerMs: 0,
       fatigueMs: 0,
+      happiness: 100,
       workProgressMs: 0,
       carryingKind: null,
     },
@@ -394,6 +400,7 @@ test('granary and bakery form a settler-driven production chain', () => {
       stateSinceMs: 0,
       hungerMs: 0,
       fatigueMs: 0,
+      happiness: 100,
       workProgressMs: 0,
       carryingKind: null,
     },
@@ -462,6 +469,54 @@ test('workshop turns ore into delivered tools', () => {
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('fast settler cycles test mode speeds production work up by 5x', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      workTileId: '1,0',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: true,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(12_000, 12_000);
+
+  assert.equal(settlers[0]?.carryingKind, 'output');
+  assert.equal(settlers[0]?.carryingPayload?.type, 'wood');
 });
 
 test('library scholars advance the active study instead of producing resources', () => {

@@ -4,7 +4,7 @@ import { tiles, tileIndex } from '../../../src/shared/game/world';
 import { heroes, syncHeroRoster } from '../../../src/shared/game/state/heroStore';
 import { getPopulationState, getSettlementPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getWorkforceSnapshot } from '../../../src/shared/game/state/jobStore';
-import { getSettlementResourceInventory, resourceInventory } from '../../../src/shared/game/state/resourceStore';
+import { getEffectiveResourceInventory, getSettlementResourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { getDistanceToNearestTowncenter } from '../../../src/shared/game/worldQueries';
 import type {
   DialogueEntrySnapshot,
@@ -28,6 +28,8 @@ import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
 import { getForestDiscoveryHintTile, getWaterDiscoveryHintTile } from '../../../src/shared/game/waterDiscoveryHint';
 import { getStudySnapshot } from '../../../src/store/studyStore';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
+import { getProgressionOverrideNodeKeys, testModeSettings } from '../../../src/shared/game/testMode.ts';
 
 interface RunMetrics {
   discoveredTiles: number;
@@ -60,6 +62,10 @@ const STORY_VOICE: Record<ProgressionNodeKey, { speakerId: string | null; text: 
   baking: {
     speakerId: 'h1',
     text: 'Stored grain is promise, not dinner. Once a bakery is staffed, the colony finally starts eating like it means to last.',
+  },
+  brewing: {
+    speakerId: 'h4',
+    text: 'Survival bought us time. Brewing and a proper hall turn spare harvest into morale, and morale keeps a larger colony moving.',
   },
   security: {
     speakerId: 'h2',
@@ -234,6 +240,7 @@ class RunState {
   private snapshotsBySettlementId = new Map<string, RunSnapshot>();
   private restoredTilesBySettlementId = new Map<string, number>();
   private dialogueSequenceBySettlementId = new Map<string, number>();
+  private naturalUnlockedNodeKeysBySettlementId = new Map<string, ProgressionNodeKey[]>();
   private restoredTiles = 0;
   private dialogueSequence = 0;
   private activeSeed = 0;
@@ -244,6 +251,7 @@ class RunState {
     this.snapshotsBySettlementId.clear();
     this.restoredTilesBySettlementId.clear();
     this.dialogueSequenceBySettlementId.clear();
+    this.naturalUnlockedNodeKeysBySettlementId.clear();
     this.restoredTiles = 0;
     this.dialogueSequence = 0;
     this.activeSettlementId = null;
@@ -258,7 +266,7 @@ class RunState {
 
     const now = Date.now();
     const metrics = this.captureMetrics();
-    const progression = evaluateProgression(this.captureProgressionMetrics(metrics));
+    const progression = this.computeProgression(this.captureProgressionMetrics(metrics), settlementId);
     const dialogue: DialogueLogSnapshot = {
       activeEntryId: null,
       entries: [],
@@ -370,6 +378,37 @@ class RunState {
 
   grantBonusScore(_points: number) {}
 
+  refreshSettlementProgress(settlementId: string) {
+    if (!this.snapshotsBySettlementId.has(settlementId)) {
+      return;
+    }
+
+    const previousActiveSettlementId = this.activeSettlementId;
+    this.useSettlementSnapshot(settlementId);
+    this.recomputeProgress(true, settlementId);
+    if (previousActiveSettlementId && previousActiveSettlementId !== settlementId && this.snapshotsBySettlementId.has(previousActiveSettlementId)) {
+      this.useSettlementSnapshot(previousActiveSettlementId);
+    }
+  }
+
+  refreshAllProgress() {
+    const settlementIds = Array.from(this.snapshotsBySettlementId.keys());
+    if (!settlementIds.length && this.activeSettlementId) {
+      this.recomputeProgress(true, this.activeSettlementId);
+      return;
+    }
+
+    const previousActiveSettlementId = this.activeSettlementId;
+    for (const settlementId of settlementIds) {
+      this.useSettlementSnapshot(settlementId);
+      this.recomputeProgress(true, settlementId);
+    }
+
+    if (previousActiveSettlementId && this.snapshotsBySettlementId.has(previousActiveSettlementId)) {
+      this.useSettlementSnapshot(previousActiveSettlementId);
+    }
+  }
+
   recordEvent(event: GameplayEvent) {
     const settlementId = this.resolveEventSettlementId(event);
     if (!settlementId) {
@@ -415,6 +454,22 @@ class RunState {
     this.dialogueSequenceBySettlementId.set(this.activeSettlementId, this.dialogueSequence);
   }
 
+  private computeProgression(metrics: ProgressionMetrics, settlementId: string) {
+    const previousNaturalNodeKeys = this.naturalUnlockedNodeKeysBySettlementId.get(settlementId) ?? [];
+    const naturalProgression = evaluateProgression(metrics, previousNaturalNodeKeys);
+    this.naturalUnlockedNodeKeysBySettlementId.set(settlementId, naturalProgression.unlockedNodeKeys.slice());
+
+    const overrideNodeKeys = getProgressionOverrideNodeKeys(testModeSettings, settlementId);
+    if (!overrideNodeKeys.length) {
+      return naturalProgression;
+    }
+
+    return evaluateProgression(metrics, Array.from(new Set([
+      ...naturalProgression.unlockedNodeKeys,
+      ...overrideNodeKeys,
+    ])));
+  }
+
   private resolveEventSettlementId(event: GameplayEvent) {
     if (event.type === 'resource:delivered') {
       const hero = heroes.find((candidate) => candidate.id === event.heroId);
@@ -445,7 +500,7 @@ class RunState {
   private captureMetrics(): RunMetrics {
     const settlementId = this.activeSettlementId;
     const population = settlementId ? getSettlementPopulationState(settlementId) ?? getPopulationState() : getPopulationState();
-    const settlementTiles = tiles.filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId || tile.id === settlementId);
+    const settlementTiles = tiles.filter((tile) => !settlementId || getTileSettlementId(tile) === settlementId);
     const townCenter = settlementId ? tileIndex[settlementId] : null;
 
     return {
@@ -511,7 +566,7 @@ class RunState {
       population: population.current,
       beds: population.beds,
       frontierDistance: runMetrics.frontierDistance,
-      resourceStock: settlementId ? getSettlementResourceInventory(settlementId) : { ...resourceInventory },
+      resourceStock: settlementId ? getSettlementResourceInventory(settlementId) : getEffectiveResourceInventory(),
       buildingCounts,
       operationalBuildingCounts,
       discoveredTerrains: Array.from(discoveredTerrains).filter((terrain): terrain is NonNullable<typeof terrain> => !!terrain),
@@ -595,10 +650,11 @@ class RunState {
     const metrics = this.captureMetrics();
     const previousProgression = cloneProgression(this.snapshot.progression);
     const progressionMetrics = this.captureProgressionMetrics(metrics);
-    const nextProgression = evaluateProgression(
-      progressionMetrics,
-      previousProgression.unlockedNodeKeys,
-    );
+    const resolvedSettlementId = settlementId ?? this.activeSettlementId;
+    if (!resolvedSettlementId) {
+      return;
+    }
+    const nextProgression = this.computeProgression(progressionMetrics, resolvedSettlementId);
 
     const heroRosterChanged = previousProgression.unlocked.heroes.length !== nextProgression.unlocked.heroes.length
       || previousProgression.unlocked.heroes.some((heroId, index) => nextProgression.unlocked.heroes[index] !== heroId);

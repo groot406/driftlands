@@ -16,8 +16,9 @@
             <p class="settler-card-label">Activity</p>
             <div class="settler-pill-row">
               <span class="settler-pill">{{ activityLabel }}</span>
-              <span class="settler-pill" :class="{ 'settler-pill-alert': isHungry }">Hunger {{ formatDuration(settler.hungerMs) }}</span>
-              <span class="settler-pill" :class="{ 'settler-pill-alert': isTired }">Fatigue {{ formatDuration(settler.fatigueMs) }}</span>
+              <span class="settler-pill" :class="{ 'settler-pill-alert': foodLevel <= 35 }">Food {{ foodLevel }}</span>
+              <span class="settler-pill" :class="{ 'settler-pill-alert': energyLevel <= 25 }">Energy {{ energyLevel }}</span>
+              <span class="settler-pill" :class="{ 'settler-pill-alert': happinessLevel <= 45 }">Happiness {{ happinessLevel }}</span>
             </div>
           </section>
 
@@ -45,6 +46,18 @@
               <p class="settler-card-value">{{ positionLabel }}</p>
               <p class="settler-card-meta">Facing {{ settler.facing }}</p>
             </div>
+
+            <div class="settler-card">
+              <p class="settler-card-label">Trait</p>
+              <p class="settler-card-value">{{ traitLabels.join(', ') }}</p>
+              <p class="settler-card-meta">One personal quirk shapes this settler's routine.</p>
+            </div>
+
+            <div class="settler-card">
+              <p class="settler-card-label">Preferred drink</p>
+              <p class="settler-card-value">{{ drinkPreferenceLabel }}</p>
+              <p class="settler-card-meta">Pubs try this first when drinks are available.</p>
+            </div>
           </section>
         </div>
       </section>
@@ -56,6 +69,7 @@
 import { computed, onUnmounted, watch } from 'vue';
 import { tileIndex } from '../core/world';
 import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
+import { getDrinkPreferenceLabel, getSettlerTraitLabel, normalizeDrinkPreference, normalizeSettlerTraits } from '../shared/game/settlerPreferences.ts';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { closeWindow, isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
 import { closeSettlerModal, getSelectedSettler } from '../store/uiStore';
@@ -113,8 +127,23 @@ const homeLabel = computed(() => formatTileLabel(settler.value?.homeTileId));
 const workLabel = computed(() => formatTileLabel(settler.value?.workTileId ?? settler.value?.assignedWorkTileId));
 const accessLabel = computed(() => `Access via ${formatTileLabel(settler.value?.homeAccessTileId)}`);
 
-const isHungry = computed(() => (settler.value?.hungerMs ?? 0) >= HUNGRY_MS);
-const isTired = computed(() => (settler.value?.fatigueMs ?? 0) >= TIRED_MS);
+const foodLevel = computed(() => {
+  const hungerMs = settler.value?.hungerMs ?? 0;
+  return Math.max(0, Math.min(100, Math.round(100 - ((hungerMs / (3 * 60_000)) * 100))));
+});
+const energyLevel = computed(() => {
+  const fatigueMs = settler.value?.fatigueMs ?? 0;
+  return Math.max(0, Math.min(100, Math.round(100 - ((fatigueMs / TIRED_MS) * 100))));
+});
+const happinessLevel = computed(() => Math.max(0, Math.min(100, Math.round(settler.value?.happiness ?? 100))));
+const traitLabels = computed(() => normalizeSettlerTraits(settler.value ?? {
+  id: 'settler-preview',
+  appearanceSeed: 1,
+}).map(getSettlerTraitLabel));
+const drinkPreferenceLabel = computed(() => getDrinkPreferenceLabel(normalizeDrinkPreference(settler.value ?? {
+  id: 'settler-preview',
+  appearanceSeed: 1,
+})));
 
 const workProgressLabel = computed(() => {
   const currentSettler = settler.value;
@@ -182,6 +211,14 @@ const locationSummary = computed(() => {
 
   if (currentSettler.activity === 'fetching_food') {
     return 'Fetching food';
+  }
+
+  if (currentSettler.activity === 'commuting_social') {
+    return `Heading to ${formatTileLabel(currentSettler.socialTileId)}`;
+  }
+
+  if (currentSettler.activity === 'socializing') {
+    return `Socializing at ${formatTileLabel(currentSettler.socialTileId)}`;
   }
 
   if (currentSettler.activity === 'fetching_input') {

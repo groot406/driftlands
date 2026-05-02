@@ -303,6 +303,7 @@ import { TERRAIN_DEFS } from '../core/terrainDefs';
 import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
 import { populationState } from '../store/clientPopulationStore';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+import { getTileSettlementId } from '../shared/game/settlement';
 import { currentPlayerId } from '../core/socket';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName } from '../store/playerStore';
@@ -363,7 +364,7 @@ function canManageTile(tile: Tile | null | undefined) {
   }
 
   if (tile.terrain === 'towncenter') {
-    return tile.id === settlementId;
+    return getTileSettlementId(tile) === settlementId;
   }
 
   if (tile.ownerSettlementId) {

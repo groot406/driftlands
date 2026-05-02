@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import type { Settler } from '../core/types/Settler';
+import { normalizeDrinkPreference, normalizeSettlerTraits } from '../shared/game/settlerPreferences.ts';
 
 function cloneMovement(
     movement: Settler['movement'],
@@ -44,6 +45,10 @@ function cloneSettler(
         hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
         blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,
         carryingKind: settler.carryingKind ?? null,
+        happiness: settler.happiness ?? 100,
+        traits: normalizeSettlerTraits(settler),
+        drinkPreference: normalizeDrinkPreference(settler),
+        socialTileId: settler.socialTileId ?? null,
         carryingPayload: settler.carryingPayload ? { ...settler.carryingPayload } : undefined,
     };
 }

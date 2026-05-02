@@ -10,6 +10,7 @@ import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
 import { loadTasks, startTask } from '../../store/taskStore.ts';
 import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
+import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
 import { evaluateProgression } from '../story/progression.ts';
 import { getTaskDefinition } from './taskRegistry.ts';
@@ -47,6 +48,7 @@ test.afterEach(() => {
   resetResourceState();
   resetPopulationState();
   resetGameRuntime();
+  resetTestModeSettings();
   loadStoryProgression(null);
   loadHeroes(originalHeroes.map(cloneHero));
 });
@@ -1263,4 +1265,176 @@ test('adjacent lily-path deliveries are applied to placement tasks before wareho
   assert.deepEqual(placeTask.collectedResources, [{ type: 'water_lily', amount: 1 }]);
   assert.equal(placeTask.active, true);
   assert.equal(getStorageResourceAmount('0,0', 'water_lily'), 0);
+});
+
+test('instant build completes zero-cost work immediately when test mode is enabled', () => {
+  setStoryProgressionForMission(1);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: true,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const task = startTask(tileIndex['0,0']!, 'hunt', heroes[0]!);
+
+  assert.ok(task);
+  assert.ok(task?.completedMs);
+  assert.equal(task?.progressXp, task?.requiredXp);
+});
+
+test('unlimited resources removes build input requirements in test mode', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  loadStoryProgression(evaluateProgression({
+    population: 2,
+    beds: 2,
+    frontierDistance: 0,
+    resourceStock: {},
+    buildingCounts: { house: 1 },
+    operationalBuildingCounts: {},
+    discoveredTerrains: ['water'],
+    unlockedHeroIds: [],
+    completedStudyKeys: [],
+    heroAbilityChargesEarned: 0,
+  }));
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const task = startTask(tileIndex['0,1']!, 'buildDock', heroes[0]!);
+
+  assert.ok(task);
+  assert.deepEqual(task?.requiredResources ?? [], []);
+  assert.equal(getStorageResourceAmount('0,0', 'wood'), 0);
+});
+
+test('heroes clear carried rewards at full warehouses when unlimited resources test mode is enabled', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  depositResourceToStorage('0,0', 'wood', 240);
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+    carryingPayload: { type: 'food', amount: 3 },
+  } satisfies Hero]);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  handleHeroArrival(heroes[0]!, tileIndex['0,0']!);
+
+  assert.equal(heroes[0]?.carryingPayload, undefined);
+  assert.equal(getStorageResourceAmount('0,0', 'food'), 0);
 });

@@ -26,6 +26,14 @@ interface CompositeRendererDependencies {
 export class CompositeRenderer<TFrame extends CompositeFrameLike> {
     private scratchCompositeFrame: TFrame | null = null;
 
+    private drawCanvasIfReady(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+        if (canvas.width < 1 || canvas.height < 1) {
+            return;
+        }
+
+        ctx.drawImage(canvas, 0, 0);
+    }
+
     renderEffects(
         context: RenderPassContext,
         frame: TFrame,
@@ -55,19 +63,19 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
             ctx.shadowOffsetY = 3;
             ctx.shadowBlur = 8;
             ctx.shadowColor = 'rgba(3, 18, 12, 0.42)';
-            ctx.drawImage(frame.worldCanvas, 0, 0);
+            this.drawCanvasIfReady(ctx, frame.worldCanvas);
 
             ctx.shadowOffsetX = 18;
             ctx.shadowOffsetY = 32;
             ctx.shadowBlur = 30;
             ctx.shadowColor = 'rgba(2, 14, 10, 0.24)';
-            ctx.drawImage(frame.worldCanvas, 0, 0);
+            this.drawCanvasIfReady(ctx, frame.worldCanvas);
 
             ctx.shadowOffsetX = -5;
             ctx.shadowOffsetY = 12;
             ctx.shadowBlur = 18;
             ctx.shadowColor = 'rgba(36, 50, 28, 0.14)';
-            ctx.drawImage(frame.worldCanvas, 0, 0);
+            this.drawCanvasIfReady(ctx, frame.worldCanvas);
 
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
@@ -75,11 +83,11 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
             ctx.shadowColor = 'transparent';
         } else {
             this.ensureScratchWorldComposite(frame);
-            ctx.drawImage(frame.worldCanvas, 0, 0);
+            this.drawCanvasIfReady(ctx, frame.worldCanvas);
         }
 
         if (includeEffectSurface) {
-            ctx.drawImage(frame.effectSurface.canvas, 0, 0);
+            this.drawCanvasIfReady(ctx, frame.effectSurface.canvas);
         }
     }
 
@@ -101,11 +109,11 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
     }
 
     private drawWorldLayers(ctx: CanvasRenderingContext2D, frame: TFrame) {
-        ctx.drawImage(frame.terrainSurface.canvas, 0, 0);
-        ctx.drawImage(frame.overlayUnderlaySurface.canvas, 0, 0);
-        ctx.drawImage(frame.particleUnderlaySurface.canvas, 0, 0);
-        ctx.drawImage(frame.entitySurface.canvas, 0, 0);
-        ctx.drawImage(frame.overlayTopSurface.canvas, 0, 0);
-        ctx.drawImage(frame.particleOverlaySurface.canvas, 0, 0);
+        this.drawCanvasIfReady(ctx, frame.terrainSurface.canvas);
+        this.drawCanvasIfReady(ctx, frame.overlayUnderlaySurface.canvas);
+        this.drawCanvasIfReady(ctx, frame.particleUnderlaySurface.canvas);
+        this.drawCanvasIfReady(ctx, frame.entitySurface.canvas);
+        this.drawCanvasIfReady(ctx, frame.overlayTopSurface.canvas);
+        this.drawCanvasIfReady(ctx, frame.particleOverlaySurface.canvas);
     }
 }

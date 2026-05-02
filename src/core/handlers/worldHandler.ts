@@ -3,6 +3,7 @@ import type {
     PopulationUpdateMessage,
     SettlersUpdateMessage,
     StudiesUpdateMessage,
+    TestUpdateMessage,
     TileUpdatedMessage,
     WorldSnapshotChunkMessage,
     WorldSnapshotCompleteMessage,
@@ -19,7 +20,8 @@ import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
 import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
 import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
-import { ensureHeroSelected } from '../../store/uiStore';
+import { loadTestModeSettings } from '../../shared/game/testMode.ts';
+import { setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -35,12 +37,19 @@ interface PendingWorldSnapshot {
     population: WorldSnapshotMessage['population'];
     jobs: WorldSnapshotMessage['jobs'];
     studies: WorldSnapshotMessage['studies'];
+    debugModeEnabled?: boolean;
     timestamp?: number;
 }
 
 class WorldHandler {
     private initialized = false;
     private pendingSnapshot: PendingWorldSnapshot | null = null;
+
+    private refreshHeroSelection(): void {
+        void import('../../store/uiStore').then(({ ensureHeroSelected }) => {
+            ensureHeroSelected(false);
+        });
+    }
 
     init(): void {
         if (this.initialized) {
@@ -55,11 +64,13 @@ class WorldHandler {
         clientMessageRouter.on('jobs:update', this.handleJobsUpdate.bind(this));
         clientMessageRouter.on('studies:update', this.handleStudiesUpdate.bind(this));
         clientMessageRouter.on('settlers:update', this.handleSettlersUpdate.bind(this));
+        clientMessageRouter.on('test:update', this.handleTestModeUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
     }
 
     private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
+        setServerDebugModeEnabled((message as WorldSnapshotMessage).debugModeEnabled);
         loadWorld(message.tiles);
         for (const tile of message.tiles) {
             if (tile.discovered) {
@@ -67,7 +78,7 @@ class WorldHandler {
             }
         }
         loadHeroes(message.heroes);
-        ensureHeroSelected(false);
+        this.refreshHeroSelection();
         loadSettlers(message.settlers ?? [], message.timestamp);
         loadTasks(message.tasks);
         const storages = message.storages ?? [];
@@ -100,6 +111,7 @@ class WorldHandler {
             population: message.population,
             jobs: message.jobs,
             studies: message.studies,
+            debugModeEnabled: message.debugModeEnabled,
             timestamp: message.timestamp,
         };
     }
@@ -166,6 +178,10 @@ class WorldHandler {
 
     private handleSettlersUpdate(message: SettlersUpdateMessage): void {
         updateSettlers(message.settlers, message.timestamp);
+    }
+
+    private handleTestModeUpdate(message: TestUpdateMessage): void {
+        loadTestModeSettings(message.settings);
     }
 }
 

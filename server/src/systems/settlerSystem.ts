@@ -10,12 +10,26 @@ import {
     isTileWalkable,
 } from '../../../src/shared/game/navigation';
 import { SETTLER_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBalance';
+import {
+    getSettlerDrinkHappinessGain,
+    getSettlerDrinkPriority,
+    getSettlerHappinessDecayMultiplier,
+    getSettlerHungerRateMultiplier,
+    getSettlerSleepDurationMultiplier,
+    getSettlerSleepThresholdMultiplier,
+    getSettlerSocialThreshold,
+    getSettlerWorkFatigueMultiplier,
+    normalizeDrinkPreference,
+    normalizeSettlerTraits,
+} from '../../../src/shared/game/settlerPreferences.ts';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import {
     depositResourceToStorage,
+    getEffectiveResourceInventory,
     getSettlementResourceInventory,
     getStorageResourceAmount,
     resourceInventory,
+    withdrawResourceAcrossStoragesForSettlement,
     withdrawResourceFromStorage,
 } from '../../../src/shared/game/state/resourceStore';
 import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
@@ -24,7 +38,7 @@ import type { Tile } from '../../../src/shared/game/types/Tile';
 import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../../../src/shared/tasks/taskAccess';
 import { tileIndex } from '../../../src/shared/game/world';
-import { canAssignWorkersToSite, finalizeMineExtraction, getJobSiteSettlementId, listResolvedJobSites } from './jobSiteRuntime';
+import { canAssignWorkersToSite, compareResolvedSites, finalizeMineExtraction, getJobSiteSettlementId, listResolvedJobSites } from './jobSiteRuntime';
 import { addStudyProgress, broadcastStudyState, hasActiveStudy } from '../../../src/store/studyStore';
 import { consumeTileProductionBoost } from '../../../src/shared/game/tileFeatures';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
@@ -39,6 +53,12 @@ import {
     updateTileCondition,
 } from '../../../src/shared/buildings/maintenance';
 import { playerSettlementState } from '../state/playerSettlementState';
+import {
+    getPopulationGrowthMultiplier,
+    getSettlerCycleSpeedMultiplier,
+    isUnlimitedResourcesEnabled,
+    testModeSettings,
+} from '../../../src/shared/game/testMode.ts';
 
 const pathService = new PathService();
 
@@ -49,9 +69,25 @@ const SETTLER_MAX_ACTIVE_MS = 3 * 60_000;
 const SETTLER_SLEEP_MS = 45_000;
 const POPULATION_GROWTH_INTERVAL_MS = 60_000;
 const SETTLER_STEP_BASE_MS = 900;
+const SETTLER_HAPPINESS_DECAY_MS = 10_000;
+const SETTLER_SOCIAL_VISIT_MS = 20_000;
+const SETTLER_MAX_HAPPINESS = 100;
+const HUNGER_FOOD_TYPES = ['bread', 'meat', 'food'] as const;
+const SOCIAL_DRINKS = [
+    { type: 'wine', happiness: 30 },
+    { type: 'beer', happiness: 20 },
+] as const;
 
 let nextSettlerId = 1;
 let lastGrowthCheckMsPerSettlement: Record<string, number> = {};
+
+function getEffectivePopulationGrowthIntervalMs() {
+    return Math.max(1, Math.round(POPULATION_GROWTH_INTERVAL_MS / getPopulationGrowthMultiplier(testModeSettings)));
+}
+
+function getEffectiveSettlerCycleProgress(dt: number) {
+    return dt * getSettlerCycleSpeedMultiplier(testModeSettings);
+}
 
 function seedFromString(value: string) {
     let hash = 2166136261;
@@ -88,14 +124,19 @@ function createSettler(now: number, settlementId?: string | null): Settler {
     const fallback = getHomeFallbackTile(settlementId);
     const id = `settler-${nextSettlerId++}`;
     const fallbackSettlementId = settlementId ?? fallback?.id ?? '0,0';
+    const baseSettler = {
+        id,
+        nameSeed: createSettlerNameSeed(id, now),
+        appearanceSeed: seedFromString(id),
+    };
 
     return {
         id,
-        nameSeed: createSettlerNameSeed(id, now),
+        nameSeed: baseSettler.nameSeed,
         q: fallback?.q ?? 0,
         r: fallback?.r ?? 0,
         facing: 'down',
-        appearanceSeed: seedFromString(id),
+        appearanceSeed: baseSettler.appearanceSeed,
         homeTileId: fallback?.id ?? '0,0',
         homeAccessTileId: fallback?.id ?? '0,0',
         settlementId: fallbackSettlementId,
@@ -107,8 +148,12 @@ function createSettler(now: number, settlementId?: string | null): Settler {
         stateSinceMs: now,
         hungerMs: 0,
         fatigueMs: 0,
+        happiness: SETTLER_MAX_HAPPINESS,
+        traits: normalizeSettlerTraits(baseSettler),
+        drinkPreference: normalizeDrinkPreference(baseSettler),
         workProgressMs: 0,
         carryingKind: null,
+        socialTileId: null,
     };
 }
 
@@ -117,6 +162,28 @@ function ensureSettlerNameSeeds(now: number) {
     for (const settler of settlers) {
         if (typeof settler.nameSeed !== 'number') {
             settler.nameSeed = createSettlerNameSeed(settler.id, now);
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
+function ensureSettlerProfiles() {
+    let changed = false;
+    for (const settler of settlers) {
+        const nextTraits = normalizeSettlerTraits(settler);
+        const nextDrinkPreference = normalizeDrinkPreference(settler);
+
+        const traitChanged = (settler.traits ?? []).length !== nextTraits.length
+            || nextTraits.some((trait, index) => settler.traits?.[index] !== trait);
+        if (traitChanged) {
+            settler.traits = nextTraits;
+            changed = true;
+        }
+
+        if (settler.drinkPreference !== nextDrinkPreference) {
+            settler.drinkPreference = nextDrinkPreference;
             changed = true;
         }
     }
@@ -153,6 +220,9 @@ function setActivity(settler: Settler, activity: SettlerActivity, now: number) {
     changed = true;
     if (activity !== 'working' && activity !== 'repairing') {
         settler.workProgressMs = 0;
+    }
+    if (activity !== 'socializing' && activity !== 'commuting_social') {
+        settler.socialTileId = null;
     }
     if (activity !== 'waiting' && settler.blockerReason) {
         settler.blockerReason = null;
@@ -272,6 +342,10 @@ function clearSettlerAssignment(settler: Settler) {
     }
     if ((settler.hiddenWhileWorking ?? null) !== null) {
         settler.hiddenWhileWorking = null;
+        changed = true;
+    }
+    if ((settler.socialTileId ?? null) !== null) {
+        settler.socialTileId = null;
         changed = true;
     }
     if ((settler.blockerReason ?? null) !== null) {
@@ -475,24 +549,36 @@ function getSiteInputsOutputs(settler: Settler) {
 }
 
 function getStarvationMs(settler: Settler) {
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        return 0;
+    }
+
     return Math.max(0, settler.hungerMs - SETTLER_MEAL_INTERVAL_MS);
 }
 
 function isHungry(settler: Settler) {
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        return false;
+    }
+
     return settler.hungerMs >= SETTLER_MEAL_INTERVAL_MS;
 }
 
 function needsFood(settler: Settler) {
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        return false;
+    }
+
     return settler.hungerMs >= SETTLER_FOOD_SEEK_MS;
 }
 
 function needsSleep(settler: Settler) {
-    return settler.fatigueMs >= SETTLER_MAX_ACTIVE_MS;
+    return settler.fatigueMs >= SETTLER_MAX_ACTIVE_MS * getSettlerSleepThresholdMultiplier(settler);
 }
 
 function canProduceFood(settler: Settler) {
     const siteInfo = getSiteInputsOutputs(settler);
-    if (!siteInfo?.output || siteInfo.output.type !== 'food' || siteInfo.output.amount <= 0) {
+    if (!siteInfo?.output || !HUNGER_FOOD_TYPES.includes(siteInfo.output.type as typeof HUNGER_FOOD_TYPES[number]) || siteInfo.output.amount <= 0) {
         return false;
     }
 
@@ -504,6 +590,32 @@ function canProduceFood(settler: Settler) {
         || (settler.carryingKind === 'input'
             && settler.carryingPayload?.type === siteInfo.input.type
             && settler.carryingPayload.amount >= siteInfo.input.amount);
+}
+
+function getHungerFoodStock(inventory: Partial<Record<ResourceAmount['type'], number>>) {
+    return HUNGER_FOOD_TYPES.reduce((sum, resourceType) => sum + Math.max(0, inventory[resourceType] ?? 0), 0);
+}
+
+function chooseReachableWarehouseWithFood(settler: Settler) {
+    for (const resourceType of HUNGER_FOOD_TYPES) {
+        const result = chooseReachableWarehouseWithResource(settler, {
+            type: resourceType,
+            amount: FOOD_PER_SETTLER_PER_MINUTE,
+        });
+        if (result.storage) {
+            return {
+                storage: result.storage,
+                blockedStorage: result.blockedStorage,
+                resourceType,
+            };
+        }
+    }
+
+    return {
+        storage: null,
+        blockedStorage: null as Tile | null,
+        resourceType: null as typeof HUNGER_FOOD_TYPES[number] | null,
+    };
 }
 
 function getAssignedInput(settler: Settler) {
@@ -534,18 +646,22 @@ function broadcastDeposit(settler: Settler, storageTileId: string, resource: Res
 
 function tryEatFromStorage(settler: Settler, storageTile: Tile) {
     const mealAmount = Math.max(1, FOOD_PER_SETTLER_PER_MINUTE);
-    if ((getStorageResourceAmount(storageTile.id, 'food') ?? 0) < mealAmount) {
-        return false;
+    for (const resourceType of HUNGER_FOOD_TYPES) {
+        if ((getStorageResourceAmount(storageTile.id, resourceType) ?? 0) < mealAmount) {
+            continue;
+        }
+
+        const withdrawn = withdrawResourceFromStorage(storageTile.id, resourceType, mealAmount);
+        if (withdrawn < mealAmount) {
+            continue;
+        }
+
+        broadcastWithdrawal(settler, storageTile.id, { type: resourceType, amount: withdrawn });
+        settler.hungerMs = 0;
+        return true;
     }
 
-    const withdrawn = withdrawResourceFromStorage(storageTile.id, 'food', mealAmount);
-    if (withdrawn < mealAmount) {
-        return false;
-    }
-
-    broadcastWithdrawal(settler, storageTile.id, { type: 'food', amount: withdrawn });
-    settler.hungerMs = 0;
-    return true;
+    return false;
 }
 
 function tryWithdrawInput(settler: Settler, storageTile: Tile) {
@@ -1001,15 +1117,17 @@ function maybeStartSleep(settler: Settler, now: number) {
 }
 
 function maybeFetchFood(settler: Settler, now: number) {
-    const { storage, blockedStorage } = chooseReachableWarehouseWithResource(settler, {
-        type: 'food',
-        amount: FOOD_PER_SETTLER_PER_MINUTE,
-    });
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        settler.hungerMs = 0;
+        return setActivity(settler, 'idle', now) || true;
+    }
+
+    const { storage, blockedStorage, resourceType } = chooseReachableWarehouseWithFood(settler);
     if (!storage) {
         if (blockedStorage) {
             return setWaiting(settler, now, {
                 code: 'path_blocked',
-                resourceType: 'food',
+                resourceType: resourceType ?? 'food',
                 amount: FOOD_PER_SETTLER_PER_MINUTE,
                 tileId: blockedStorage.id,
             }, {
@@ -1026,6 +1144,109 @@ function maybeFetchFood(settler: Settler, now: number) {
     }
 
     return startMovement(settler, storage, 'fetching_food', now);
+}
+
+function getSocialDrinkAmount(settlementId: string | null | undefined, resourceType: 'beer' | 'wine') {
+    const inventory = settlementId ? getSettlementResourceInventory(settlementId) : getEffectiveResourceInventory();
+    return Math.max(0, inventory[resourceType] ?? 0);
+}
+
+function getPubWorkerCount(tileId: string) {
+    return settlers.filter((candidate) => (
+        candidate.assignedRole === 'job'
+        && candidate.assignedWorkTileId === tileId
+    )).length;
+}
+
+function getPubVisitorCount(tileId: string) {
+    return settlers.filter((candidate) => (
+        candidate.socialTileId === tileId
+        && (candidate.activity === 'socializing' || candidate.activity === 'commuting_social')
+    )).length;
+}
+
+function chooseSocialVenue(settler: Settler) {
+    const pubs = listResolvedJobSites()
+        .filter((site) => site.building.key === 'pub' && site.tile.discovered)
+        .sort(compareResolvedSites);
+
+    for (const site of pubs) {
+        if (getPubWorkerCount(site.tile.id) <= 0) {
+            continue;
+        }
+        if (getPubVisitorCount(site.tile.id) >= Math.max(1, site.building.serviceCapacity ?? 3)) {
+            continue;
+        }
+        const hasDrink = SOCIAL_DRINKS.some((drink) => getSocialDrinkAmount(getJobSiteSettlementId(site.tile), drink.type) > 0);
+        if (!hasDrink) {
+            continue;
+        }
+
+        const accessTile = getWorkAccessTile(settler, site.tile);
+        if (!accessTile || !canSettlerReachTile(settler, accessTile)) {
+            continue;
+        }
+
+        return {
+            site,
+            accessTile,
+        };
+    }
+
+    return null;
+}
+
+function tryStartSocializing(settler: Settler, pubTileId: string, now: number) {
+    const preferredDrinks = getSettlerDrinkPriority(settler);
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        const chosenDrink = preferredDrinks[0] ?? SOCIAL_DRINKS[0]?.type ?? 'beer';
+        settler.happiness = Math.min(SETTLER_MAX_HAPPINESS, settler.happiness + getSettlerDrinkHappinessGain(settler, chosenDrink));
+        settler.socialTileId = pubTileId;
+        return setActivity(settler, 'socializing', now) || true;
+    }
+
+    const settlementId = settler.settlementId;
+    const prioritizedDrinks = preferredDrinks
+        .map((drinkType) => SOCIAL_DRINKS.find((drink) => drink.type === drinkType))
+        .filter((drink): drink is typeof SOCIAL_DRINKS[number] => !!drink);
+    for (const drink of prioritizedDrinks) {
+        const transfers = withdrawResourceAcrossStoragesForSettlement(settlementId, drink.type, 1);
+        const amount = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+        if (amount < 1) {
+            continue;
+        }
+
+        for (const transfer of transfers) {
+            broadcastWithdrawal(settler, transfer.storageTileId, { type: drink.type, amount: transfer.amount });
+        }
+
+        settler.happiness = Math.min(SETTLER_MAX_HAPPINESS, settler.happiness + getSettlerDrinkHappinessGain(settler, drink.type));
+        settler.socialTileId = pubTileId;
+        return setActivity(settler, 'socializing', now) || true;
+    }
+
+    return false;
+}
+
+function maybeVisitPub(settler: Settler, now: number) {
+    const venue = chooseSocialVenue(settler);
+    if (!venue) {
+        return false;
+    }
+
+    settler.socialTileId = venue.site.tile.id;
+    if (settler.q === venue.accessTile.q && settler.r === venue.accessTile.r) {
+        return tryStartSocializing(settler, venue.site.tile.id, now);
+    }
+
+    if (!startMovement(settler, venue.accessTile, 'commuting_social', now)) {
+        return setWaiting(settler, now, { code: 'path_blocked', tileId: venue.accessTile.id }, {
+            action: 'commute_social',
+            pubTileId: venue.site.tile.id,
+        });
+    }
+
+    return true;
 }
 
 function maybeDeliverOutput(settler: Settler, now: number) {
@@ -1081,6 +1302,12 @@ function maybeFetchInput(settler: Settler, now: number) {
     const input = getAssignedInput(settler);
     if (!input) {
         return false;
+    }
+
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        settler.carryingPayload = { type: input.type, amount: input.amount };
+        settler.carryingKind = 'input';
+        return setActivity(settler, 'idle', now) || true;
     }
 
     if (
@@ -1156,6 +1383,12 @@ function completeWorkCycle(settler: Settler, now: number) {
         return true;
     }
 
+    if (siteInfo?.site.building.jobKind === 'service') {
+        settler.workProgressMs = 0;
+        setActivity(settler, 'working', now);
+        return true;
+    }
+
     if (!siteInfo?.output || siteInfo.output.amount <= 0) {
         return setWaiting(settler, now, { code: 'resource_depleted', tileId: settler.assignedWorkTileId ?? undefined });
     }
@@ -1204,7 +1437,7 @@ function maybeWork(settler: Settler, now: number, dt: number) {
 
         refreshSettlerWorkPresentation(settler);
         setActivity(settler, 'repairing', now);
-        settler.workProgressMs += dt;
+        settler.workProgressMs += getEffectiveSettlerCycleProgress(dt);
 
         if (settler.workProgressMs < REPAIR_CYCLE_MS) {
             return true;
@@ -1248,7 +1481,14 @@ function maybeWork(settler: Settler, now: number, dt: number) {
 
     refreshSettlerWorkPresentation(settler);
     setActivity(settler, 'working', now);
-    settler.workProgressMs += dt;
+    const happinessMultiplier = settler.happiness >= 80
+        ? 1.1
+        : settler.happiness >= 50
+            ? 1
+            : settler.happiness >= 20
+                ? 0.8
+                : 0.6;
+    settler.workProgressMs += getEffectiveSettlerCycleProgress(dt) * happinessMultiplier;
 
     if (settler.workProgressMs < Math.max(1, siteInfo.site.building.cycleMs ?? SETTLER_MEAL_INTERVAL_MS)) {
         return true;
@@ -1285,6 +1525,10 @@ function handleArrival(settler: Settler, now: number) {
         return handleStorageArrival(settler, tile, now);
     }
 
+    if (settler.socialTileId && tile.id === settler.socialTileId) {
+        return tryStartSocializing(settler, tile.id, now);
+    }
+
     if (tile.id === settler.homeAccessTileId) {
         if (needsSleep(settler)) {
             return setActivity(settler, 'sleeping', now);
@@ -1315,13 +1559,18 @@ function planSettler(settler: Settler, now: number, dt: number) {
 
     const hungry = needsFood(settler);
     const starving = getStarvationMs(settler) > 0;
-    const storedFood = (resourceInventory.food ?? 0) >= FOOD_PER_SETTLER_PER_MINUTE;
+    const storedFood = isUnlimitedResourcesEnabled(testModeSettings)
+        || getHungerFoodStock(settler.settlementId ? getSettlementResourceInventory(settler.settlementId) : getEffectiveResourceInventory()) >= FOOD_PER_SETTLER_PER_MINUTE;
 
     if (hungry && storedFood && maybeFetchFood(settler, now)) {
         return true;
     }
 
     if (needsSleep(settler) && maybeStartSleep(settler, now)) {
+        return true;
+    }
+
+    if (settler.happiness <= getSettlerSocialThreshold(settler) && maybeVisitPub(settler, now)) {
         return true;
     }
 
@@ -1343,13 +1592,26 @@ function planSettler(settler: Settler, now: number, dt: number) {
 }
 
 function applyNeeds(settler: Settler, dt: number) {
-    settler.hungerMs += dt;
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        settler.hungerMs = 0;
+        settler.happiness = SETTLER_MAX_HAPPINESS;
+        if (settler.activity !== 'sleeping') {
+            settler.fatigueMs += dt;
+        }
+        return;
+    }
+
+    settler.hungerMs += dt * getSettlerHungerRateMultiplier(settler);
+    settler.happiness = Math.max(0, settler.happiness - ((dt / SETTLER_HAPPINESS_DECAY_MS) * getSettlerHappinessDecayMultiplier(settler)));
 
     if (settler.activity === 'sleeping') {
         return;
     }
 
-    settler.fatigueMs += dt;
+    const fatigueMultiplier = settler.activity === 'working' || settler.activity === 'repairing'
+        ? getSettlerWorkFatigueMultiplier(settler)
+        : 1;
+    settler.fatigueMs += dt * fatigueMultiplier;
 }
 
 function updateSleeping(settler: Settler, now: number) {
@@ -1357,11 +1619,25 @@ function updateSleeping(settler: Settler, now: number) {
         return false;
     }
 
-    if (now - settler.stateSinceMs < SETTLER_SLEEP_MS) {
+    if (now - settler.stateSinceMs < SETTLER_SLEEP_MS * getSettlerSleepDurationMultiplier(settler)) {
         return true;
     }
 
     settler.fatigueMs = 0;
+    setActivity(settler, 'idle', now);
+    return false;
+}
+
+function updateSocializing(settler: Settler, now: number) {
+    if (settler.activity !== 'socializing') {
+        return false;
+    }
+
+    if (now - settler.stateSinceMs < SETTLER_SOCIAL_VISIT_MS) {
+        return true;
+    }
+
+    settler.socialTileId = null;
     setActivity(settler, 'idle', now);
     return false;
 }
@@ -1390,18 +1666,18 @@ function tryGrowPopulation(now: number) {
     }
 
 
-    const settlement = population.settlements
-        .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
-        .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
-        .find((entry) => {
-            const currentFood = getSettlementResourceInventory(entry.settlementId).food ?? 0;
+        const settlement = population.settlements
+            .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
+            .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
+            .find((entry) => {
+            const currentFood = getHungerFoodStock(getSettlementResourceInventory(entry.settlementId));
             const foodNeededNow = entry.current * FOOD_PER_SETTLER_PER_MINUTE;
             const foodNeededNext = (entry.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
             return currentFood >= foodNeededNow + foodNeededNext;
         });
 
     if (settlement) {
-        if (now - (lastGrowthCheckMsPerSettlement[settlement.settlementId] ?? 0) < POPULATION_GROWTH_INTERVAL_MS) {
+        if (now - (lastGrowthCheckMsPerSettlement[settlement.settlementId] ?? 0) < getEffectivePopulationGrowthIntervalMs()) {
             return false;
         }
 
@@ -1414,7 +1690,7 @@ function tryGrowPopulation(now: number) {
     }
 
     if (population.settlements.length === 0) {
-        const currentFood = resourceInventory.food ?? 0;
+        const currentFood = getHungerFoodStock(getEffectiveResourceInventory());
         const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
         const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
         if (currentFood < foodNeededNow + foodNeededNext) {
@@ -1442,6 +1718,7 @@ export const settlerSystem = {
     tick: (ctx: TickContext) => {
         refreshSettlerIdCounter();
         let changed = false;
+        changed = ensureSettlerProfiles() || changed;
 
         changed = tryGrowPopulation(ctx.now) || changed;
         changed = syncSettlerPopulation(ctx.now) || changed;
@@ -1464,6 +1741,10 @@ export const settlerSystem = {
             }
 
             if (updateSleeping(settler, ctx.now)) {
+                continue;
+            }
+
+            if (updateSocializing(settler, ctx.now)) {
                 continue;
             }
 

@@ -3,6 +3,7 @@ import { tileIndex } from '../core/world';
 import { axialDistanceCoords } from '../shared/game/hex';
 import type { Tile } from '../core/types/Tile';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
+import { getTileSettlementId } from '../shared/game/settlement';
 import {
     type PressureState,
     type SettlementSupportCounts,
@@ -251,8 +252,9 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
     for (const tcId of terrainPositions.towncenter) {
         const tile = tileIndex[tcId];
         if (!tile?.discovered || tile.terrain !== 'towncenter') continue;
-        maxBySettlementId.set(tile.id, (maxBySettlementId.get(tile.id) ?? 0) + TC_BASE_POPULATION);
-        getOrCreateSettlementPopulationState(tile.id);
+        const settlementId = getTileSettlementId(tile) ?? tile.id;
+        maxBySettlementId.set(settlementId, (maxBySettlementId.get(settlementId) ?? 0) + TC_BASE_POPULATION);
+        getOrCreateSettlementPopulationState(settlementId);
     }
 
     let beds = 0;

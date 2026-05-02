@@ -8,6 +8,7 @@ import { populationState, resetClientPopulationState } from '../../store/clientP
 import { resetClientWorkforceState, workforceState } from '../../store/clientJobStore';
 import { resetClientStudyState } from '../../store/clientStudyStore';
 import { resetSettlerState, settlers } from '../../store/settlerStore';
+import { resetServerConfigStore, serverDebugModeEnabled } from '../../store/serverConfigStore.ts';
 import {
   depositResourceToStorage,
   getStorageResourceAmount,
@@ -44,7 +45,12 @@ test.afterEach(() => {
   resetClientWorkforceState();
   resetClientStudyState();
   resetSettlerState();
+  resetServerConfigStore();
   resetResourceState();
+});
+
+test('server debug mode stays disabled until a snapshot explicitly enables it', () => {
+  assert.equal(serverDebugModeEnabled.value, false);
 });
 
 test('world snapshots and jobs updates hydrate workforce state', () => {
@@ -185,4 +191,39 @@ test('world snapshots keep per-storage inventory hydrated when legacy aggregate 
 
   assert.equal(resourceInventory.wood, 26);
   assert.equal(getStorageResourceAmount('0,0', 'wood'), 26);
+});
+
+test('world snapshots advertise when server debug mode is disabled', () => {
+  worldHandler.init();
+
+  clientMessageRouter.route({
+    type: 'world:snapshot',
+    tiles: [],
+    heroes: [],
+    settlers: [],
+    tasks: [],
+    resources: {},
+    storages: [],
+    population: {
+      current: 0,
+      max: 0,
+      beds: 0,
+      hungerMs: 0,
+      supportCapacity: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      pressureState: 'stable',
+      settlements: [],
+    },
+    jobs: {
+      availableWorkers: 0,
+      assignedWorkers: 0,
+      idleWorkers: 0,
+      sites: [],
+    },
+    studies: emptyStudies(),
+    debugModeEnabled: false,
+  });
+
+  assert.equal(serverDebugModeEnabled.value, false);
 });

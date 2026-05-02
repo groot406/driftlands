@@ -4,6 +4,7 @@ import type { ResourceType } from '../../core/types/Resource.ts';
 import { axialDistanceCoords } from '../game/hex';
 import type { StorageKind } from '../game/storage.ts';
 import { isTileWalkable } from '../game/navigation';
+import { isTileInSettlement } from '../game/settlement';
 import { tileIndex } from '../game/world';
 import { depositResourceToStorage, getStorageFreeCapacity, getStorageResourceAmount } from '../../store/resourceStore';
 import { listBuildingDefinitions } from './registry';
@@ -41,9 +42,7 @@ function belongsToSettlement(tile: Tile | null | undefined, settlementId: string
         return !settlementId;
     }
 
-    return tile.ownerSettlementId === settlementId
-        || tile.controlledBySettlementId === settlementId
-        || (tile.terrain === 'towncenter' && tile.id === settlementId);
+    return isTileInSettlement(tile, settlementId);
 }
 
 function findNearestStorageTile(

@@ -1,6 +1,7 @@
 import { resolveWorldTile } from '../../core/worldGeneration.ts';
 import type { Tile } from '../../core/types/Tile.ts';
 import { axialDistanceCoords } from './hex.ts';
+import { isTileInSettlement } from './settlement';
 import { ensureTileExists, tileIndex, tiles } from './world.ts';
 
 const DEFAULT_WATER_HINT_RADIUS = 12;
@@ -11,10 +12,7 @@ export function hasDiscoveredWaterTile(): boolean {
 }
 
 function belongsToSettlement(tile: Tile, settlementId: string | null | undefined) {
-    return !settlementId
-        || tile.ownerSettlementId === settlementId
-        || tile.controlledBySettlementId === settlementId
-        || tile.id === settlementId;
+    return !settlementId || isTileInSettlement(tile, settlementId);
 }
 
 export function hasDiscoveredWaterTileForSettlement(settlementId: string | null | undefined): boolean {

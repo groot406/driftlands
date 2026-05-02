@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { Hero } from '../core/types/Hero.ts';
+import type { TaskInstance } from '../core/types/Task.ts';
 import type { Tile } from '../core/types/Tile.ts';
-import { loadWorld } from '../core/world.ts';
-import { recalculateSettlementSupport, resetSettlementSupportState } from './settlementSupportStore.ts';
+import { loadWorld, tileIndex } from '../core/world.ts';
+import { getBuildingDefinitionByKey } from '../shared/buildings/registry.ts';
+import {
+  computeControlledTileIdsForSettlement,
+  recalculateSettlementSupport,
+  resetSettlementSupportState,
+} from './settlementSupportStore.ts';
 import {
   computeReachTileIds,
   computeReachTileIdsForTC,
@@ -113,5 +120,64 @@ test('active roads extend reach into the surrounding frontier beyond the base to
   } finally {
     loadWorld([]);
     resetSettlementSupportState();
+  }
+});
+
+test('new town centers stay in the builder settlement and add population cap', () => {
+  loadWorld([
+    tile(0, 0, 'towncenter'),
+    {
+      id: '10,0',
+      q: 10,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      variant: null,
+      discovered: true,
+      isBaseTile: true,
+      ownerSettlementId: '0,0',
+      controlledBySettlementId: '0,0',
+    } satisfies Tile,
+  ]);
+
+  try {
+    const buildTownCenter = getBuildingDefinitionByKey('townCenter');
+    const frontierTile = tileIndex['10,0'];
+    const builder: Hero = {
+      id: 'builder',
+      name: 'Builder',
+      avatar: '',
+      settlementId: '0,0',
+      q: 10,
+      r: 0,
+      stats: { xp: 0, hp: 1, atk: 1, spd: 1 },
+      facing: 'down',
+    };
+    const task: TaskInstance = {
+      id: 'build-town-center',
+      type: 'buildTownCenter',
+      tileId: '10,0',
+      progressXp: 0,
+      requiredXp: 0,
+      createdMs: 0,
+      lastUpdateMs: 0,
+      participants: {},
+      active: true,
+    };
+
+    assert.ok(frontierTile);
+    buildTownCenter?.onComplete?.(frontierTile, task, [builder]);
+
+    recalculateSettlementSupport({ '0,0': 0 }, 0);
+    const limits = recalculatePopulationLimits();
+
+    assert.equal(frontierTile.terrain, 'towncenter');
+    assert.equal(frontierTile.ownerSettlementId, '0,0');
+    assert.equal(computeControlledTileIdsForSettlement('0,0').has('10,0'), true);
+    assert.equal(limits.max, 30);
+  } finally {
+    loadWorld([]);
+    resetSettlementSupportState();
+    resetPopulationState();
   }
 });
