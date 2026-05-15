@@ -124,7 +124,7 @@ test('oven consumes sand and wood to produce glass', () => {
   assert.deepEqual(resources.produces, [{ type: 'glass', amount: 1 }]);
 });
 
-test('hunter hut builds on forest and produces steady food', () => {
+test('hunter hut builds on forest and produces steady meat', () => {
   const buildHunterHut = getTaskDefinition('buildHuntersHut');
   const huntersHut = getBuildingDefinitionByKey('huntersHut');
   assert.ok(buildHunterHut);
@@ -139,7 +139,7 @@ test('hunter hut builds on forest and produces steady food', () => {
     tile({ terrain: 'forest', variant: 'forest_hunters_hut' }),
     1,
   );
-  assert.deepEqual(resources.produces, [{ type: 'food', amount: 1 }]);
+  assert.deepEqual(resources.produces, [{ type: 'meat', amount: 1 }]);
 });
 
 test('apiary builds beside active forage and scales with nearby forest or grain', () => {

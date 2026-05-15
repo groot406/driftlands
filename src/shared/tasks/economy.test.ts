@@ -19,6 +19,7 @@ test('building economy formulas stay flat regardless of distance', () => {
   const dock = getBuildingDefinitionByTaskKey('buildDock');
   const townCenter = getBuildingDefinitionByTaskKey('buildTownCenter');
   const workshop = getBuildingDefinitionByTaskKey('buildWorkshop');
+  const weaponSmith = getBuildingDefinitionByTaskKey('buildWeaponSmith');
 
   assert.equal(dock?.requiredXp(1), dock?.requiredXp(20));
   assert.deepEqual(dock?.requiredResources(1), dock?.requiredResources(20));
@@ -26,6 +27,8 @@ test('building economy formulas stay flat regardless of distance', () => {
     { type: 'ore', amount: 2 },
   ]);
   assert.deepEqual(workshop?.produces, [{ type: 'tools', amount: 1 }]);
+  assert.deepEqual(weaponSmith?.consumes, [{ type: 'ore', amount: 2 }, { type: 'wood', amount: 1 }]);
+  assert.deepEqual(weaponSmith?.produces, [{ type: 'weapons', amount: 1 }]);
   assert.equal(townCenter?.requiredXp(1), townCenter?.requiredXp(20));
   assert.deepEqual(townCenter?.requiredResources(1).find((resource) => resource.type === 'tools'), { type: 'tools', amount: 8 });
   assert.deepEqual(townCenter?.requiredResources(1), townCenter?.requiredResources(20));

@@ -200,6 +200,14 @@ export function isContentUnlockedByStudies(content: Parameters<typeof studyUnloc
   });
 }
 
+export function isStudyCompleted(studyKey: string | null | undefined) {
+  if (!studyKey) {
+    return false;
+  }
+
+  return getEffectiveCompletedStudyKeys().includes(studyKey as StudyKey);
+}
+
 export function getStudyJobOutputMultiplier() {
   return getEffectiveCompletedStudyKeys().reduce((multiplier, studyKey) => {
     const study = getStudyDefinition(studyKey);

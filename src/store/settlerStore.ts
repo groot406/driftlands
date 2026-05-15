@@ -41,6 +41,7 @@ function cloneSettler(
         ...settler,
         movement: cloneMovement(settler.movement, serverTimestamp),
         assignedRole: settler.assignedRole ?? null,
+        guardTowerTileId: settler.guardTowerTileId ?? null,
         workTileId: settler.workTileId ?? null,
         hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
         blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,

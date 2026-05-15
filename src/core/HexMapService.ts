@@ -64,6 +64,7 @@ import {
     isTunnelTile,
 } from '../shared/game/bridges';
 import { isProceduralRoadVariant, isRoadConnectionTarget, isRoadTile } from '../shared/game/roads';
+import { isProceduralWallVariant, isStoneWallTile, isWallConnectionTarget, isWallTile } from '../shared/game/walls';
 import { hash32 } from './worldVariation';
 import { DEFAULT_RENDER_CONFIG, getRenderDebugLabelForQuality, getResolvedRenderQualityProfile } from './render/RenderConfig';
 import { HexMapRenderer } from './render/HexMapRenderer';
@@ -183,11 +184,13 @@ interface DrawOptions {
     globalReachBoundary?: Array<{q: number; r: number}>; // always-visible reach outline (all TCs, dimmed)
     globalReachTileIds?: Set<string>;
     globalReachColor?: string;
+    globalReachDashed?: boolean;
     settlementReachOutlines?: Array<{
         boundary: Array<{q: number; r: number}>;
         tileIds: Set<string>;
         color?: string | null;
         isOwn?: boolean;
+        dashed?: boolean;
     }>;
     storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
@@ -572,6 +575,7 @@ export class HexMapService {
         this._pendingHeroImageLoads.clear();
         this._fogTileCanvas = null;
         this._proceduralRoadCache.clear();
+        this._proceduralWallCache.clear();
         this._proceduralBridgeCache.clear();
         this._tileColorVariantCache.clear();
         this._tileShaderCache.clear();
@@ -917,8 +921,8 @@ export class HexMapService {
                         drawGrowthTileMotion: (ctx, tiles, nowMs) => {
                             this.drawGrowthTileMotion(ctx, tiles, nowMs);
                         },
-                        drawReachOutline: (ctx, boundary, reachSet, alpha, hovered, color) => {
-                            this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered, color);
+                        drawReachOutline: (ctx, boundary, reachSet, alpha, hovered, color, options) => {
+                            this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered, color, options);
                         },
                         drawRoundedRect: (ctx, x, y, w, h, r) => {
                             this.drawRoundedRect(ctx, x, y, w, h, r);
@@ -989,8 +993,8 @@ export class HexMapService {
                                 drawGrowthTileMotion: (highlightCtx, tiles, nowMs) => {
                                     this.drawGrowthTileMotion(highlightCtx, tiles, nowMs);
                                 },
-                                drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered, color) => {
-                                    this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered, color);
+                                drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered, color, options) => {
+                                    this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered, color, options);
                                 },
                                 drawRoundedRect: (highlightCtx, x, y, w, h, r) => {
                                     this.drawRoundedRect(highlightCtx, x, y, w, h, r);
@@ -1219,6 +1223,7 @@ export class HexMapService {
             globalReachBoundary: opts.globalReachBoundary,
             globalReachTileIds: opts.globalReachTileIds,
             globalReachColor: opts.globalReachColor,
+            globalReachDashed: opts.globalReachDashed,
             settlementReachOutlines: opts.settlementReachOutlines,
             storyHintTiles: opts.storyHintTiles?.map((tile) => ({ q: tile.q, r: tile.r })),
             showSupportOverlay: opts.showSupportOverlay,
@@ -2245,7 +2250,9 @@ export class HexMapService {
         alpha: number,
         hovered: boolean = false,
         color?: string | null,
+        options?: { dashed?: boolean },
     ) {
+        const dashed = options?.dashed ?? false;
         const DELTAS: Array<[number, number]> = [[0,-1],[1,-1],[1,0],[0,1],[-1,1],[-1,0]];
 
         // Canonical vertex position: centroid of the 3 hex centers sharing the vertex.
@@ -2331,6 +2338,7 @@ export class HexMapService {
         ctx.save();
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
+        ctx.setLineDash(dashed ? [10, 7] : []);
         for (const loop of loops) {
             const expandedLoop = this.offsetLoopOutward(loop, hovered ? 5 : 4);
             const hasPlayerColor = !!color;
@@ -2629,11 +2637,19 @@ export class HexMapService {
             const outlines = opts.settlementReachOutlines ?? [];
             for (const outline of outlines) {
                 if (!outline.boundary.length) continue;
-                this.drawReachOutline(ctx, outline.boundary, outline.tileIds, outline.isOwn ? 0.88 : 0.24, false, outline.color ?? undefined);
+                this.drawReachOutline(
+                    ctx,
+                    outline.boundary,
+                    outline.tileIds,
+                    outline.isOwn ? 0.88 : 0.24,
+                    false,
+                    outline.color ?? undefined,
+                    { dashed: outline.dashed },
+                );
             }
             if (opts.globalReachBoundary && opts.globalReachBoundary.length && !outlines.some(o => o.tileIds === opts.globalReachTileIds)) {
                 const reachSet = opts.globalReachTileIds || new Set<string>();
-                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false, opts.globalReachColor);
+                this.drawReachOutline(ctx, opts.globalReachBoundary, reachSet, 0.45, false, opts.globalReachColor, { dashed: opts.globalReachDashed });
             }
         }
 
@@ -4816,6 +4832,7 @@ export class HexMapService {
 
         const shaderCanvas = this.buildTileShaderCanvas(tile, state.key);
         const roadCanvas = this.getProceduralRoadCanvas(tile);
+        const wallCanvas = this.getProceduralWallCanvas(tile);
         const bridgeCanvas = this.getProceduralBridgeCanvas(tile);
         const canvas = this.createTileSizedCanvas();
         const ctx = canvas.getContext('2d');
@@ -4831,11 +4848,15 @@ export class HexMapService {
         if (roadCanvas) {
             ctx.drawImage(roadCanvas, 0, 0);
         }
+        if (wallCanvas) {
+            ctx.drawImage(wallCanvas, 0, 0);
+        }
         if (bridgeCanvas) {
             ctx.drawImage(bridgeCanvas, 0, 0);
         }
 
         const roadKey = this.getProceduralRoadCacheKey(tile) ?? '-';
+        const wallKey = this.getProceduralWallCacheKey(tile) ?? '-';
         const bridgeKey = this.getProceduralBridgeCacheKey(tile) ?? '-';
         const signature = [
             tile.id,
@@ -4844,6 +4865,7 @@ export class HexMapService {
             this.getTileColorAdjustmentKey(adjustment),
             this.getTileShaderCacheKey(tile, state.key),
             roadKey,
+            wallKey,
             bridgeKey,
         ].join(':');
 
@@ -5046,6 +5068,11 @@ export class HexMapService {
         const proceduralRoadCanvas = this.getProceduralRoadCanvas(state.tile);
         if (proceduralRoadCanvas) {
             ctx.drawImage(proceduralRoadCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
+        }
+
+        const proceduralWallCanvas = this.getProceduralWallCanvas(state.tile);
+        if (proceduralWallCanvas) {
+            ctx.drawImage(proceduralWallCanvas, state.x - this.HEX_SIZE, state.y - this.HEX_SIZE);
         }
 
         const proceduralBridgeCanvas = this.getProceduralBridgeCanvas(state.tile);
@@ -5501,6 +5528,36 @@ export class HexMapService {
         );
     }
 
+    private getProceduralWallCacheKey(tile: Tile) {
+        if (!isWallTile(tile)) return null;
+
+        const wallMask = SIDE_NAMES
+            .map((side) => (isWallConnectionTarget(tile.neighbors?.[side], OPPOSITE_SIDE[side]) ? side : '-'))
+            .join('');
+
+        return `${tile.q},${tile.r}:${tile.variant ?? ''}:${wallMask}`;
+    }
+
+    private getProceduralWallCanvas(tile: Tile) {
+        const cacheKey = this.getProceduralWallCacheKey(tile);
+        if (!cacheKey) return null;
+
+        const cached = this.getCachedCanvas(this._proceduralWallCache, cacheKey);
+        if (cached) return cached;
+
+        const canvas = this.createTileSizedCanvas();
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        this.drawProceduralWall(ctx, tile, this.HEX_SIZE, this.HEX_SIZE, 1);
+        return this.storeCachedCanvas(
+            this._proceduralWallCache,
+            cacheKey,
+            canvas,
+            HexMapService.PROCEDURAL_WALL_CACHE_MAX,
+        );
+    }
+
     private getProceduralBridgeCacheKey(tile: Tile) {
         if (!isBridgeTile(tile) && !isTunnelTile(tile)) return null;
         return `${tile.q},${tile.r}:${tile.variant ?? ''}`;
@@ -5529,8 +5586,10 @@ export class HexMapService {
     private _undiscoveredTileCanvasCache = new Map<string, HTMLCanvasElement>();
     private _waterShimmerCanvasCache = new Map<string, HTMLCanvasElement>();
     private _proceduralRoadCache = new Map<string, HTMLCanvasElement>();
+    private _proceduralWallCache = new Map<string, HTMLCanvasElement>();
     private _proceduralBridgeCache = new Map<string, HTMLCanvasElement>();
     private static readonly PROCEDURAL_ROAD_CACHE_MAX = 768;
+    private static readonly PROCEDURAL_WALL_CACHE_MAX = 768;
     private static readonly PROCEDURAL_BRIDGE_CACHE_MAX = 512;
     private static readonly MASKED_TILE_CANVAS_CACHE_MAX = 384;
     private static readonly TILE_COLOR_VARIANT_VERSION = 8;
@@ -5940,11 +5999,19 @@ export class HexMapService {
         ore: '⛏️',
         stone: '🪨',
         tools: '🛠️',
-        food: '🍖',
+        weapons: '🗡️',
+        food: '🥣',
+        fish: '🐟',
+        bread: '🍞',
+        meat: '🍖',
+        beer: '🍺',
+        wine: '🍷',
         crystal: '🔮',
         artifact: '🗿',
         water: '💧',
         grain: '🌾',
+        hops: '🌿',
+        grapes: '🍇',
         water_lily: '🪷',
         sand: '⌁',
         glass: '🥛',
@@ -6360,6 +6427,25 @@ export class HexMapService {
         }
     }
 
+    private getLegacyWallFallbackConnections(variant: string | null | undefined): TileSide[] | null {
+        switch (variant) {
+            case 'plains_wall_ad':
+            case 'plains_stone_wall_ad':
+                return ['a', 'd'];
+            case 'plains_wall_be':
+            case 'plains_stone_wall_be':
+                return ['b', 'e'];
+            case 'plains_wall_ce':
+            case 'plains_stone_wall_ce':
+                return ['c', 'e'];
+            case 'plains_wall_cf':
+            case 'plains_stone_wall_cf':
+                return ['c', 'f'];
+            default:
+                return null;
+        }
+    }
+
     private isStoneRoadTile(tile: Tile) {
         return typeof tile.variant === 'string' && tile.variant.startsWith('stone_road');
     }
@@ -6387,6 +6473,30 @@ export class HexMapService {
         const fallbackAxes: TileSide[][] = [['a', 'd'], ['b', 'e'], ['c', 'f']];
         const seed = this.seedFromString(`${tile.q},${tile.r}`);
         return fallbackAxes[seed % fallbackAxes.length] ?? ['c', 'f'];
+    }
+
+    private getWallConnectionSides(tile: Tile): TileSide[] {
+        const connections = SIDE_NAMES.filter(side => isWallConnectionTarget(tile.neighbors?.[side], OPPOSITE_SIDE[side]));
+        if (connections.length >= 2) {
+            return connections;
+        }
+
+        if (connections.length === 1) {
+            return connections;
+        }
+
+        return [];
+    }
+
+    private getWallInteriorStubSides(tile: Tile): TileSide[] {
+        const legacyFallback = this.getLegacyWallFallbackConnections(tile.variant);
+        if (legacyFallback) {
+            return legacyFallback;
+        }
+
+        const fallbackAxes: TileSide[][] = [['a', 'd'], ['b', 'e'], ['c', 'f']];
+        const seed = this.seedFromString(`${tile.q},${tile.r}:wall`);
+        return fallbackAxes[seed % fallbackAxes.length] ?? ['a', 'd'];
     }
 
     private traceHexClipPath(ctx: CanvasRenderingContext2D, x: number, y: number) {
@@ -6806,6 +6916,73 @@ export class HexMapService {
         ctx.restore();
     }
 
+    private drawProceduralWall(ctx: CanvasRenderingContext2D, tile: Tile, x: number, y: number, opacity: number) {
+        if (!isWallTile(tile)) {
+            return;
+        }
+
+        const connectionSides = this.getWallConnectionSides(tile);
+        const branchSides = connectionSides.length ? connectionSides : this.getWallInteriorStubSides(tile);
+        const center = this.getRoadCenter(x, y);
+        const anchors = branchSides
+            .map((side) => this.getRoadAnchorPoint(x, y, side))
+            .filter((point): point is { x: number; y: number } => !!point);
+
+        if (!anchors.length) {
+            return;
+        }
+
+        const stoneWall = isStoneWallTile(tile);
+        const shadowColor = stoneWall
+            ? `rgba(15, 23, 42, ${Math.min(1, opacity * 0.4)})`
+            : `rgba(69, 26, 3, ${Math.min(1, opacity * 0.34)})`;
+        const baseColor = stoneWall
+            ? `rgba(100, 116, 139, ${Math.min(1, opacity * 0.96)})`
+            : `rgba(146, 64, 14, ${Math.min(1, opacity * 0.94)})`;
+        const coreColor = stoneWall
+            ? `rgba(203, 213, 225, ${Math.min(1, opacity * 0.92)})`
+            : `rgba(253, 186, 116, ${Math.min(1, opacity * 0.82)})`;
+
+        ctx.save();
+        this.traceHexClipPath(ctx, x, y);
+        ctx.clip();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (const anchor of anchors) {
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(anchor.x, anchor.y);
+            ctx.lineWidth = stoneWall ? 11 : 9;
+            ctx.strokeStyle = shadowColor;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(anchor.x, anchor.y);
+            ctx.lineWidth = stoneWall ? 8 : 6.5;
+            ctx.strokeStyle = baseColor;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(anchor.x, anchor.y);
+            ctx.lineWidth = stoneWall ? 2.4 : 1.8;
+            ctx.strokeStyle = coreColor;
+            ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, stoneWall ? 4.6 : 3.8, 0, Math.PI * 2);
+        ctx.fillStyle = baseColor;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, stoneWall ? 1.7 : 1.3, 0, Math.PI * 2);
+        ctx.fillStyle = coreColor;
+        ctx.fill();
+        ctx.restore();
+    }
+
     private drawProceduralBridge(ctx: CanvasRenderingContext2D, tile: Tile, x: number, y: number, opacity: number) {
         const isBridge = isBridgeTile(tile);
         const isTunnel = isTunnelTile(tile);
@@ -6958,7 +7135,7 @@ export class HexMapService {
     private getTileImageKey(t: Tile): string | null {
         if (!t.terrain) return null;
         const def: any = (TERRAIN_DEFS as any)[t.terrain];
-        if (isProceduralRoadVariant(t.variant)) {
+        if (isProceduralRoadVariant(t.variant) || isProceduralWallVariant(t.variant)) {
             const baseKey = def?.assetKey || t.terrain;
             return this.tileImgSources[baseKey] ? baseKey : null;
         }

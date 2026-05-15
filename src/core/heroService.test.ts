@@ -117,6 +117,7 @@ test('local fallback timings use the fast hero movement debug toggle', () => {
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],

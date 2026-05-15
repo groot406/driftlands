@@ -20,7 +20,7 @@ import { clearHeroPayload, setHeroFetchIntent, setHeroPayload } from '../shared/
 import { collectTerrainCluster } from '../shared/game/terrainCluster';
 import { emitGameplayEvent } from '../shared/gameplay/events';
 import { axialDistanceCoords } from '../shared/game/hex';
-import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../shared/buildings/storage';
+import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../shared/buildings/storage';
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { getTaskEconomyDistance } from '../shared/tasks/economy';
@@ -699,16 +699,16 @@ function dispatchRewardResourceDeliveries(participants: Hero[]) {
     for (const hero of participants) {
         if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) continue;
 
-        const warehouse = findNearestWarehouse(hero.q, hero.r, hero.settlementId ?? null);
+        const warehouse = findNearestWarehouse(hero.q, hero.r, hero.settlementId ?? null, hero.carryingPayload.type);
         if (!warehouse) continue;
 
         moveHeroWithRuntime(hero, warehouse);
     }
 }
 
-function findNearestWarehouse(q: number, r: number, settlementId: string | null | undefined) {
+function findNearestWarehouse(q: number, r: number, settlementId: string | null | undefined, resourceType: ResourceType | null = null) {
     // Prefer a warehouse with free capacity for normal deposit
-    const withCapacity = findNearestWarehouseWithCapacity(q, r, settlementId, 1);
+    const withCapacity = findNearestWarehouseWithCapacityForResource(q, r, settlementId, resourceType, 1);
     if (withCapacity) return { q: withCapacity.q, r: withCapacity.r };
 
     // Fall back to any warehouse so the hero can attempt a resource swap

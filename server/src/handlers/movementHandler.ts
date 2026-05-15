@@ -5,7 +5,7 @@ import {handleHeroArrival} from "../../../src/shared/tasks/tasks";
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { getHero, heroes } from "../../../src/shared/game/state/heroStore";
 import { detachHeroFromCurrentTask, getTaskByTile, joinTask, startTask, updateActiveTasks } from "../../../src/shared/game/state/taskStore";
-import { PathService } from "../../../src/shared/game/PathService";
+import { PathService, type PathFindOptions } from "../../../src/shared/game/PathService";
 import type {TaskType} from "../../../src/shared/game/types/Task";
 import type {Hero} from "../../../src/shared/game/types/Hero";
 import { computePathTimings, isTileScoutWalkable, isWalkablePosition } from '../../../src/shared/game/navigation';

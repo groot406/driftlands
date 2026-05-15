@@ -46,6 +46,7 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
     : null;
   const storageKind = building.providesWarehouse
     ? ((upgrade?.effects.find((effect) => effect.kind === 'storage_kind_override')?.value
+      ?? building.storageKind
       ?? (building.key === 'supplyDepot' ? 'depot' : 'warehouse')) as StorageKind)
     : (building.key === 'supplyDepot' ? 'depot' : null);
   const upgradeOutputMultiplier = upgrade?.effects.find((effect) => effect.kind === 'job_output_multiplier')?.value ?? 1;

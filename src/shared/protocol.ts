@@ -19,11 +19,34 @@ import type { PlayerEntitySnapshot } from './multiplayer/player.ts';
 import type { ProgressionNodeKey } from './story/progression.ts';
 import type { StudyKey } from './studies/studies.ts';
 import type { TestModeSettingsSnapshot } from './game/testMode.ts';
+import type { SettlementBorderMode } from '../core/types/Tile.ts';
 
 export interface BaseMessage {
     type: string;
     id?: string;
     timestamp?: number;
+}
+
+export type CalamityKind =
+    | 'volcano_eruption'
+    | 'flood'
+    | 'lost_harvest'
+    | 'food_spoilage'
+    | 'forest_fire'
+    | 'outbreak';
+
+export interface CalamityEventMessage extends BaseMessage {
+    type: 'calamity:event';
+    kind: CalamityKind;
+    phase?: 'warning' | 'impact' | 'averted';
+    severity: 'minor' | 'major' | 'severe';
+    title: string;
+    message: string;
+    settlementId?: string | null;
+    affectedTileIds: string[];
+    resourceLosses?: ResourceAmount[];
+    populationLoss?: number;
+    impactAt?: number;
 }
 
 
@@ -109,6 +132,7 @@ export interface SettlementStartOptionsMessage extends BaseMessage {
     type: 'settlement:start_options';
     playerId: string;
     currentSettlementId: string | null;
+    startMode?: 'candidates' | 'free';
     candidates: SettlementStartCandidate[];
     settlements: SettlementStartMarker[];
     terrainTiles?: SettlementStartTerrainTile[];
@@ -120,7 +144,9 @@ export interface SettlementStartRequestOptionsMessage extends BaseMessage {
 
 export interface SettlementFoundRequestMessage extends BaseMessage {
     type: 'settlement:found_request';
-    candidateId: string;
+    candidateId?: string;
+    q?: number;
+    r?: number;
 }
 
 export interface SettlementFoundResultMessage extends BaseMessage {
@@ -154,6 +180,35 @@ export interface SetActiveStudyMessage extends BaseMessage {
     studyKey: string;
 }
 
+export interface SettlementSetBorderModeMessage extends BaseMessage {
+    type: 'settlement:set_border_mode';
+    settlementId: string;
+    borderMode: SettlementBorderMode;
+}
+
+export interface MilitaryQueueGuardTrainingMessage extends BaseMessage {
+    type: 'military:queue_guard_training';
+    barracksTileId: string;
+    quantity?: number;
+}
+
+export interface MilitaryAssignGuardsMessage extends BaseMessage {
+    type: 'military:assign_guards';
+    tileId: string;
+    delta: number;
+}
+
+export interface MilitaryBuildPalisadeMessage extends BaseMessage {
+    type: 'military:build_palisade';
+    tileId: string;
+}
+
+export interface MilitarySetRaidTargetMessage extends BaseMessage {
+    type: 'military:set_raid_target';
+    settlementId: string;
+    targetTileId: string | null;
+}
+
 export interface TestSetSettingsMessage extends BaseMessage {
     type: 'test:set_settings';
     enabled?: boolean;
@@ -163,10 +218,19 @@ export interface TestSetSettingsMessage extends BaseMessage {
     fastGrowth?: boolean;
     fastPopulationGrowth?: boolean;
     fastSettlerCycles?: boolean;
+    fastGuardTraining?: boolean;
     supportTiles?: boolean;
     settlementId?: string | null;
     unlockedNodeKeys?: ProgressionNodeKey[];
     completedStudyKeys?: StudyKey[];
+}
+
+export interface TestRunActionMessage extends BaseMessage {
+    type: 'test:run_action';
+    settlementId?: string | null;
+    action: 'prepare_military_sandbox' | 'grant_guard_reserve' | 'grant_weapons' | 'trigger_calamity';
+    amount?: number;
+    calamityKind?: CalamityKind;
 }
 
 export interface WorldSnapshotMessage extends BaseMessage {
@@ -182,6 +246,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
     debugModeEnabled?: boolean;
+    spawnSafetyEnabled?: boolean;
 }
 
 export interface WorldSnapshotStartMessage extends BaseMessage {
@@ -199,6 +264,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
     debugModeEnabled?: boolean;
+    spawnSafetyEnabled?: boolean;
 }
 
 export interface WorldSnapshotChunkMessage extends BaseMessage {
@@ -317,14 +383,14 @@ export interface LeaveTaskRequestMessage {
     taskId: string;
 }
 
-export interface ResourceDepositMessage {
+export interface ResourceDepositMessage extends BaseMessage {
     type: 'resource:deposit';
     heroId: string;
     storageTileId: string;
     resource: ResourceAmount;
 }
 
-export interface ResourceWithdrawMessage {
+export interface ResourceWithdrawMessage extends BaseMessage {
     type: 'resource:withdraw';
     heroId: string;
     storageTileId: string;
@@ -429,7 +495,13 @@ export type ClientMessage =
     | SettlementFoundRequestMessage
     | SetJobSiteEnabledMessage
     | SetActiveStudyMessage
+    | SettlementSetBorderModeMessage
+    | MilitaryQueueGuardTrainingMessage
+    | MilitaryAssignGuardsMessage
+    | MilitaryBuildPalisadeMessage
+    | MilitarySetRaidTargetMessage
     | TestSetSettingsMessage
+    | TestRunActionMessage
     | MoveRequestMessage
     | HeroScoutResourceRequestMessage
     | HeroAbilityUseMessage
@@ -468,6 +540,7 @@ export type ServerMessage =
     | HeroRosterUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
+    | CalamityEventMessage
     | PopulationUpdateMessage
     | JobsUpdateMessage
     | StudiesUpdateMessage

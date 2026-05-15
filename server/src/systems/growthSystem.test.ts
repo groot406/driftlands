@@ -132,6 +132,7 @@ test('fast growth test mode matures tiles using the accelerated active duration'
     fastGrowth: true,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],

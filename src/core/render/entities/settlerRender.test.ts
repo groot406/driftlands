@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type { Settler } from '../../types/Settler';
 import { getSettlerRenderFacing } from './settlerFacing';
+import { isSettlerActiveWorkAnimation } from './settlerRender';
 
 function createMovingSettler(): Settler {
     return {
@@ -54,4 +55,18 @@ test('getSettlerRenderFacing falls back to stored facing when idle', () => {
     settler.facing = 'left';
 
     assert.equal(getSettlerRenderFacing(settler, 1_500), 'left');
+});
+
+test('isSettlerActiveWorkAnimation treats defending and raiding as combat animations', () => {
+    const settler = createMovingSettler();
+    settler.movement = undefined;
+
+    settler.activity = 'defending';
+    assert.equal(isSettlerActiveWorkAnimation(settler), true);
+
+    settler.activity = 'raiding';
+    assert.equal(isSettlerActiveWorkAnimation(settler), true);
+
+    settler.activity = 'idle';
+    assert.equal(isSettlerActiveWorkAnimation(settler), false);
 });

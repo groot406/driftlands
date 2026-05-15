@@ -18,6 +18,16 @@ const STARTER_GROVE_DIRECTIONS: Array<[number, number]> = [
     [-1, 0],
 ];
 
+let spawnSafetyEnabled = false;
+
+export function setWorldGenerationSpawnSafetyEnabled(enabled: boolean) {
+    spawnSafetyEnabled = enabled;
+}
+
+export function isWorldGenerationSpawnSafetyEnabled() {
+    return spawnSafetyEnabled;
+}
+
 for (let dq = -2; dq <= 2; dq++) {
     for (let dr = Math.max(-2, -dq - 2); dr <= Math.min(2, -dq + 2); dr++) {
         if (dq === 0 && dr === 0) continue;
@@ -217,7 +227,7 @@ function getDirtScore(q: number, r: number) {
 export function resolveBiomeFamily(q: number, r: number, origin: { q: number, r: number} = { q: 0, r: 0 }): BiomeKey {
     const climate = getClimateProfile(q, r);
     const distance = axialDistanceCoords(q, r, origin.q, origin.r);
-    if (isStarterPondTile(q, r) || isProceduralPondTile(q, r)) {
+    if ((spawnSafetyEnabled && isStarterPondTile(q, r, origin)) || isProceduralPondTile(q, r)) {
         return 'lake';
     }
 
@@ -388,5 +398,6 @@ function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number, orig
 export function resolveWorldTile(q: number, r: number, origin: { q: number, r: number} = { q: 0, r: 0}): GeneratedWorldTile {
     const biome = resolveBiomeFamily(q, r, origin);
     const terrain = resolveTerrainForBiome(q, r, biome, origin);
-    return enforceSpawnSafety({ biome, terrain }, q, r, origin);
+    const tile = { biome, terrain };
+    return spawnSafetyEnabled ? enforceSpawnSafety(tile, q, r, origin) : tile;
 }

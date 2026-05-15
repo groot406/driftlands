@@ -23,12 +23,32 @@
             :viewport-center="viewportCenter ?? minimapViewport.center"
             :viewport-width-units="56"
             @hotspot-click="handleHotspotClick"
+            @terrain-click="handleTerrainClick"
             @viewport-center-change="viewportCenter = $event"
           />
             </div>
           </div>
 
-          <div class="settlement-start-list">
+          <div v-if="isFreeStart" class="settlement-start-list">
+            <button
+              class="settlement-start-option settlement-start-option--selected settlement-start-option--free"
+              :class="{ 'settlement-start-option--blocked': selectedFreeBlocked }"
+              :disabled="!selectedFreeCoord"
+              type="button"
+            >
+              <span class="settlement-start-option__main">
+                <strong>{{ selectedFreeCoord ? 'Selected Site' : 'No Site Selected' }}</strong>
+                <span>{{ selectedFreeCoord ? selectedFreeDescription : 'Click the minimap to choose a founding tile.' }}</span>
+              </span>
+              <span class="settlement-start-option__meta">
+                {{ selectedFreeTerrain }}
+              </span>
+            </button>
+
+            <p v-if="error" class="settlement-start-error">{{ error }}</p>
+          </div>
+
+          <div v-else class="settlement-start-list">
             <button
               v-for="candidate in candidates"
               :key="candidate.id"
@@ -59,7 +79,7 @@
           <button
             class="settlement-start-confirm"
             type="button"
-            :disabled="!selectedCandidate || isFounding"
+            :disabled="!canConfirm"
             @click="confirmSelection"
           >
             {{ isFounding ? 'Founding...' : 'Found Settlement' }}
@@ -73,27 +93,63 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import WorldMiniMap, { type MiniMapHotspot } from './WorldMiniMap.vue';
-import { requestFoundSettlement, requestSettlementStartOptions } from '../core/settlementStartService.ts';
+import { requestFoundSettlement, requestFoundSettlementAt, requestSettlementStartOptions } from '../core/settlementStartService.ts';
 import {
   needsSettlementStart,
   settlementStartCandidates,
   settlementStartError,
   settlementStartFoundingCandidateId,
   settlementStartMarkers,
+  settlementStartMode,
   settlementStartTerrainTiles,
 } from '../store/settlementStartStore.ts';
 import type { SettlementStartCandidate } from '../shared/multiplayer/settlementStart.ts';
 
 const selectedCandidateId = ref<string | null>(null);
+const selectedFreeCoord = ref<{ q: number; r: number } | null>(null);
 const viewportCenter = ref<{ q: number; r: number } | null>(null);
 
 const isOpen = computed(() => needsSettlementStart.value);
+const isFreeStart = computed(() => settlementStartMode.value === 'free');
 const candidates = computed(() => settlementStartCandidates.value);
 const markers = computed(() => settlementStartMarkers.value);
 const terrainTiles = computed(() => settlementStartTerrainTiles.value);
 const error = computed(() => settlementStartError.value);
 const selectedCandidate = computed(() => candidates.value.find((candidate) => candidate.id === selectedCandidateId.value) ?? null);
 const isFounding = computed(() => !!settlementStartFoundingCandidateId.value);
+const selectedFreeTile = computed(() => {
+  if (!selectedFreeCoord.value) {
+    return null;
+  }
+
+  return terrainTiles.value.find((entry) => entry.q === selectedFreeCoord.value?.q && entry.r === selectedFreeCoord.value?.r) ?? null;
+});
+const selectedFreeBlocked = computed(() => !!selectedFreeTile.value?.blocked);
+const canConfirm = computed(() => (
+  isFreeStart.value
+    ? !!selectedFreeCoord.value && !selectedFreeBlocked.value && !isFounding.value
+    : !!selectedCandidate.value && !isFounding.value
+));
+const selectedFreeTerrain = computed(() => {
+  if (!selectedFreeCoord.value) {
+    return 'select';
+  }
+
+  return selectedFreeTile.value ? formatTerrain(selectedFreeTile.value.terrain) : 'unknown';
+});
+const selectedFreeDescription = computed(() => {
+  const coord = selectedFreeCoord.value;
+  if (!coord) {
+    return 'Click the minimap to choose a founding tile.';
+  }
+
+  if (selectedFreeBlocked.value) {
+    const playerName = selectedFreeTile.value?.blockedByPlayerName ?? 'another player';
+    return `q ${coord.q}, r ${coord.r} is inside ${playerName}'s reach.`;
+  }
+
+  return `q ${coord.q}, r ${coord.r}`;
+});
 
 const mapHotspots = computed<MiniMapHotspot[]>(() => [
   ...markers.value.map((marker) => ({
@@ -106,7 +162,7 @@ const mapHotspots = computed<MiniMapHotspot[]>(() => [
     interactive: false,
     title: marker.playerName ? `${marker.playerName}'s settlement` : 'Unclaimed settlement',
   })),
-  ...candidates.value.map((candidate) => ({
+  ...(isFreeStart.value ? [] : candidates.value.map((candidate) => ({
     id: candidate.id,
     q: candidate.q,
     r: candidate.r,
@@ -118,7 +174,17 @@ const mapHotspots = computed<MiniMapHotspot[]>(() => [
     title: candidate.available
       ? `${candidate.label}: ${candidate.description}`
       : `${candidate.label}: occupied by ${candidate.occupiedByPlayerName ?? 'another player'}`,
-  })),
+  }))),
+  ...(selectedFreeCoord.value ? [{
+    id: `free-start:${selectedFreeCoord.value.q}:${selectedFreeCoord.value.r}`,
+    q: selectedFreeCoord.value.q,
+    r: selectedFreeCoord.value.r,
+    kind: 'candidate' as const,
+    tone: 'remote' as const,
+    interactive: false,
+    selected: true,
+    title: 'Selected settlement site',
+  }] : []),
 ]);
 
 const minimapViewport = computed(() => {
@@ -161,6 +227,15 @@ watch(minimapViewport, (nextViewport) => {
 
 const selectedSummary = computed(() => {
   const candidate = selectedCandidate.value;
+  if (isFreeStart.value) {
+    const coord = selectedFreeCoord.value;
+    return coord
+      ? (selectedFreeBlocked.value
+        ? 'Pick a site outside every other player reach.'
+        : `Found at q ${coord.q}, r ${coord.r}.`)
+      : 'Click a tile on the minimap to choose your settlement site.';
+  }
+
   if (!candidate) {
     return 'Pick a highlighted site on the minimap or in the list.';
   }
@@ -173,6 +248,11 @@ const selectedSummary = computed(() => {
 });
 
 watch(candidates, (nextCandidates) => {
+  if (isFreeStart.value) {
+    selectedCandidateId.value = null;
+    return;
+  }
+
   if (selectedCandidateId.value && nextCandidates.some((candidate) => candidate.id === selectedCandidateId.value && candidate.available)) {
     return;
   }
@@ -187,6 +267,12 @@ watch(selectedCandidate, (candidate) => {
 
   viewportCenter.value = { q: candidate.q, r: candidate.r };
 });
+
+watch(isFreeStart, (freeStart) => {
+  if (!freeStart) {
+    selectedFreeCoord.value = null;
+  }
+}, { immediate: true });
 
 function formatTerrain(terrain: SettlementStartCandidate['terrain']) {
   if (terrain === 'towncenter') {
@@ -208,13 +294,36 @@ function handleHotspotClick(hotspot: MiniMapHotspot) {
   selectCandidate(hotspot.id);
 }
 
+function handleTerrainClick(coord: { q: number; r: number }) {
+  if (!isFreeStart.value) {
+    return;
+  }
+
+  selectedFreeCoord.value = coord;
+  viewportCenter.value = coord;
+}
+
 function refreshOptions() {
   requestSettlementStartOptions();
 }
 
 function confirmSelection() {
+  if (isFounding.value) {
+    return;
+  }
+
+  if (isFreeStart.value) {
+    const coord = selectedFreeCoord.value;
+    if (!coord || selectedFreeBlocked.value) {
+      return;
+    }
+
+    requestFoundSettlementAt(coord.q, coord.r);
+    return;
+  }
+
   const candidate = selectedCandidate.value;
-  if (!candidate || isFounding.value) {
+  if (!candidate) {
     return;
   }
 
@@ -334,6 +443,15 @@ function confirmSelection() {
 
 .settlement-start-option--remote {
   border-left: 3px solid rgba(250, 204, 21, 0.74);
+}
+
+.settlement-start-option--free {
+  border-left: 3px solid rgba(157, 216, 198, 0.78);
+}
+
+.settlement-start-option--blocked {
+  border-color: rgba(248, 113, 113, 0.62);
+  background: rgba(127, 29, 29, 0.36);
 }
 
 .settlement-start-option__main,

@@ -7,6 +7,8 @@ export type TileSupportBand = 'stable' | 'fragile' | 'inactive' | 'uncontrolled'
 export type TileConditionState = 'healthy' | 'worn' | 'damaged' | 'offline';
 export type TileModifierKey = 'rich_soil' | 'rocky_ground' | 'dense_forest' | 'sand_rich';
 export type TileSpecialKey = 'fertile_basin' | 'ancient_ruins' | 'natural_crossing' | 'rich_ore_vein';
+export type SettlementBorderMode = 'closed' | 'open';
+export type WatchtowerConflictState = 'active' | 'under_attack' | 'damaged' | 'disabled' | 'contested' | 'captured';
 
 export const SIDE_NAMES = ['a','b','c','d','e','f'] as const;
 export type TileSide = typeof SIDE_NAMES[number];
@@ -53,4 +55,22 @@ export interface Tile {
     nextProductionBoostMultiplier?: number | null;
     nextProductionBoostCyclesRemaining?: number | null;
     nextProductionBoostInputReduction?: number | null;
+    borderMode?: SettlementBorderMode | null;
+    borderModeCooldownUntilMs?: number | null;
+    borderLockedUntilMs?: number | null;
+    guardReserve?: number | null;
+    raidTargetTileId?: string | null;
+    raidCommittedGuards?: number | null;
+    raidBlockedReason?: string | null;
+    towerDurability?: number | null;
+    towerDurabilityMax?: number | null;
+    towerCaptureProgress?: number | null;
+    towerConflictState?: WatchtowerConflictState | null;
+    towerAttackerSettlementId?: string | null;
+    towerAssignedGuards?: number | null;
+    towerWallLevel?: number | null;
+    towerAttackerCasualtyProgress?: number | null;
+    towerDefenderCasualtyProgress?: number | null;
+    barracksTrainingQueue?: number | null;
+    barracksTrainingProgressMs?: number | null;
 }

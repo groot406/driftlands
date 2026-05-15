@@ -26,7 +26,7 @@ import { collectTerrainCluster } from '../game/terrainCluster';
 import { isTileWalkable } from '../game/navigation';
 import { emitGameplayEvent } from '../gameplay/events';
 import { canDrawWaterFromTile } from '../buildings/water';
-import { canUseWarehouseAtTile, findNearestWarehouseWithCapacity, findNearestWarehouseWithResource } from '../buildings/storage';
+import { canUseWarehouseAtTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../buildings/storage';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { isUnlimitedResourcesEnabled, testModeSettings } from '../game/testMode.ts';
 import { getDistanceToNearestTowncenter } from '../game/worldQueries';
@@ -234,10 +234,11 @@ export function handleHeroArrival(hero: Hero, tile: Tile) {
                 amount: remainingAmount,
             });
 
-            const nextWarehouse = findNearestWarehouseWithCapacity(
+            const nextWarehouse = findNearestWarehouseWithCapacityForResource(
                 tile.q,
                 tile.r,
                 hero.settlementId ?? null,
+                carriedType,
                 remainingAmount,
                 [tile.id],
             );

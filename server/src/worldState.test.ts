@@ -71,6 +71,7 @@ test('worldState.init uses the provided seed and resets hero/task state', async 
       stateSinceMs: 1,
       hungerMs: 0,
       fatigueMs: 0,
+      happiness: 100,
       workProgressMs: 0,
       carryingKind: null,
     }]);

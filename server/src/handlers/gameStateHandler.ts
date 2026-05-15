@@ -16,7 +16,7 @@ import { runState } from '../state/runState';
 import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
 import { testModeState } from '../state/testModeState';
-import { serverDebugModeEnabled } from '../config/serverMode';
+import { serverDebugModeEnabled, spawnSafetyEnabled } from '../config/serverMode';
 
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
@@ -52,6 +52,7 @@ export class ServerGameStateHandler {
       jobs: snapshot.jobs,
       studies: snapshot.studies,
       debugModeEnabled: serverDebugModeEnabled,
+      spawnSafetyEnabled,
       timestamp: Date.now(),
     });
 

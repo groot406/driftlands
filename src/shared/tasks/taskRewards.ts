@@ -49,6 +49,7 @@ export const TASK_COMPLETION_XP_REWARDS: Partial<Record<TaskType, number>> = {
     buildQuarry: 9,
     buildMine: 9,
     buildRoad: 6,
+    buildWall: 7,
     buildTunnel: 12,
 
     upgradeHouseToStone: 9,
@@ -57,6 +58,7 @@ export const TASK_COMPLETION_XP_REWARDS: Partial<Record<TaskType, number>> = {
     upgradeLumberCampToSawmill: 11,
     upgradeMineToReinforced: 11,
     upgradeRoadToStone: 8,
+    upgradeWallToStone: 9,
 };
 
 export function getTaskCompletionXpReward(taskType: TaskType) {

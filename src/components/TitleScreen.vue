@@ -97,12 +97,13 @@ import { runSnapshot } from '../store/runStore.ts';
 import { musicManager } from '../core/musicManager.ts';
 import { connectWithNickname, getStoredPlayerName } from '../core/socket.ts';
 import { createStoryProgression } from '../shared/story/progression.ts';
-import { getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
+import { getStoryHeroTemplate, listStoryHeroTemplates } from '../shared/story/heroRoster.ts';
 import logoArt from '../assets/ui/logo.png';
 import titleScreenArt from '../assets/ui/title-screen-art.jpg';
 import boyAvatar from '../assets/heroes/boy.png';
 import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
+import mosslingAvatar from '../assets/heroes/mossling.png';
 import santaAvatar from '../assets/heroes/santa.png';
 
 const openingStory = {
@@ -132,8 +133,10 @@ const avatarByKey: Record<string, string> = {
   boy: boyAvatar,
   girl: girlAvatar,
   loophead: loopheadAvatar,
+  mossling: mosslingAvatar,
   santa: santaAvatar,
 };
+const storyHeroCount = listStoryHeroTemplates().length;
 
 const currentRun = computed(() => runSnapshot.value);
 const nickname = ref(getStoredPlayerName());
@@ -164,7 +167,7 @@ const colonyPressure = computed(() => {
   return `${run.activeTiles} active tiles, ${run.discoveredTiles} explored, ${run.progression.unlocked.heroes.length} hero${run.progression.unlocked.heroes.length === 1 ? '' : 'es'} available.`;
 });
 const crewHint = computed(() => {
-  const lockedCount = 4 - crew.value.length;
+  const lockedCount = storyHeroCount - crew.value.length;
 
   if (lockedCount > 0) {
     return `${lockedCount} more recruit${lockedCount === 1 ? '' : 's'} join once the colony can support more beds, more jobs, and stronger supply lines.`;

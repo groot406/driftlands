@@ -84,14 +84,26 @@ const BUILDING_VARIANT_KEYS = new Set<string>([
     'dirt_campfire',
     'plains_depot',
     'plains_warehouse',
+    'plains_food_storehouse',
+    'plains_materials_yard',
+    'plains_crop_silo',
+    'plains_crafted_goods_storehouse',
     'dirt_depot',
     'dirt_warehouse',
+    'dirt_food_storehouse',
+    'dirt_materials_yard',
+    'dirt_crop_silo',
+    'dirt_crafted_goods_storehouse',
     'plains_bakery',
     'dirt_bakery',
     'plains_apiary',
     'dirt_apiary',
     'plains_library',
     'dirt_library',
+    'plains_weapon_smith',
+    'dirt_weapon_smith',
+    'plains_barracks',
+    'dirt_barracks',
     'plains_oven',
     'dirt_oven',
     'plains_house',
@@ -207,6 +219,7 @@ function getCampfireTiles(): Tile[] {
 
 function computeReachTileIdsFromTownCenters(
     townCenters: Array<Pick<Tile, 'q' | 'r'>>,
+    settlementId: string | null,
     canActivateWatchtower: (tile: Tile) => boolean,
 ): Set<string> {
     const reachSet = new Set<string>();
@@ -225,9 +238,7 @@ function computeReachTileIdsFromTownCenters(
             if (activatedWatchtowers.has(watchtower.id)) continue;
             if (!reachSet.has(watchtower.id)) continue;
             if (!canActivateWatchtower(watchtower)) continue;
-
-            // Check ownership of watchTower
-            if(!watchtower.ownerSettlementId) {
+            if (!settlementId || watchtower.ownerSettlementId !== settlementId) {
                 continue;
             }
 
@@ -273,7 +284,7 @@ function computeSettlementReachFromTownCenters(
     }
 
     return extendReachWithInfrastructure(
-        computeReachTileIdsFromTownCenters(townCenters, canActivateWatchtower),
+        computeReachTileIdsFromTownCenters(townCenters, settlementId, canActivateWatchtower),
         settlementId,
         requireActiveInfrastructure,
     );
@@ -637,8 +648,6 @@ function chooseOwnerSettlement(
     let bestDistance = Number.POSITIVE_INFINITY;
 
     for (const townCenter of townCenters) {
-        if (townCenter.id === tile.id && tile.terrain === 'towncenter') continue; // Should not happen given check above
-
         const settlementId = getTownCenterSettlementId(townCenter);
         if (!settlementId) {
             continue;
@@ -1051,6 +1060,7 @@ export function computeControlledTileIdsForTC(tcQ: number, tcR: number) {
     return extendReachWithInfrastructure(
         computeReachTileIdsFromTownCenters(
             [{ q: tcQ, r: tcR }],
+            `${tcQ},${tcR}`,
             (watchtower) => isTileActive(watchtower),
         ),
         `${tcQ},${tcR}`,

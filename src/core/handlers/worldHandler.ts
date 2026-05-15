@@ -1,4 +1,5 @@
 import type {
+    CalamityEventMessage,
     JobsUpdateMessage,
     PopulationUpdateMessage,
     SettlersUpdateMessage,
@@ -11,7 +12,7 @@ import type {
     WorldSnapshotStartMessage,
 } from '../../shared/protocol';
 import {clientMessageRouter} from '../messageRouter';
-import {loadWorld, updateTile} from '../world';
+import {loadWorld, tileIndex, updateTile} from '../world';
 import {loadHeroes} from "../../store/heroStore";
 import {loadTasks} from "../../store/taskStore";
 import {replaceInventory, replaceStorageInventories} from "../../store/resourceStore";
@@ -22,6 +23,10 @@ import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
 import { loadTestModeSettings } from '../../shared/game/testMode.ts';
 import { setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
+import { addNotification } from '../../store/notificationStore';
+import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
+import { isWatchtowerTile } from '../../shared/game/military.ts';
+import { setWorldGenerationSpawnSafetyEnabled } from '../worldGeneration';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -38,6 +43,7 @@ interface PendingWorldSnapshot {
     jobs: WorldSnapshotMessage['jobs'];
     studies: WorldSnapshotMessage['studies'];
     debugModeEnabled?: boolean;
+    spawnSafetyEnabled?: boolean;
     timestamp?: number;
 }
 
@@ -67,10 +73,12 @@ class WorldHandler {
         clientMessageRouter.on('test:update', this.handleTestModeUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
+        clientMessageRouter.on('calamity:event', this.handleCalamityEvent.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
         setServerDebugModeEnabled((message as WorldSnapshotMessage).debugModeEnabled);
+        setWorldGenerationSpawnSafetyEnabled((message as WorldSnapshotMessage).spawnSafetyEnabled === true);
         loadWorld(message.tiles);
         for (const tile of message.tiles) {
             if (tile.discovered) {
@@ -112,6 +120,7 @@ class WorldHandler {
             jobs: message.jobs,
             studies: message.studies,
             debugModeEnabled: message.debugModeEnabled,
+            spawnSafetyEnabled: message.spawnSafetyEnabled,
             timestamp: message.timestamp,
         };
     }
@@ -143,9 +152,69 @@ class WorldHandler {
     }
 
     private handleTileUpdated(message: TileUpdatedMessage): void {
+        const previousTile = message.tile?.id ? { ...(tileIndex[message.tile.id] ?? {}) } : null;
         updateTile(message.tile);
         if (message.tile.discovered) {
             clearScoutStoryHintsForTile(message.tile.q, message.tile.r);
+        }
+
+        const settlementId = currentPlayerSettlementId.value;
+        if (settlementId && message.tile.id === settlementId && message.tile.terrain === 'towncenter') {
+            const previousTarget = previousTile?.raidTargetTileId ?? null;
+            const nextTarget = message.tile.raidTargetTileId ?? null;
+            if (previousTarget !== nextTarget) {
+                const previousTargetTile = previousTarget ? tileIndex[previousTarget] ?? null : null;
+                const raidSucceeded = !nextTarget
+                    && !!previousTarget
+                    && previousTargetTile?.ownerSettlementId === settlementId;
+                addNotification({
+                    type: 'settlement',
+                    title: nextTarget ? 'Raid underway' : raidSucceeded ? 'Watchtower captured' : 'Raid cancelled',
+                    message: nextTarget
+                        ? 'Your committed guards are marching on the selected border watchtower.'
+                        : raidSucceeded
+                            ? 'Your raid succeeded and the target watchtower is now part of your border.'
+                            : 'Your border raid order has been withdrawn.',
+                    duration: 3200,
+                });
+            }
+            const previousBlockedReason = previousTile?.raidBlockedReason ?? null;
+            const nextBlockedReason = message.tile.raidBlockedReason ?? null;
+            if (previousBlockedReason !== nextBlockedReason && nextBlockedReason) {
+                addNotification({
+                    type: 'settlement',
+                    title: 'Raid blocked',
+                    message: nextBlockedReason,
+                    duration: 3800,
+                });
+            }
+        }
+
+        if (!settlementId || !isWatchtowerTile(message.tile)) {
+            return;
+        }
+
+        const nowUnderAttack = message.tile.ownerSettlementId === settlementId
+            && !!message.tile.towerAttackerSettlementId
+            && (previousTile?.towerAttackerSettlementId ?? null) !== (message.tile.towerAttackerSettlementId ?? null);
+        if (nowUnderAttack) {
+            addNotification({
+                type: 'settlement',
+                title: 'Watchtower under attack',
+                message: 'A border watchtower is taking hostile pressure. Assign guards or reinforce it before the capture bar fills.',
+                duration: 4200,
+            });
+        }
+
+        const wasOwnedByPlayer = previousTile?.ownerSettlementId === settlementId;
+        const isOwnedByPlayer = message.tile.ownerSettlementId === settlementId;
+        if (wasOwnedByPlayer && !isOwnedByPlayer) {
+            addNotification({
+                type: 'settlement',
+                title: 'Watchtower captured',
+                message: 'An exposed border tower changed hands. Rebuild pressure or reinforce your next line.',
+                duration: 4800,
+            });
         }
     }
 
@@ -160,6 +229,20 @@ class WorldHandler {
             inactiveTileCount: message.inactiveTileCount,
             pressureState: message.pressureState,
             settlements: message.settlements,
+        });
+    }
+
+    private handleCalamityEvent(message: CalamityEventMessage): void {
+        const settlementId = currentPlayerSettlementId.value;
+        if (message.settlementId && settlementId && message.settlementId !== settlementId) {
+            return;
+        }
+
+        addNotification({
+            type: 'calamity',
+            title: message.title,
+            message: message.message,
+            duration: message.severity === 'severe' ? 7200 : 5600,
         });
     }
 

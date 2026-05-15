@@ -30,7 +30,7 @@ const chopWoodTask: TaskDefinition = {
     },
 
     totalRewardedResources(_distance: number, tile: Tile) {
-        return { type: 'wood', amount: tile?.variant === 'young_forest' ? 1 : 2 };
+        return { type: 'wood', amount: tile?.variant === 'young_forest' ? 2 : 4 };
     },
 
     getSoundOnStart() {

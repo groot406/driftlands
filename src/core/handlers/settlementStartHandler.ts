@@ -43,6 +43,7 @@ class SettlementStartHandler {
 
     replaceSettlementStartOptions({
       currentSettlementId: message.currentSettlementId,
+      startMode: message.startMode,
       candidates: message.candidates,
       settlements: message.settlements,
       ...(message.terrainTiles ? { terrainTiles: message.terrainTiles } : {}),

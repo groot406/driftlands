@@ -600,6 +600,19 @@ test('road, bridge, and tunnel tasks require town center, road, bridge, or tunne
       variant: null,
     } satisfies Tile,
     {
+      id: '5,1',
+      q: 5,
+      r: 1,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'plains_watchtower',
+    } satisfies Tile,
+    {
       id: '0,1',
       q: 0,
       r: 1,
@@ -716,6 +729,7 @@ test('road, bridge, and tunnel tasks require town center, road, bridge, or tunne
   };
 
   const buildRoad = getTaskDefinition('buildRoad');
+  const buildWall = getTaskDefinition('buildWall');
   const buildBridge = getTaskDefinition('buildBridge');
   const buildTunnel = getTaskDefinition('buildTunnel');
 
@@ -723,6 +737,10 @@ test('road, bridge, and tunnel tasks require town center, road, bridge, or tunne
   assert.equal(buildRoad?.canStart(tileIndex['2,0']!, hero), true);
   assert.equal(buildRoad?.canStart(tileIndex['4,0']!, hero), true);
   assert.equal(buildRoad?.canStart(tileIndex['5,0']!, hero), false);
+  assert.equal(buildWall?.canStart(tileIndex['1,0']!, hero), true);
+  assert.equal(buildWall?.canStart(tileIndex['4,0']!, hero), false);
+  assert.equal(buildWall?.canStart(tileIndex['5,0']!, hero), true);
+  assert.equal(buildWall?.canStart(tileIndex['2,0']!, hero), false);
   assert.equal(buildBridge?.canStart(tileIndex['0,1']!, hero), true);
   assert.equal(buildBridge?.canStart(tileIndex['2,1']!, hero), true);
   assert.equal(buildBridge?.canStart(tileIndex['6,1']!, hero), false);
@@ -1304,6 +1322,7 @@ test('instant build completes zero-cost work immediately when test mode is enabl
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -1378,6 +1397,7 @@ test('unlimited resources removes build input requirements in test mode', () => 
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -1428,6 +1448,7 @@ test('heroes clear carried rewards at full warehouses when unlimited resources t
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],

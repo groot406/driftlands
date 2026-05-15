@@ -45,6 +45,10 @@
                   {{ formatAmount(activeResource.maintenanceDemand.shortfall) }} short
                 </p>
               </div>
+              <div v-if="activeResource.hungerRelief" class="resource-detail-card">
+                <p class="resource-detail-label">Hunger Relief</p>
+                <p class="resource-detail-value">{{ formatHungerRelief(activeResource.hungerRelief) }}</p>
+              </div>
             </div>
           </section>
 
@@ -55,7 +59,7 @@
             <div class="resource-detail-list">
               <div v-for="entry in activeResource.breakdown" :key="entry.key" class="resource-detail-list-row">
                 <span>{{ entry.icon }} {{ entry.label }}</span>
-                <span>{{ entry.stock }} · {{ formatSigned(entry.net) }}/min</span>
+                <span>{{ entry.stock }} · {{ formatSigned(entry.net) }}/min<span v-if="entry.hungerRelief"> · {{ formatHungerRelief(entry.hungerRelief) }}</span></span>
               </div>
             </div>
           </section>
@@ -116,6 +120,7 @@ import { getInventoryEntryDefinition, getInventoryKindLabel } from '../shared/ga
 import {
   getResourceDefinition,
   getResourceGroupDefinition,
+  getResourceHungerRelief,
   listResourceDefinitions,
   type ResourceGroup,
 } from '../shared/game/resourceDefinitions.ts';
@@ -162,6 +167,10 @@ function formatSigned(value: number) {
   return '0';
 }
 
+function formatHungerRelief(value: number) {
+  return `${Number(value.toFixed(2)).toString()} meals`;
+}
+
 function accumulateMatches(matches: Array<{ label: string; amount: number }>, label: string, resources: ResourceAmount[], type: ResourceType) {
   const match = resources.find((resource) => resource.type === type);
   if (!match || match.amount <= 0) return;
@@ -201,6 +210,7 @@ function buildResourceInsight(resourceType: ResourceType) {
   const net = produced - consumed;
   const maintenanceOverview = getMaintenanceOverview(playerTiles.value, playerSettlers.value, playerInventory.value);
   const maintenanceDemand = maintenanceOverview.backlogResources.find((resource) => resource.type === resourceType) ?? null;
+  const hungerRelief = getResourceHungerRelief(resourceType);
 
   return {
     key: resourceType,
@@ -213,6 +223,7 @@ function buildResourceInsight(resourceType: ResourceType) {
     producers,
     consumers,
     maintenanceDemand,
+    hungerRelief,
   };
 }
 
@@ -259,6 +270,7 @@ const activeResource = computed(() => {
       consumed,
       net,
       maintenanceDemand: null,
+      hungerRelief: null,
       breakdownTitle: `${group.label} Breakdown`,
       breakdown: breakdown.sort((a, b) => b.stock - a.stock || a.label.localeCompare(b.label)),
       producers: Array.from(producers.entries()).map(([label, amount]) => ({ label, amount })),
@@ -282,6 +294,7 @@ const activeResource = computed(() => {
     producers: detail.producers,
     consumers: detail.consumers,
     maintenanceDemand: detail.maintenanceDemand,
+    hungerRelief: detail.hungerRelief,
     breakdownTitle: 'Breakdown',
     breakdown: [],
     netClass: Math.floor(Math.abs(detail.net)) <= 0 ? 'resource-detail-neutral' : detail.net > 0 ? 'resource-detail-good' : 'resource-detail-bad',

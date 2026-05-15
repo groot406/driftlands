@@ -5,9 +5,16 @@ import { getSettlerMovementStepIndex } from './settlerFacing';
 
 export { getSettlerRenderFacing } from './settlerFacing';
 
+export function isSettlerActiveWorkAnimation(settler: Settler) {
+    return settler.activity === 'working'
+        || settler.activity === 'repairing'
+        || settler.activity === 'defending'
+        || settler.activity === 'raiding';
+}
+
 export function isSettlerHiddenInHouse(settler: Settler) {
     return settler.activity === 'sleeping'
-        || (!!settler.hiddenWhileWorking && (settler.activity === 'working' || settler.activity === 'repairing'));
+        || (!!settler.hiddenWhileWorking && isSettlerActiveWorkAnimation(settler));
 }
 
 export function isSettlerVisibleOnMap(settler: Settler) {
@@ -15,7 +22,7 @@ export function isSettlerVisibleOnMap(settler: Settler) {
 }
 
 export function getSettlerRenderCoords(settler: Settler) {
-    if (!settler.movement && settler.workTileId && (settler.activity === 'working' || settler.activity === 'repairing')) {
+    if (!settler.movement && settler.workTileId && isSettlerActiveWorkAnimation(settler)) {
         const workTile = tileIndex[settler.workTileId];
         if (workTile) {
             return { q: workTile.q, r: workTile.r };

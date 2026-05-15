@@ -20,6 +20,12 @@ import { jobSystem } from './systems/jobSystem';
 import { coopSystem } from './systems/coopSystem';
 import { runState } from './state/runState';
 import { maintenanceSystem } from './systems/maintenanceSystem';
+import { militarySystem } from './systems/militarySystem';
+import { calamitySystem } from './systems/calamitySystem';
+import { settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
+import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
+
+setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
 
 const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
   .split(',')
@@ -93,6 +99,8 @@ tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
 tickEngine.register(populationSystem);
 tickEngine.register(maintenanceSystem);
+tickEngine.register(militarySystem);
+tickEngine.register(calamitySystem);
 tickEngine.register(settlerSystem);
 tickEngine.register(supportSystem);
 tickEngine.register(jobSystem);
@@ -128,4 +136,5 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Server listening on ${HOST}:${PORT}`);
+  console.log(`Settlement start mode: ${settlementStartMode}; spawn safety: ${spawnSafetyEnabled ? 'on' : 'off'}`);
 });

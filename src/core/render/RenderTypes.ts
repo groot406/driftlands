@@ -196,11 +196,13 @@ export interface HexMapDrawOptions {
     globalReachBoundary?: readonly AxialCoord[];
     globalReachTileIds?: ReadonlySet<string>;
     globalReachColor?: string;
+    globalReachDashed?: boolean;
     settlementReachOutlines?: ReadonlyArray<{
         readonly boundary: readonly AxialCoord[];
         readonly tileIds: ReadonlySet<string>;
         readonly color?: string | null;
         readonly isOwn?: boolean;
+        readonly dashed?: boolean;
     }>;
     storyHintTiles?: readonly AxialCoord[];
     showSupportOverlay?: boolean;

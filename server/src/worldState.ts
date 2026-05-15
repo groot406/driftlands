@@ -39,15 +39,21 @@ import { loadStoryProgression, resetStoryProgression } from '../../src/shared/st
 import { createInitialProgressionSnapshot } from '../../src/shared/story/progression';
 import { tickEngine } from './tick';
 import { syncSettlerPopulation } from './systems/settlerSystem';
+import { resetCalamitySystem } from './systems/calamitySystem';
 import { promoteTileToTowncenter } from '../../src/shared/buildings/registry';
 import { broadcastGameMessage as broadcast } from '../../src/shared/game/runtime';
 import { createHeroFromTemplate, type StoryHeroId } from '../../src/shared/story/heroRoster';
 import type { HeroRosterUpdateMessage, ResourceDepositMessage, TileUpdatedMessage } from '../../src/shared/protocol';
+import {
+  ensureBarracksMilitaryState,
+  ensureTownCenterMilitaryState,
+  ensureWatchtowerMilitaryState,
+} from '../../src/shared/game/military.ts';
 
 const STARTING_FOOD = 12;
 const SETTLEMENT_START_REVEAL_RADIUS = 3;
 const SETTLEMENT_STARTER_RESOURCES: ResourceAmount[] = [{ type: 'food', amount: STARTING_FOOD }];
-const SETTLEMENT_STARTER_HERO_TEMPLATES: StoryHeroId[] = ['h2', 'h3', 'h4', 'h1'];
+const SETTLEMENT_STARTER_HERO_TEMPLATES: StoryHeroId[] = ['h2', 'h5', 'h3', 'h4', 'h1'];
 const MAX_UINT32 = 0xffffffff;
 const SETTLEMENT_STARTER_HERO_COUNT = 2;
 const DEFAULT_WORLD_DISCOVER_RADIUS = 1;
@@ -119,6 +125,24 @@ function serializeTile(tile: Tile): Tile {
     nextProductionBoostMultiplier: tile.nextProductionBoostMultiplier ?? null,
     nextProductionBoostCyclesRemaining: tile.nextProductionBoostCyclesRemaining ?? null,
     nextProductionBoostInputReduction: tile.nextProductionBoostInputReduction ?? null,
+    borderMode: tile.borderMode ?? null,
+    borderModeCooldownUntilMs: tile.borderModeCooldownUntilMs ?? null,
+    borderLockedUntilMs: tile.borderLockedUntilMs ?? null,
+    guardReserve: tile.guardReserve ?? null,
+    raidTargetTileId: tile.raidTargetTileId ?? null,
+    raidCommittedGuards: tile.raidCommittedGuards ?? null,
+    raidBlockedReason: tile.raidBlockedReason ?? null,
+    towerDurability: tile.towerDurability ?? null,
+    towerDurabilityMax: tile.towerDurabilityMax ?? null,
+    towerCaptureProgress: tile.towerCaptureProgress ?? null,
+    towerConflictState: tile.towerConflictState ?? null,
+    towerAttackerSettlementId: tile.towerAttackerSettlementId ?? null,
+    towerAssignedGuards: tile.towerAssignedGuards ?? null,
+    towerWallLevel: tile.towerWallLevel ?? null,
+    towerAttackerCasualtyProgress: tile.towerAttackerCasualtyProgress ?? null,
+    towerDefenderCasualtyProgress: tile.towerDefenderCasualtyProgress ?? null,
+    barracksTrainingQueue: tile.barracksTrainingQueue ?? null,
+    barracksTrainingProgressMs: tile.barracksTrainingProgressMs ?? null,
   };
 }
 
@@ -194,6 +218,7 @@ function serializeSettler(settler: Settler): Settler {
     settlementId: settler.settlementId ?? null,
     assignedWorkTileId: settler.assignedWorkTileId ?? null,
     assignedRole: settler.assignedRole ?? null,
+    guardTowerTileId: settler.guardTowerTileId ?? null,
     workTileId: settler.workTileId ?? null,
     hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
     activity: settler.activity,
@@ -240,6 +265,7 @@ class WorldState {
     resetSettlerState();
     resetSettlementSupportState();
     resetMineReserveState();
+    resetCalamitySystem();
     loadTasks([]);
     loadHeroes([]);
     loadSettlers([]);
@@ -347,6 +373,7 @@ class WorldState {
 
     if (centerTile.terrain !== 'towncenter') {
       promoteTileToTowncenter(centerTile);
+      ensureTownCenterMilitaryState(centerTile);
     } else if (!wasTownCenter) {
       broadcast({ type: 'tile:updated', tile: centerTile } satisfies TileUpdatedMessage);
     }
@@ -410,6 +437,12 @@ class WorldState {
     const jobs = getWorkforceSnapshot();
     const studies = getStudySnapshot();
     const settlers = getSettlerSnapshot();
+
+    for (const tile of tiles) {
+      ensureTownCenterMilitaryState(tile);
+      ensureWatchtowerMilitaryState(tile);
+      ensureBarracksMilitaryState(tile);
+    }
 
     return {
       tiles: tiles.map(serializeTile),

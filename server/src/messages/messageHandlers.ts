@@ -8,6 +8,7 @@ import { ServerCoopHandler } from '../handlers/coopHandler';
 import { ServerScoutHandler } from '../handlers/scoutHandler';
 import { ServerStudyHandler } from '../handlers/studyHandler';
 import { ServerHeroAbilityHandler } from '../handlers/heroAbilityHandler';
+import { ServerMilitaryHandler } from '../handlers/militaryHandler';
 import { ServerSettlementStartHandler } from '../handlers/settlementStartHandler';
 import { ServerTestModeHandler } from '../handlers/testModeHandler';
 import { serverDebugModeEnabled } from '../config/serverMode';
@@ -35,6 +36,9 @@ export function initializeServerHandlers(io: Server) {
   const studyHandler = new ServerStudyHandler(io);
   studyHandler.init();
 
+  const militaryHandler = new ServerMilitaryHandler(io);
+  militaryHandler.init();
+
   const testModeHandler = serverDebugModeEnabled ? new ServerTestModeHandler(io) : null;
   testModeHandler?.init();
 
@@ -55,6 +59,7 @@ export function initializeServerHandlers(io: Server) {
     taskHandler,
     jobHandler,
     studyHandler,
+    militaryHandler,
     testModeHandler,
     heroAbilityHandler,
     coopHandler,

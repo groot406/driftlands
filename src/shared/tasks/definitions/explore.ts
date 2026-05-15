@@ -215,7 +215,7 @@ function revealNearbyWaterFromShore(origin: Tile, discoveryOrigin: { q: number; 
             }
 
             visited.add(neighbor.id);
-            const resolvedTerrain = neighbor.terrain ?? resolveWorldTile(neighbor.q, neighbor.r).terrain;
+            const resolvedTerrain = neighbor.terrain ?? resolveWorldTile(neighbor.q, neighbor.r, discoveryOrigin).terrain;
             if (resolvedTerrain !== 'water') {
                 continue;
             }

@@ -26,6 +26,22 @@ function createTowncenterTile(id: string, q: number, r: number): Tile {
   };
 }
 
+function createStorageTile(id: string, q: number, r: number, variant: string): Tile {
+  return {
+    id,
+    q,
+    r,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: false,
+    activationState: 'active',
+    variant,
+    ownerSettlementId: '0,0',
+    controlledBySettlementId: '0,0',
+  };
+}
+
 test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
@@ -66,4 +82,22 @@ test('settlement resource withdrawals stay inside the requested settlement', () 
   assert.equal(getStorageResourceAmount('20,0', 'food'), 3);
   assert.equal(getSettlementResourceInventory('0,0').food, 4);
   assert.equal(getSettlementResourceInventory('20,0').food, 3);
+});
+
+test('resource-group storage only accepts matching resources', () => {
+  loadWorld([
+    createTowncenterTile('0,0', 0, 0),
+    createStorageTile('1,0', 1, 0, 'plains_food_storehouse'),
+    createStorageTile('2,0', 2, 0, 'plains_materials_yard'),
+  ]);
+
+  assert.equal(depositResourceToStorage('1,0', 'fish', 5), 5);
+  assert.equal(depositResourceToStorage('1,0', 'wood', 5), 0);
+  assert.equal(depositResourceToStorage('2,0', 'wood', 5), 5);
+  assert.equal(depositResourceToStorage('2,0', 'bread', 5), 0);
+
+  assert.equal(getStorageResourceAmount('1,0', 'fish'), 5);
+  assert.equal(getStorageResourceAmount('1,0', 'wood'), 0);
+  assert.equal(getStorageResourceAmount('2,0', 'wood'), 5);
+  assert.equal(getStorageResourceAmount('2,0', 'bread'), 0);
 });

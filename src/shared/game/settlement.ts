@@ -23,3 +23,20 @@ export function isTileInSettlement(
 
     return getTileSettlementId(tile) === settlementId;
 }
+
+export function getSettlementTownCenterTile<T extends Pick<Tile, 'terrain' | 'id' | 'ownerSettlementId' | 'controlledBySettlementId'>>(
+    tiles: Iterable<T>,
+    settlementId: string | null | undefined,
+) {
+    if (!settlementId) {
+        return null;
+    }
+
+    for (const tile of tiles) {
+        if (tile.terrain === 'towncenter' && getTileSettlementId(tile) === settlementId) {
+            return tile;
+        }
+    }
+
+    return null;
+}

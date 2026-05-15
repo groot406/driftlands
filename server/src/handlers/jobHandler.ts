@@ -8,6 +8,7 @@ import { tileIndex } from '../../../src/shared/game/world.ts';
 import type { SetJobSiteEnabledMessage, TileUpdatedMessage } from '../../../src/shared/protocol.ts';
 import { refreshWorkforceState, resetJobSiteRuntime } from '../systems/jobSystem';
 import { playerSettlementState } from '../state/playerSettlementState';
+import type { Tile } from '../../../src/shared/game/types/Tile';
 
 function isToggleableJobSite(tileId: string) {
     const tile = tileIndex[tileId];
@@ -55,7 +56,7 @@ export class ServerJobHandler {
 }
 
 function canSettlementManageTile(
-    tile: { id: string; terrain?: string | null; ownerSettlementId?: string | null; controlledBySettlementId?: string | null } | null | undefined,
+    tile: Pick<Tile, 'id' | 'terrain' | 'ownerSettlementId' | 'controlledBySettlementId'> | null | undefined,
     settlementId: string | null | undefined,
 ) {
     if (!tile || !settlementId) {

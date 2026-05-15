@@ -2,7 +2,7 @@ import { getVariantSet, terrainPositions } from '../../core/terrainRegistry';
 import type { Tile } from '../../core/types/Tile';
 import type { ResourceType } from '../../core/types/Resource.ts';
 import { axialDistanceCoords } from '../game/hex';
-import type { StorageKind } from '../game/storage.ts';
+import { canStorageKindStoreResource, type StorageKind } from '../game/storage.ts';
 import { isTileWalkable } from '../game/navigation';
 import { isTileInSettlement } from '../game/settlement';
 import { tileIndex } from '../game/world';
@@ -25,8 +25,7 @@ export function getStorageKindForTile(tile: Tile | null | undefined): StorageKin
 }
 
 export function isWarehouseBuildingTile(tile: Tile | null | undefined) {
-    const kind = getStorageKindForTile(tile);
-    return kind === 'warehouse' || kind === 'depot';
+    return !!getStorageKindForTile(tile);
 }
 
 export function canUseWarehouseAtTile(tile: Tile | null | undefined) {
@@ -121,9 +120,26 @@ export function findNearestWarehouseWithCapacity(
 ): Tile | null {
     const excluded = new Set(excludeTileIds);
 
+    return findNearestWarehouseWithCapacityForResource(q, r, settlementId, null, requiredFreeCapacity, excluded);
+}
+
+export function findNearestWarehouseWithCapacityForResource(
+    q: number,
+    r: number,
+    settlementId: string | null | undefined,
+    resourceType: ResourceType | null,
+    requiredFreeCapacity: number = 1,
+    excludeTileIds: Iterable<string> = [],
+): Tile | null {
+    const excluded = new Set(excludeTileIds);
+    const canStore = (tile: Tile) => {
+        const kind = getStorageKindForTile(tile);
+        return !!kind && (!resourceType || canStorageKindStoreResource(kind, resourceType));
+    };
+
     return (
-        findNearestStorageTile(q, r, settlementId, (tile) => getStorageFreeCapacity(tile.id) >= requiredFreeCapacity, excluded)
-        ?? findNearestStorageTile(q, r, settlementId, (tile) => getStorageFreeCapacity(tile.id) > 0, excluded)
+        findNearestStorageTile(q, r, settlementId, (tile) => canStore(tile) && getStorageFreeCapacity(tile.id) >= requiredFreeCapacity, excluded)
+        ?? findNearestStorageTile(q, r, settlementId, (tile) => canStore(tile) && getStorageFreeCapacity(tile.id) > 0, excluded)
     );
 }
 
@@ -196,7 +212,7 @@ export function depositResourceIntoNearestStorages(
     let remaining = Math.max(0, amount);
 
     while (remaining > 0) {
-        const storageTile = findNearestWarehouseWithCapacity(q, r, settlementId, remaining, excluded);
+        const storageTile = findNearestWarehouseWithCapacityForResource(q, r, settlementId, resourceType, remaining, excluded);
         if (!storageTile) {
             break;
         }
@@ -252,6 +268,10 @@ export function planNearestStorageDeposits(
         for (const tile of storageTiles) {
             if (amountLeft <= 0) {
                 break;
+            }
+            const kind = getStorageKindForTile(tile);
+            if (!kind || !canStorageKindStoreResource(kind, resource.type)) {
+                continue;
             }
 
             const freeCapacity = freeCapacityByTileId.get(tile.id) ?? 0;

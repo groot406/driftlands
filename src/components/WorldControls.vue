@@ -82,10 +82,51 @@
           <span>5x settler cycles</span>
         </label>
         <label class="test-mode-toggle">
+          <input type="checkbox" :checked="testModeSettings.fastGuardTraining" @change="handleFastGuardTrainingChange" />
+          <span>10x guard training</span>
+        </label>
+        <label class="test-mode-toggle">
           <input type="checkbox" :checked="testModeSettings.supportTiles" @change="handleSupportTilesChange" />
           <span>Support tiles</span>
         </label>
       </div>
+
+      <section class="test-mode-section">
+        <div class="test-mode-section-header">
+          <div>
+            <p class="test-mode-section-title">Military sandbox</p>
+            <p class="test-mode-section-subtitle">One-click setup for walls, barracks, borders, and tower capture testing.</p>
+          </div>
+        </div>
+        <div class="test-mode-section-actions">
+          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="prepareMilitarySandbox">Prep Sandbox</button>
+          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantGuardReserve">+5 Guards</button>
+          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantWeapons">+20 Weapons</button>
+          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="openBorders">Open Borders</button>
+        </div>
+      </section>
+
+      <section class="test-mode-section">
+        <div class="test-mode-section-header">
+          <div>
+            <p class="test-mode-section-title">Calamities</p>
+            <p class="test-mode-section-subtitle">Trigger one frontier event immediately for the current settlement.</p>
+          </div>
+        </div>
+        <div class="test-mode-section-actions">
+          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="triggerRandomCalamity">Random</button>
+          <button
+            v-for="calamity in calamityButtons"
+            :key="calamity.kind"
+            class="mini-btn"
+            type="button"
+            :disabled="!currentSettlementId"
+            @click="triggerCalamity(calamity.kind)"
+          >
+            {{ calamity.label }}
+          </button>
+        </div>
+      </section>
 
       <section class="test-mode-section">
         <div class="test-mode-section-header">
@@ -157,6 +198,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { CalamityKind } from '../shared/protocol';
 import { centerCamera } from '../core/camera';
 import { sendMessage } from '../core/socket';
 import { getWorldGenerationSeed } from '../core/worldVariation';
@@ -181,6 +223,14 @@ const LARGE_WORLD_DISABLED_TITLE = 'Disabled for now: 200-ring worlds can overwh
 
 const progressionNodes = listProgressionNodeDefinitions();
 const studyDefinitions = listStudyDefinitions();
+const calamityButtons: { kind: CalamityKind; label: string }[] = [
+  { kind: 'volcano_eruption', label: 'Volcano' },
+  { kind: 'flood', label: 'Flood' },
+  { kind: 'lost_harvest', label: 'Harvest' },
+  { kind: 'food_spoilage', label: 'Spoilage' },
+  { kind: 'forest_fire', label: 'Fire' },
+  { kind: 'outbreak', label: 'Outbreak' },
+];
 
 const storySeed = computed(() => runSnapshot.value?.seed ?? null);
 const activeWorldSeed = ref(getWorldGenerationSeed());
@@ -291,6 +341,7 @@ function sendTestSettings(message: {
   fastGrowth?: boolean;
   fastPopulationGrowth?: boolean;
   fastSettlerCycles?: boolean;
+  fastGuardTraining?: boolean;
   supportTiles?: boolean;
   unlockedNodeKeys?: ProgressionNodeKey[];
   completedStudyKeys?: StudyKey[];
@@ -331,8 +382,27 @@ function setFastSettlerCycles(enabled: boolean) {
   sendTestSettings({ fastSettlerCycles: enabled });
 }
 
+function setFastGuardTraining(enabled: boolean) {
+  sendTestSettings({ fastGuardTraining: enabled });
+}
+
 function setSupportTiles(enabled: boolean) {
   sendTestSettings({ supportTiles: enabled });
+}
+
+function runTestAction(
+  action: 'prepare_military_sandbox' | 'grant_guard_reserve' | 'grant_weapons' | 'trigger_calamity',
+  amount?: number,
+  calamityKind?: CalamityKind,
+) {
+  sendMessage({
+    type: 'test:run_action',
+    settlementId: currentSettlementId.value,
+    action,
+    ...(typeof amount === 'number' ? { amount } : {}),
+    ...(calamityKind ? { calamityKind } : {}),
+    timestamp: Date.now(),
+  });
 }
 
 function handleEnabledChange(event: Event) {
@@ -361,6 +431,10 @@ function handleFastPopulationGrowthChange(event: Event) {
 
 function handleFastSettlerCyclesChange(event: Event) {
   setFastSettlerCycles((event.target as HTMLInputElement).checked);
+}
+
+function handleFastGuardTrainingChange(event: Event) {
+  setFastGuardTraining((event.target as HTMLInputElement).checked);
 }
 
 function handleSupportTilesChange(event: Event) {
@@ -415,6 +489,40 @@ function completeAllStudies() {
 
 function clearStudyOverrides() {
   sendTestSettings({ completedStudyKeys: [] });
+}
+
+function prepareMilitarySandbox() {
+  runTestAction('prepare_military_sandbox');
+}
+
+function grantGuardReserve() {
+  runTestAction('grant_guard_reserve', 5);
+}
+
+function grantWeapons() {
+  runTestAction('grant_weapons', 20);
+}
+
+function triggerCalamity(kind: CalamityKind) {
+  runTestAction('trigger_calamity', undefined, kind);
+}
+
+function triggerRandomCalamity() {
+  const index = Math.floor(Math.random() * calamityButtons.length);
+  triggerCalamity(calamityButtons[index]?.kind ?? 'flood');
+}
+
+function openBorders() {
+  if (!currentSettlementId.value) {
+    return;
+  }
+
+  sendMessage({
+    type: 'settlement:set_border_mode',
+    settlementId: currentSettlementId.value,
+    borderMode: 'open',
+    timestamp: Date.now(),
+  });
 }
 
 watch(storySeed, (seed) => {

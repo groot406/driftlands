@@ -2,6 +2,7 @@ import type { TerrainKey } from '../../core/terrainDefs.ts';
 import { axialDistanceCoords } from '../game/hex.ts';
 
 export type SettlementStartBand = 'home' | 'near' | 'frontier' | 'remote';
+export type SettlementStartMode = 'candidates' | 'free';
 
 export interface SettlementStartMarker {
   settlementId: string;
@@ -32,6 +33,10 @@ export interface SettlementStartTerrainTile {
   q: number;
   r: number;
   terrain: TerrainKey;
+  blocked?: boolean;
+  blockedByPlayerId?: string | null;
+  blockedByPlayerName?: string | null;
+  blockedByPlayerColor?: string | null;
 }
 
 interface CandidateBandConfig {
@@ -78,6 +83,7 @@ const MIN_CONNECTED_STARTER_LAND = 25;
 const MIN_OUTER_LAND_EXITS = 1;
 const MAX_START_WATER_TILES = 44;
 const START_TERRAIN_PREVIEW_PADDING = 8;
+const FREE_START_TERRAIN_PREVIEW_RADIUS = 85;
 
 export function getSettlementStartCandidateId(q: number, r: number) {
   return `settlement-start:${q}:${r}`;
@@ -410,7 +416,28 @@ export function generateSettlementStartTerrainTiles(options: {
   settlements: SettlementStartMarker[];
   candidates: Array<Pick<SettlementStartCandidate, 'q' | 'r'>>;
   resolveTerrain: (q: number, r: number, origin?: { q: number; r: number }) => TerrainKey;
+  freeStart?: boolean;
 }): SettlementStartTerrainTile[] {
+  if (options.freeStart) {
+    const tiles: SettlementStartTerrainTile[] = [];
+    for (let q = -FREE_START_TERRAIN_PREVIEW_RADIUS; q <= FREE_START_TERRAIN_PREVIEW_RADIUS; q++) {
+      for (
+        let r = Math.max(-FREE_START_TERRAIN_PREVIEW_RADIUS, -q - FREE_START_TERRAIN_PREVIEW_RADIUS);
+        r <= Math.min(FREE_START_TERRAIN_PREVIEW_RADIUS, -q + FREE_START_TERRAIN_PREVIEW_RADIUS);
+        r++
+      ) {
+        tiles.push({
+          id: createSettlementId(q, r),
+          q,
+          r,
+          terrain: options.resolveTerrain(q, r),
+        });
+      }
+    }
+
+    return tiles.sort((left, right) => left.q - right.q || left.r - right.r);
+  }
+
   const points = [
     ...options.settlements.map((settlement) => ({ q: settlement.q, r: settlement.r })),
     ...options.candidates.map((candidate) => ({ q: candidate.q, r: candidate.r })),

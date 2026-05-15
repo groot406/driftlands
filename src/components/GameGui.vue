@@ -99,6 +99,7 @@ import {
 } from '../store/tutorialStore';
 
 const showHelpers = ref(false);
+const globalKeyListenerOptions = { capture: true };
 
 
 const hasGoals = computed(() => {
@@ -131,11 +132,12 @@ function handleKeyDown(e: KeyboardEvent) {
 
   if (isInput) return;
 
-  if (e.key === 'Tab') {
+  if (e.key === 'Tab' || e.code === 'Tab') {
     if (!serverDebugModeEnabled.value) {
-      return;
+      //return;
     }
     e.preventDefault();
+    e.stopPropagation();
     e.stopImmediatePropagation();
     showHelpers.value = !showHelpers.value;
     return;
@@ -148,16 +150,16 @@ function handleKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keydown', handleKeyDown, globalKeyListenerOptions);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('keydown', handleKeyDown, globalKeyListenerOptions);
 });
 
 watch(serverDebugModeEnabled, (enabled) => {
   if (!enabled) {
-    showHelpers.value = false;
+    //showHelpers.value = false;
   }
 });
 </script>

@@ -13,6 +13,7 @@ import type { Settler } from '../../types/Settler';
 import { getSettlerDisplayName } from '../../../shared/game/settlerNames.ts';
 import {
     computeTileSettlerOffsets,
+    isSettlerActiveWorkAnimation,
     getSettlerRenderCoords,
     getSettlerRenderFacing,
     getSettlerInterpolatedPixelPosition,
@@ -384,7 +385,7 @@ export class HeroRenderer {
                 const palette = getSettlerPalette(settler.appearanceSeed);
                 const hoverAlpha = this.settlerHoverAlphaById.get(settler.id) ?? 0;
                 const walking = isSettlerWalking(settler);
-                const working = settler.activity === 'working' || settler.activity === 'repairing';
+                const working = isSettlerActiveWorkAnimation(settler);
                 const idling = !walking && !working;
                 const renderFacing = getSettlerRenderFacing(settler, now);
                 const phase = (now + settler.appearanceSeed) / 95;

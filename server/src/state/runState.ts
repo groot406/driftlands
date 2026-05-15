@@ -1,7 +1,7 @@
 import { broadcast } from '../messages/messageRouter';
 import type { GameplayEvent } from '../../../src/shared/gameplay/events';
 import { tiles, tileIndex } from '../../../src/shared/game/world';
-import { heroes, syncHeroRoster } from '../../../src/shared/game/state/heroStore';
+import { heroes } from '../../../src/shared/game/state/heroStore';
 import { getPopulationState, getSettlementPopulationState } from '../../../src/shared/game/state/populationStore';
 import { getWorkforceSnapshot } from '../../../src/shared/game/state/jobStore';
 import { getEffectiveResourceInventory, getSettlementResourceInventory } from '../../../src/shared/game/state/resourceStore';

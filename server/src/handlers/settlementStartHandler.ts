@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { terrainPositions } from '../../../src/core/terrainRegistry';
 import { resolveWorldTile } from '../../../src/core/worldGeneration';
 import { tileIndex } from '../../../src/shared/game/world';
+import { computeControlledTileIdsForSettlement } from '../../../src/shared/game/state/settlementSupportStore';
 import {
   generateSettlementStartCandidates,
   generateSettlementStartTerrainTiles,
@@ -25,6 +26,7 @@ import { playerSettlementState } from '../state/playerSettlementState';
 import { coopState } from '../state/coopState';
 import { worldState } from '../worldState';
 import { runState } from '../state/runState';
+import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from '../config/serverMode';
 
 export class ServerSettlementStartHandler {
   private readonly io: Server;
@@ -80,21 +82,54 @@ export class ServerSettlementStartHandler {
       isSettlementClaimed: (settlementId: string) => playerSettlementState.isSettlementClaimed(settlementId),
       getSettlementOwner: (settlementId: string) => playerSettlementState.getSettlementOwner(settlementId),
     };
-    const candidates = generateSettlementStartCandidates(startOptions);
+    const candidates = settlementStartMode === 'free' ? [] : generateSettlementStartCandidates(startOptions);
+
+    const terrainTiles = generateSettlementStartTerrainTiles({
+      settlements,
+      candidates,
+      resolveTerrain: startOptions.resolveTerrain,
+      freeStart: settlementStartMode === 'free',
+    });
+    if (settlementStartMode === 'free') {
+      const blockedTileOwners = this.getOtherPlayerReachTileOwners(playerId);
+      for (const tile of terrainTiles) {
+        const owner = blockedTileOwners.get(tile.id);
+        tile.blocked = !!owner;
+        tile.blockedByPlayerId = owner?.playerId ?? null;
+        tile.blockedByPlayerName = owner?.playerName ?? null;
+        tile.blockedByPlayerColor = owner?.playerColor ?? null;
+      }
+    }
 
     return {
       type: 'settlement:start_options',
       playerId,
       currentSettlementId: playerSettlementState.getPlayerSettlement(playerId),
+      startMode: settlementStartMode,
       settlements,
       candidates,
-      terrainTiles: generateSettlementStartTerrainTiles({
-        settlements,
-        candidates,
-        resolveTerrain: startOptions.resolveTerrain,
-      }),
+      terrainTiles,
       timestamp: Date.now(),
     };
+  }
+
+  private getOtherPlayerReachTileOwners(playerId: string) {
+    const blockedTileOwners = new Map<string, { playerId: string; playerName: string; playerColor?: string | null }>();
+    for (const player of playerSettlementState.listPlayers()) {
+      if (player.id === playerId || !player.settlementId) {
+        continue;
+      }
+
+      for (const tileId of computeControlledTileIdsForSettlement(player.settlementId)) {
+        blockedTileOwners.set(tileId, {
+          playerId: player.id,
+          playerName: player.nickname,
+          playerColor: player.color,
+        });
+      }
+    }
+
+    return blockedTileOwners;
   }
 
   private sendOptionsToSocket(socket: Socket) {
@@ -169,19 +204,23 @@ export class ServerSettlementStartHandler {
       return;
     }
 
-    const settlementId = getSettlementIdFromStartCandidateId(message.candidateId);
-    if (!settlementId) {
+    const requestedSite = this.resolveFoundRequestSite(playerId, message);
+    if (!requestedSite) {
       this.rejectFoundRequest(socket, 'That settlement claim is no longer valid.');
       return;
     }
 
-    const candidate = this.buildOptionsMessage(playerId).candidates.find((entry) => entry.id === message.candidateId);
-    if (!candidate?.available) {
+    const settlementId = requestedSite.settlementId;
+    if (playerSettlementState.isSettlementClaimed(settlementId)) {
       this.rejectFoundRequest(socket, 'That settlement site has already been taken.');
       return;
     }
+    if (settlementStartMode === 'free' && this.getOtherPlayerReachTileOwners(playerId).has(settlementId)) {
+      this.rejectFoundRequest(socket, 'That site is already inside another player\'s reach.');
+      return;
+    }
 
-    const founded = worldState.foundSettlementAt(candidate.q, candidate.r, {
+    const founded = worldState.foundSettlementAt(requestedSite.q, requestedSite.r, {
       playerId,
       playerName: playerSettlementState.getPlayerName(playerId) ?? 'Pioneer',
     });
@@ -196,6 +235,50 @@ export class ServerSettlementStartHandler {
       return;
     }
 
+    this.finishFoundingSettlement(socket, playerId, founded);
+  }
+
+  private resolveFoundRequestSite(playerId: string, message: SettlementFoundRequestMessage) {
+    if (settlementStartMode === 'free') {
+      if (typeof message.q !== 'number' || typeof message.r !== 'number') {
+        return null;
+      }
+
+      if (!Number.isFinite(message.q) || !Number.isFinite(message.r)) {
+        return null;
+      }
+
+      const q = Math.trunc(message.q);
+      const r = Math.trunc(message.r);
+      return {
+        q,
+        r,
+        settlementId: `${q},${r}`,
+      };
+    }
+
+    if (!message.candidateId) {
+      return null;
+    }
+
+    const settlementId = getSettlementIdFromStartCandidateId(message.candidateId);
+    if (!settlementId) {
+      return null;
+    }
+
+    const candidate = this.buildOptionsMessage(playerId).candidates.find((entry) => entry.id === message.candidateId);
+    if (!candidate?.available) {
+      return null;
+    }
+
+    return { q: candidate.q, r: candidate.r, settlementId };
+  }
+
+  private finishFoundingSettlement(
+    socket: Socket,
+    playerId: string,
+    founded: { settlementId: string; q: number; r: number; founderHeroId?: string; founderHeroIds?: string[] },
+  ): void {
     const owner = playerSettlementState.getSettlementOwner(founded.settlementId);
     coopState.updatePlayerSettlement(playerId, founded.settlementId);
     const starterHeroIds = founded.founderHeroIds ?? (founded.founderHeroId ? [founded.founderHeroId] : []);
@@ -231,6 +314,8 @@ export class ServerSettlementStartHandler {
     sendToSocket(socket, {
       type: 'world:snapshot',
       ...worldState.getSnapshot(),
+      debugModeEnabled: serverDebugModeEnabled,
+      spawnSafetyEnabled,
       timestamp: Date.now(),
     } satisfies WorldSnapshotMessage);
 

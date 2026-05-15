@@ -30,7 +30,7 @@ test('landfall starts unlocked with the first crew, shelter, and frontier basics
   const taskKeys = getAvailableStoryTaskKeys(progression);
 
   assert.deepEqual(progression.unlockedNodeKeys, ['landfall']);
-  assert.deepEqual(progression.unlocked.heroes, ['h1', 'h2']);
+  assert.deepEqual(progression.unlocked.heroes, ['h1', 'h2', 'h5']);
   assert.ok(progression.unlocked.buildings.includes('campfire'));
   assert.ok(progression.unlocked.buildings.includes('house'));
   assert.deepEqual(progression.unlocked.terrains, ['plains', 'forest', 'dirt', 'water']);

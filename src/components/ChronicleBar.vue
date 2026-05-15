@@ -96,12 +96,14 @@ import { chronicleReopenRequested, chronicleHasEntries } from '../store/chronicl
 import boyAvatar from '../assets/heroes/boy.png';
 import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
+import mosslingAvatar from '../assets/heroes/mossling.png';
 import santaAvatar from '../assets/heroes/santa.png';
 
 const avatarByKey: Record<string, string> = {
   boy: boyAvatar,
   girl: girlAvatar,
   loophead: loopheadAvatar,
+  mossling: mosslingAvatar,
   santa: santaAvatar,
 };
 

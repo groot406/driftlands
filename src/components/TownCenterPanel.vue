@@ -84,6 +84,61 @@
           </div>
         </div>
 
+        <div class="tc-section tc-section-military">
+          <div class="tc-section-row">
+            <div class="tc-section-title">Border Control</div>
+            <div class="tc-section-caption">{{ borderCooldownText }}</div>
+          </div>
+          <div class="tc-stat-grid tc-stat-grid-4">
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ militarySummary.borderModeLabel }}</span>
+              <span class="tc-stat-label">Mode</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ militarySummary.reserveGuards }}</span>
+              <span class="tc-stat-label">Reserve Guards</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ militarySummary.vulnerableTowerCount }}</span>
+              <span class="tc-stat-label">Threatened Towers</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ militarySummary.attackTargetLabel }}</span>
+              <span class="tc-stat-label">Raid Target</span>
+            </div>
+          </div>
+          <div class="tc-status-row" :class="militaryStatusClass">
+            <span class="tc-status-dot" :class="militaryStatusClass" />
+            <span class="tc-status-text">{{ militaryStatusText }}</span>
+          </div>
+          <div class="tc-detail-chip-row">
+            <span
+              v-for="tower in militarySummary.vulnerableTowers"
+              :key="tower.tileId"
+              class="tc-detail-chip tc-detail-chip-alert"
+            >
+              {{ tower.label }}
+            </span>
+          </div>
+          <div v-if="militarySummary.canManageBorders" class="tc-detail-action-row">
+            <button
+              class="tc-detail-toggle"
+              :class="{ 'tc-detail-toggle-off': militarySummary.borderMode === 'open' }"
+              :disabled="militarySummary.borderMode === 'closed' || militarySummary.borderCooldownActive || militarySummary.borderLocked"
+              @click.stop="setBorderMode('closed')"
+            >
+              Close Borders
+            </button>
+            <button
+              class="tc-detail-toggle"
+              :disabled="militarySummary.borderMode === 'open' || militarySummary.borderCooldownActive"
+              @click.stop="setBorderMode('open')"
+            >
+              Open Borders
+            </button>
+          </div>
+        </div>
+
         <!-- Food Section -->
         <div class="tc-section tc-section-food">
           <div class="tc-section-row">
@@ -269,6 +324,90 @@
 
             <div v-if="selectedJobSiteDetail.blockerText" class="tc-detail-blocker">
               {{ selectedJobSiteDetail.blockerText }}
+            </div>
+
+            <div v-if="selectedJobSiteDetail.watchtowerDetails" class="tc-detail-section">
+              <div class="tc-detail-section-title">Border Tower</div>
+              <div class="tc-detail-grid">
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">State</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.watchtowerDetails.stateLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.watchtowerDetails.borderLabel }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Durability</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.watchtowerDetails.durabilityPercent }}%</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.watchtowerDetails.captureLabel }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Guards</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.watchtowerDetails.assignedGuards }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.watchtowerDetails.reserveLabel }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Walls</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.watchtowerDetails.wallLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.watchtowerDetails.attackLabel }}</p>
+                </section>
+              </div>
+              <div class="tc-detail-action-row" v-if="selectedJobSiteDetail.watchtowerDetails.canAssignGuards">
+                <button
+                  class="tc-detail-toggle"
+                  :disabled="selectedJobSiteDetail.watchtowerDetails.assignedGuards <= 0"
+                  @click.stop="adjustTowerGuards(selectedJobSiteDetail.tileId, -1)"
+                >
+                  Remove Guard
+                </button>
+                <button
+                  class="tc-detail-toggle"
+                  :disabled="selectedJobSiteDetail.watchtowerDetails.reserveGuards <= 0"
+                  @click.stop="adjustTowerGuards(selectedJobSiteDetail.tileId, 1)"
+                >
+                  Assign Guard
+                </button>
+              </div>
+              <div class="tc-detail-action-row" v-if="selectedJobSiteDetail.watchtowerDetails.canBuildPalisade">
+                <button class="tc-detail-toggle" @click.stop="buildWatchtowerPalisade(selectedJobSiteDetail.tileId)">
+                  Build Wooden Palisade
+                </button>
+                <p class="tc-detail-action-copy">Adds a wooden wall ring that slows capture and buys response time.</p>
+              </div>
+              <div class="tc-detail-action-row" v-if="selectedJobSiteDetail.watchtowerDetails.canToggleRaid">
+                <button class="tc-detail-toggle" @click.stop="toggleRaidTarget(selectedJobSiteDetail.tileId)">
+                  {{ selectedJobSiteDetail.watchtowerDetails.raidButtonLabel }}
+                </button>
+                <p class="tc-detail-action-copy">{{ selectedJobSiteDetail.watchtowerDetails.raidCopy }}</p>
+              </div>
+            </div>
+
+            <div v-if="selectedJobSiteDetail.barracksDetails" class="tc-detail-section">
+              <div class="tc-detail-section-title">Guard Training</div>
+              <div class="tc-detail-grid">
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Reserve</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.barracksDetails.reserveGuards }}</div>
+                  <p class="tc-detail-card-copy">Available for tower defense or border raids.</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Weapons</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.barracksDetails.weapons }}</div>
+                  <p class="tc-detail-card-copy">Each recruit consumes 1 weapon and 2 rations.</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Queue</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.barracksDetails.queue }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.barracksDetails.progressLabel }}</p>
+                </section>
+              </div>
+              <div class="tc-maintenance-bar-track">
+                <div class="tc-maintenance-bar-fill tc-maintenance-bar-fill-ok" :style="{ width: `${selectedJobSiteDetail.barracksDetails.progressPercent}%` }" />
+              </div>
+              <div class="tc-detail-action-row" v-if="selectedJobSiteDetail.barracksDetails.canTrain">
+                <button class="tc-detail-toggle" @click.stop="queueGuardTraining(selectedJobSiteDetail.tileId)">
+                  Train Guard
+                </button>
+                <p class="tc-detail-action-copy">Queues one guard. Training finishes once the barracks can draw both weapons and rations from storage.</p>
+              </div>
             </div>
 
             <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-grid">
@@ -482,6 +621,18 @@ import { getTaskUnlockStatus, isTaskUnlockedForUse } from '../shared/tasks/taskU
 import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
 import { isRoadTile } from '../shared/game/roads.ts';
 import {
+  GUARD_TRAINING_DURATION_MS,
+  getAvailableGuardReserve,
+  getSettlementBorderMode,
+  getWatchtowerDurabilityPercent,
+  isBarracksTile,
+  isProtectedByTownCenter,
+  isSettlementOpen,
+  isWatchtowerTile,
+  resolveWatchtowerConflictState,
+} from '../shared/game/military.ts';
+import { getGuardTrainingSpeedMultiplier, testModeSettings } from '../shared/game/testMode.ts';
+import {
   getConditionLabel,
   getConditionStatusText,
   getConditionTone,
@@ -587,6 +738,16 @@ const playerTiles = computed(() => {
   return Object.values(tileIndex).filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId);
 });
 
+const inspectedTownCenterTile = computed(() => {
+  const settlementId = inspectedSettlementId.value;
+  return settlementId ? tileIndex[settlementId] ?? null : null;
+});
+
+const currentPlayerTownCenterTile = computed(() => {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? tileIndex[settlementId] ?? null : null;
+});
+
 const playerSettlers = computed(() => {
   const settlementId = inspectedSettlementId.value;
   return settlementId ? settlers.filter((settler) => settler.settlementId === settlementId) : settlers;
@@ -657,6 +818,61 @@ function selectStudy(studyKey: string) {
   });
 }
 
+function setBorderMode(borderMode: 'open' | 'closed') {
+  const settlementId = inspectedSettlementId.value;
+  if (!settlementId) {
+    return;
+  }
+
+  sendMessage({
+    type: 'settlement:set_border_mode',
+    settlementId,
+    borderMode,
+    timestamp: Date.now(),
+  });
+}
+
+function queueGuardTraining(barracksTileId: string, quantity: number = 1) {
+  sendMessage({
+    type: 'military:queue_guard_training',
+    barracksTileId,
+    quantity,
+    timestamp: Date.now(),
+  });
+}
+
+function adjustTowerGuards(tileId: string, delta: number) {
+  sendMessage({
+    type: 'military:assign_guards',
+    tileId,
+    delta,
+    timestamp: Date.now(),
+  });
+}
+
+function buildWatchtowerPalisade(tileId: string) {
+  sendMessage({
+    type: 'military:build_palisade',
+    tileId,
+    timestamp: Date.now(),
+  });
+}
+
+function toggleRaidTarget(tileId: string) {
+  const settlementId = currentPlayerSettlementId.value;
+  const currentTarget = currentPlayerTownCenterTile.value?.raidTargetTileId ?? null;
+  if (!settlementId) {
+    return;
+  }
+
+  sendMessage({
+    type: 'military:set_raid_target',
+    settlementId,
+    targetTileId: currentTarget === tileId ? null : tileId,
+    timestamp: Date.now(),
+  });
+}
+
 function formatNumber(value: number) {
   return `${Math.floor(value)}`;
 }
@@ -680,6 +896,40 @@ function formatStudyDuration(ms: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function formatCountdown(ms: number | null | undefined) {
+  const remainingMs = Math.max(0, (ms ?? 0) - Date.now());
+  if (remainingMs <= 0) {
+    return 'Ready now';
+  }
+
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatBorderModeLabel(mode: 'open' | 'closed' | null | undefined) {
+  return mode === 'open' ? 'Open' : 'Closed';
+}
+
+function formatWatchtowerStateLabel(state: string | null | undefined) {
+  switch (state) {
+    case 'under_attack':
+      return 'Under attack';
+    case 'contested':
+      return 'Contested';
+    case 'damaged':
+      return 'Damaged';
+    case 'disabled':
+      return 'Disabled';
+    case 'captured':
+      return 'Captured';
+    case 'active':
+    default:
+      return 'Active';
+  }
 }
 
 function formatStudyEffect(effect: { kind: string; multiplier?: number }) {
@@ -903,6 +1153,84 @@ const supportStatusText = computed(() => {
       }
       return `Stable — ${playerPopulation.value.activeTileCount} of ${ownedTiles.value} owned tiles remain online`;
   }
+});
+
+const completedStudyKeys = computed(() => new Set(studyState.completedStudyKeys));
+
+const militarySummary = computed(() => {
+  void worldVersion.value;
+  const townCenter = inspectedTownCenterTile.value;
+  const watchtowers = playerTiles.value.filter((tile) => isWatchtowerTile(tile));
+  const vulnerableTowers = watchtowers
+    .filter((tile) => (tile.towerCaptureProgress ?? 0) > 0 || !!tile.towerAttackerSettlementId)
+    .map((tile) => ({
+      tileId: tile.id,
+      label: `${getStructureLabel(tile.id)} ${Math.round(tile.towerCaptureProgress ?? 0)}%`,
+    }));
+
+  return {
+    borderMode: getSettlementBorderMode(townCenter),
+    borderModeLabel: formatBorderModeLabel(getSettlementBorderMode(townCenter)),
+    reserveGuards: getAvailableGuardReserve(townCenter),
+    committedRaiders: Math.max(0, townCenter?.raidCommittedGuards ?? 0),
+    vulnerableTowerCount: vulnerableTowers.length,
+    vulnerableTowers,
+    attackTargetLabel: !townCenter?.raidTargetTileId
+      ? 'None'
+      : townCenter.raidBlockedReason
+        ? 'Blocked'
+        : (townCenter.raidCommittedGuards ?? 0) > 0
+          ? `${Math.max(0, townCenter.raidCommittedGuards ?? 0)} marching`
+          : 'Active',
+    attackTargetTileId: townCenter?.raidTargetTileId ?? null,
+    raidBlockedReason: townCenter?.raidBlockedReason ?? null,
+    borderCooldownActive: (townCenter?.borderModeCooldownUntilMs ?? 0) > Date.now(),
+    borderLocked: (townCenter?.borderLockedUntilMs ?? 0) > Date.now(),
+    canManageBorders: currentPlayerSettlementId.value === inspectedSettlementId.value && completedStudyKeys.value.has('border_management'),
+  };
+});
+
+const borderCooldownText = computed(() => {
+  const townCenter = inspectedTownCenterTile.value;
+  const cooldownUntil = townCenter?.borderModeCooldownUntilMs ?? 0;
+  if (cooldownUntil > Date.now()) {
+    return `Cooldown ${formatCountdown(cooldownUntil)}`;
+  }
+
+  if ((townCenter?.borderLockedUntilMs ?? 0) > Date.now()) {
+    return `Contested ${formatCountdown(townCenter?.borderLockedUntilMs ?? 0)}`;
+  }
+
+  return 'Policy ready';
+});
+
+const militaryStatusClass = computed(() => {
+  if (militarySummary.value.vulnerableTowerCount > 0) {
+    return 'tc-status-danger';
+  }
+
+  if (militarySummary.value.borderMode === 'open') {
+    return 'tc-status-warn';
+  }
+
+  return 'tc-status-ok';
+});
+
+const militaryStatusText = computed(() => {
+  if (militarySummary.value.vulnerableTowerCount > 0) {
+    return 'Threatened — reinforce exposed towers before the border collapses.';
+  }
+
+  if (militarySummary.value.borderMode === 'open') {
+    if (militarySummary.value.raidBlockedReason) {
+      return `Open borders — ${militarySummary.value.raidBlockedReason}`;
+    }
+    return militarySummary.value.attackTargetTileId
+      ? 'Open borders — a guard squad is currently marching or fighting at the selected watchtower.'
+      : 'Open borders — your outer towers can now be attacked or used for raids.';
+  }
+
+  return 'Closed borders — your settlement is protected from border conflict.';
 });
 
 // --- Food ---
@@ -1150,6 +1478,29 @@ const selectedJobSiteDetail = computed(() => {
   const canManage = canManageTile(tile);
   const hero = selectedHero.value;
   const inspectorHero = hero ?? createInspectorHero(tile);
+  const defenderTownCenter = tile?.ownerSettlementId ? tileIndex[tile.ownerSettlementId] ?? null : null;
+  const currentBorderTownCenter = currentPlayerTownCenterTile.value;
+  const raidLockReason = isWatchtowerTile(tile)
+    ? (
+      !currentBorderTownCenter
+        ? 'No home settlement is available for raid orders.'
+        : tile.ownerSettlementId === currentBorderTownCenter.id
+          ? 'You cannot raid your own watchtower.'
+          : canManage
+            ? 'Only foreign border watchtowers can be targeted for raids.'
+            : !isSettlementOpen(currentBorderTownCenter)
+              ? 'Open your own borders before issuing a raid.'
+              : !defenderTownCenter
+                ? 'This tower is not linked to a valid defending settlement.'
+                : !isSettlementOpen(defenderTownCenter)
+                  ? 'The target settlement must also have open borders.'
+                  : isProtectedByTownCenter(tile, defenderTownCenter)
+                    ? 'This tower is still inside the defender safe zone.'
+                    : getAvailableGuardReserve(currentBorderTownCenter) <= 0
+                      ? 'Train or free at least one reserve guard first.'
+                      : null
+    )
+    : null;
   const availableActions = listTaskDefinitions()
     .filter((task) => task.key !== 'walk')
     .filter((task) => canStartTaskDefinition(task, tile, inspectorHero))
@@ -1162,6 +1513,43 @@ const selectedJobSiteDetail = computed(() => {
       unlocked: isTaskUnlockedForUse(task.key, inspectedSettlementId.value),
       lockHint: getTaskLockHint(task),
     }));
+  const watchtowerDetails = isWatchtowerTile(tile)
+    ? {
+      stateLabel: formatWatchtowerStateLabel(resolveWatchtowerConflictState(tile)),
+      borderLabel: `Owner borders ${formatBorderModeLabel(getSettlementBorderMode(defenderTownCenter))}`,
+      durabilityPercent: getWatchtowerDurabilityPercent(tile),
+      captureLabel: `Capture ${Math.round(tile.towerCaptureProgress ?? 0)}%`,
+      assignedGuards: tile.towerAssignedGuards ?? 0,
+      reserveGuards: getAvailableGuardReserve(inspectedTownCenterTile.value),
+      reserveLabel: `${getAvailableGuardReserve(inspectedTownCenterTile.value)} reserve available · ${Math.max(0, currentBorderTownCenter?.raidCommittedGuards ?? 0)} raiding`,
+      wallLabel: (tile.towerWallLevel ?? 0) > 0 ? 'Palisaded' : 'Exposed',
+      attackLabel: currentBorderTownCenter?.raidTargetTileId === tile.id && currentBorderTownCenter?.raidBlockedReason
+        ? currentBorderTownCenter.raidBlockedReason
+        : tile.towerAttackerSettlementId ? 'Hostile guards are engaging this watchtower.' : 'No active raid',
+      canAssignGuards: canManage && completedStudyKeys.value.has('guard_training'),
+      canBuildPalisade: canManage && completedStudyKeys.value.has('defensive_construction') && (tile.towerWallLevel ?? 0) <= 0,
+      canToggleRaid: !canManage && !raidLockReason,
+      raidLockReason,
+      raidButtonLabel: currentBorderTownCenter?.raidTargetTileId === tile.id ? 'Cancel Raid' : 'Start Capture Raid',
+      raidCopy: currentBorderTownCenter?.raidTargetTileId === tile.id
+        ? 'Break off the current raid order and pull surviving raiders back into reserve duty.'
+        : 'Commit your current reserve guards to march on this watchtower and keep fighting until the border breaks.',
+    }
+    : null;
+  const barracksDetails = isBarracksTile(tile)
+    ? (() => {
+      const remainingProgressMs = Math.max(0, GUARD_TRAINING_DURATION_MS - (tile.barracksTrainingProgressMs ?? 0));
+      const speedMultiplier = getGuardTrainingSpeedMultiplier(testModeSettings);
+      return {
+      reserveGuards: getAvailableGuardReserve(inspectedTownCenterTile.value),
+      weapons: Math.max(0, playerInventory.value.weapons ?? 0),
+      queue: tile.barracksTrainingQueue ?? 0,
+      progressPercent: Math.min(100, Math.round(((tile.barracksTrainingProgressMs ?? 0) / GUARD_TRAINING_DURATION_MS) * 100)),
+      progressLabel: `${formatCountdown(Date.now() + Math.max(0, Math.ceil(remainingProgressMs / speedMultiplier)))} to next guard`,
+      canTrain: canManage && completedStudyKeys.value.has('guard_training'),
+    };
+    })()
+    : null;
   const isInfrastructure = !building && (isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile));
   if (!building && !isInfrastructure) {
     return null;
@@ -1231,11 +1619,13 @@ const selectedJobSiteDetail = computed(() => {
       ...shortage,
       missingLabel: `${formatNumber(shortage.missing)} ${formatResourceType(shortage.type)} missing for repairs`,
     })),
+    watchtowerDetails,
+    barracksDetails,
     advice,
     availableActions: canManage ? availableActions : [],
     actionHint: hero
-      ? (canManage ? 'No hero orders are available on this structure right now.' : 'Only this settlement owner can issue orders here.')
-      : (canManage ? 'Select a hero to issue the order shown here.' : 'Only this settlement owner can issue orders here.'),
+      ? (canManage ? 'No hero orders are available on this structure right now.' : (raidLockReason ?? 'Only this settlement owner can issue orders here.'))
+      : (canManage ? 'Select a hero to issue the order shown here.' : (raidLockReason ?? 'Only this settlement owner can issue orders here.')),
   };
 });
 

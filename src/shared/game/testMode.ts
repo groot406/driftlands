@@ -17,6 +17,7 @@ export interface TestModeSettingsSnapshot {
   fastGrowth: boolean;
   fastPopulationGrowth: boolean;
   fastSettlerCycles: boolean;
+  fastGuardTraining: boolean;
   supportTiles: boolean;
   progressionOverridesBySettlementId: Record<string, ProgressionNodeKey[]>;
   completedStudyKeys: StudyKey[];
@@ -95,6 +96,7 @@ export function createDefaultTestModeSettings(): TestModeSettingsSnapshot {
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -112,6 +114,7 @@ export function cloneTestModeSettings(snapshot: TestModeSettingsSnapshot | null 
     fastGrowth: !!normalized.fastGrowth,
     fastPopulationGrowth: !!normalized.fastPopulationGrowth,
     fastSettlerCycles: !!normalized.fastSettlerCycles,
+    fastGuardTraining: !!normalized.fastGuardTraining,
     supportTiles: !!normalized.supportTiles,
     progressionOverridesBySettlementId: normalizeProgressionOverridesBySettlementId(normalized.progressionOverridesBySettlementId),
     completedStudyKeys: normalizeStudyKeys(normalized.completedStudyKeys),
@@ -130,6 +133,7 @@ export function loadTestModeSettings(snapshot: TestModeSettingsSnapshot | null |
   testModeSettings.fastGrowth = next.fastGrowth;
   testModeSettings.fastPopulationGrowth = next.fastPopulationGrowth;
   testModeSettings.fastSettlerCycles = next.fastSettlerCycles;
+  testModeSettings.fastGuardTraining = next.fastGuardTraining;
   testModeSettings.supportTiles = next.supportTiles;
   clearRecord(testModeSettings.progressionOverridesBySettlementId);
   for (const [settlementId, keys] of Object.entries(next.progressionOverridesBySettlementId)) {
@@ -191,6 +195,14 @@ export function isFastSettlerCyclesEnabled(snapshot: TestModeSettingsSnapshot | 
 
 export function getSettlerCycleSpeedMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
   return isFastSettlerCyclesEnabled(snapshot) ? 5 : 1;
+}
+
+export function isFastGuardTrainingEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
+  return isTestModeEnabled(snapshot) && !!snapshot?.fastGuardTraining;
+}
+
+export function getGuardTrainingSpeedMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
+  return isFastGuardTrainingEnabled(snapshot) ? 10 : 1;
 }
 
 export function isTileSupportEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {

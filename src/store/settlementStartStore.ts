@@ -4,28 +4,34 @@ import {
   isPositionControlledBySettlement,
   isTileControlledBySettlement,
 } from './settlementSupportStore.ts';
-import type { SettlementStartCandidate, SettlementStartMarker, SettlementStartTerrainTile } from '../shared/multiplayer/settlementStart.ts';
+import type { SettlementStartCandidate, SettlementStartMarker, SettlementStartMode, SettlementStartTerrainTile } from '../shared/multiplayer/settlementStart.ts';
 import { setActiveStorySettlement } from '../shared/story/progressionState.ts';
 
 export const settlementStartCandidates = ref<SettlementStartCandidate[]>([]);
 export const settlementStartMarkers = ref<SettlementStartMarker[]>([]);
 export const settlementStartTerrainTiles = ref<SettlementStartTerrainTile[]>([]);
+export const settlementStartMode = ref<SettlementStartMode>('candidates');
 export const currentPlayerSettlementId = ref<string | null>(null);
 export const currentPlayerReachColor = ref<string | null>(null);
 export const settlementStartError = ref<string | null>(null);
 export const settlementStartFoundingCandidateId = ref<string | null>(null);
 
 export const availableSettlementStartCandidates = computed(() => settlementStartCandidates.value.filter((candidate) => candidate.available));
-export const needsSettlementStart = computed(() => !currentPlayerSettlementId.value && availableSettlementStartCandidates.value.length > 0);
+export const needsSettlementStart = computed(() => (
+  !currentPlayerSettlementId.value
+  && (settlementStartMode.value === 'free' || availableSettlementStartCandidates.value.length > 0)
+));
 
 export function replaceSettlementStartOptions(options: {
   currentSettlementId: string | null;
+  startMode?: SettlementStartMode;
   candidates: SettlementStartCandidate[];
   settlements: SettlementStartMarker[];
   terrainTiles?: SettlementStartTerrainTile[];
 }) {
   currentPlayerSettlementId.value = options.currentSettlementId;
   setActiveStorySettlement(options.currentSettlementId);
+  settlementStartMode.value = options.startMode ?? 'candidates';
   settlementStartCandidates.value = options.candidates.map((candidate) => ({ ...candidate }));
   settlementStartMarkers.value = options.settlements.map((settlement) => ({ ...settlement }));
   settlementStartTerrainTiles.value = options.terrainTiles?.map((tile) => ({ ...tile })) ?? [];

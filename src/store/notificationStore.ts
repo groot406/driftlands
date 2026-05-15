@@ -9,7 +9,8 @@ export type NotificationType =
   | 'run_state'
   | 'coop_ping'
   | 'coop_state'
-  | 'settlement';
+  | 'settlement'
+  | 'calamity';
 
 export interface Notification {
   id: string;

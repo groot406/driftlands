@@ -144,6 +144,7 @@ test('support tiles test mode keeps controlled frontier tiles active beyond norm
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: true,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -241,6 +242,37 @@ test('owned discovered tiles remain in the owner settlement reach even beyond st
   assert.equal(tileIndex['12,0']?.controlledBySettlementId, '0,0');
   assert.equal(computeControlledTileIdsForSettlement('0,0').has('12,0'), true);
   assert.equal(computeControlledTileIdsForSettlement('20,0').has('12,0'), false);
+});
+
+test('foreign watchtowers inside my base reach do not extend my settlement reach', () => {
+  loadWorld([
+    createTowncenterTileAt(0, 0),
+    createTowncenterTileAt(10, 0),
+    {
+      id: '8,0',
+      q: 8,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      ownerSettlementId: '10,0',
+      controlledBySettlementId: '10,0',
+      variant: 'plains_watchtower',
+    } satisfies Tile,
+  ]);
+
+  recalculateSettlementSupport({
+    '0,0': 1,
+    '10,0': 1,
+  }, 0);
+
+  const settlementAReach = computeControlledTileIdsForSettlement('0,0');
+  const settlementBReach = computeControlledTileIdsForSettlement('10,0');
+
+  assert.equal(settlementAReach.has('14,0'), false);
+  assert.equal(settlementBReach.has('14,0'), true);
 });
 
 test('campfires temporarily keep nearby controlled frontier tiles online beyond base support capacity', () => {

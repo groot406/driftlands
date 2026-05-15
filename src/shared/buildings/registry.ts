@@ -17,11 +17,18 @@ import { broadcastGameMessage as broadcast } from '../game/runtime';
 import { getMineOrePerCycle } from './mine.ts';
 import { STUDY_WORK_CYCLE_MS } from '../studies/studies.ts';
 import {
+    ensureBarracksMilitaryState,
+    ensureTownCenterMilitaryState,
+    ensureWatchtowerMilitaryState,
+} from '../game/military.ts';
+import {
     countActiveAdjacentRevealedModifier,
     countActiveAdjacentRevealedSpecial,
     hasRevealedModifier,
     hasRevealedSpecial,
 } from '../game/tileFeatures.ts';
+import { hasAdjacentWallBuildAnchor } from '../game/walls.ts';
+import type { StorageKind } from '../game/storage.ts';
 
 export interface BuildingDefinition {
     key: string;
@@ -37,6 +44,7 @@ export interface BuildingDefinition {
     overlayOffset?: { x: number; y: number };
     providesWaterSource?: boolean;
     providesWarehouse?: boolean;
+    storageKind?: StorageKind;
     maxIncomingRoads?: number;
     requiredPopulation?: number; // minimum population to build
     jobSlots?: number;
@@ -58,6 +66,71 @@ export interface BuildingDefinition {
     requiredResources(distance: number): ResourceAmount[];
     onStart?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
     onComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
+}
+
+const STORAGE_BUILDING_VARIANTS = [
+    'plains_food_storehouse',
+    'dirt_food_storehouse',
+    'plains_materials_yard',
+    'dirt_materials_yard',
+    'plains_crop_silo',
+    'dirt_crop_silo',
+    'plains_crafted_goods_storehouse',
+    'dirt_crafted_goods_storehouse',
+] as const;
+
+function createStorehouseBuildingDefinition(config: {
+    key: string;
+    label: string;
+    summary: string;
+    buildTaskKey: TaskType;
+    buildTaskLabel: string;
+    sortOrder: number;
+    storageKind: StorageKind;
+    plainsVariant: typeof STORAGE_BUILDING_VARIANTS[number];
+    dirtVariant: typeof STORAGE_BUILDING_VARIANTS[number];
+    requiredResources: ResourceAmount[];
+}): BuildingDefinition {
+    return {
+        key: config.key,
+        label: config.label,
+        summary: config.summary,
+        categoryLabel: 'Logistics',
+        buildTaskKey: config.buildTaskKey,
+        buildTaskLabel: config.buildTaskLabel,
+        sortOrder: config.sortOrder,
+        requiredPopulation: 3,
+        variantKeys: [config.plainsVariant, config.dirtVariant],
+        renderDecoration: 'depot',
+        overlayAssetKey: 'building_depot_overlay',
+        providesWarehouse: true,
+        storageKind: config.storageKind,
+        maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.2,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return config.requiredResources.map(cloneResource);
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, config.plainsVariant, { stagger: false, respectBiome: false });
+                return;
+            }
+
+            if (tile.terrain === 'dirt') {
+                applyVariant(tile, config.dirtVariant, { stagger: false, respectBiome: false });
+            }
+        },
+    };
 }
 
 function cloneResource(resource: ResourceAmount): ResourceAmount {
@@ -251,6 +324,7 @@ export function promoteTileToTowncenter(tile: Tile, settlementId: string | null 
     tile.controlledBySettlementId = settlementId;
     terrainPositions.towncenter.add(tile.id);
     updateTileVariantIndex(tile.id, previousVariant, null);
+    ensureTownCenterMilitaryState(tile);
 
     broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
 }
@@ -374,7 +448,62 @@ const buildings: BuildingDefinition[] = [
             }
 
             revealTilesAround(tile, 3);
+            ensureWatchtowerMilitaryState(tile);
+            broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
             onPopulationBuildingCompleted();
+        },
+    },
+    {
+        key: 'wall',
+        label: 'Wall',
+        summary: 'Raises a linked timber wall segment that blocks passage and extends from nearby defenses.',
+        categoryLabel: 'Defense',
+        buildTaskKey: 'buildWall',
+        buildTaskLabel: 'Build Wall',
+        sortOrder: 16,
+        variantKeys: [
+            'plains_wall',
+            'plains_wall_ad',
+            'plains_wall_be',
+            'plains_wall_ce',
+            'plains_wall_cf',
+            'dirt_wall',
+            'dirt_wall_ad',
+            'dirt_wall_be',
+            'dirt_wall_ce',
+            'dirt_wall_cf',
+            'plains_stone_wall',
+            'plains_stone_wall_ad',
+            'plains_stone_wall_be',
+            'plains_stone_wall_ce',
+            'plains_stone_wall_cf',
+            'dirt_stone_wall',
+            'dirt_stone_wall_ad',
+            'dirt_stone_wall_be',
+            'dirt_stone_wall_ce',
+            'dirt_stone_wall_cf',
+        ],
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt')
+                && tile.isBaseTile
+                && isTileControlled(tile)
+                && hasAdjacentWallBuildAnchor(tile);
+        },
+        requiredXp(_distance: number) {
+            return 1900;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 4 }];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_wall', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_wall', { stagger: false, respectBiome: false });
+            }
         },
     },
     {
@@ -454,6 +583,57 @@ const buildings: BuildingDefinition[] = [
             }
         },
     },
+    createStorehouseBuildingDefinition({
+        key: 'foodStorehouse',
+        label: 'Food Storehouse',
+        summary: 'Stores rations, fish, meat, bread, and drinks away from the general depot.',
+        buildTaskKey: 'buildFoodStorehouse',
+        buildTaskLabel: 'Build Food Storehouse',
+        sortOrder: 21,
+        storageKind: 'food_storehouse',
+        plainsVariant: 'plains_food_storehouse',
+        dirtVariant: 'dirt_food_storehouse',
+        requiredResources: [{ type: 'wood', amount: 6 }],
+    }),
+    createStorehouseBuildingDefinition({
+        key: 'materialsYard',
+        label: 'Materials Yard',
+        summary: 'Stores raw materials like wood, stone, ore, sand, and glass.',
+        buildTaskKey: 'buildMaterialsYard',
+        buildTaskLabel: 'Build Materials Yard',
+        sortOrder: 22,
+        storageKind: 'materials_yard',
+        plainsVariant: 'plains_materials_yard',
+        dirtVariant: 'dirt_materials_yard',
+        requiredResources: [{ type: 'wood', amount: 6 }],
+    }),
+    createStorehouseBuildingDefinition({
+        key: 'cropSilo',
+        label: 'Crop Silo',
+        summary: 'Stores grain, hops, grapes, and water lilies in a dedicated crop store.',
+        buildTaskKey: 'buildCropSilo',
+        buildTaskLabel: 'Build Crop Silo',
+        sortOrder: 23,
+        storageKind: 'crop_silo',
+        plainsVariant: 'plains_crop_silo',
+        dirtVariant: 'dirt_crop_silo',
+        requiredResources: [{ type: 'wood', amount: 6 }],
+    }),
+    createStorehouseBuildingDefinition({
+        key: 'craftedGoodsStorehouse',
+        label: 'Crafted Goods Storehouse',
+        summary: 'Stores tools and weapons separately from raw materials.',
+        buildTaskKey: 'buildCraftedGoodsStorehouse',
+        buildTaskLabel: 'Build Crafted Goods Storehouse',
+        sortOrder: 24,
+        storageKind: 'crafted_goods_storehouse',
+        plainsVariant: 'plains_crafted_goods_storehouse',
+        dirtVariant: 'dirt_crafted_goods_storehouse',
+        requiredResources: [
+            { type: 'wood', amount: 6 },
+            { type: 'stone', amount: 2 },
+        ],
+    }),
     {
         key: 'dock',
         label: 'Dock',
@@ -480,7 +660,7 @@ const buildings: BuildingDefinition[] = [
         getJobResources(tile, assignedWorkers) {
             const nearbyWaterTiles = countActiveAdjacentTiles(tile, 'water');
             return {
-                produces: [{ type: 'food', amount: Math.max(1, nearbyWaterTiles) * assignedWorkers }],
+                produces: [{ type: 'fish', amount: Math.max(2, nearbyWaterTiles * 2) * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -546,7 +726,7 @@ const buildings: BuildingDefinition[] = [
                 ? 1
                 : 0;
             return {
-                produces: [{ type: 'wood', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
+                produces: [{ type: 'wood', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * 2 * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -578,7 +758,7 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['forest_hunters_hut'],
         overlayAssetKey: 'building_hunters_hut',
-        jobSlots: 1,
+        jobSlots: 2,
         cycleMs: 60_000,
         produces: [{ type: 'meat', amount: 1 }],
         jobLabel: 'Hunter',
@@ -1025,6 +1205,94 @@ const buildings: BuildingDefinition[] = [
             } else if (tile.terrain === 'dirt') {
                 applyVariant(tile, 'dirt_library', { stagger: false, respectBiome: false });
             }
+        },
+    },
+    {
+        key: 'weaponSmith',
+        label: 'Weapon Smith',
+        summary: 'Forges frontier arms that let the barracks turn trained settlers into properly equipped guards.',
+        categoryLabel: 'Military',
+        buildTaskKey: 'buildWeaponSmith',
+        buildTaskLabel: 'Build Weapon Smith',
+        sortOrder: 39.5,
+        requiredPopulation: 5,
+        variantKeys: ['plains_weapon_smith', 'dirt_weapon_smith'],
+        overlayAssetKey: 'building_workshop',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 60_000,
+        consumes: [
+            { type: 'ore', amount: 2 },
+            { type: 'wood', amount: 1 },
+        ],
+        produces: [{ type: 'weapons', amount: 1 }],
+        jobLabel: 'Weaponsmith',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.8,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 4600;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 12 },
+                { type: 'stone', amount: 6 },
+                { type: 'tools', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_weapon_smith', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_weapon_smith', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
+        key: 'barracks',
+        label: 'Barracks',
+        summary: 'Turns stored food into trained guard reserves that can garrison towers or pressure hostile border towers.',
+        categoryLabel: 'Military',
+        buildTaskKey: 'buildBarracks',
+        buildTaskLabel: 'Build Barracks',
+        sortOrder: 40,
+        requiredPopulation: 5,
+        variantKeys: ['plains_barracks', 'dirt_barracks'],
+        overlayAssetKey: 'building_workshop',
+        maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.5,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 5200;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 16 },
+                { type: 'stone', amount: 6 },
+                { type: 'tools', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_barracks', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_barracks', { stagger: false, respectBiome: false });
+            }
+
+            ensureBarracksMilitaryState(tile);
+            broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
         },
     },
     {

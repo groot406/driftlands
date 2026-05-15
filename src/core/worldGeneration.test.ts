@@ -1,10 +1,10 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { applyBiomeModifiers, detectBiome } from './biomes';
 import { weightedTerrainChoice } from './terrain';
 import type { TerrainKey } from './terrainDefs';
-import { resolveWorldTile } from './worldGeneration';
+import { resolveWorldTile, setWorldGenerationSpawnSafetyEnabled } from './worldGeneration';
 import { setWorldGenerationSeed } from './worldVariation';
 import { discoverTile, ensureTileExists, startWorldGeneration, tileIndex } from './world';
 
@@ -16,6 +16,10 @@ const HEX_NEIGHBOR_DELTAS: Array<[number, number]> = [
   [-1, 1],
   [-1, 0],
 ];
+
+beforeEach(() => {
+  setWorldGenerationSpawnSafetyEnabled(true);
+});
 
 function withSeededRandom<T>(seed: number, run: () => T): T {
   const original = Math.random;
@@ -95,6 +99,40 @@ test('resolveWorldTile keeps the opening ring free of hard blocker biomes', () =
       assert.equal(blocked.has(tile.terrain), false, `unexpected ${tile.terrain} at ${q},${r}`);
     }
   }
+});
+
+test('initial world generation leaves origin tiles undiscovered', () => {
+  startWorldGeneration(1, 42);
+
+  assert.equal(tileIndex['0,0']?.discovered, false);
+  assert.equal(tileIndex['0,0']?.terrain, null);
+  assert.equal(tileIndex['1,0']?.discovered, false);
+  assert.equal(tileIndex['1,0']?.terrain, null);
+});
+
+test('resolveWorldTile can disable starter spawn shaping', () => {
+  setWorldGenerationSeed(42);
+  setWorldGenerationSpawnSafetyEnabled(true);
+
+  let changedTile: { q: number; r: number; safeTerrain: TerrainKey; rawTerrain: TerrainKey } | null = null;
+  for (let q = -8; q <= 8 && !changedTile; q++) {
+    for (let r = Math.max(-8, -q - 8); r <= Math.min(8, -q + 8); r++) {
+      const safeTerrain = resolveWorldTile(q, r).terrain;
+      setWorldGenerationSpawnSafetyEnabled(false);
+      const rawTerrain = resolveWorldTile(q, r).terrain;
+      setWorldGenerationSpawnSafetyEnabled(true);
+      if (safeTerrain !== rawTerrain) {
+        changedTile = { q, r, safeTerrain, rawTerrain };
+        break;
+      }
+    }
+  }
+
+  setWorldGenerationSpawnSafetyEnabled(true);
+  setWorldGenerationSpawnSafetyEnabled(false);
+  setWorldGenerationSeed(123456789);
+
+  assert.ok(changedTile, 'expected spawn safety to alter at least one starter-area tile');
 });
 
 test('discovering the same far tiles in a different order resolves to the same biome map', () => {

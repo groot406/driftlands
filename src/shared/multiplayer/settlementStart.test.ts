@@ -91,3 +91,16 @@ test('settlement start terrain preview resolves tiles from the nearest candidate
   assert.equal(terrainTiles.find((tile) => tile.id === '30,0')?.terrain, 'water');
   assert.equal(terrainTiles.find((tile) => tile.id === '0,0')?.terrain, 'plains');
 });
+
+test('free settlement start terrain preview exposes a broad pickable map', () => {
+  const terrainTiles = generateSettlementStartTerrainTiles({
+    settlements: [{ settlementId: '0,0', q: 0, r: 0 }],
+    candidates: [],
+    resolveTerrain: terrainFor,
+    freeStart: true,
+  });
+
+  assert.ok(terrainTiles.length > 20_000);
+  assert.equal(terrainTiles.find((tile) => tile.id === '0,0')?.terrain, 'towncenter');
+  assert.ok(terrainTiles.some((tile) => tile.id === '85,0'));
+});

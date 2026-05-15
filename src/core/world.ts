@@ -405,7 +405,7 @@ let generating = false;
 
 export async function generateInitialWorld(discoverRadius: number = 4) {
     generating = true;
-    discoverTile(ensureTileExists(0, 0));
+    ensureTileNeighbors(ensureTileExists(0, 0));
     const placeholderRadius = discoverRadius + 1;
     const coords: Array<{ q: number; r: number; dist: number }> = [];
     for (let q = 0; q <= placeholderRadius; q++) {
@@ -427,7 +427,9 @@ export async function generateInitialWorld(discoverRadius: number = 4) {
         index++;
         const {q, r, dist} = entry;
         const t = ensureTileExists(q, r);
-        if (dist <= discoverRadius) discoverTile(t);
+        if (dist <= discoverRadius) {
+            ensureTileNeighbors(t);
+        }
     }
 
     generating = false;

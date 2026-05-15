@@ -239,16 +239,15 @@ canvas { display: block; }
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: saturate(112%) contrast(112%) brightness(54%);
-  transform: scale(1.02);
+  //filter: saturate(112%) contrast(112%) brightness(54%);
+  //transform: scale(1.02);
 }
 
 .title-bg__vignette {
   background:
-    radial-gradient(ellipse at center, rgba(2, 20, 50, 0.08) 0%, rgba(2, 20, 50, 0.2) 60%, rgba(1, 10, 40, 0.52) 86%, rgba(0, 10, 30, 0.92) 100%),
-    linear-gradient(180deg, rgba(0, 5, 6, 0.48) 0%, rgba(0, 5, 6, 0.06) 28%, rgba(0, 5, 6, 0.36) 100%);
+    radial-gradient(ellipse at center, rgba(2, 15, 40, 0.08) 0%, rgba(2, 15, 40, 0.4) 60%, rgba(1, 8, 30, 0.62) 86%, rgba(0, 5, 25, 0.92) 100%);
 
   background-blend-mode: overlay;
-  opacity: 0.9;
+  opacity: 1;
 }
 </style>

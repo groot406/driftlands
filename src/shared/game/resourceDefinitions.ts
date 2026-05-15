@@ -22,6 +22,7 @@ export interface ResourceDefinition {
   label: string;
   icon: string;
   isConsumable: boolean;
+  hungerRelief?: number;
 }
 
 export interface ResourceGroupDefinition {
@@ -41,9 +42,10 @@ export const RESOURCE_GROUP_DEFINITIONS: readonly ResourceGroupDefinition[] = [
 ] as const;
 
 export const RESOURCE_DEFINITIONS: readonly ResourceDefinition[] = [
-  { type: 'food', label: 'Rations', icon: '🥣', group: 'food', category: 'hunger_food', isConsumable: true },
-  { type: 'bread', label: 'Bread', icon: '🍞', group: 'food', category: 'hunger_food', isConsumable: true },
-  { type: 'meat', label: 'Meat', icon: '🍖', group: 'food', category: 'hunger_food', isConsumable: true },
+  { type: 'food', label: 'Rations', icon: '🥣', group: 'food', category: 'hunger_food', isConsumable: true, hungerRelief: 1 },
+  { type: 'fish', label: 'Fish', icon: '🐟', group: 'food', category: 'hunger_food', isConsumable: true, hungerRelief: 1.25 },
+  { type: 'bread', label: 'Bread', icon: '🍞', group: 'food', category: 'hunger_food', isConsumable: true, hungerRelief: 2 },
+  { type: 'meat', label: 'Meat', icon: '🍖', group: 'food', category: 'hunger_food', isConsumable: true, hungerRelief: 1.5 },
   { type: 'beer', label: 'Beer', icon: '🍺', group: 'food', category: 'social_drink', isConsumable: true },
   { type: 'wine', label: 'Wine', icon: '🍷', group: 'food', category: 'social_drink', isConsumable: true },
   { type: 'grain', label: 'Grain', icon: '🌾', group: 'crops', category: 'raw_crop', isConsumable: false },
@@ -56,6 +58,7 @@ export const RESOURCE_DEFINITIONS: readonly ResourceDefinition[] = [
   { type: 'sand', label: 'Sand', icon: '⌁', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'glass', label: 'Glass', icon: '◇', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'tools', label: 'Tools', icon: '🛠️', group: 'crafted_goods', category: 'crafted_good', isConsumable: false },
+  { type: 'weapons', label: 'Weapons', icon: '🗡️', group: 'crafted_goods', category: 'crafted_good', isConsumable: false },
   { type: 'water', label: 'Water', icon: '💧', group: 'utility', category: 'utility', isConsumable: false },
   { type: 'crystal', label: 'Crystal', icon: '💎', group: 'utility', category: 'utility', isConsumable: false },
   { type: 'artifact', label: 'Artifact', icon: '🏺', group: 'utility', category: 'utility', isConsumable: false },
@@ -78,6 +81,16 @@ export function getResourceDefinition(type: ResourceType): ResourceDefinition {
     category: 'utility',
     isConsumable: false,
   };
+}
+
+export const HUNGER_FOOD_TYPES = ['bread', 'meat', 'fish', 'food'] as const satisfies readonly ResourceType[];
+
+export function getResourceHungerRelief(type: ResourceType) {
+  return getResourceDefinition(type).hungerRelief ?? 0;
+}
+
+export function isHungerFoodResource(type: ResourceType) {
+  return getResourceHungerRelief(type) > 0;
 }
 
 export function getResourceGroupDefinition(group: ResourceGroup): ResourceGroupDefinition {

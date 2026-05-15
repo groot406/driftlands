@@ -151,6 +151,10 @@ const workProgressLabel = computed(() => {
     return 'No active work cycle';
   }
 
+  if (currentSettler.assignedRole === 'guard') {
+    return 'Garrisoned at assigned tower';
+  }
+
   if (currentSettler.assignedRole === 'repair') {
     const clamped = Math.min(currentSettler.workProgressMs, 30_000);
     const percent = Math.round((clamped / 30_000) * 100);
@@ -197,7 +201,16 @@ const locationSummary = computed(() => {
     return `Inside ${homeLabel.value}`;
   }
 
-  if ((currentSettler.activity === 'working' || currentSettler.activity === 'repairing') && (currentSettler.workTileId || currentSettler.assignedWorkTileId)) {
+  if ((currentSettler.activity === 'working' || currentSettler.activity === 'repairing' || currentSettler.activity === 'defending' || currentSettler.activity === 'raiding') && (currentSettler.workTileId || currentSettler.assignedWorkTileId)) {
+    if (currentSettler.assignedRole === 'guard') {
+      if (currentSettler.activity === 'raiding') {
+        return `Raiding ${workLabel.value}`;
+      }
+      if (currentSettler.activity === 'defending') {
+        return `Defending ${workLabel.value}`;
+      }
+      return `Guarding ${workLabel.value}`;
+    }
     return `${currentSettler.activity === 'repairing' ? 'Repairing' : 'Working'} at ${workLabel.value}`;
   }
 
@@ -206,7 +219,14 @@ const locationSummary = computed(() => {
   }
 
   if (currentSettler.activity === 'commuting_work') {
+    if (currentSettler.assignedRole === 'guard') {
+      return `Marching to ${workLabel.value}`;
+    }
     return `Heading to ${workLabel.value}`;
+  }
+
+  if (currentSettler.activity === 'idle' && currentSettler.assignedRole === 'guard' && (currentSettler.workTileId || currentSettler.assignedWorkTileId)) {
+    return `Standing watch at ${workLabel.value}`;
   }
 
   if (currentSettler.activity === 'fetching_food') {
@@ -310,6 +330,10 @@ onUnmounted(() => {
 
 .settler-modal-panel {
   width: min(34rem, 100%);
+  max-height: min(88vh, 44rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background:
@@ -325,6 +349,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 20px 20px 12px;
+  flex-shrink: 0;
 }
 
 .settler-modal-eyebrow {
@@ -360,8 +385,12 @@ onUnmounted(() => {
 .settler-modal-body {
   padding: 0 20px 20px;
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .settler-grid {
@@ -418,12 +447,49 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
+  .settler-modal-backdrop {
+    align-items: stretch;
+    padding: 12px;
+  }
+
   .settler-modal-panel {
     width: 100%;
+    max-height: 100%;
   }
 
   .settler-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settler-modal-header {
+    padding: 16px 16px 10px;
+  }
+
+  .settler-modal-title {
+    font-size: 20px;
+  }
+
+  .settler-modal-subtitle {
+    font-size: 13px;
+  }
+
+  .settler-modal-body {
+    padding: 0 16px 16px;
+    gap: 10px;
+  }
+
+  .settler-card {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .settler-card-value {
+    font-size: 15px;
+  }
+
+  .settler-card-meta,
+  .settler-pill {
+    font-size: 12px;
   }
 }
 </style>

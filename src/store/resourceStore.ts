@@ -2,7 +2,7 @@ import type {Tile} from "../core/types/Tile.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import { getStorageKindForBuildingTile } from '../shared/buildings/state.ts';
 import { getTileSettlementId } from '../shared/game/settlement';
-import { getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
+import { canStorageKindStoreResource, getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
 import {
     isUnlimitedResourcesEnabled,
     testModeSettings,
@@ -16,7 +16,9 @@ const RESOURCE_TYPES: ResourceType[] = [
     'ore',
     'stone',
     'tools',
+    'weapons',
     'food',
+    'fish',
     'bread',
     'meat',
     'beer',
@@ -38,7 +40,9 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         ore: 0,
         stone: 0,
         tools: 0,
+        weapons: 0,
         food: 0,
+        fish: 0,
         bread: 0,
         meat: 0,
         beer: 0,
@@ -275,6 +279,9 @@ export function depositResourceToStorage(tileId: string, type: ResourceType, amo
     if (!snapshot) {
         return 0;
     }
+    if (!canStorageKindStoreResource(snapshot.kind, type)) {
+        return 0;
+    }
 
     const amountToStore = Math.min(amount, Math.max(0, snapshot.capacity - getStorageUsedCapacityInternal(snapshot)));
     if (amountToStore <= 0) {
@@ -457,6 +464,9 @@ export function swapResourceAtStorage(
 
     const snapshot = ensureStorageSnapshotForTileInternal(tileIndex[tileId]);
     if (!snapshot) return { deposited: 0, withdrawn: null };
+    if (!canStorageKindStoreResource(snapshot.kind, depositType)) {
+        return { deposited: 0, withdrawn: null };
+    }
 
     // Determine which resource type to withdraw
     let targetType: ResourceType | null = withdrawType ?? null;

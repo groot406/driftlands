@@ -10,6 +10,10 @@ import { resetClientStudyState } from '../../store/clientStudyStore';
 import { resetSettlerState, settlers } from '../../store/settlerStore';
 import { resetServerConfigStore, serverDebugModeEnabled } from '../../store/serverConfigStore.ts';
 import {
+  isWorldGenerationSpawnSafetyEnabled,
+  setWorldGenerationSpawnSafetyEnabled,
+} from '../worldGeneration.ts';
+import {
   depositResourceToStorage,
   getStorageResourceAmount,
   resetResourceState,
@@ -47,6 +51,7 @@ test.afterEach(() => {
   resetSettlerState();
   resetServerConfigStore();
   resetResourceState();
+  setWorldGenerationSpawnSafetyEnabled(false);
 });
 
 test('server debug mode stays disabled until a snapshot explicitly enables it', () => {
@@ -226,4 +231,40 @@ test('world snapshots advertise when server debug mode is disabled', () => {
   });
 
   assert.equal(serverDebugModeEnabled.value, false);
+});
+
+test('world snapshots sync server spawn safety for client terrain prediction', () => {
+  worldHandler.init();
+  setWorldGenerationSpawnSafetyEnabled(false);
+
+  clientMessageRouter.route({
+    type: 'world:snapshot',
+    tiles: [],
+    heroes: [],
+    settlers: [],
+    tasks: [],
+    resources: {},
+    storages: [],
+    population: {
+      current: 0,
+      max: 0,
+      beds: 0,
+      hungerMs: 0,
+      supportCapacity: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      pressureState: 'stable',
+      settlements: [],
+    },
+    jobs: {
+      availableWorkers: 0,
+      assignedWorkers: 0,
+      idleWorkers: 0,
+      sites: [],
+    },
+    studies: emptyStudies(),
+    spawnSafetyEnabled: true,
+  });
+
+  assert.equal(isWorldGenerationSpawnSafetyEnabled(), true);
 });

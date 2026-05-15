@@ -22,6 +22,56 @@
       :standaloneBuildingTileId="selectedBuildingDetailTileId"
       @close="closeTownCenterPanel"
     />
+    <div v-if="militaryHudUnlocked && militaryHud" class="military-hud-anchor">
+      <button
+        class="military-hud-trigger"
+        :class="{ 'military-hud-trigger--alert': militaryHud.threatenedTowers > 0 }"
+        @click.stop="toggleMilitaryHudPopup"
+      >
+        <span>Military</span>
+        <span v-if="militaryHud.threatenedTowers > 0" class="military-hud-trigger__badge">{{ militaryHud.threatenedTowers }}</span>
+      </button>
+      <div v-if="showMilitaryHudPopup" class="military-hud">
+        <div class="military-hud__header">
+          <div>
+            <div class="military-hud__kicker">Military</div>
+            <div class="military-hud__title">{{ militaryHud.modeLabel }} Borders</div>
+          </div>
+          <div class="military-hud__actions">
+            <button class="military-hud__button" @click.stop="openOwnSettlementPanel">
+              Manage
+            </button>
+            <button class="military-hud__button military-hud__button--ghost" @click.stop="showMilitaryHudPopup = false">
+              Close
+            </button>
+          </div>
+        </div>
+        <div class="military-hud__stats">
+          <div class="military-hud__stat">
+            <span class="military-hud__value">{{ militaryHud.reserveGuards }}</span>
+            <span class="military-hud__label">Reserve</span>
+          </div>
+          <div class="military-hud__stat">
+            <span class="military-hud__value">{{ militaryHud.threatenedTowers }}</span>
+            <span class="military-hud__label">Threats</span>
+          </div>
+          <div class="military-hud__stat">
+            <span class="military-hud__value">{{ militaryHud.wallCount }}</span>
+            <span class="military-hud__label">Walls</span>
+          </div>
+          <div class="military-hud__stat">
+            <span class="military-hud__value">{{ militaryHud.trainingQueue }}</span>
+            <span class="military-hud__label">Training</span>
+          </div>
+        </div>
+        <div class="military-hud__status" :class="{ 'military-hud__status--alert': militaryHud.threatenedTowers > 0 }">
+          {{ militaryHud.statusText }}
+        </div>
+        <div class="military-hud__hint">
+          {{ militaryHud.actionHint }}
+        </div>
+      </div>
+    </div>
     <div
       v-for="ping in renderedPings"
       :key="ping.id"
@@ -78,7 +128,7 @@ import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
 import {requestHeroClaim, sendCoopPing} from '../core/coopService';
 import {currentPlayerId} from '../core/socket';
 import {getAvailableTasks} from "../shared/tasks/tasks";
-import { getTaskDefinition } from '../shared/tasks/taskRegistry.ts';
+import { getTaskDefinition, listTaskDefinitions } from '../shared/tasks/taskRegistry.ts';
 import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
 import {PathService} from "../core/PathService";
 import type {Tile} from "../core/types/Tile.ts";
@@ -111,11 +161,24 @@ import {
   isTileInCurrentPlayerTerritory,
   settlementStartMarkers,
 } from '../store/settlementStartStore';
-import { getTileSettlementId as getSettlementIdForTile } from '../shared/game/settlement';
+import {
+  getSettlementTownCenterTile,
+  getTileSettlementId as getSettlementIdForTile,
+} from '../shared/game/settlement';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
 import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
+import {
+  getAvailableGuardReserve,
+  isSettlementOpen,
+  isWatchtowerTile,
+  resolveWatchtowerConflictState,
+} from '../shared/game/military.ts';
+import { isWallTile } from '../shared/game/walls.ts';
+import { isStudyCompleted } from '../store/studyStore.ts';
 
 import { detachHeroFromCurrentTask } from '../store/taskStore';
+import { canStartTaskWhileCarrying } from '../store/taskStore';
+import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -153,8 +216,10 @@ const settlementReachOutlines = ref<Array<{
   tileIds: Set<string>;
   color?: string | null;
   isOwn?: boolean;
+  dashed?: boolean;
 }>>([]);
 const showSupportOverlay = ref(false);
+const showMilitaryHudPopup = ref(false);
 let lastGlobalReachComputeMs = 0;
 
 // Service instance
@@ -202,6 +267,58 @@ const renderedPings = computed(() => {
       },
     };
   });
+});
+
+const militaryHud = computed(() => {
+  void worldVersion.value;
+  void populationVersion.value;
+
+  const settlementId = currentPlayerSettlementId.value;
+  const townCenter = getSettlementTownCenterTile(Object.values(tileIndex), settlementId);
+  if (!settlementId || !townCenter) {
+    return null;
+  }
+
+  const ownedTiles = Object.values(tileIndex).filter((tile) => tile.ownerSettlementId === settlementId);
+  const towers = ownedTiles.filter((tile) => isWatchtowerTile(tile));
+  const threatenedTowers = towers.filter((tile) => {
+    const state = resolveWatchtowerConflictState(tile);
+    return state === 'under_attack' || state === 'contested' || state === 'captured';
+  }).length;
+  const wallCount = ownedTiles.filter((tile) => isWallTile(tile)).length;
+  const barracksTiles = ownedTiles.filter((tile) => tile.variant === 'plains_barracks' || tile.variant === 'dirt_barracks');
+  const trainingQueue = barracksTiles.reduce((total, tile) => {
+    const queued = Math.max(0, tile.barracksTrainingQueue ?? 0);
+    const active = (tile.barracksTrainingProgressMs ?? 0) > 0 ? 1 : 0;
+    return total + queued + active;
+  }, 0);
+  const modeOpen = isSettlementOpen(townCenter);
+
+  return {
+    modeLabel: modeOpen ? 'Open' : 'Closed',
+    reserveGuards: getAvailableGuardReserve(townCenter),
+    threatenedTowers,
+    wallCount,
+    trainingQueue,
+    statusText: threatenedTowers > 0
+      ? `${threatenedTowers} watchtower${threatenedTowers === 1 ? '' : 's'} contested`
+      : modeOpen
+        ? 'Borders exposed to raids'
+        : 'Borders protected',
+    actionHint: modeOpen
+      ? 'Attack by selecting an enemy border watchtower and choosing Start Capture Raid.'
+      : 'Open your borders, train guards, then target an enemy border watchtower.',
+  };
+});
+
+const militaryHudUnlocked = computed(() => {
+  return !!currentPlayerSettlementId.value
+    && (
+      isStudyCompleted('guard_training')
+      || isStudyCompleted('defensive_construction')
+      || isStudyCompleted('border_management')
+      || isStudyCompleted('weapon_smithing')
+    );
 });
 
 const mapHintTiles = computed(() => {
@@ -271,7 +388,7 @@ function hasBuiltHouse() {
 
 function getCurrentSettlementOrigin() {
   const settlementId = currentPlayerSettlementId.value;
-  const townCenter = settlementId ? tileIndex[settlementId] : null;
+  const townCenter = getSettlementTownCenterTile(Object.values(tileIndex), settlementId);
   return townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
 }
 
@@ -669,6 +786,7 @@ function animationLoop(frameNowMs = performance.now()) {
       globalReachBoundary: globalReachBoundary.value,
       globalReachTileIds: globalReachTileIds.value,
       globalReachColor: currentPlayerReachColor.value ?? undefined,
+      globalReachDashed: isSettlementOpen(getSettlementTownCenterTile(Object.values(tileIndex), currentPlayerSettlementId.value)),
       settlementReachOutlines: settlementReachOutlines.value,
       storyHintTiles: mapHintTiles.value,
       showSupportOverlay: showSupportOverlay.value,
@@ -789,6 +907,27 @@ function closeTownCenterPanel() {
   selectedTownCenterTileId.value = null;
   selectedBuildingDetailTileId.value = null;
   closeWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+}
+
+function openOwnSettlementPanel() {
+  if (!currentPlayerSettlementId.value) {
+    return;
+  }
+
+  showMilitaryHudPopup.value = false;
+  selectedTownCenterTileId.value = currentPlayerSettlementId.value;
+  selectedBuildingDetailTileId.value = null;
+  showTownCenterPanel.value = true;
+  openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+}
+
+function toggleMilitaryHudPopup() {
+  if (!militaryHudUnlocked.value || !militaryHud.value) {
+    showMilitaryHudPopup.value = false;
+    return;
+  }
+
+  showMilitaryHudPopup.value = !showMilitaryHudPopup.value;
 }
 
 function isInspectableBuildingTile(tile: Tile) {
@@ -1061,6 +1200,26 @@ function handleClick(e: PointerEvent) {
   // Refresh available tasks for this tile & hero
   availableTasks.value = getAvailableTasks(tile, selHero);
 
+  if (tile.discovered && availableTasks.value.length === 0 && selHero.carryingPayload && selHero.carryingPayload.amount > 0) {
+    const carryBlockedTasks = listTaskDefinitions().filter((task) => (
+      isTaskUnlockedForUse(task.key, selHero.settlementId)
+      && canStartTaskDefinition(task, tile, selHero)
+      && !canStartTaskWhileCarrying(selHero, task, tile)
+    ));
+
+    if (carryBlockedTasks.length > 0) {
+      const highlightedTask = carryBlockedTasks.find((task) => task.key === 'buildWall') ?? carryBlockedTasks[0];
+      addNotification({
+        type: 'run_state',
+        title: 'Hands full',
+        message: `${selHero.name} is carrying ${selHero.carryingPayload.type}. Store it first to use ${highlightedTask?.label ?? 'this order'} here.`,
+        duration: 3200,
+      });
+      clearPathPreview();
+      return;
+    }
+  }
+
   // Task menu opening logic (no toggle auto-close; only explicit close or selecting other tile without tasks)
   if (tile.discovered && availableTasks.value.length > 0) {
     // If menu already open on this tile, keep it open (do nothing)
@@ -1298,11 +1457,13 @@ function recomputeGlobalReach(force = false) {
   settlementReachOutlines.value = getKnownSettlementMarkers()
     .map((settlement) => {
       const cached = getCachedReach(settlement.settlementId);
+      const townCenterTile = tileIndex[settlement.settlementId];
       return {
         boundary: cached.boundary,
         tileIds: cached.reach,
         color: settlement.playerColor,
         isOwn: settlement.settlementId === currentPlayerSettlementId.value,
+        dashed: isSettlementOpen(townCenterTile),
       };
     })
     .filter((outline) => outline.boundary.length > 0);
@@ -1354,7 +1515,14 @@ watch(worldVersion, () => {
 });
 
 watch(currentPlayerSettlementId, () => {
+  showMilitaryHudPopup.value = false;
   recomputeGlobalReach(true);
+});
+
+watch(militaryHudUnlocked, (unlocked) => {
+  if (!unlocked) {
+    showMilitaryHudPopup.value = false;
+  }
 });
 
 watch(getPlayerEntities, () => {
@@ -1438,6 +1606,152 @@ onBeforeUnmount(() => {
 
 .map-container-settler-hover {
   cursor: pointer;
+}
+
+.military-hud-anchor {
+  position: absolute;
+  top: 4.5rem;
+  right: 1rem;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.military-hud-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.35);
+  color: rgb(226, 232, 240);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: auto;
+}
+
+.military-hud-trigger--alert {
+  border-color: rgba(251, 146, 60, 0.5);
+  color: rgb(254, 215, 170);
+}
+
+.military-hud-trigger__badge {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 9999px;
+  background: rgba(194, 65, 12, 0.95);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.64rem;
+}
+
+.military-hud {
+  min-width: 14rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.9rem;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.35);
+  backdrop-filter: blur(12px);
+  color: rgb(226, 232, 240);
+  pointer-events: auto;
+}
+
+.military-hud__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.military-hud__actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.military-hud__kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.92);
+}
+
+.military-hud__title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: rgb(248, 250, 252);
+}
+
+.military-hud__button {
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  background: rgba(8, 47, 73, 0.7);
+  color: rgb(224, 242, 254);
+  border-radius: 9999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.military-hud__button--ghost {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(30, 41, 59, 0.7);
+  color: rgb(226, 232, 240);
+}
+
+.military-hud__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.military-hud__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.7rem;
+  background: rgba(30, 41, 59, 0.66);
+}
+
+.military-hud__value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgb(248, 250, 252);
+}
+
+.military-hud__label {
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.92);
+}
+
+.military-hud__status {
+  margin-top: 0.7rem;
+  font-size: 0.76rem;
+  color: rgba(191, 219, 254, 0.95);
+}
+
+.military-hud__status--alert {
+  color: rgb(253, 186, 116);
+}
+
+.military-hud__hint {
+  margin-top: 0.55rem;
+  font-size: 0.69rem;
+  line-height: 1.35;
+  color: rgba(191, 219, 254, 0.8);
+  max-width: 18rem;
 }
 
 .coop-ping,

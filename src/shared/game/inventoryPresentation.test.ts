@@ -25,8 +25,8 @@ function visibleKeysByGroup(
 ) {
   const entries = getVisibleInventoryEntries({ inventory, progression });
   return {
-    stocks: entries.filter((entry) => entry.group === 'stock').map((entry) => entry.key),
-    items: entries.filter((entry) => entry.group === 'item').map((entry) => entry.key),
+    stocks: entries.filter((entry) => entry.kind === 'stock').map((entry) => entry.key),
+    items: entries.filter((entry) => entry.kind === 'item').map((entry) => entry.key),
   };
 }
 
@@ -50,7 +50,7 @@ function withUnlocked(
 
 test('new runs show only the starting stock entries', () => {
   assert.deepEqual(visibleKeysByGroup(), {
-    stocks: ['food', 'wood', 'stone', 'grain'],
+    stocks: ['food', 'grain', 'wood', 'stone'],
     items: [],
   });
 });
@@ -76,15 +76,14 @@ test('special items are hidden until relevant or stocked', () => {
   assert.equal(visibleKeys({}, withUnlocked({ buildings: ['workshop'] })).includes('tools'), true);
   assert.equal(visibleKeys({}, withUnlocked({ upgrades: ['glass_house_upgrade'] })).includes('glass'), true);
   assert.deepEqual(visibleKeysByGroup({ water_lily: 1, tools: 2, glass: 3 }).items, [
-    'water_lily',
     'tools',
-    'glass',
+    'water_lily',
   ]);
 });
 
 test('positive stock reveals entries even without progression relevance', () => {
   assert.deepEqual(visibleKeysByGroup({ ore: 2, sand: 2, water_lily: 2, tools: 2, glass: 2 }), {
-    stocks: ['food', 'wood', 'stone', 'grain', 'ore', 'sand'],
-    items: ['water_lily', 'tools', 'glass'],
+    stocks: ['food', 'grain', 'wood', 'stone', 'ore', 'sand', 'glass'],
+    items: ['tools', 'water_lily'],
   });
 });

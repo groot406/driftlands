@@ -13,7 +13,6 @@ import {
     getEffectiveResourceInventory,
     getSettlementResourceInventory,
     planResourceWithdrawalsAcrossStoragesForSettlement,
-    resourceInventory,
     type StorageResourceTransfer,
 } from '../../../src/shared/game/state/resourceStore';
 import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';

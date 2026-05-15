@@ -1,13 +1,24 @@
 import type { Socket } from 'socket.io';
 import { broadcast, sendToSocket } from '../messages/messageRouter';
-import type { TestSetSettingsMessage, TestUpdateMessage } from '../../../src/shared/protocol.ts';
+import type {
+  ResourceDepositMessage,
+  TestRunActionMessage,
+  TestSetSettingsMessage,
+  TestUpdateMessage,
+  TileUpdatedMessage,
+} from '../../../src/shared/protocol.ts';
 import {
   getTestModeSettingsSnapshot,
   loadTestModeSettings,
   testModeSettings,
 } from '../../../src/shared/game/testMode.ts';
+import { listProgressionNodeDefinitions } from '../../../src/shared/story/progression.ts';
+import { tileIndex } from '../../../src/shared/game/world.ts';
+import { depositResourceToStorage } from '../../../src/shared/game/state/resourceStore.ts';
+import { ensureTownCenterMilitaryState } from '../../../src/shared/game/military.ts';
 import { setStudyOverrides, broadcastStudyState } from '../../../src/store/studyStore.ts';
 import { refreshWorkforceState } from '../systems/jobSystem';
+import { warnCalamity } from '../systems/calamitySystem';
 import { runState } from './runState';
 
 class TestModeState {
@@ -24,6 +35,41 @@ class TestModeState {
     broadcastStudyState();
     refreshWorkforceState();
     runState.refreshAllProgress();
+  }
+
+  private broadcastTile(tileId: string | null | undefined) {
+    const tile = tileId ? tileIndex[tileId] ?? null : null;
+    if (!tile) {
+      return;
+    }
+
+    broadcast({
+      type: 'tile:updated',
+      tile,
+      timestamp: Date.now(),
+    } satisfies TileUpdatedMessage);
+  }
+
+  private depositResource(tileId: string | null | undefined, type: ResourceDepositMessage['resource']['type'], amount: number) {
+    if (!tileId || amount <= 0) {
+      return;
+    }
+
+    const stored = depositResourceToStorage(tileId, type, amount);
+    if (stored <= 0) {
+      return;
+    }
+
+    broadcast({
+      type: 'resource:deposit',
+      heroId: 'test-mode',
+      storageTileId: tileId,
+      resource: {
+        type,
+        amount: stored,
+      },
+      timestamp: Date.now(),
+    } satisfies ResourceDepositMessage);
   }
 
   applySettings(message: TestSetSettingsMessage) {
@@ -50,6 +96,9 @@ class TestModeState {
     if (typeof message.fastSettlerCycles === 'boolean') {
       next.fastSettlerCycles = message.fastSettlerCycles;
     }
+    if (typeof message.fastGuardTraining === 'boolean') {
+      next.fastGuardTraining = message.fastGuardTraining;
+    }
     if (typeof message.supportTiles === 'boolean') {
       next.supportTiles = message.supportTiles;
     }
@@ -67,6 +116,63 @@ class TestModeState {
     loadTestModeSettings(next);
     this.applyRuntimeEffects();
     this.broadcastUpdate();
+  }
+
+  applyAction(message: TestRunActionMessage) {
+    const settlementId = message.settlementId ?? null;
+    const townCenter = settlementId ? ensureTownCenterMilitaryState(tileIndex[settlementId] ?? null) : null;
+
+    switch (message.action) {
+      case 'prepare_military_sandbox': {
+        if (!settlementId) {
+          return;
+        }
+
+        const next = getTestModeSettingsSnapshot();
+        next.enabled = true;
+        next.instantBuild = true;
+        next.unlimitedResources = true;
+        next.fastSettlerCycles = true;
+        next.fastGuardTraining = true;
+        next.progressionOverridesBySettlementId[settlementId] = listProgressionNodeDefinitions().map((node) => node.key);
+        next.completedStudyKeys = Array.from(new Set([
+          ...next.completedStudyKeys,
+          'border_management',
+          'defensive_construction',
+          'guard_training',
+          'weapon_smithing',
+          'masonry_treatises',
+        ]));
+        loadTestModeSettings(next);
+        this.applyRuntimeEffects();
+        this.broadcastUpdate();
+        return;
+      }
+      case 'grant_guard_reserve': {
+        if (!townCenter) {
+          return;
+        }
+
+        townCenter.guardReserve = Math.max(0, townCenter.guardReserve ?? 0) + Math.max(1, Math.floor(message.amount ?? 5));
+        this.broadcastTile(townCenter.id);
+        return;
+      }
+      case 'grant_weapons': {
+        const targetTileId = townCenter?.id ?? settlementId;
+        this.depositResource(targetTileId, 'weapons', Math.max(1, Math.floor(message.amount ?? 20)));
+        return;
+      }
+      case 'trigger_calamity': {
+        if (!settlementId) {
+          return;
+        }
+
+        warnCalamity(message.calamityKind ?? 'flood', { settlementId });
+        return;
+      }
+      default:
+        return;
+    }
   }
 
   reapplyWorldState() {

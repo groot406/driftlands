@@ -136,6 +136,10 @@ function indicatorClass(type: NotificationType) {
       return 'bg-cyan-300';
     case 'coop_state':
       return 'bg-violet-300';
+    case 'settlement':
+      return 'bg-lime-300';
+    case 'calamity':
+      return 'bg-red-300';
     default:
       return 'bg-slate-300';
   }

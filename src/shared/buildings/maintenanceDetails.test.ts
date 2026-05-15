@@ -34,6 +34,7 @@ function createSettler(overrides: Partial<Settler>): Settler {
     stateSinceMs: overrides.stateSinceMs ?? 0,
     hungerMs: overrides.hungerMs ?? 0,
     fatigueMs: overrides.fatigueMs ?? 0,
+    happiness: overrides.happiness ?? 1,
     workProgressMs: overrides.workProgressMs ?? 0,
     assignedWorkTileId: overrides.assignedWorkTileId ?? null,
     assignedRole: overrides.assignedRole ?? null,

@@ -22,7 +22,7 @@ const fishAtDockTask: TaskDefinition = {
     },
 
     totalRewardedResources(_distance: number) {
-        return { type: 'food', amount: 3 };
+        return { type: 'fish', amount: 6 };
     },
 };
 

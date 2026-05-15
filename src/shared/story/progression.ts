@@ -8,8 +8,13 @@ export type BuildingKey =
   | 'campfire'
   | 'well'
   | 'watchtower'
+  | 'wall'
   | 'townCenter'
   | 'supplyDepot'
+  | 'foodStorehouse'
+  | 'materialsYard'
+  | 'cropSilo'
+  | 'craftedGoodsStorehouse'
   | 'dock'
   | 'lumberCamp'
   | 'huntersHut'
@@ -20,12 +25,14 @@ export type BuildingKey =
   | 'pub'
   | 'apiary'
   | 'workshop'
+  | 'weaponSmith'
   | 'library'
   | 'mine'
   | 'quarry'
   | 'oven'
   | 'house'
-  | 'road';
+  | 'road'
+  | 'barracks';
 
 export type UpgradeKey =
   | 'stone_house_upgrade'
@@ -33,7 +40,8 @@ export type UpgradeKey =
   | 'warehouse_upgrade'
   | 'sawmill_upgrade'
   | 'reinforced_mine_upgrade'
-  | 'stone_road_upgrade';
+  | 'stone_road_upgrade'
+  | 'stone_wall_upgrade';
 
 export type ProgressionNodeKey =
   | 'landfall'
@@ -190,6 +198,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Raises a lookout that reveals nearby frontier at once.',
     taskKey: 'buildWatchtower',
   },
+  wall: {
+    label: 'Wall',
+    description: 'Raises a connected defensive barrier that can later be rebuilt in stone.',
+    taskKey: 'buildWall',
+  },
   townCenter: {
     label: 'Town Center',
     description: 'Founds a new settlement anchor deeper in the frontier.',
@@ -199,6 +212,26 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Supply Depot',
     description: 'Creates a forward warehouse for hauling and construction.',
     taskKey: 'buildSupplyDepot',
+  },
+  foodStorehouse: {
+    label: 'Food Storehouse',
+    description: 'Creates dedicated storage for food and drinks.',
+    taskKey: 'buildFoodStorehouse',
+  },
+  materialsYard: {
+    label: 'Materials Yard',
+    description: 'Creates dedicated storage for raw materials.',
+    taskKey: 'buildMaterialsYard',
+  },
+  cropSilo: {
+    label: 'Crop Silo',
+    description: 'Creates dedicated storage for crops and harvested plants.',
+    taskKey: 'buildCropSilo',
+  },
+  craftedGoodsStorehouse: {
+    label: 'Crafted Goods Storehouse',
+    description: 'Creates dedicated storage for tools and weapons.',
+    taskKey: 'buildCraftedGoodsStorehouse',
   },
   dock: {
     label: 'Dock',
@@ -250,6 +283,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Turns ore into tools for expansion and advanced upgrades.',
     taskKey: 'buildWorkshop',
   },
+  weaponSmith: {
+    label: 'Weapon Smith',
+    description: 'Turns ore and timber into weapons for trained border guards.',
+    taskKey: 'buildWeaponSmith',
+  },
   library: {
     label: 'Library',
     description: 'Gives settlers a place to study long subjects that unlock colony knowledge.',
@@ -279,6 +317,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Road',
     description: 'A laid route that can later be paved into faster stonework.',
     taskKey: 'buildRoad',
+  },
+  barracks: {
+    label: 'Barracks',
+    description: 'Trains reserve guards who can garrison towers and pressure hostile borders.',
+    taskKey: 'buildBarracks',
   },
 };
 
@@ -322,6 +365,10 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   buildRoad: {
     label: 'Build Road',
     description: 'Lay safe lanes across open ground.',
+  },
+  buildWall: {
+    label: 'Build Wall',
+    description: 'Raise linked timber walls from nearby towers, town centers, or existing wall lines.',
   },
   buildBridge: {
     label: 'Build Bridge',
@@ -442,6 +489,14 @@ const TERRAIN_META: Record<TerrainKey, { label: string; description: string }> =
     label: 'Grain',
     description: 'Fertile crop ground once the colony learns to farm it.',
   },
+  hops: {
+    label: 'Hops',
+    description: 'Bitter climbing crops that support brewing once fields mature.',
+  },
+  grapes: {
+    label: 'Grapes',
+    description: 'Vine crops that turn late frontier farms toward wine production.',
+  },
 };
 
 const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; taskKey: TaskType }> = {
@@ -475,6 +530,11 @@ const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; tas
     description: 'Paves a wooden road into a faster stone highway.',
     taskKey: 'upgradeRoadToStone',
   },
+  stone_wall_upgrade: {
+    label: 'Stone Wall',
+    description: 'Rebuilds a timber wall in dressed stone for a stronger defensive line.',
+    taskKey: 'upgradeWallToStone',
+  },
 };
 
 const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
@@ -489,6 +549,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'hero', key: 'h1' },
       { kind: 'hero', key: 'h2' },
+      { kind: 'hero', key: 'h5' },
       { kind: 'building', key: 'campfire' },
       { kind: 'building', key: 'house' },
       { kind: 'building', key: 'dock' },
@@ -667,6 +728,10 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'hero', key: 'h4' },
       { kind: 'building', key: 'supplyDepot' },
+      { kind: 'building', key: 'foodStorehouse' },
+      { kind: 'building', key: 'materialsYard' },
+      { kind: 'building', key: 'cropSilo' },
+      { kind: 'building', key: 'craftedGoodsStorehouse' },
       { kind: 'building', key: 'library' },
     ],
   },
@@ -716,6 +781,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 110,
     unlocks: [
       { kind: 'upgrade', key: 'stone_road_upgrade' },
+      { kind: 'upgrade', key: 'stone_wall_upgrade' },
     ],
   },
   {

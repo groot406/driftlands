@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  getGuardTrainingSpeedMultiplier,
   getGrowthSpeedMultiplier,
   getHeroMovementSpeedAdj,
   getPopulationGrowthMultiplier,
@@ -13,6 +14,9 @@ import {
   resetTestModeSettings,
 } from './testMode.ts';
 import { HERO_MOVEMENT_SPEED_ADJ } from './movementBalance.ts';
+import type { ProgressionNodeKey } from '../story/progression.ts';
+
+const INVALID_PROGRESSION_NODE = 'not-a-node' as ProgressionNodeKey;
 
 test.afterEach(() => {
   resetTestModeSettings();
@@ -27,9 +31,10 @@ test('progression overrides stay settlement-scoped and only apply while test mod
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {
-      '0,0': ['expansion', 'expansion', 'not-a-node'],
+      '0,0': ['expansion', 'expansion', INVALID_PROGRESSION_NODE],
       '2,0': ['security'],
     },
     completedStudyKeys: [],
@@ -45,9 +50,10 @@ test('progression overrides stay settlement-scoped and only apply while test mod
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {
-      '0,0': ['expansion', 'expansion', 'not-a-node'],
+      '0,0': ['expansion', 'expansion', INVALID_PROGRESSION_NODE],
       '2,0': ['security'],
     },
     completedStudyKeys: [],
@@ -68,6 +74,7 @@ test('fast hero movement reduces the effective movement timing by 5x only in tes
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -87,6 +94,7 @@ test('fast growth speeds tile aging up by 60x only in test mode', () => {
     fastGrowth: true,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -106,6 +114,7 @@ test('support tiles only applies while test mode is enabled', () => {
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: true,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -125,6 +134,7 @@ test('fast population growth speeds passive settler growth up by 10x only in tes
     fastGrowth: false,
     fastPopulationGrowth: true,
     fastSettlerCycles: false,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
@@ -144,10 +154,31 @@ test('fast settler cycles speeds work cycles up by 5x only in test mode', () => 
     fastGrowth: false,
     fastPopulationGrowth: false,
     fastSettlerCycles: true,
+    fastGuardTraining: false,
     supportTiles: false,
     progressionOverridesBySettlementId: {},
     completedStudyKeys: [],
   });
 
   assert.equal(getSettlerCycleSpeedMultiplier(getTestModeSettingsSnapshot()), 5);
+});
+
+test('fast guard training speeds barracks training up by 10x only in test mode', () => {
+  assert.equal(getGuardTrainingSpeedMultiplier(getTestModeSettingsSnapshot()), 1);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: true,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  assert.equal(getGuardTrainingSpeedMultiplier(getTestModeSettingsSnapshot()), 10);
 });

@@ -74,21 +74,27 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     topBarGroup: 'food',
   },
   {
-    key: 'meat',
+    key: 'fish',
     kind: 'stock',
     sortOrder: 12,
     topBarGroup: 'food',
   },
   {
-    key: 'beer',
+    key: 'meat',
     kind: 'stock',
     sortOrder: 13,
     topBarGroup: 'food',
   },
   {
-    key: 'wine',
+    key: 'beer',
     kind: 'stock',
     sortOrder: 14,
+    topBarGroup: 'food',
+  },
+  {
+    key: 'wine',
+    kind: 'stock',
+    sortOrder: 15,
     topBarGroup: 'food',
   },
   {
@@ -179,6 +185,16 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
       buildings: ['workshop', 'townCenter', 'oven'],
       tasks: ['buildWorkshop', 'buildTownCenter', 'buildOven'],
       upgrades: ['warehouse_upgrade', 'sawmill_upgrade', 'reinforced_mine_upgrade', 'glass_house_upgrade'],
+    },
+  },
+  {
+    key: 'weapons',
+    kind: 'item',
+    sortOrder: 41,
+    topBarGroup: 'crafted_goods',
+    relevantWhen: {
+      buildings: ['weaponSmith', 'barracks'],
+      tasks: ['buildWeaponSmith', 'buildBarracks'],
     },
   },
   {

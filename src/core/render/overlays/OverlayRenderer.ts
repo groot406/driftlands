@@ -2,7 +2,7 @@ import { getStorageFreeCapacity, getStorageUsedCapacity, storageInventories } fr
 import { heroes } from '../../../store/heroStore';
 import { selectedHeroId } from '../../../store/uiStore';
 import { taskStore } from '../../../store/taskStore';
-import { getStorageCapacity } from '../../../shared/game/storage';
+import { getStorageCapacity, getStorageKindLabel } from '../../../shared/game/storage';
 import { getScoutSurveyProgress } from '../../../shared/game/scoutResources';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../../../shared/buildings/storage';
 import { camera, axialToPixel, hexDistance } from '../../camera';
@@ -34,11 +34,13 @@ interface DrawOptionsLike {
     globalReachBoundary?: Array<{ q: number; r: number }>;
     globalReachTileIds?: Set<string>;
     globalReachColor?: string;
+    globalReachDashed?: boolean;
     settlementReachOutlines?: Array<{
         boundary: Array<{ q: number; r: number }>;
         tileIds: Set<string>;
         color?: string | null;
         isOwn?: boolean;
+        dashed?: boolean;
     }>;
     storyHintTiles?: Tile[];
     showSupportOverlay?: boolean;
@@ -100,6 +102,7 @@ interface OverlayRendererDependencies {
         alpha: number,
         hovered?: boolean,
         color?: string | null,
+        options?: { dashed?: boolean },
     ): void;
     drawRoundedRect(
         ctx: CanvasRenderingContext2D,
@@ -339,10 +342,19 @@ export class OverlayRenderer {
                     outline.isOwn ? 0.45 : 0.08,
                     false,
                     outline.color || undefined,
+                    { dashed: outline.dashed },
                 );
             }
         } else if (opts.globalReachBoundary?.length) {
-            deps.drawReachOutline(overlay.ctx, opts.globalReachBoundary, opts.globalReachTileIds || new Set<string>(), 0.45, false, opts.globalReachColor);
+            deps.drawReachOutline(
+                overlay.ctx,
+                opts.globalReachBoundary,
+                opts.globalReachTileIds || new Set<string>(),
+                0.45,
+                false,
+                opts.globalReachColor,
+                { dashed: opts.globalReachDashed },
+            );
         }
 
         this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);
@@ -718,7 +730,7 @@ export class OverlayRenderer {
                 .slice(0, 2)
             : [];
 
-        const textParts = [`${usedCapacity}/${capacity}`];
+        const textParts = [`${getStorageKindLabel(storageKind)} ${usedCapacity}/${capacity}`];
         if (topResources.length) {
             textParts.push(topResources.map(([type, amount]) => `${deps.resourceIconMap[type] ?? '?'}${amount}`).join(' '));
         }

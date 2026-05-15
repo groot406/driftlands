@@ -7,6 +7,8 @@ export type SettlerActivity =
     | 'commuting_home'
     | 'commuting_work'
     | 'commuting_social'
+    | 'defending'
+    | 'raiding'
     | 'working'
     | 'socializing'
     | 'repairing'
@@ -57,7 +59,8 @@ export interface Settler {
     homeAccessTileId: string;
     settlementId: string | null;
     assignedWorkTileId: string | null;
-    assignedRole?: 'job' | 'repair' | null;
+    assignedRole?: 'job' | 'repair' | 'guard' | null;
+    guardTowerTileId?: string | null;
     workTileId?: string | null;
     hiddenWhileWorking?: boolean | null;
     activity: SettlerActivity;

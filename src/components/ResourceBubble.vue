@@ -7,9 +7,13 @@
     :title="label"
     @click="emit('select')"
   >
-    <span class="leading-none mr-3 text-xs">{{ icon }}</span>
-    <span v-if="showLabel" class="resource-bubble-label">{{ label }}</span>
-    <span class="resource-bubble-value">{{ value }}</span>
+    <span class="resource-bubble-copy">
+      <span v-if="showLabel" class="resource-bubble-label">{{ label }}</span>
+      <span class="resource-bubble-stat">
+        <span class="resource-bubble-icon">{{ icon }}</span>
+        <span class="resource-bubble-value">{{ value }}</span>
+      </span>
+    </span>
     <div v-if="breakdown?.length" class="resource-bubble-breakdown" role="tooltip">
       <p class="resource-bubble-breakdown-title">{{ label }}</p>
       <div
@@ -79,7 +83,8 @@ onBeforeUnmount(() => {
   border-color: rgba(196, 228, 151, 0.34);
   appearance: none;
   border-radius: 0.5rem;
-  gap: 0.25rem;
+  padding: 0.34rem 0.68rem 0.44rem;
+  min-height: 2.7rem;
 }
 
 .resource-bubble-clickable {
@@ -104,21 +109,50 @@ onBeforeUnmount(() => {
   border-color: rgba(183, 242, 255, 0.26);
 }
 
+.resource-bubble-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
 .resource-bubble-label {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.54rem;
+  font-weight: 700;
   line-height: 1;
-  color: rgba(236, 253, 245, 0.95);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(187, 247, 208, 0.68);
   white-space: nowrap;
+  transform: translateY(0.02rem);
+}
+
+.resource-bubble-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.34rem;
+}
+
+.resource-bubble-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  font-size: 0.92rem;
+  line-height: 1;
+  opacity: 0.98;
 }
 
 .resource-bubble-value {
-  padding-right: 0.35rem;
-  padding-bottom: 0.05rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 0.85rem;
-  line-height: 1;
-  color: rgb(236 253 245);
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 0.95;
+  color: rgb(244 255 249);
+  text-shadow: 0 1px 0 rgba(7, 24, 16, 0.55);
+  font-variant-numeric: tabular-nums;
 }
 
 .resource-bubble-breakdown {

@@ -16,3 +16,14 @@ export function requestFoundSettlement(candidateId: string) {
     timestamp: Date.now(),
   });
 }
+
+export function requestFoundSettlementAt(q: number, r: number) {
+  const candidateId = `free-start:${q}:${r}`;
+  markSettlementStartFounding(candidateId);
+  sendMessage({
+    type: 'settlement:found_request',
+    q,
+    r,
+    timestamp: Date.now(),
+  });
+}

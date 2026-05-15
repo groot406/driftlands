@@ -10,6 +10,8 @@
     :aria-label="ariaLabel"
     :style="{ '--world-minimap-aspect': String(aspectRatio) }"
     @pointerdown="handlePointerDown"
+    @mousemove="handleHoverMove"
+    @mouseleave="handleHoverLeave"
   >
     <canvas ref="canvasEl" class="world-minimap__canvas" aria-hidden="true"></canvas>
 
@@ -43,6 +45,8 @@ export interface MiniMapTerrainTile {
   q: number;
   r: number;
   terrain: TerrainKey;
+  blocked?: boolean;
+  blockedByPlayerColor?: string | null;
 }
 
 export interface MiniMapHotspot {
@@ -81,12 +85,14 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (event: 'hotspot-click', hotspot: MiniMapHotspot): void;
+  (event: 'terrain-click', coord: { q: number; r: number }): void;
   (event: 'viewport-center-change', center: { q: number; r: number }): void;
 }>();
 
 const rootEl = ref<HTMLDivElement | null>(null);
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 const isDragging = ref(false);
+const hoveredCoord = ref<{ q: number; r: number } | null>(null);
 const dragState = ref<{
   pointerId: number;
   startX: number;
@@ -240,6 +246,40 @@ function projectedToAxial(point: { x: number; y: number }) {
   return { q, r };
 }
 
+function roundAxial(point: { q: number; r: number }) {
+  let q = Math.round(point.q);
+  let r = Math.round(point.r);
+  const s = Math.round(-point.q - point.r);
+  const qDiff = Math.abs(q - point.q);
+  const rDiff = Math.abs(r - point.r);
+  const sDiff = Math.abs(s - (-point.q - point.r));
+
+  if (qDiff > rDiff && qDiff > sDiff) {
+    q = -r - s;
+  } else if (rDiff > sDiff) {
+    r = -q - s;
+  }
+
+  return { q, r };
+}
+
+function getCoordFromPointerEvent(event: MouseEvent | PointerEvent) {
+  if (!rootEl.value) {
+    return null;
+  }
+
+  const rect = rootEl.value.getBoundingClientRect();
+  const currentLayout = layout.value;
+  const xUnits = (event.clientX - rect.left) / Math.max(1, rect.width) * currentLayout.containerWidth;
+  const yUnits = (event.clientY - rect.top) / Math.max(1, rect.height);
+  const projected = {
+    x: currentLayout.bounds.minX + ((xUnits - currentLayout.offsetX) / currentLayout.scale),
+    y: currentLayout.bounds.minY + ((yUnits - currentLayout.offsetY) / currentLayout.scale),
+  };
+
+  return roundAxial(projectedToAxial(projected));
+}
+
 function handlePointerDown(event: PointerEvent) {
   if (!props.draggable || !rootEl.value) {
     return;
@@ -311,12 +351,55 @@ function handlePointerUp(event: PointerEvent) {
     return;
   }
 
+  const didMove = dragState.value.moved;
   rootEl.value.releasePointerCapture(event.pointerId);
   rootEl.value.removeEventListener('pointermove', handlePointerMove);
   rootEl.value.removeEventListener('pointerup', handlePointerUp);
   rootEl.value.removeEventListener('pointercancel', handlePointerUp);
   dragState.value = null;
   isDragging.value = false;
+
+  const target = event.target as HTMLElement | null;
+  if (didMove || target?.closest('.world-minimap__hotspot')) {
+    return;
+  }
+
+  const coord = getCoordFromPointerEvent(event);
+  if (!coord) {
+    return;
+  }
+
+  emit('terrain-click', coord);
+}
+
+function handleHoverMove(event: MouseEvent) {
+  if (!props.draggable || isDragging.value) {
+    return;
+  }
+
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('.world-minimap__hotspot')) {
+    hoveredCoord.value = null;
+    scheduleDraw();
+    return;
+  }
+
+  const coord = getCoordFromPointerEvent(event);
+  if (!coord || (hoveredCoord.value?.q === coord.q && hoveredCoord.value?.r === coord.r)) {
+    return;
+  }
+
+  hoveredCoord.value = coord;
+  scheduleDraw();
+}
+
+function handleHoverLeave() {
+  if (!hoveredCoord.value) {
+    return;
+  }
+
+  hoveredCoord.value = null;
+  scheduleDraw();
 }
 
 const TERRAIN_COLORS: Record<TerrainKey, string> = {
@@ -420,10 +503,48 @@ function drawTerrain() {
     drawHexPath(ctx, point.x, point.y, hexWidthPx);
     ctx.fillStyle = TERRAIN_COLORS[tile.terrain] ?? '#67a94a';
     ctx.fill();
+    if (tile.blocked) {
+      ctx.fillStyle = toCanvasRgba(tile.blockedByPlayerColor, 0.42) ?? 'rgba(127, 29, 29, 0.42)';
+      ctx.fill();
+    }
     ctx.strokeStyle = 'rgba(7, 23, 27, 0.18)';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
+
+  if (hoveredCoord.value) {
+    const point = getCanvasPoint(hoveredCoord.value.q, hoveredCoord.value.r, width, height);
+    drawHexPath(ctx, point.x, point.y, hexWidthPx);
+    ctx.fillStyle = 'rgba(255, 244, 207, 0.16)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 244, 207, 0.92)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function toCanvasRgba(color: string | null | undefined, alpha: number) {
+  if (!color) {
+    return null;
+  }
+
+  const hex = color.trim();
+  const shortMatch = /^#([0-9a-f]{3})$/i.exec(hex);
+  if (shortMatch) {
+    const [r, g, b] = shortMatch[1]!.split('').map((part) => Number.parseInt(`${part}${part}`, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  const longMatch = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (longMatch) {
+    const value = longMatch[1]!;
+    const r = Number.parseInt(value.slice(0, 2), 16);
+    const g = Number.parseInt(value.slice(2, 4), 16);
+    const b = Number.parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  return null;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -461,6 +582,8 @@ watch(
     props.viewportCenter?.q ?? null,
     props.viewportCenter?.r ?? null,
     props.viewportWidthUnits,
+    hoveredCoord.value?.q ?? null,
+    hoveredCoord.value?.r ?? null,
     layout.value.scale,
     layout.value.offsetX,
     layout.value.offsetY,

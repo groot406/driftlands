@@ -5,10 +5,11 @@ import type { TaskDefinition, TaskInstance, TaskType } from '../../core/types/Ta
 import type { Tile } from '../../core/types/Tile.ts';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
 import type { BuildingKey, ProgressionNodeKey, UpgradeKey } from '../story/progression.ts';
+import type { StorageKind } from '../game/storage.ts';
 
 export type UpgradeEffect =
   | { kind: 'house_beds_total'; value: number }
-  | { kind: 'storage_kind_override'; value: 'warehouse' | 'depot' }
+  | { kind: 'storage_kind_override'; value: StorageKind }
   | { kind: 'job_output_multiplier'; value: number };
 
 export interface UpgradeDefinition {
@@ -220,6 +221,55 @@ const upgrades: UpgradeDefinition[] = [
           return 'stone_road_ce';
         case 'road_cf':
           return 'stone_road_cf';
+        default:
+          return null;
+      }
+    },
+  },
+  {
+    key: 'stone_wall_upgrade',
+    label: 'Stone Wall',
+    summary: 'Rebuild a timber wall into dressed stone for a tougher border line.',
+    baseBuildingKey: 'wall',
+    taskKey: 'upgradeWallToStone',
+    buildTaskLabel: 'Upgrade To Stone Wall',
+    sortOrder: 226,
+    fromVariants: ['plains_wall', 'plains_wall_ad', 'plains_wall_be', 'plains_wall_ce', 'plains_wall_cf', 'dirt_wall', 'dirt_wall_ad', 'dirt_wall_be', 'dirt_wall_ce', 'dirt_wall_cf'],
+    toVariant: 'plains_stone_wall',
+    progressionNodeKeys: ['masonry'],
+    costs: [
+      { type: 'stone', amount: 5 },
+      { type: 'ore', amount: 1 },
+    ],
+    requiredXp(_distance: number) {
+      return 2400;
+    },
+    heroRate(hero: Hero) {
+      return 18 * Math.max(1, hero.stats.atk);
+    },
+    effects: [],
+    resolveToVariant(tile: Tile) {
+      switch (tile.variant) {
+        case 'plains_wall':
+          return 'plains_stone_wall';
+        case 'plains_wall_ad':
+          return 'plains_stone_wall_ad';
+        case 'plains_wall_be':
+          return 'plains_stone_wall_be';
+        case 'plains_wall_ce':
+          return 'plains_stone_wall_ce';
+        case 'plains_wall_cf':
+          return 'plains_stone_wall_cf';
+        case 'dirt_wall':
+          return 'dirt_stone_wall';
+        case 'dirt_wall_ad':
+          return 'dirt_stone_wall_ad';
+        case 'dirt_wall_be':
+          return 'dirt_stone_wall_be';
+        case 'dirt_wall_ce':
+          return 'dirt_stone_wall_ce';
+        case 'dirt_wall_cf':
+          return 'dirt_stone_wall_cf';
         default:
           return null;
       }

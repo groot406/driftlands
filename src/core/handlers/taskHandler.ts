@@ -13,7 +13,7 @@ import {triggerCameraShake} from "../camera.ts";
 import {triggerGameplayImpact} from "../gameFeel.ts";
 import {addTextIndicator} from "../textIndicators.ts";
 import { PathService } from "../PathService.ts";
-import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacity } from "../../shared/buildings/storage.ts";
+import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacityForResource } from "../../shared/buildings/storage.ts";
 import type { Hero } from "../types/Hero.ts";
 import { currentPlayerId } from "../socket.ts";
 import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
@@ -377,7 +377,7 @@ class ClientTaskHandler {
 
         // Prefer a warehouse with capacity; fall back to any warehouse for swap
         const settlementId = hero.settlementId ?? null;
-        const warehouse = findNearestWarehouseWithCapacity(hero.q, hero.r, settlementId, 1)
+        const warehouse = findNearestWarehouseWithCapacityForResource(hero.q, hero.r, settlementId, hero.carryingPayload.type, 1)
             ?? findNearestWarehouseAccessTile(hero.q, hero.r, settlementId);
         if (!warehouse) {
             return;

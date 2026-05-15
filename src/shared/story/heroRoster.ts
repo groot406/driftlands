@@ -1,6 +1,6 @@
 import type { Hero, HeroStats } from '../../core/types/Hero.ts';
 
-export type StoryHeroId = 'h1' | 'h2' | 'h3' | 'h4';
+export type StoryHeroId = 'h1' | 'h2' | 'h3' | 'h4' | 'h5';
 
 export interface StoryHeroTemplate {
   id: StoryHeroId;
@@ -38,6 +38,13 @@ const HERO_TEMPLATES: readonly StoryHeroTemplate[] = [
     role: 'Rigger',
     avatar: 'loophead',
     stats: { xp: 100, hp: 100, atk: 10, spd: 1 },
+  },
+  {
+    id: 'h5',
+    name: 'Mossling',
+    role: 'Colony Pet',
+    avatar: 'mossling',
+    stats: { xp: 100, hp: 80, atk: 6, spd: 2 },
   },
 ] as const;
 

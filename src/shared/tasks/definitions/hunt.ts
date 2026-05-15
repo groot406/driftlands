@@ -21,7 +21,7 @@ const huntTask: TaskDefinition = {
     },
 
     totalRewardedResources(_distance: number) {
-        return { type: 'food', amount: 1 };
+        return { type: 'meat', amount: 1 };
     },
 };
 

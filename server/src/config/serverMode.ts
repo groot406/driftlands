@@ -1,4 +1,4 @@
-function parseBooleanEnv(value: string | undefined, defaultValue: boolean) {
+export function parseBooleanEnv(value: string | undefined, defaultValue: boolean) {
   if (value === undefined) {
     return defaultValue;
   }
@@ -20,3 +20,21 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean) {
 }
 
 export const serverDebugModeEnabled = parseBooleanEnv(process.env.SERVER_DEBUG_MODE, true);
+
+export type SettlementStartMode = 'candidates' | 'free';
+
+function parseSettlementStartMode(value: string | undefined): SettlementStartMode {
+  switch (value?.trim().toLowerCase()) {
+    case 'free':
+    case 'any':
+    case 'open':
+      return 'free';
+    case 'candidates':
+    case 'candidate':
+    default:
+      return 'candidates';
+  }
+}
+
+export const settlementStartMode = parseSettlementStartMode(process.env.SERVER_SETTLEMENT_START_MODE);
+export const spawnSafetyEnabled = parseBooleanEnv(process.env.SERVER_SPAWN_SAFETY, false);

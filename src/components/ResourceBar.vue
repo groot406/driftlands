@@ -86,6 +86,7 @@ export default {name: 'ResourceBar'};
   background: rgba(35, 83, 46, 0.78);
   border-color: rgba(196, 228, 151, 0.34);
   appearance: none;
+  min-height: 2.5rem;
   transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
 }
 

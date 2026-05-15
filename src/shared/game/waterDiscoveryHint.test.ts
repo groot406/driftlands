@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Tile } from '../../core/types/Tile.ts';
-import { resolveWorldTile } from '../../core/worldGeneration.ts';
+import { resolveWorldTile, setWorldGenerationSpawnSafetyEnabled } from '../../core/worldGeneration.ts';
 import { setWorldGenerationSeed } from '../../core/worldVariation.ts';
 import { discoverTile, ensureTileExists, loadWorld, startWorldGeneration } from './world.ts';
 import {
@@ -47,6 +47,10 @@ function findOriginSensitiveWaterTile(origin: { q: number; r: number }) {
 
     throw new Error('Unable to find origin-sensitive water tile.');
 }
+
+beforeEach(() => {
+    setWorldGenerationSpawnSafetyEnabled(true);
+});
 
 test('forest discovery hint finds nearby hidden starter timber', () => {
     setWorldGenerationSeed(42);
@@ -127,4 +131,34 @@ test('water discovery hint resolves hidden terrain using the settlement origin',
     assert.equal(hint.r, target.r);
     assert.equal(resolveWorldTile(hint.q, hint.r, origin).terrain, 'water');
     assert.notEqual(resolveWorldTile(hint.q, hint.r).terrain, 'water');
+});
+
+test('water discovery hint follows raw generation when spawn safety is disabled', () => {
+    setWorldGenerationSeed(42);
+    setWorldGenerationSpawnSafetyEnabled(true);
+
+    let starterOnlyWater: { q: number; r: number } | null = null;
+    for (let q = -8; q <= 8 && !starterOnlyWater; q++) {
+        for (let r = Math.max(-8, -q - 8); r <= Math.min(8, -q + 8); r++) {
+            const safeTerrain = resolveWorldTile(q, r).terrain;
+            setWorldGenerationSpawnSafetyEnabled(false);
+            const rawTerrain = resolveWorldTile(q, r).terrain;
+            setWorldGenerationSpawnSafetyEnabled(true);
+            if (safeTerrain === 'water' && rawTerrain !== 'water') {
+                starterOnlyWater = { q, r };
+                break;
+            }
+        }
+    }
+
+    assert.ok(starterOnlyWater, 'expected at least one safety-only starter water tile');
+
+    setWorldGenerationSpawnSafetyEnabled(false);
+    startWorldGeneration(1, 42);
+
+    const hint = findNearestUndiscoveredWaterTile({ q: 0, r: 0 }, 12);
+
+    assert.ok(hint);
+    assert.notDeepEqual({ q: hint.q, r: hint.r }, starterOnlyWater);
+    assert.equal(resolveWorldTile(hint.q, hint.r).terrain, 'water');
 });

@@ -2,7 +2,6 @@
 import type {Hero} from "../core/types/Hero.ts";
 import { reactive } from 'vue';
 import { createHeroFromTemplate, getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
-import { getInitialUnlockedStoryHeroIds } from '../shared/story/progressionState.ts';
 
 const seedHeroes: Hero[] = [];
 
