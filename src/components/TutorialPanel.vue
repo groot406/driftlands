@@ -10,7 +10,7 @@
           <p class="tutorial-panel__kicker">Field Guide</p>
           <h2 class="tutorial-panel__title">{{ visibleStep.title }}</h2>
         </div>
-        <button class="tutorial-panel__close" type="button" title="Hide tutorial" @click="closeTutorialPanel">
+        <button class="tutorial-panel__close" type="button" title="Hide help guide" @click="closeTutorialPanel">
           x
         </button>
       </header>

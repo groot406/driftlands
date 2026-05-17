@@ -217,7 +217,7 @@ test('mission 1 campfires offer ration cooking', () => {
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'campfireRations'), true);
 });
 
-test('manual dock fishing stays progression-locked while settlers can work docks', () => {
+test('manual dock fishing follows the roadmap when settlers are available', () => {
   setStoryProgressionForMission(2);
   loadPopulationSnapshot({
     current: 1,
@@ -1037,7 +1037,7 @@ test('dock builds face the access tile where the hero starts construction', () =
     unlockedHeroIds: [],
     completedStudyKeys: [],
     heroAbilityChargesEarned: 0,
-  }));
+  }), '0,0');
 
   const hero = heroes[0]!;
   const dockTile = tileIndex['0,1']!;
@@ -1387,7 +1387,7 @@ test('unlimited resources removes build input requirements in test mode', () => 
     unlockedHeroIds: [],
     completedStudyKeys: [],
     heroAbilityChargesEarned: 0,
-  }));
+  }), '0,0');
 
   loadTestModeSettings({
     enabled: true,

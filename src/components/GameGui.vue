@@ -18,11 +18,21 @@
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
+      v-if="serverDebugModeEnabled"
+      class="debug-toggle-btn pixel-font"
+      :class="{ 'debug-toggle-btn--active': showHelpers }"
+      type="button"
+      @click="toggleDebugHelpers"
+      title="Toggle debug panel (F2, F9, or `)"
+    >
+      DBG
+    </button>
+    <button
       v-if="hasTutorial"
       class="tutorial-toggle-btn"
       :class="{ 'tutorial-toggle-btn--active': isTutorialPanelOpen }"
       @click="toggleTutorialPanel"
-      title="Open field guide"
+      title="Open help guide"
     >
       <span class="tutorial-toggle-glyph">?</span>
       <span v-if="!tutorialSnapshot.allCompleted" class="tutorial-toggle-badge">{{ visibleTutorialStepNumber }}</span>
@@ -32,7 +42,7 @@
       class="goals-toggle-btn"
       :class="{ 'goals-toggle-btn--active': isGoalsPanelOpen }"
       @click="toggleGoals"
-      title="Open goals (G)"
+      title="Open progression roadmap (G)"
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -63,6 +73,7 @@
   <PopulationOverviewModal />
   <ResourceDetailModal />
   <SettlerModal />
+  <CalamityEventModal />
   <NotificationOverlay />
 </template>
 
@@ -84,6 +95,7 @@ import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
 import SettlerModal from './SettlerModal.vue';
+import CalamityEventModal from './CalamityEventModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
@@ -100,6 +112,7 @@ import {
 
 const showHelpers = ref(false);
 const globalKeyListenerOptions = { capture: true };
+const DEBUG_HELPER_SHORTCUTS = new Set(['Tab', 'F2', 'F9', 'Backquote']);
 
 
 const hasGoals = computed(() => {
@@ -124,24 +137,26 @@ function toggleGoals() {
   toggleGoalsPanel();
 }
 
-function handleKeyDown(e: KeyboardEvent) {
-  if (!isPlaying()) return;
+function toggleDebugHelpers() {
+  if (!serverDebugModeEnabled.value) return;
+  showHelpers.value = !showHelpers.value;
+}
 
+function handleKeyDown(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null;
   const isInput = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
 
   if (isInput) return;
 
-  if (e.key === 'Tab' || e.code === 'Tab') {
-    if (!serverDebugModeEnabled.value) {
-      //return;
-    }
+  if (DEBUG_HELPER_SHORTCUTS.has(e.key) || DEBUG_HELPER_SHORTCUTS.has(e.code)) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    showHelpers.value = !showHelpers.value;
+    toggleDebugHelpers();
     return;
   }
+
+  if (!isPlaying()) return;
 
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -193,6 +208,32 @@ watch(serverDebugModeEnabled, (enabled) => {
 
 .conversation-recall-btn:hover {
   background-color: rgb(80 103 49 / 0.84);
+}
+
+.debug-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  background: rgba(15, 23, 42, 0.78);
+  color: rgb(186 230 253);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(8px);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.debug-toggle-btn:hover,
+.debug-toggle-btn--active {
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.6);
+  background: rgba(36, 48, 26, 0.9);
+  color: rgb(254 243 199);
 }
 
 .goals-toggle-btn {

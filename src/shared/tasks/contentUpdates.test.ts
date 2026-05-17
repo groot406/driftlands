@@ -58,6 +58,35 @@ test('gatherSand only starts on active desert tiles and respects sand-rich modif
   assert.deepEqual(def.totalRewardedResources?.(0, richDesert), { type: 'sand', amount: 3 });
 });
 
+test('clearRocks clears dirt and snow rock variants back to base terrain', () => {
+  const def = getTaskDefinition('clearRocks');
+  assert.ok(def);
+
+  const dirtRocks = tile({ terrain: 'dirt', variant: 'dirt_rocks', isBaseTile: false });
+  const snowRocks = tile({ terrain: 'snow', variant: 'snow_rock', isBaseTile: true });
+  const bareSnow = tile({ terrain: 'snow', variant: null });
+
+  assert.equal(canStartTaskDefinition(def, dirtRocks, hero), true);
+  assert.equal(canStartTaskDefinition(def, snowRocks, hero), true);
+  assert.equal(canStartTaskDefinition(def, bareSnow, hero), false);
+
+  def.onComplete?.(snowRocks, {
+    id: 'clear-snow-rocks',
+    type: 'clearRocks',
+    tileId: snowRocks.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+
+  assert.equal(snowRocks.terrain, 'snow');
+  assert.equal(snowRocks.variant, null);
+  assert.equal(snowRocks.isBaseTile, true);
+});
+
 test('surveyTile reveals hidden modifiers and special markers once', () => {
   const def = getTaskDefinition('surveyTile');
   assert.ok(def);

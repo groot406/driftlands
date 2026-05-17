@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   CoopSnapshotMessage,
   PlayerJoinMessage,
+  PlayerJoinRejectedMessage,
   PlayerLeaveMessage,
   PlayerSnapshotMessage, SettlementFoundResultMessage,
   RunSnapshotMessage,
@@ -12,6 +13,9 @@ import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
 import {tileIndex} from "../../../src/core/world";
 import { runState } from '../state/runState';
+import { isLooperlandsAuthRequired, validateLooperlandsJoin } from '../looperlands/looperlandsAuth';
+import { getStoryHeroTemplate, type StoryHeroId } from '../../../src/shared/story/heroRoster';
+import { buildLooperlandsPlayerId } from '../../../src/shared/looperlands';
 
 export class ServerPlayerHandler {
   private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket }>();
@@ -50,7 +54,60 @@ export class ServerPlayerHandler {
     this.io.emit('message', this.buildPlayerSnapshot());
   }
 
-  private handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): void {
+  private rejectPlayerJoin(socket: Socket, message: string): void {
+    sendToSocket(socket, {
+      type: 'player:join_rejected',
+      message,
+      timestamp: Date.now(),
+    } satisfies PlayerJoinRejectedMessage);
+  }
+
+  private validateStoryHeroIds(heroIds: StoryHeroId[] | undefined): StoryHeroId[] | null {
+    if (!Array.isArray(heroIds) || heroIds.length !== 2) {
+      return null;
+    }
+
+    if (new Set(heroIds).size !== 2) {
+      return null;
+    }
+
+    if (!heroIds.every((heroId) => !!getStoryHeroTemplate(heroId))) {
+      return null;
+    }
+
+    return heroIds.slice();
+  }
+
+  private async handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): Promise<void> {
+    if (message.looperlands) {
+      try {
+        const requestedWalletPlayerId = buildLooperlandsPlayerId(message.looperlands.walletAddress, message.looperlands.chainId);
+        const hasExistingSettlement = !!playerSettlementState.getPlayerSettlement(requestedWalletPlayerId);
+        const validated = await validateLooperlandsJoin(message.looperlands, {
+          requireHeroSelection: !hasExistingSettlement,
+        });
+        message.playerId = validated.playerId;
+        message.playerName = message.playerName || validated.playerName || 'Pioneer';
+        message.looperlands.heroes = validated.heroes;
+        if (!hasExistingSettlement) {
+          playerSettlementState.setStarterHeroes(validated.playerId, validated.heroes);
+        }
+      } catch (error) {
+        this.rejectPlayerJoin(socket, error instanceof Error ? error.message : 'Could not validate wallet ownership.');
+        throw error;
+      }
+    } else {
+      const storyHeroIds = this.validateStoryHeroIds(message.storyHeroIds);
+      if (storyHeroIds) {
+        if (!playerSettlementState.getPlayerSettlement(message.playerId)) {
+          playerSettlementState.setStarterStoryHeroIds(message.playerId, storyHeroIds);
+        }
+      } else if (isLooperlandsAuthRequired()) {
+        this.rejectPlayerJoin(socket, 'Connect a wallet or choose two default heroes before joining.');
+        throw new Error('Missing Looperlands wallet authentication or default hero selection.');
+      }
+    }
+
     const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName);
     const playerId = player.id;
 

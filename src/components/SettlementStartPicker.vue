@@ -103,7 +103,7 @@ import {
   settlementStartMode,
   settlementStartTerrainTiles,
 } from '../store/settlementStartStore.ts';
-import type { SettlementStartCandidate } from '../shared/multiplayer/settlementStart.ts';
+import { MIN_SETTLEMENT_START_CONNECTED_LAND, type SettlementStartCandidate } from '../shared/multiplayer/settlementStart.ts';
 
 const selectedCandidateId = ref<string | null>(null);
 const selectedFreeCoord = ref<{ q: number; r: number } | null>(null);
@@ -124,10 +124,10 @@ const selectedFreeTile = computed(() => {
 
   return terrainTiles.value.find((entry) => entry.q === selectedFreeCoord.value?.q && entry.r === selectedFreeCoord.value?.r) ?? null;
 });
-const selectedFreeBlocked = computed(() => !!selectedFreeTile.value?.blocked);
+const selectedFreeBlocked = computed(() => !!selectedFreeCoord.value && (!selectedFreeTile.value || !!selectedFreeTile.value.blocked));
 const canConfirm = computed(() => (
   isFreeStart.value
-    ? !!selectedFreeCoord.value && !selectedFreeBlocked.value && !isFounding.value
+    ? !!selectedFreeTile.value && !selectedFreeBlocked.value && !isFounding.value
     : !!selectedCandidate.value && !isFounding.value
 ));
 const selectedFreeTerrain = computed(() => {
@@ -144,8 +144,21 @@ const selectedFreeDescription = computed(() => {
   }
 
   if (selectedFreeBlocked.value) {
-    const playerName = selectedFreeTile.value?.blockedByPlayerName ?? 'another player';
-    return `q ${coord.q}, r ${coord.r} is inside ${playerName}'s reach.`;
+    const tile = selectedFreeTile.value;
+    switch (tile?.blockedReason) {
+      case 'water':
+        return 'Water cannot hold a town center.';
+      case 'vulcano':
+        return 'Volcano tiles are too dangerous for a settlement start.';
+      case 'small_island':
+        return `This island has ${tile.connectedNonWaterTiles ?? 0} connected non-water tiles; choose at least ${MIN_SETTLEMENT_START_CONNECTED_LAND}.`;
+      case 'player_reach': {
+        const playerName = tile.blockedByPlayerName ?? 'another player';
+        return `q ${coord.q}, r ${coord.r} is inside ${playerName}'s reach.`;
+      }
+      default:
+        return 'That tile cannot be used as a settlement start.';
+    }
   }
 
   return `q ${coord.q}, r ${coord.r}`;
@@ -231,7 +244,7 @@ const selectedSummary = computed(() => {
     const coord = selectedFreeCoord.value;
     return coord
       ? (selectedFreeBlocked.value
-        ? 'Pick a site outside every other player reach.'
+        ? 'Pick a valid land tile on a large enough island.'
         : `Found at q ${coord.q}, r ${coord.r}.`)
       : 'Click a tile on the minimap to choose your settlement site.';
   }
@@ -300,7 +313,6 @@ function handleTerrainClick(coord: { q: number; r: number }) {
   }
 
   selectedFreeCoord.value = coord;
-  viewportCenter.value = coord;
 }
 
 function refreshOptions() {

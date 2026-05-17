@@ -21,6 +21,14 @@ Install dependencies:
 npm install
 ```
 
+To enable WalletConnect wallets such as Loopring Wallet, create a project in Reown Cloud and set the project id before starting:
+
+```bash
+VITE_WALLETCONNECT_PROJECT_ID=<your-reown-project-id> npm start
+```
+
+Without `VITE_WALLETCONNECT_PROJECT_ID`, wallet login falls back to injected browser wallets such as MetaMask.
+
 Start the full game locally:
 
 ```bash
@@ -32,14 +40,16 @@ Then open:
 - client: `http://localhost:5173`
 - server: `http://localhost:3000`
 
-`npm start` runs both the client and the server together with debug/test helpers disabled, which is the default play mode for local development.
+`npm start` runs both the client and the server using the values in `.env.local`.
 The Vite client and Socket.IO server also bind to your local network, so you can open the game from another device on the same Wi-Fi.
 
-To start in debug/test mode with the helper panels enabled:
+To start in debug/test mode with the helper panels enabled, set `SERVER_DEBUG_MODE=true` in `.env.local` and run:
 
 ```bash
-npm test
+npm run dev
 ```
+
+In-game, press `F2`, backtick, or `Tab` to toggle the debug helper panel. Use a `no-debug` script when you want that panel disabled regardless of `.env.local`.
 
 To play on an iPad or another device on your LAN:
 
@@ -57,10 +67,12 @@ Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards t
 
 ## Run Scripts
 
-- `npm start` starts client and server together with debug/test helpers disabled
-- `npm test` starts client and server together with debug/test helpers enabled
-- `npm run dev` starts client and server together with debug/test helpers enabled
+- `npm start` starts client and server together using `.env.local`
+- `npm run start:free` starts client and server together with `SERVER_SETTLEMENT_START_MODE=free`
+- `npm test` runs the same debug startup as `npm run dev`
+- `npm run dev` starts client and server together using `.env.local`
 - `npm run dev:no-debug` starts client and server together with debug/test helpers disabled
+- `npm run dev:free` starts client and server together with `SERVER_SETTLEMENT_START_MODE=free`
 - `npm run client` starts only the Vite client
 - `npm run server` starts only the Socket.IO server with `nodemon`
 - `npm run server:no-debug` starts only the Socket.IO server with debug/test helpers disabled
@@ -86,15 +98,42 @@ server/
   messages/     server-side message routing and logging
 ```
 
+## Environment
+
+Copy `.env.example` to `.env.local` to manage local configuration in one place:
+
+```bash
+cp .env.example .env.local
+```
+
+The Vite client reads `VITE_*` variables from `.env.local`. The Driftlands server now reads `.env` and `.env.local` on startup too. Values exported in your shell take precedence over file values, and `.env.local` overrides `.env`.
+
+Available variables:
+
+- `VITE_SERVER_URL`: explicit Socket.IO/API origin for the browser client; leave empty to use the current origin and Vite proxy
+- `VITE_LOOPERLANDS_API_URL`: Looperlands API URL used by the browser client
+- `VITE_API_URL`: legacy client alias for `VITE_LOOPERLANDS_API_URL`
+- `VITE_WALLETCONNECT_PROJECT_ID`: Reown Cloud project id for WalletConnect wallets such as Loopring Wallet
+- `HOST`: server bind host, default `0.0.0.0`
+- `PORT`: server port, default `3000`
+- `FRONTEND_ORIGIN`: comma-separated Socket.IO/API CORS allowlist; leave empty for localhost, LAN origins, and ngrok-free.app
+- `SERVER_TPS`: server simulation ticks per second, default `10`
+- `SERVER_SEED`: fixed world seed; leave empty for a random world
+- `SERVER_DEBUG_MODE`: debug/test helpers toggle, default enabled; set `0`, `false`, `no`, or `off` to disable
+- `SERVER_SETTLEMENT_START_MODE`: settlement placement mode, `candidates` or `free`
+- `SERVER_SPAWN_SAFETY`: safer world-generation spawn constraints toggle, default disabled
+- `LOOPERLANDS_API_URL`: Looperlands API URL used by the Driftlands server for wallet validation and proxying
+- `SERVER_REQUIRE_LOOPERLANDS_AUTH`: force wallet auth requirement when set to `1`
+- `DRIFTLANDS_ENV_FILE`: optional server-only env file path; when set in the shell, the server loads only that file
+
 Helpful notes:
 
 - the client talks to the local game server over Socket.IO
 - Vite proxies `/socket.io` requests to `http://localhost:3000` during development and preview, including when the page is opened via your LAN IP or a forwarded public `5173` port
 - the client can also target a custom server with `VITE_SERVER_URL`
-- the server supports `HOST`, `PORT`, `FRONTEND_ORIGIN`, `SERVER_TPS`, `SERVER_SEED`, and `SERVER_DEBUG_MODE`
 - omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run
 - set `SERVER_DEBUG_MODE=0` to disable Tab helper panels, render/debug controls, test-mode controls, and debug restart handling for connected clients
-- `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost plus common LAN origins by default
+- `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost, common LAN origins, and ngrok-free.app by default
 
 ## What You Can Do In-Game
 

@@ -20,6 +20,8 @@ import type { ProgressionNodeKey } from './story/progression.ts';
 import type { StudyKey } from './studies/studies.ts';
 import type { TestModeSettingsSnapshot } from './game/testMode.ts';
 import type { SettlementBorderMode } from '../core/types/Tile.ts';
+import type { LooperlandsJoinAuth } from './looperlands.ts';
+import type { StoryHeroId } from './story/heroRoster.ts';
 
 export interface BaseMessage {
     type: string;
@@ -56,6 +58,13 @@ export interface PlayerJoinMessage extends BaseMessage {
     playerId: string;
     playerName: string;
     playerColor?: string;
+    looperlands?: LooperlandsJoinAuth;
+    storyHeroIds?: StoryHeroId[];
+}
+
+export interface PlayerJoinRejectedMessage extends BaseMessage {
+    type: 'player:join_rejected';
+    message: string;
 }
 
 export interface PlayerLeaveMessage extends BaseMessage {
@@ -512,6 +521,7 @@ export type ClientMessage =
 
 export type ServerMessage =
     | PlayerJoinMessage
+    | PlayerJoinRejectedMessage
     | PlayerLeaveMessage
     | PlayerCountMessage
     | PlayerSnapshotMessage

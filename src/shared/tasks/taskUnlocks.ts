@@ -15,6 +15,7 @@ const ZERO_SETTLER_FALLBACK_TASK_KEYS = new Set<string>(['fishAtDock']);
 
 export interface TaskUnlockStatus {
   unlocked: boolean;
+  recommended: boolean;
   contentKind: ProgressionUnlockKind | 'always';
   contentKey: string;
   lockingNode: ProgressionNodeSnapshot | null;
@@ -47,6 +48,7 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   if (!taskKey) {
     return {
       unlocked: false,
+      recommended: false,
       contentKind: 'task',
       contentKey: '',
       lockingNode: null,
@@ -56,6 +58,7 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   if (ALWAYS_AVAILABLE_TASK_KEYS.has(taskKey)) {
     return {
       unlocked: true,
+      recommended: true,
       contentKind: 'always',
       contentKey: taskKey,
       lockingNode: null,
@@ -65,6 +68,7 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   if (ZERO_SETTLER_FALLBACK_TASK_KEYS.has(taskKey) && getPopulationState().current <= 0) {
     return {
       unlocked: true,
+      recommended: true,
       contentKind: 'task',
       contentKey: taskKey,
       lockingNode: null,
@@ -80,10 +84,12 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
   const studyUnlocked = content.kind === 'task' || content.kind === 'building' || content.kind === 'upgrade'
     ? isContentUnlockedByStudies(content)
     : false;
-  const unlocked = storyUnlocked || studyUnlocked;
+  const recommended = storyUnlocked || studyUnlocked;
+  const unlocked = recommended;
 
   return {
     unlocked,
+    recommended,
     contentKind: content.kind,
     contentKey: content.key,
     lockingNode,

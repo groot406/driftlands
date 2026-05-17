@@ -74,6 +74,15 @@ const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   tillLand: 'Prepare land',
   seedGrain: 'Plant seeds',
   buildWatchtower: 'Build watchtower',
+  buildGranary: 'Build granary',
+  buildSupplyDepot: 'Build depot',
+  buildWell: 'Build well',
+  irregateDirtTask: 'Irrigate',
+  buildMine: 'Build mine',
+  buildQuarry: 'Build quarry',
+  buildLibrary: 'Build library',
+  buildWorkshop: 'Build workshop',
+  buildTownCenter: 'Build town',
 };
 
 function getSelectedTutorialHero() {
@@ -247,6 +256,23 @@ function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMa
       return findTutorialTaskHint(['seedGrain', 'tillLand', 'dig'], hero);
     case 'secure-perimeter':
       return findTutorialTaskHint(['buildWatchtower'], hero);
+    case 'build-storage':
+      return findTutorialTaskHint(['buildGranary', 'buildSupplyDepot'], hero);
+    case 'irrigate-fields':
+      return findTutorialTaskHint(['buildWell', 'irregateDirtTask'], hero);
+    case 'run-job-sites':
+      return findTutorialTaskHint(['buildGranary', 'buildBakery', 'buildLumberCamp', 'buildHuntersHut', 'buildApiary'], hero);
+    case 'mine-ridges':
+      return findTutorialTaskHint(['buildMine', 'buildQuarry'], hero)
+        ?? findTutorialScoutHint(hero, 'Find mountains');
+    case 'stage-logistics':
+      return findTutorialTaskHint(['buildSupplyDepot', 'buildRoad'], hero);
+    case 'study-and-upgrade':
+      return findTutorialTaskHint(['buildLibrary', 'buildWorkshop'], hero);
+    case 'found-second-hearth':
+      return findTutorialTaskHint(['buildTownCenter', 'buildRoad'], hero);
+    case 'work-harsh-frontier':
+      return findTutorialScoutHint(hero, 'Push outward');
     default:
       return null;
   }

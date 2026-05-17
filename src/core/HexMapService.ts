@@ -6239,13 +6239,15 @@ export class HexMapService {
             return existingPromise;
         }
 
-        const source = this.heroImgSources[avatar];
+        const hero = heroes.find((entry) => entry.avatar === avatar);
+        const source = hero?.avatarSpriteUrl ?? this.heroImgSources[avatar];
         if (!source) {
             return Promise.resolve();
         }
 
         const promise = new Promise<void>((resolve) => {
             const img = new Image();
+            const fallbackSource = hero?.avatarFallbackSpriteUrl;
             const finalize = () => {
                 this._pendingHeroImageLoads.delete(avatar);
                 resolve();
@@ -6256,7 +6258,18 @@ export class HexMapService {
                 this.buildHeroMasks(img, avatar);
                 finalize();
             };
-            img.onerror = finalize;
+            img.onerror = () => {
+                if (fallbackSource && img.src !== fallbackSource) {
+                    img.crossOrigin = 'anonymous';
+                    img.src = fallbackSource;
+                    return;
+                }
+
+                finalize();
+            };
+            if (/^https?:\/\//i.test(source)) {
+                img.crossOrigin = 'anonymous';
+            }
             img.src = source;
         });
 

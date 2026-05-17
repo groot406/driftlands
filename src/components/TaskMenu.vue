@@ -31,45 +31,87 @@
         </button>
       </div>
 
-      <!-- Left / Right split body -->
       <div class="task-body">
-        <!-- LEFT: scrollable task list -->
-        <div class="task-list-pane">
+        <div class="task-list-pane" :class="{ 'task-list-pane--actions-only': !constructionTasks.length }">
+          <div class="task-command-strip">
+            <div>
+              <p class="task-section-title">Command Deck</p>
+              <p class="task-command-strip__caption">{{ commandDeckCaption }}</p>
+            </div>
+            <span class="task-command-strip__pulse">{{ readyTaskCount }} ready</span>
+          </div>
+
+          <div v-if="constructionTasks.length" class="task-category-rail" role="tablist" aria-label="Build categories">
+            <button
+              v-for="tab in buildCategoryTabs"
+              :key="tab.key"
+              type="button"
+              class="task-category-tab"
+              :class="{ 'task-category-tab--active': activeBuildCategory === tab.key }"
+              :style="getCategoryTabStyle(tab)"
+              role="tab"
+              :aria-selected="activeBuildCategory === tab.key"
+              @click.stop="setActiveBuildCategory(tab.key)"
+            >
+              <span class="task-category-tab__glyph">{{ tab.glyph }}</span>
+              <span class="task-category-tab__label">{{ tab.label }}</span>
+              <span class="task-category-tab__count">{{ tab.count }}</span>
+            </button>
+          </div>
+
           <div class="task-list-scroll">
-            <!-- Build & Upgrade section -->
             <div v-if="constructionTasks.length" class="task-section">
               <div class="task-section-header">
-                <span class="task-section-icon">🏗</span>
+                <span class="task-section-icon">{{ activeBuildCategoryMeta.glyph }}</span>
                 <div class="task-section-row">
-                  <div class="task-section-title">Build & Upgrade</div>
+                  <div class="task-section-title">{{ activeBuildCategoryMeta.label }}</div>
                   <div class="task-section-caption">
-                    {{ constructionTasks.length }} {{ constructionTasks.length === 1 ? 'option' : 'options' }}
+                    {{ visibleConstructionTaskItems.length }} {{ visibleConstructionTaskItems.length === 1 ? 'option' : 'options' }}
                   </div>
                 </div>
               </div>
 
-              <div class="task-list">
-                <button
-                  v-for="item in constructionTaskItems"
-                  :key="item.task.key"
-                  class="task-list-row"
-                  :class="{
-                    'task-list-row--selected': selectedTask?.key === item.task.key,
-                    'task-list-row--locked': item.locked,
-                  }"
-                  @click="handleTaskClick(item.task)"
-                  @pointerenter="hoverTask(item.task)"
-                  @pointerleave="unHoverTask(item.task)"
-                >
-                  <div class="task-list-row__info">
-                    <p class="task-list-row__title">{{ item.task.label }}</p>
-                    <p class="task-list-row__meta">{{ item.categoryLabel }}</p>
-                  </div>
-                  <span class="task-list-row__state" :class="item.stateTone">
-                    {{ item.stateLabel }}
-                  </span>
-                </button>
-              </div>
+              <Transition name="task-stack" mode="out-in">
+                <div :key="activeBuildCategory" class="task-list task-list--construction">
+                  <TransitionGroup name="task-row">
+                    <button
+                      v-for="item in visibleConstructionTaskItems"
+                      :key="item.task.key"
+                      class="task-list-row"
+                      :class="{
+                        'task-list-row--selected': selectedTask?.key === item.task.key,
+                        'task-list-row--locked': item.locked,
+                      }"
+                      :style="getTaskRowStyle(item.task)"
+                      @click="handleTaskClick(item.task)"
+                      @pointerenter="hoverTask(item.task)"
+                      @pointerleave="unHoverTask(item.task)"
+                    >
+                      <span class="task-list-row__glyph">{{ getTaskGlyph(item.task) }}</span>
+                      <div class="task-list-row__info">
+                        <div class="task-list-row__headline">
+                          <p class="task-list-row__title">{{ item.task.label }}</p>
+                          <span class="task-list-row__category">{{ item.categoryLabel }}</span>
+                        </div>
+                        <p class="task-list-row__meta">{{ getTaskRowMeta(item) }}</p>
+                        <div class="task-list-row__chips">
+                          <span
+                            v-for="chip in getTaskRowChips(item.task)"
+                            :key="`${item.task.key}:${chip.label}`"
+                            class="task-mini-chip"
+                            :class="`task-mini-chip--${chip.tone}`"
+                          >
+                            {{ chip.label }}
+                          </span>
+                        </div>
+                      </div>
+                      <span class="task-list-row__state" :class="item.stateTone">
+                        {{ item.stateLabel }}
+                      </span>
+                    </button>
+                  </TransitionGroup>
+                </div>
+              </Transition>
             </div>
 
             <!-- Divider between sections -->
@@ -89,7 +131,7 @@
                 </div>
               </div>
 
-              <div class="task-list">
+              <TransitionGroup name="task-row" tag="div" class="task-list task-list--actions">
                 <button
                   v-for="item in actionTaskItems"
                   :key="item.task.key"
@@ -98,24 +140,38 @@
                     'task-list-row--selected': selectedTask?.key === item.task.key,
                     'task-list-row--locked': item.locked,
                   }"
+                  :style="getTaskRowStyle(item.task)"
                   @click="handleTaskClick(item.task)"
                   @pointerenter="hoverTask(item.task)"
                   @pointerleave="unHoverTask(item.task)"
                 >
+                  <span class="task-list-row__glyph">{{ getTaskGlyph(item.task) }}</span>
                   <div class="task-list-row__info">
-                    <p class="task-list-row__title">{{ item.task.label }}</p>
-                    <p class="task-list-row__meta">{{ item.locked ? 'Locked action' : 'Available action' }}</p>
+                    <div class="task-list-row__headline">
+                      <p class="task-list-row__title">{{ item.task.label }}</p>
+                      <span class="task-list-row__category">Action</span>
+                    </div>
+                    <p class="task-list-row__meta">{{ getTaskRowMeta(item) }}</p>
+                    <div class="task-list-row__chips">
+                      <span
+                        v-for="chip in getTaskRowChips(item.task)"
+                        :key="`${item.task.key}:${chip.label}`"
+                        class="task-mini-chip"
+                        :class="`task-mini-chip--${chip.tone}`"
+                      >
+                        {{ chip.label }}
+                      </span>
+                    </div>
                   </div>
                   <span class="task-list-row__state" :class="item.stateTone">
                     {{ item.locked ? 'Locked' : 'Ready' }}
                   </span>
                 </button>
-              </div>
+              </TransitionGroup>
             </div>
           </div>
         </div>
 
-        <!-- RIGHT: scrollable detail pane -->
         <div class="task-detail-pane">
           <div class="task-detail-scroll">
             <section v-if="showTileSurveyPanel" class="task-detail-block tile-survey-block">
@@ -138,7 +194,8 @@
               </div>
             </section>
 
-            <template v-if="selectedTask">
+            <Transition name="task-detail-swap" mode="out-in">
+              <div v-if="selectedTask" :key="selectedTask.key" class="task-detail-content">
               <!-- Detail header -->
               <div class="task-detail-top">
                 <div>
@@ -265,16 +322,16 @@
               >
                 {{ (selectedTaskUi?.locked ?? isTaskLocked(selectedTask)) ? 'Locked' : `Send Hero — ${selectedTask.label}` }}
               </button>
-            </template>
+              </div>
 
-            <!-- Empty state when nothing selected -->
-            <div v-else class="task-detail-empty">
-              <div class="task-detail-empty__icon">📋</div>
-              <p class="task-detail-empty__title">Select an order</p>
-              <p class="task-detail-empty__hint">
-                {{ isMobile ? 'Tap' : 'Hover over' }} a task to see its details.
-              </p>
-            </div>
+              <div v-else key="empty" class="task-detail-empty">
+                <div class="task-detail-empty__icon">◆</div>
+                <p class="task-detail-empty__title">Select an order</p>
+                <p class="task-detail-empty__hint">
+                  {{ isMobile ? 'Tap' : 'Hover over' }} a task to see its details.
+                </p>
+              </div>
+            </Transition>
           </div>
         </div>
       </div>
@@ -452,6 +509,52 @@ const sortedTasks = computed(() => {
 });
 const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
 const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
+const activeBuildCategory = ref('suggested');
+
+type TaskTone = 'ready' | 'blocked' | 'locked' | 'neutral';
+
+interface BuildCategoryMeta {
+  label: string;
+  glyph: string;
+  accent: string;
+  order: number;
+}
+
+interface BuildCategoryTab extends BuildCategoryMeta {
+  key: string;
+  count: number;
+}
+
+interface TaskRowChip {
+  label: string;
+  tone: TaskTone;
+}
+
+const DEFAULT_CATEGORY_META: BuildCategoryMeta = {
+  label: 'Other',
+  glyph: '◇',
+  accent: '#94a3b8',
+  order: 90,
+};
+
+const BUILD_CATEGORY_META: Record<string, BuildCategoryMeta> = {
+  Suggested: { label: 'Suggested', glyph: '✦', accent: '#facc15', order: 0 },
+  All: { label: 'All', glyph: '◎', accent: '#93c5fd', order: 1 },
+  Settlement: { label: 'Settlement', glyph: '⌂', accent: '#f97316', order: 10 },
+  Frontier: { label: 'Frontier', glyph: '⌁', accent: '#22d3ee', order: 11 },
+  Logistics: { label: 'Logistics', glyph: '▤', accent: '#60a5fa', order: 20 },
+  Harbor: { label: 'Harbor', glyph: '≈', accent: '#38bdf8', order: 21 },
+  Utility: { label: 'Utility', glyph: '+', accent: '#2dd4bf', order: 22 },
+  Food: { label: 'Food', glyph: '◌', accent: '#84cc16', order: 30 },
+  Agriculture: { label: 'Agriculture', glyph: '⋯', accent: '#65a30d', order: 31 },
+  Hospitality: { label: 'Hospitality', glyph: '☼', accent: '#fb7185', order: 32 },
+  Industry: { label: 'Industry', glyph: '⚙', accent: '#f59e0b', order: 40 },
+  Knowledge: { label: 'Knowledge', glyph: '?', accent: '#a78bfa', order: 50 },
+  Defense: { label: 'Defense', glyph: '#', accent: '#f87171', order: 60 },
+  Military: { label: 'Military', glyph: '▲', accent: '#ef4444', order: 61 },
+  Upgrade: { label: 'Upgrade', glyph: '↑', accent: '#c084fc', order: 70 },
+  Action: { label: 'Action', glyph: '→', accent: '#34d399', order: 80 },
+};
 
 interface TaskListItem {
   task: TaskDefinition;
@@ -939,7 +1042,8 @@ function isPopulationMet(def: TaskDefinition): boolean {
 }
 
 function getBuildStateTone(def: TaskDefinition) {
-  if (isTaskLocked(def)) {
+  const unlockStatus = getTaskUnlockStatus(def.key, currentPlayerSettlementId.value);
+  if (!unlockStatus.unlocked) {
     return 'task-state--locked';
   }
 
@@ -983,11 +1087,15 @@ function isTaskLocked(def: TaskDefinition) {
 
 function getTaskLockHint(def: TaskDefinition) {
   const unlockStatus = getTaskUnlockStatus(def.key, currentPlayerSettlementId.value);
-  if (unlockStatus.unlocked || !unlockStatus.lockingNode) {
+  if (!unlockStatus.lockingNode) {
     return null;
   }
 
   const unmetRequirement = unlockStatus.lockingNode.requirements.find((requirement) => !requirement.satisfied);
+  if (unlockStatus.unlocked) {
+    return null;
+  }
+
   if (!unmetRequirement) {
     return `${unlockStatus.lockingNode.label} has not been reached yet.`;
   }
@@ -1043,6 +1151,72 @@ function buildTaskListItem(def: TaskDefinition): TaskListItem {
 const taskListItems = computed(() => sortedTasks.value.map(buildTaskListItem));
 const constructionTaskItems = computed(() => taskListItems.value.filter((item) => !!getBuildingMeta(item.task) || !!getUpgradeMeta(item.task)));
 const actionTaskItems = computed(() => taskListItems.value.filter((item) => !getBuildingMeta(item.task) && !getUpgradeMeta(item.task)));
+const readyTaskCount = computed(() => taskListItems.value.filter((item) => !item.locked && item.stateTone === 'task-state--ready').length);
+const commandDeckCaption = computed(() => {
+  if (constructionTaskItems.value.length && actionTaskItems.value.length) {
+    return `${constructionTaskItems.value.length} builds · ${actionTaskItems.value.length} actions`;
+  }
+
+  if (constructionTaskItems.value.length) {
+    return `${constructionTaskItems.value.length} build options`;
+  }
+
+  return `${actionTaskItems.value.length} field actions`;
+});
+const suggestedConstructionTaskItems = computed(() => {
+  const available = constructionTaskItems.value.filter((item) => !item.locked);
+  const pool = available.length ? available : constructionTaskItems.value;
+  return [...pool]
+    .sort((a, b) => getSuggestedTaskScore(b) - getSuggestedTaskScore(a) || getTaskSortOrder(a.task) - getTaskSortOrder(b.task))
+    .slice(0, 6);
+});
+const buildCategoryTabs = computed<BuildCategoryTab[]>(() => {
+  if (!constructionTaskItems.value.length) {
+    return [];
+  }
+
+  const counts = new Map<string, number>();
+  for (const item of constructionTaskItems.value) {
+    counts.set(item.categoryLabel, (counts.get(item.categoryLabel) ?? 0) + 1);
+  }
+
+  const categoryTabs = [...counts.entries()]
+    .map(([category, count]) => ({
+      key: category,
+      count,
+      ...getCategoryMeta(category),
+    }))
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+
+  return [
+    {
+      key: 'suggested',
+      count: suggestedConstructionTaskItems.value.length,
+      ...getCategoryMeta('Suggested'),
+    },
+    {
+      key: 'all',
+      count: constructionTaskItems.value.length,
+      ...getCategoryMeta('All'),
+    },
+    ...categoryTabs,
+  ].filter((tab) => tab.count > 0);
+});
+const visibleConstructionTaskItems = computed(() => {
+  if (activeBuildCategory.value === 'suggested') {
+    return suggestedConstructionTaskItems.value;
+  }
+
+  if (activeBuildCategory.value === 'all') {
+    return constructionTaskItems.value;
+  }
+
+  return constructionTaskItems.value.filter((item) => item.categoryLabel === activeBuildCategory.value);
+});
+const activeBuildCategoryMeta = computed(() => {
+  const tab = buildCategoryTabs.value.find((entry) => entry.key === activeBuildCategory.value);
+  return tab ?? getCategoryMeta('Suggested');
+});
 const selectedTaskUi = computed(() => {
   const task = selectedTask.value;
   if (!task) {
@@ -1054,6 +1228,194 @@ const selectedTaskUi = computed(() => {
 
 function resourceLabel(type: ResourceType) {
   return resourceLabels[type] ?? type;
+}
+
+function getCategoryMeta(category: string): BuildCategoryMeta {
+  const meta = BUILD_CATEGORY_META[category];
+  if (meta) {
+    return meta;
+  }
+
+  return {
+    ...DEFAULT_CATEGORY_META,
+    label: category,
+    glyph: category.slice(0, 1).toUpperCase(),
+  };
+}
+
+function getCategoryTabStyle(tab: BuildCategoryTab) {
+  return {
+    '--task-accent': tab.accent,
+  };
+}
+
+function setActiveBuildCategory(category: string) {
+  if (activeBuildCategory.value === category) {
+    return;
+  }
+
+  activeBuildCategory.value = category;
+  hoveredTask.value = null;
+  tappedTask.value = null;
+  emit('hover', null);
+}
+
+function getTaskSortOrder(def: TaskDefinition) {
+  return getBuildingMeta(def)?.sortOrder ?? getUpgradeMeta(def)?.sortOrder ?? 999;
+}
+
+function getSuggestedTaskScore(item: TaskListItem) {
+  let score = 0;
+
+  if (item.locked) {
+    score -= 100;
+  } else if (item.stateTone === 'task-state--ready') {
+    score += 120;
+  } else {
+    score += 42;
+  }
+
+  const unlockStatus = getTaskUnlockStatus(item.task.key, currentPlayerSettlementId.value);
+  if (unlockStatus.recommended) {
+    score += 18;
+  }
+
+  switch (item.categoryLabel) {
+    case 'Settlement':
+      score += 18;
+      break;
+    case 'Frontier':
+      score += 16;
+      break;
+    case 'Logistics':
+      score += 14;
+      break;
+    case 'Food':
+    case 'Agriculture':
+      score += 12;
+      break;
+    case 'Upgrade':
+      score += 10;
+      break;
+    default:
+      score += 4;
+  }
+
+  return score - (getTaskSortOrder(item.task) / 100);
+}
+
+function getTaskAccent(def: TaskDefinition) {
+  return getCategoryMeta(getBuildCategoryLabel(def)).accent;
+}
+
+function getTaskRowStyle(def: TaskDefinition) {
+  return {
+    '--task-accent': getTaskAccent(def),
+  };
+}
+
+function getTaskGlyph(def: TaskDefinition) {
+  const building = getBuildingMeta(def);
+  if (building?.key === 'house') return '⌂';
+  if (building?.key === 'townCenter') return '◎';
+  if (building?.key === 'dock') return '≈';
+  if (building?.key === 'well') return '+';
+  if (building?.key === 'watchtower') return '▲';
+  if (building?.key === 'wall') return '#';
+  if (building?.providesWarehouse) return '▤';
+  if (building?.jobSlots) return getCategoryMeta(building.categoryLabel).glyph;
+  if (getUpgradeMeta(def)) return '↑';
+
+  return getCategoryMeta(getBuildCategoryLabel(def)).glyph;
+}
+
+function getTaskRowMeta(item: TaskListItem) {
+  if (item.locked) {
+    return item.lockHint ?? 'Unlock this through frontier progress.';
+  }
+
+  const outcome = getTaskOutcomeLabel(item.task);
+  if (outcome) {
+    return outcome;
+  }
+
+  return getTaskSummary(item.task);
+}
+
+function getTaskOutcomeLabel(def: TaskDefinition) {
+  const building = getBuildingMeta(def);
+  if (building) {
+    if (building.key === 'house') {
+      return 'Raises population capacity by 2 beds.';
+    }
+
+    if (building.providesWarehouse) {
+      return `Adds ${building.storageKind ? 'dedicated' : 'frontier'} storage for nearby work.`;
+    }
+
+    if (building.providesWaterSource) {
+      return 'Hydrates nearby farmland and supports dry plots.';
+    }
+
+    const flow = getBuildingEconomyFlow(def).find((group) => group.label.includes('Produces'));
+    if (flow?.resources.length) {
+      return `Produces ${flow.resources.map(formatResourceAmount).join(', ')} each cycle.`;
+    }
+  }
+
+  const upgrade = getUpgradeMeta(def);
+  if (upgrade) {
+    const baseBuilding = getBuildingDefinitionByKey(upgrade.baseBuildingKey);
+    return baseBuilding
+      ? `Improves this ${baseBuilding.label.toLowerCase()} without moving the site.`
+      : upgrade.summary;
+  }
+
+  return null;
+}
+
+function formatResourceAmount(resource: ResourceAmount) {
+  return `${resourceLabel(resource.type)} ${resource.amount}`;
+}
+
+function getTaskRowChips(def: TaskDefinition): TaskRowChip[] {
+  if (isTaskLocked(def)) {
+    return [{ label: 'Locked', tone: 'locked' }];
+  }
+
+  const chips: TaskRowChip[] = [];
+  const building = getBuildingMeta(def);
+  const upgrade = getUpgradeMeta(def);
+
+  if (building?.jobSlots) {
+    chips.push({
+      label: formatWorkerCount(building.jobSlots, building.jobLabel ?? 'worker'),
+      tone: 'neutral',
+    });
+  } else if (upgrade) {
+    chips.push({ label: 'Upgrade', tone: 'neutral' });
+  }
+
+  const populationRequirement = getPopulationRequirement(def);
+  if (populationRequirement) {
+    chips.push({
+      label: `Pop ${playerPopulation.value.current}/${populationRequirement}`,
+      tone: isPopulationMet(def) ? 'ready' : 'blocked',
+    });
+  }
+
+  for (const resource of getTaskRequiredResources(def)) {
+    chips.push({
+      label: `${resourceLabel(resource.type)} ${getWarehouseAmount(resource.type)}/${resource.amount}`,
+      tone: isCostMissing(resource) ? 'blocked' : 'ready',
+    });
+  }
+
+  if (!chips.length && isBuildingTask(def)) {
+    chips.push({ label: 'No cost', tone: 'ready' });
+  }
+
+  return chips.slice(0, 4);
 }
 
 function formatWorkerCount(count: number, label: string) {
@@ -1375,6 +1737,13 @@ function handleKeydown(e: KeyboardEvent) {
 watch(() => props.tile, () => {
   hoveredTask.value = null;
   tappedTask.value = null;
+  activeBuildCategory.value = 'suggested';
+});
+
+watch(() => buildCategoryTabs.value.map((tab) => tab.key).join('|'), () => {
+  if (buildCategoryTabs.value.length && !buildCategoryTabs.value.some((tab) => tab.key === activeBuildCategory.value)) {
+    activeBuildCategory.value = 'suggested';
+  }
 });
 
 let listenerActive = false;
@@ -1419,10 +1788,11 @@ onUnmounted(() => {
   inset: 0;
   z-index: 40;
   display: flex;
-  justify-content: flex-end;
-  align-items: stretch;
-  padding: 0;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(16px, 3vw, 38px);
   pointer-events: none;
+  perspective: 1400px;
 }
 
 /* ── Backdrop: clickable transparent area to close ───── */
@@ -1430,28 +1800,42 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   pointer-events: auto;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(6, 78, 59, 0.03), rgba(2, 6, 23, 0.08) 68%, rgba(2, 6, 23, 0.16)),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.01), rgba(2, 6, 23, 0.08));
 }
 
-/* ── Panel: right-aligned modal with margin ──────────── */
+/* ── Panel: floating in-game command board ───────────── */
 .task-panel {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: 50vw;
-  max-width: 50vw;
-  height: 100%;
+  width: min(980px, calc(100vw - 48px));
+  max-width: 980px;
+  height: min(720px, calc(100vh - 72px));
+  max-height: 720px;
   pointer-events: auto;
-  border-radius: 0;
+  border-radius: 8px;
+  overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.1), transparent 40%),
-    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.08), transparent 30%),
-    linear-gradient(180deg, rgba(7, 12, 24, 0.995), rgba(12, 18, 33, 0.99));
-  border: 1px solid rgba(148, 163, 184, 0.16);
+    linear-gradient(90deg, rgba(94, 234, 212, 0.5) 0 30px, transparent 30px calc(100% - 30px), rgba(74, 222, 128, 0.42) calc(100% - 30px)) top / 100% 1px no-repeat,
+    linear-gradient(90deg, rgba(74, 222, 128, 0.28) 0 26px, transparent 26px calc(100% - 26px), rgba(94, 234, 212, 0.24) calc(100% - 26px)) bottom / 100% 1px no-repeat,
+    linear-gradient(180deg, rgba(94, 234, 212, 0.32) 0 26px, transparent 26px calc(100% - 26px), rgba(74, 222, 128, 0.26) calc(100% - 26px)) left / 1px 100% no-repeat,
+    linear-gradient(180deg, rgba(74, 222, 128, 0.32) 0 26px, transparent 26px calc(100% - 26px), rgba(94, 234, 212, 0.24) calc(100% - 26px)) right / 1px 100% no-repeat,
+    radial-gradient(circle at 18% 0%, rgba(20, 184, 166, 0.15), transparent 36%),
+    radial-gradient(circle at 86% 10%, rgba(74, 222, 128, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(5, 26, 31, 0.58), rgba(3, 18, 24, 0.5));
+  border: 0;
   box-shadow:
-    -20px 0 60px rgba(2, 6, 23, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
-  backdrop-filter: none;
+    0 58px 140px rgba(0, 0, 0, 0.7),
+    0 22px 54px rgba(2, 6, 23, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.018) inset,
+    0 0 44px rgba(16, 185, 129, 0.08);
+  backdrop-filter: blur(16px) saturate(1.12) brightness(1.05);
+  -webkit-backdrop-filter: blur(16px) saturate(1.12) brightness(1.05);
+  transform-origin: center 58%;
+  animation: task-panel-enter .42s cubic-bezier(.16, .86, .23, 1);
 }
 
 .task-panel::before {
@@ -1461,9 +1845,51 @@ onUnmounted(() => {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 22%),
-    linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.1));
-  opacity: 0.8;
+    repeating-linear-gradient(90deg, rgba(94, 234, 212, 0.026) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(180deg, rgba(74, 222, 128, 0.02) 0 1px, transparent 1px 24px),
+    linear-gradient(135deg, rgba(45, 212, 191, 0.08), transparent 20%, transparent 78%, rgba(74, 222, 128, 0.07)),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.035), rgba(2, 6, 23, 0.07));
+  opacity: 0.98;
+  box-shadow:
+    inset 0 0 0 1px rgba(94, 234, 212, 0.1),
+    inset 0 0 30px rgba(15, 23, 42, 0.72);
+}
+
+.task-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 0%, transparent 36%, rgba(255, 255, 255, 0.075) 48%, transparent 60%, transparent 100%);
+  transform: translateX(-130%);
+  animation: task-panel-sheen 8s ease-in-out 1.1s infinite;
+  opacity: 0.65;
+}
+
+@keyframes task-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) rotateX(4deg) scale(0.94);
+    filter: saturate(0.72) blur(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg) scale(1);
+    filter: saturate(1) blur(0);
+  }
+}
+
+@keyframes task-panel-sheen {
+  0%,
+  54% {
+    transform: translateX(-130%);
+  }
+
+  74%,
+  100% {
+    transform: translateX(130%);
+  }
 }
 
 /* ── Header: pinned at top ───────────────────────────── */
@@ -1474,7 +1900,7 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 20px 0;
+  padding: 24px 28px 0;
   flex-shrink: 0;
 }
 
@@ -1487,7 +1913,7 @@ onUnmounted(() => {
   font-size: 9px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(252, 211, 77, 0.82);
+  color: rgba(167, 243, 208, 0.86);
 }
 
 .task-hero-title {
@@ -1506,9 +1932,9 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.42);
+  border-radius: 8px;
+  border: 1px solid rgba(94, 234, 212, 0.1);
+  background: rgba(7, 26, 32, 0.34);
   color: rgba(248, 250, 252, 0.9);
   cursor: pointer;
   transition: transform .15s, border-color .15s, background .15s;
@@ -1516,8 +1942,8 @@ onUnmounted(() => {
 
 .task-close:hover {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.32);
-  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(74, 222, 128, 0.26);
+  background: rgba(6, 78, 59, 0.42);
 }
 
 .task-ability-bar {
@@ -1552,16 +1978,16 @@ onUnmounted(() => {
   justify-content: center;
   gap: 6px;
   padding: 0 8px;
-  border: 1px solid rgba(250, 204, 21, 0.24);
+  border: 1px solid rgba(56, 189, 248, 0.24);
   border-radius: 6px;
-  background: rgba(76, 46, 12, 0.58);
+  background: rgba(8, 47, 73, 0.58);
   color: rgba(255, 251, 235, 0.96);
   transition: background .15s, border-color .15s, transform .15s;
 }
 
 .task-ability-button:hover:not(:disabled) {
-  border-color: rgba(250, 204, 21, 0.62);
-  background: rgba(120, 73, 18, 0.78);
+  border-color: rgba(56, 189, 248, 0.62);
+  background: rgba(12, 74, 110, 0.78);
   transform: translateY(-1px);
 }
 
@@ -1589,24 +2015,214 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0; /* allow flex children to shrink & scroll */
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 0;
-  padding: 16px 0 0;
+  grid-template-columns: minmax(0, 1.28fr) minmax(280px, 0.82fr);
+  gap: 12px;
+  padding: 16px 26px 26px;
 }
 
 /* ── Left pane: task list ────────────────────────────── */
 .task-list-pane {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  column-gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(94, 234, 212, 0.11);
+  border-radius: 6px;
+  padding: 12px 14px 12px 12px;
+  background:
+    linear-gradient(90deg, rgba(45, 212, 191, 0.16), transparent 18px) left / 2px 100% no-repeat,
+    radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(6, 30, 34, 0.32), rgba(4, 20, 25, 0.36));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.016),
+    inset 0 0 22px rgba(2, 6, 23, 0.38);
+  backdrop-filter: blur(8px) saturate(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(1.08);
+}
+
+.task-list-pane--actions-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.task-list-pane--actions-only .task-list-scroll {
+  grid-column: 1;
+}
+
+.task-command-strip {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(94, 234, 212, 0.1);
+}
+
+.task-command-strip__caption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(209, 250, 229, 0.62);
+}
+
+.task-command-strip__pulse {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid rgba(52, 211, 153, 0.24);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(6, 78, 59, 0.42), rgba(4, 47, 46, 0.5));
+  color: rgba(167, 243, 208, 0.96);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: task-ready-pulse 2.8s ease-in-out infinite;
+}
+
+.task-category-rail {
+  position: relative;
+  z-index: 1;
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
+  gap: 7px;
   min-height: 0;
-  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  padding: 1px 8px 1px 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+}
+
+.task-category-rail::-webkit-scrollbar {
+  width: 4px;
+}
+
+.task-category-rail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.task-category-tab {
+  --task-accent: #93c5fd;
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: calc(100% - 2px);
+  min-height: 38px;
+  padding: 6px 8px 6px 7px;
+  border: 1px solid rgba(94, 234, 212, 0.1);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(8, 47, 48, 0.32), rgba(5, 18, 28, 0.52)),
+    linear-gradient(90deg, color-mix(in srgb, var(--task-accent) 18%, transparent), transparent 62%);
+  color: rgba(226, 232, 240, 0.9);
+  cursor: pointer;
+  overflow: hidden;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, calc(100% - 3px) 50%, calc(100% - 12px) 100%, 0 100%);
+  transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.task-category-tab::after {
+  content: '';
+  position: absolute;
+  inset: 7px auto 7px 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--task-accent);
+  opacity: 0;
+  transform: scaleY(0.24);
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.task-category-tab:hover,
+.task-category-tab:focus-visible {
+  transform: translateX(1px);
+  border-color: color-mix(in srgb, var(--task-accent) 36%, rgba(74, 222, 128, 0.18));
+  color: #fff;
+}
+
+.task-category-tab--active {
+  border-color: color-mix(in srgb, var(--task-accent) 48%, rgba(74, 222, 128, 0.16));
+  background:
+    linear-gradient(180deg, rgba(13, 148, 136, 0.38), rgba(6, 26, 35, 0.58)),
+    linear-gradient(90deg, color-mix(in srgb, var(--task-accent) 26%, transparent), transparent 72%);
+  box-shadow:
+    0 8px 18px rgba(2, 6, 23, 0.26),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.024);
+}
+
+.task-category-tab--active::after {
+  opacity: 0.9;
+  transform: scaleY(1);
+}
+
+.task-category-tab__glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--task-accent) 20%, rgba(15, 23, 42, 0.7)), rgba(6, 10, 22, 0.74));
+  color: color-mix(in srgb, var(--task-accent) 82%, white);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.task-category-tab__label {
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.task-category-tab__count {
+  min-width: 19px;
+  height: 19px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  background: rgba(2, 6, 23, 0.58);
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@keyframes task-ready-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+
+  42% {
+    box-shadow: 0 0 0 5px rgba(52, 211, 153, 0.08);
+  }
 }
 
 .task-list-scroll {
-  flex: 1;
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 16px 16px 20px;
+  padding: 0 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
 }
@@ -1625,6 +2241,18 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding: 12px;
+  border: 1px solid rgba(94, 234, 212, 0.1);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, transparent, rgba(94, 234, 212, 0.08) 50%, transparent) top / 100% 1px no-repeat,
+    radial-gradient(circle at 50% 12%, rgba(34, 197, 94, 0.09), transparent 40%),
+    linear-gradient(180deg, rgba(4, 22, 28, 0.32), rgba(3, 14, 20, 0.38));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.016),
+    inset 0 0 24px rgba(2, 6, 23, 0.42);
+  backdrop-filter: blur(8px) saturate(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(1.08);
 }
 
 .task-detail-scroll {
@@ -1634,7 +2262,7 @@ onUnmounted(() => {
   gap: 14px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 20px 16px 16px;
+  padding: 0 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
 }
@@ -1646,6 +2274,14 @@ onUnmounted(() => {
 .task-detail-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.18);
+}
+
+.task-detail-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
 }
 
 /* ── Section ─────────────────────────────────────────── */
@@ -1670,7 +2306,7 @@ onUnmounted(() => {
   width: 26px;
   height: 26px;
   border-radius: 9px;
-  background: rgba(56, 189, 248, 0.1);
+  background: rgba(34, 197, 94, 0.1);
   font-size: 13px;
   flex-shrink: 0;
 }
@@ -1688,12 +2324,12 @@ onUnmounted(() => {
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(191, 219, 254, 0.72);
+  color: rgba(209, 250, 229, 0.7);
 }
 
 .task-section-caption {
   font-size: 11px;
-  color: rgba(191, 219, 254, 0.56);
+  color: rgba(187, 247, 208, 0.5);
   flex-shrink: 0;
 }
 
@@ -1725,50 +2361,121 @@ onUnmounted(() => {
   gap: 5px;
 }
 
+.task-list--construction,
+.task-list--actions {
+  position: relative;
+}
+
 .task-list-row {
+  --task-accent: #38bdf8;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
-  padding: 9px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  min-height: 72px;
+  padding: 9px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(94, 234, 212, 0.08);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.9));
+    linear-gradient(180deg, rgba(7, 36, 39, 0.3), rgba(7, 18, 28, 0.52)),
+    linear-gradient(90deg, color-mix(in srgb, var(--task-accent) 14%, transparent), transparent 58%);
   text-align: left;
   cursor: pointer;
-  transition: border-color .12s, background .12s;
+  overflow: hidden;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--task-accent) 68%, transparent);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+
+.task-list-row::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.08) 42%, transparent 58%);
+  opacity: 0;
+  transform: translateX(-60%);
+  transition: opacity .15s ease, transform .36s ease;
+  pointer-events: none;
 }
 
 .task-list-row:hover,
 .task-list-row:focus-visible {
-  border-color: rgba(125, 211, 252, 0.24);
+  transform: translateX(3px) translateY(-1px);
+  border-color: color-mix(in srgb, var(--task-accent) 38%, rgba(125, 211, 252, 0.2));
   background:
-    linear-gradient(180deg, rgba(21, 32, 58, 0.78), rgba(15, 23, 42, 0.94));
+    linear-gradient(180deg, rgba(13, 83, 70, 0.42), rgba(9, 25, 33, 0.62)),
+    linear-gradient(90deg, color-mix(in srgb, var(--task-accent) 18%, transparent), transparent 64%);
+  box-shadow:
+    inset 3px 0 0 var(--task-accent),
+    0 10px 22px rgba(2, 6, 23, 0.24);
+}
+
+.task-list-row:hover::before,
+.task-list-row:focus-visible::before {
+  opacity: 1;
+  transform: translateX(60%);
 }
 
 .task-list-row--selected {
-  border-color: rgba(250, 204, 21, 0.32) !important;
+  border-color: color-mix(in srgb, var(--task-accent) 48%, rgba(74, 222, 128, 0.18)) !important;
   background:
-    linear-gradient(180deg, rgba(40, 54, 98, 0.82), rgba(15, 23, 42, 0.96)),
-    linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent 64%);
-  box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.08);
+    linear-gradient(180deg, rgba(13, 148, 136, 0.42), rgba(9, 28, 34, 0.64)),
+    linear-gradient(105deg, color-mix(in srgb, var(--task-accent) 22%, transparent), transparent 70%);
+  box-shadow:
+    inset 3px 0 0 var(--task-accent),
+    inset 0 0 0 1px rgba(74, 222, 128, 0.05),
+    0 12px 26px rgba(2, 6, 23, 0.26);
 }
 
 .task-list-row--action {
   background:
-    linear-gradient(180deg, rgba(17, 24, 39, 0.76), rgba(15, 23, 42, 0.92)),
-    linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent 64%);
+    linear-gradient(180deg, rgba(8, 36, 34, 0.3), rgba(10, 22, 31, 0.52)),
+    linear-gradient(135deg, rgba(34, 197, 94, 0.08), transparent 64%);
 }
 
 .task-list-row--locked {
   opacity: 0.55;
 }
 
+.task-list-row__glyph {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--task-accent) 32%, rgba(148, 163, 184, 0.14));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--task-accent) 18%, rgba(15, 23, 42, 0.72)), rgba(15, 23, 42, 0.78));
+  color: color-mix(in srgb, var(--task-accent) 84%, white);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  transition: transform .16s ease;
+}
+
+.task-list-row:hover .task-list-row__glyph,
+.task-list-row:focus-visible .task-list-row__glyph,
+.task-list-row--selected .task-list-row__glyph {
+  transform: scale(1.06) rotate(-3deg);
+}
+
 .task-list-row__info {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   flex: 1;
+}
+
+.task-list-row__headline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
 
 .task-list-row__title {
@@ -1781,28 +2488,102 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
+.task-list-row__category {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  max-width: 13ch;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.58);
+  color: rgba(203, 213, 225, 0.72);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .task-list-row__meta {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 10px;
-  line-height: 1.4;
-  color: rgba(191, 219, 254, 0.58);
+  line-height: 1.35;
+  color: rgba(209, 250, 229, 0.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.task-list-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.task-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.55);
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.task-mini-chip--ready {
+  color: rgba(187, 247, 208, 0.95);
+  border-color: rgba(74, 222, 128, 0.22);
+  background: rgba(20, 83, 45, 0.28);
+}
+
+.task-mini-chip--blocked {
+  color: rgba(254, 202, 202, 0.96);
+  border-color: rgba(248, 113, 113, 0.2);
+  background: rgba(127, 29, 29, 0.26);
+}
+
+.task-mini-chip--locked {
+  color: rgba(253, 230, 138, 0.96);
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(120, 53, 15, 0.26);
+}
+
+.task-mini-chip--neutral {
+  color: rgba(204, 251, 241, 0.9);
+  border-color: rgba(45, 212, 191, 0.16);
+  background: rgba(13, 148, 136, 0.2);
 }
 
 .task-list-row__state,
 .task-detail-state {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  max-width: 15ch;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   background: rgba(15, 23, 42, 0.72);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── State tones ─────────────────────────────────────── */
@@ -1845,9 +2626,9 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(56, 189, 248, 0.14);
-  color: rgba(186, 230, 253, 0.96);
+  border-radius: 8px;
+  background: rgba(13, 148, 136, 0.18);
+  color: rgba(204, 251, 241, 0.96);
   font-size: 10px;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -1872,11 +2653,12 @@ onUnmounted(() => {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(94, 234, 212, 0.1);
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.5), rgba(15, 23, 42, 0.7)),
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 54%);
+    linear-gradient(180deg, rgba(7, 36, 39, 0.22), rgba(15, 23, 42, 0.38)),
+    linear-gradient(125deg, rgba(34, 197, 94, 0.1), transparent 54%);
+  animation: task-card-lift .3s ease both;
 }
 
 .task-preview-card__copy {
@@ -1895,11 +2677,11 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   min-height: 110px;
-  border-radius: 14px;
+  border-radius: 8px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 24%, rgba(34, 197, 94, 0.18), transparent 34%),
-    radial-gradient(circle at 50% 78%, rgba(15, 118, 110, 0.2), transparent 38%),
+    linear-gradient(150deg, rgba(34, 197, 94, 0.16), transparent 42%),
+    linear-gradient(20deg, rgba(15, 118, 110, 0.2), transparent 46%),
     linear-gradient(180deg, rgba(8, 47, 73, 0.2), rgba(2, 6, 23, 0.48));
 }
 
@@ -1907,7 +2689,7 @@ onUnmounted(() => {
   content: '';
   position: absolute;
   inset: 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px dashed rgba(148, 163, 184, 0.18);
   pointer-events: none;
 }
@@ -1918,6 +2700,7 @@ onUnmounted(() => {
   height: 80px;
   image-rendering: pixelated;
   object-fit: contain;
+  animation: task-preview-float 3.6s ease-in-out infinite;
 }
 
 .task-preview-stage__layer--base {
@@ -1927,6 +2710,7 @@ onUnmounted(() => {
 .task-preview-stage__layer--terrain-overlay,
 .task-preview-stage__layer--building-overlay {
   filter: none;
+  animation-delay: .18s;
 }
 
 /* ── Detail grid (costs, economy, upgrades) ──────────── */
@@ -1939,9 +2723,11 @@ onUnmounted(() => {
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(94, 234, 212, 0.09);
+  background:
+    linear-gradient(180deg, rgba(7, 36, 39, 0.2), rgba(15, 23, 42, 0.34));
+  animation: task-card-lift .32s ease both;
 }
 
 .task-detail-block__label {
@@ -2009,7 +2795,7 @@ onUnmounted(() => {
   display: grid;
   gap: 2px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(15, 23, 42, 0.46);
 }
@@ -2049,8 +2835,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(30, 41, 59, 0.85);
+  border-radius: 4px;
+  border: 1px solid rgba(94, 234, 212, 0.08);
+  background: rgba(16, 32, 39, 0.72);
   color: rgba(226, 232, 240, 0.9);
   font-size: 11px;
 }
@@ -2073,7 +2860,7 @@ onUnmounted(() => {
 .task-flow-row__label {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(186, 230, 253, 0.88);
+  color: rgba(204, 251, 241, 0.86);
 }
 
 .task-effect-list {
@@ -2091,8 +2878,9 @@ onUnmounted(() => {
   width: 100%;
   padding: 12px 16px;
   border: 1px solid rgba(52, 211, 153, 0.28);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(6, 78, 59, 0.5), rgba(6, 78, 59, 0.7));
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(15, 118, 110, 0.5), rgba(6, 78, 59, 0.7));
   color: rgba(167, 243, 208, 0.96);
   font-size: 13px;
   font-weight: 700;
@@ -2100,12 +2888,13 @@ onUnmounted(() => {
   text-align: center;
   cursor: pointer;
   transition: transform .12s, background .12s, border-color .12s, box-shadow .12s;
+  clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%);
 }
 
 .task-confirm-btn:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: rgba(52, 211, 153, 0.44);
-  box-shadow: 0 8px 18px rgba(6, 78, 59, 0.3);
+  box-shadow: 0 12px 24px rgba(6, 78, 59, 0.34);
 }
 
 .task-confirm-btn:active {
@@ -2141,6 +2930,8 @@ onUnmounted(() => {
 .task-detail-empty__icon {
   font-size: 28px;
   margin-bottom: 4px;
+  color: rgba(250, 204, 21, 0.78);
+  animation: task-empty-drift 3.4s ease-in-out infinite;
 }
 
 .task-detail-empty__title {
@@ -2154,6 +2945,165 @@ onUnmounted(() => {
   line-height: 1.5;
   color: rgba(148, 163, 184, 0.6);
   max-width: 24ch;
+}
+
+.task-stack-enter-active,
+.task-stack-leave-active,
+.task-detail-swap-enter-active,
+.task-detail-swap-leave-active {
+  transition:
+    opacity .2s ease,
+    transform .22s cubic-bezier(.2, .8, .2, 1),
+    filter .22s ease;
+}
+
+.task-stack-enter-from,
+.task-detail-swap-enter-from {
+  opacity: 0;
+  transform: translateY(10px) scale(.985);
+  filter: blur(5px);
+}
+
+.task-stack-leave-to,
+.task-detail-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(.99);
+  filter: blur(4px);
+}
+
+.task-row-move,
+.task-row-enter-active,
+.task-row-leave-active {
+  transition:
+    opacity .2s ease,
+    transform .24s cubic-bezier(.2, .8, .2, 1),
+    filter .2s ease;
+}
+
+.task-row-enter-from {
+  opacity: 0;
+  transform: translateX(-12px) scale(.98);
+  filter: blur(4px);
+}
+
+.task-row-leave-to {
+  opacity: 0;
+  transform: translateX(12px) scale(.98);
+  filter: blur(4px);
+}
+
+.task-row-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+@keyframes task-card-lift {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes task-preview-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 0 -4px;
+  }
+}
+
+@keyframes task-empty-drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-5px) rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-panel,
+  .task-panel::after,
+  .task-command-strip__pulse,
+  .task-preview-stage__layer,
+  .task-detail-empty__icon,
+  .task-preview-card,
+  .task-detail-block {
+    animation: none !important;
+  }
+
+  .task-list-row,
+  .task-list-row::before,
+  .task-list-row__glyph,
+  .task-category-tab,
+  .task-category-tab::after,
+  .task-stack-enter-active,
+  .task-stack-leave-active,
+  .task-row-move,
+  .task-row-enter-active,
+  .task-row-leave-active,
+  .task-detail-swap-enter-active,
+  .task-detail-swap-leave-active {
+    transition: none !important;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 641px) {
+  .task-panel {
+    width: min(920px, calc(100vw - 32px));
+    max-width: min(920px, calc(100vw - 32px));
+    height: min(700px, calc(100vh - 48px));
+  }
+
+  .task-body {
+    grid-template-columns: minmax(0, 1.2fr) minmax(270px, 0.8fr);
+    gap: 12px;
+    padding: 14px 22px 22px;
+  }
+
+  .task-list-pane {
+    grid-template-columns: 150px minmax(0, 1fr);
+    column-gap: 12px;
+    padding: 12px;
+  }
+
+  .task-list-row__state {
+    max-width: 13ch;
+  }
+}
+
+@media (max-width: 900px) and (min-width: 641px) {
+  .task-panel {
+    width: min(820px, calc(100vw - 32px));
+    height: min(760px, calc(100vh - 32px));
+  }
+
+  .task-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(320px, 1fr) minmax(220px, 0.72fr);
+    overflow: hidden;
+  }
+
+  .task-list-pane {
+    border-right: none;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.16);
+    padding: 12px;
+  }
+
+  .task-detail-pane {
+    min-height: 0;
+  }
 }
 
 /* ── Mobile (≤ 640px): bottom sheet ──────────────────── */
@@ -2173,46 +3123,204 @@ onUnmounted(() => {
   .task-panel {
     width: 100%;
     max-width: 100%;
-    height: 100%;
+    height: 100dvh;
     max-height: none;
-    border: none;
+    border: 0;
     border-radius: 0;
     box-shadow: none;
   }
 
   .task-header {
-    padding: 16px 16px 0;
+    padding: 13px 14px 0;
+  }
+
+  .task-kicker {
+    font-size: 8px;
+    letter-spacing: 0.16em;
+  }
+
+  .task-hero-title {
+    margin-top: 5px;
+    font-size: 1.05rem;
+  }
+
+  .task-close {
+    width: 32px;
+    height: 32px;
+  }
+
+  .task-command-strip {
+    padding: 0 0 8px;
+    margin-bottom: 8px;
+  }
+
+  .task-command-strip__caption {
+    margin-top: 2px;
+  }
+
+  .task-command-strip__pulse {
+    min-height: 23px;
+    padding-inline: 7px;
+    font-size: 9px;
+  }
+
+  .task-category-rail {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    min-height: 0;
+    max-height: none;
+    margin-bottom: 8px;
+    padding: 1px 6px 8px 2px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .task-category-tab {
+    min-height: 34px;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    padding: 5px 8px 5px 6px;
+    width: calc(100% - 2px);
+  }
+
+  .task-category-tab__label {
+    max-width: none;
+    font-size: 10px;
+  }
+
+  .task-category-tab__count {
+    min-width: 17px;
+    height: 17px;
+    font-size: 9px;
   }
 
   .task-body {
     grid-template-columns: 1fr;
-    padding: 12px 0 0;
-    overflow-y: auto;
-    max-height: none;
+    grid-template-rows: minmax(0, 0.98fr) minmax(0, 1.02fr);
+    gap: 8px;
+    padding: 10px 10px 12px;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .task-list-pane {
-    border-right: none;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 92px) minmax(0, 1fr);
+    column-gap: 0;
+    border-right: 1px solid rgba(56, 189, 248, 0.16);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.16);
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  .task-list-pane--actions-only {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .task-list-pane--actions-only .task-list-scroll {
+    grid-row: 2;
   }
 
   .task-list-scroll {
-    padding: 0 16px 12px;
-    max-height: 36vh;
+    grid-column: 1;
+    grid-row: 3;
+    padding: 0;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .task-list-row {
+    min-height: 62px;
+    padding: 7px 8px;
+    gap: 7px;
+  }
+
+  .task-list-row__glyph {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .task-list-row__headline {
+    gap: 5px;
+  }
+
+  .task-list-row__title {
+    font-size: 12px;
+  }
+
+  .task-list-row__category,
+  .task-mini-chip,
+  .task-list-row__state {
+    font-size: 8px;
+  }
+
+  .task-list-row__meta {
+    margin-top: 2px;
+    font-size: 9px;
+  }
+
+  .task-list-row__chips {
+    margin-top: 4px;
+  }
+
+  .task-list-row__state {
+    max-width: 12ch;
+    padding-inline: 6px;
+  }
+
+  .task-detail-pane {
+    min-height: 0;
+    padding: 10px;
+    overflow: hidden;
   }
 
   .task-detail-scroll {
-    padding: 12px 16px 16px;
+    min-height: 0;
+    padding: 0;
+    overflow-y: auto;
   }
 
-  .task-confirm-btn {
-    padding: 14px 16px;
-    font-size: 14px;
-    border-radius: 16px;
+  .task-detail-content {
+    gap: 10px;
+    min-height: min-content;
+  }
+
+  .task-detail-copy {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .task-detail-block {
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  .task-preview-card {
+    gap: 8px;
+    padding: 9px;
   }
 
   .task-preview-stage {
-    min-height: 100px;
+    min-height: 84px;
+  }
+
+  .task-preview-stage__layer {
+    width: 68px;
+    height: 68px;
+  }
+
+  .task-confirm-btn {
+    padding: 11px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+  }
+
+  .tile-survey-block {
+    display: none;
   }
 }
 </style>

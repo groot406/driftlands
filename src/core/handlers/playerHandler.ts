@@ -1,7 +1,8 @@
-import type { PlayerJoinMessage, PlayerLeaveMessage, PlayerCountMessage, PlayerSnapshotMessage } from '../../shared/protocol';
+import type { PlayerJoinMessage, PlayerJoinRejectedMessage, PlayerLeaveMessage, PlayerCountMessage, PlayerSnapshotMessage } from '../../shared/protocol';
 import { clientMessageRouter } from '../messageRouter';
 import { addPlayer, removePlayer, replacePlayerEntities, updateOnlinePlayersCount } from '../../store/playerStore';
 import { addNotification } from '../../store/notificationStore';
+import { returnToTitle } from '../../store/uiStore';
 
 class PlayerMessageHandler {
   private initialized = false;
@@ -13,6 +14,7 @@ class PlayerMessageHandler {
 
     this.initialized = true;
     clientMessageRouter.on('player:join', this.handlePlayerJoin.bind(this));
+    clientMessageRouter.on('player:join_rejected', this.handlePlayerJoinRejected.bind(this));
     clientMessageRouter.on('player:leave', this.handlePlayerLeave.bind(this));
     clientMessageRouter.on('player:count', this.handlePlayerCount.bind(this));
     clientMessageRouter.on('player:snapshot', this.handlePlayerSnapshot.bind(this));
@@ -29,6 +31,16 @@ class PlayerMessageHandler {
       title: 'Player joined',
       message: `${message.playerName} joined the game`,
       duration: 3000
+    });
+  }
+
+  private handlePlayerJoinRejected(message: PlayerJoinRejectedMessage): void {
+    returnToTitle();
+    addNotification({
+      type: 'run_state',
+      title: 'Wallet validation failed',
+      message: message.message,
+      duration: 6000,
     });
   }
 

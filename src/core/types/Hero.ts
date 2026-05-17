@@ -41,6 +41,12 @@ export interface Hero {
     id: string;
     name: string;
     avatar: string; // asset path for sprite sheet
+    avatarSource?: 'local' | 'looperlands';
+    avatarSpriteUrl?: string;
+    avatarFallbackSpriteUrl?: string | null;
+    avatarNftId?: string;
+    avatarTokenHash?: string | null;
+    storyTemplateId?: string | null;
     playerId?: string;
     playerName?: string;
     settlementId?: string | null;

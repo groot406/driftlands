@@ -1,3 +1,4 @@
+import './config/envFile';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -22,8 +23,10 @@ import { runState } from './state/runState';
 import { maintenanceSystem } from './systems/maintenanceSystem';
 import { militarySystem } from './systems/militarySystem';
 import { calamitySystem } from './systems/calamitySystem';
-import { settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
+import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
 import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
+import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
+import { playerSettlementState } from './state/playerSettlementState';
 
 setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
 
@@ -59,6 +62,31 @@ function isAllowedFrontendOrigin(origin?: string): boolean {
 }
 
 const app = express();
+app.use(['/api/looperlands', '/api/driftlands'], (req: any, res: any, next: any) => {
+  const origin = typeof req.headers?.origin === 'string' ? req.headers.origin : undefined;
+  if (origin && isAllowedFrontendOrigin(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-AUTH-WEB3TOKEN');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send();
+    return;
+  }
+
+  next();
+});
+app.use(express.json({ limit: '1mb' }));
+registerLooperlandsProxy(app);
+app.get('/api/driftlands/player/:playerId/settlement', (req: any, res: any) => {
+  const playerId = String(req.params.playerId ?? '');
+  res.json({
+    playerId,
+    settlementId: playerSettlementState.getPlayerSettlement(playerId),
+  });
+});
 // @ts-ignore
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -117,7 +145,7 @@ io.on('connection', (socket) => {
       console.log(`>>>> ${message.type}`);
       console.log(message);
     }
-    serverMessageRouter.route(socket, message);
+    void serverMessageRouter.route(socket, message);
   });
 
   socket.on('disconnect', () => {
@@ -136,5 +164,5 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Server listening on ${HOST}:${PORT}`);
-  console.log(`Settlement start mode: ${settlementStartMode}; spawn safety: ${spawnSafetyEnabled ? 'on' : 'off'}`);
+  console.log(`Debug mode: ${serverDebugModeEnabled ? 'on' : 'off'}; settlement start mode: ${settlementStartMode}; spawn safety: ${spawnSafetyEnabled ? 'on' : 'off'}`);
 });

@@ -6,21 +6,19 @@
     >
       <div class="goals-panel__header">
         <div>
-          <p class="goals-panel__kicker pixel-font">Objectives</p>
-          <h2 class="goals-panel__title">Current Goals</h2>
+          <p class="goals-panel__kicker pixel-font">Progression</p>
+          <h2 class="goals-panel__title">Roadmap</h2>
         </div>
-        <button class="goals-panel__close" @click="close" title="Close goals panel">
+        <button class="goals-panel__close" @click="close" title="Close progression panel">
           &#x2715;
         </button>
       </div>
 
-      <!-- Chapter summary -->
       <div v-if="chapterSummary" class="goals-panel__summary">
-        <p class="text-[10px] uppercase tracking-[0.16em] text-amber-200/70">Path Forward</p>
+        <p class="text-[10px] uppercase tracking-[0.16em] text-amber-200/70">Next Milestone</p>
         <p class="mt-1 text-[12px] leading-relaxed text-slate-300">{{ chapterSummary }}</p>
       </div>
 
-      <!-- Next recommended milestones -->
       <div v-if="nextGoals.length" class="goals-panel__list">
         <article
           v-for="goal in nextGoals"
@@ -73,7 +71,7 @@
       </div>
 
       <div v-else class="px-4 py-6 text-center text-[11px] text-slate-500">
-        No current goals — explore the frontier.
+        No current milestones. Keep expanding the colony.
       </div>
     </aside>
   </Transition>

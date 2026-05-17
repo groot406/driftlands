@@ -5,6 +5,11 @@ import type { Hero } from '../../src/core/types/Hero.ts';
 import type { TaskInstance } from '../../src/core/types/Task.ts';
 import { hexDistance, tileIndex, tiles } from '../../src/shared/game/world.ts';
 import { getWorldGenerationSeed } from '../../src/core/worldVariation.ts';
+import {
+  isWorldGenerationSpawnSafetyEnabled,
+  resolveWorldTile,
+  setWorldGenerationSpawnSafetyEnabled,
+} from '../../src/core/worldGeneration.ts';
 import { heroes, loadHeroes } from '../../src/shared/game/state/heroStore.ts';
 import { settlers, loadSettlers } from '../../src/shared/game/state/settlerStore.ts';
 import { loadTasks, taskStore } from '../../src/shared/game/state/taskStore.ts';
@@ -13,6 +18,7 @@ import { getStorageResourceAmount } from '../../src/shared/game/state/resourceSt
 import { axialDistanceCoords } from '../../src/shared/game/hex.ts';
 import { setIo } from './messages/messageRouter.ts';
 import { runState } from './state/runState.ts';
+import { playerSettlementState } from './state/playerSettlementState.ts';
 import { worldState } from './worldState.ts';
 
 const RESTORE_SEED = 123456789;
@@ -47,6 +53,7 @@ function createDirtyTask(): TaskInstance {
 }
 
 test.afterEach(async () => {
+  playerSettlementState.reset();
   await worldState.init(RESTORE_SEED);
 });
 
@@ -161,6 +168,60 @@ test('worldState.foundSettlementAt reveals a landing, creates a town center, and
   assert.equal(revealedLandingTiles.length, 37);
 });
 
+test('worldState.foundSettlementAt reveals starter water when spawn safety is enabled', async () => {
+  const previousSpawnSafety = isWorldGenerationSpawnSafetyEnabled();
+  setWorldGenerationSpawnSafetyEnabled(true);
+  setIo({ emit() {} });
+
+  try {
+    await worldState.init(42);
+
+    worldState.foundSettlementAt(18, -4);
+
+    const revealedWaterTiles = tiles.filter((tile) => (
+      tile.discovered
+      && tile.terrain === 'water'
+      && axialDistanceCoords(tile.q, tile.r, 18, -4) <= 3
+    ));
+    assert.ok(revealedWaterTiles.length > 0);
+  } finally {
+    setWorldGenerationSpawnSafetyEnabled(previousSpawnSafety);
+  }
+});
+
+test('worldState.foundSettlementAt uses the global terrain map when spawn safety is disabled', async () => {
+  const previousSpawnSafety = isWorldGenerationSpawnSafetyEnabled();
+  const center = { q: 18, r: -4 };
+  setWorldGenerationSpawnSafetyEnabled(false);
+  setIo({ emit() {} });
+
+  try {
+    await worldState.init(42);
+
+    const expectedTerrain = new Map<string, string>();
+    for (let dq = -3; dq <= 3; dq++) {
+      for (let dr = Math.max(-3, -dq - 3); dr <= Math.min(3, -dq + 3); dr++) {
+        const q = center.q + dq;
+        const r = center.r + dr;
+        expectedTerrain.set(`${q},${r}`, resolveWorldTile(q, r).terrain);
+      }
+    }
+
+    worldState.foundSettlementAt(center.q, center.r);
+
+    for (const [tileId, expected] of expectedTerrain) {
+      if (tileId === `${center.q},${center.r}`) {
+        assert.equal(tileIndex[tileId]?.terrain, 'towncenter');
+        continue;
+      }
+
+      assert.equal(tileIndex[tileId]?.terrain, expected, `expected founded terrain to match picker terrain at ${tileId}`);
+    }
+  } finally {
+    setWorldGenerationSpawnSafetyEnabled(previousSpawnSafety);
+  }
+});
+
 test('worldState.foundSettlementAt can spawn a founder hero for the owning player', async () => {
   setIo({ emit() {} });
 
@@ -175,4 +236,21 @@ test('worldState.foundSettlementAt can spawn a founder hero for the owning playe
   assert.equal(founder.r, -5);
   assert.equal(founder.playerId, 'player-ada');
   assert.equal(founder.playerName, 'Ada');
+});
+
+test('worldState.foundSettlementAt uses selected starter heroes as story dialogue speakers', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42);
+  playerSettlementState.setStarterStoryHeroIds('player-ada', ['h2', 'h3']);
+
+  const founded = worldState.foundSettlementAt(22, -5, { playerId: 'player-ada', playerName: 'Ada' });
+  assert.ok(founded);
+
+  const run = runState.getSnapshotForSettlement(founded.settlementId);
+  assert.ok(run);
+
+  const speakerNames = new Set(run.dialogue.entries.map((entry) => entry.speaker.name));
+  assert.ok(speakerNames.size > 0);
+  assert.ok(Array.from(speakerNames).every((name) => ['Harm', 'Jess'].includes(name)));
 });

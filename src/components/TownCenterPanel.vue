@@ -147,7 +147,7 @@
           <div class="tc-stat-grid">
             <div class="tc-stat">
               <span class="tc-stat-value">{{ foodStock }}</span>
-              <span class="tc-stat-label">Rations</span>
+              <span class="tc-stat-label">Meals</span>
             </div>
             <div class="tc-stat">
               <span class="tc-stat-value">{{ foodPerMinute }}</span>
@@ -659,6 +659,7 @@ import {
   FOOD_PER_SETTLER_PER_MINUTE,
   HUNGER_GRACE_MINUTES,
 } from '../store/populationStore';
+import { getHungerFoodMealValue } from '../shared/game/resourceDefinitions.ts';
 
 interface Props {
   visible: boolean;
@@ -1238,7 +1239,7 @@ const militaryStatusText = computed(() => {
 const foodStock = computed(() => {
   // Force reactivity on resourceVersion
   void resourceVersion.value;
-  return playerInventory.value.food ?? 0;
+  return Math.floor(getHungerFoodMealValue(playerInventory.value));
 });
 
 const foodPerMinute = computed(() => {

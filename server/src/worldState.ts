@@ -44,11 +44,13 @@ import { promoteTileToTowncenter } from '../../src/shared/buildings/registry';
 import { broadcastGameMessage as broadcast } from '../../src/shared/game/runtime';
 import { createHeroFromTemplate, type StoryHeroId } from '../../src/shared/story/heroRoster';
 import type { HeroRosterUpdateMessage, ResourceDepositMessage, TileUpdatedMessage } from '../../src/shared/protocol';
+import type { LooperlandsHeroSelection } from '../../src/shared/looperlands';
 import {
   ensureBarracksMilitaryState,
   ensureTownCenterMilitaryState,
   ensureWatchtowerMilitaryState,
 } from '../../src/shared/game/military.ts';
+import { playerSettlementState } from './state/playerSettlementState';
 
 const STARTING_FOOD = 12;
 const SETTLEMENT_START_REVEAL_RADIUS = 3;
@@ -151,6 +153,12 @@ function serializeHero(hero: Hero): Hero {
     id: hero.id,
     name: hero.name,
     avatar: hero.avatar,
+    avatarSource: hero.avatarSource,
+    avatarSpriteUrl: hero.avatarSpriteUrl,
+    avatarFallbackSpriteUrl: hero.avatarFallbackSpriteUrl,
+    avatarNftId: hero.avatarNftId,
+    avatarTokenHash: hero.avatarTokenHash,
+    storyTemplateId: hero.storyTemplateId ?? null,
     playerId: hero.playerId,
     playerName: hero.playerName,
     settlementId: hero.settlementId ?? null,
@@ -290,6 +298,16 @@ class WorldState {
     return slot === 0 ? `founder:${playerId}` : `founder:${playerId}:${slot + 1}`;
   }
 
+  private applyLooperlandsHeroSelection(hero: Hero, selection: LooperlandsHeroSelection): void {
+    hero.name = selection.name;
+    hero.avatar = selection.id;
+    hero.avatarSource = 'looperlands';
+    hero.avatarSpriteUrl = selection.spriteUrl;
+    hero.avatarFallbackSpriteUrl = selection.fallbackSpriteUrl ?? null;
+    hero.avatarNftId = selection.nftId;
+    hero.avatarTokenHash = selection.tokenHash ?? null;
+  }
+
   private ensureStarterHeroes(founder: { playerId: string; playerName: string } | null | undefined, q: number, r: number, settlementId: string) {
     if (!founder) {
       return [];
@@ -298,14 +316,20 @@ class WorldState {
     const starterHeroes: Hero[] = [];
     const starterHeroIdSet = new Set<string>();
     let createdHero = false;
+    const looperSelections = playerSettlementState.getStarterHeroes(founder.playerId);
+    const storyHeroIds = playerSettlementState.getStarterStoryHeroIds(founder.playerId);
 
     for (let slot = 0; slot < SETTLEMENT_STARTER_HERO_COUNT; slot++) {
       const starterHeroId = this.getStarterHeroId(founder.playerId, slot);
+      const looperSelection = looperSelections[slot] ?? null;
       const existingHero = heroes.find((hero) => (
         hero.id === starterHeroId || (hero.playerId === founder.playerId && !starterHeroIdSet.has(hero.id))
       ));
 
       if (existingHero) {
+        if (looperSelection) {
+          this.applyLooperlandsHeroSelection(existingHero, looperSelection);
+        }
         existingHero.playerId = founder.playerId;
         existingHero.playerName = founder.playerName;
         existingHero.settlementId = settlementId;
@@ -314,14 +338,18 @@ class WorldState {
         continue;
       }
 
-      const templateId = SETTLEMENT_STARTER_HERO_TEMPLATES[heroes.length % SETTLEMENT_STARTER_HERO_TEMPLATES.length] ?? 'h2';
+      const templateId = storyHeroIds[slot] ?? SETTLEMENT_STARTER_HERO_TEMPLATES[heroes.length % SETTLEMENT_STARTER_HERO_TEMPLATES.length] ?? 'h2';
       const hero = createHeroFromTemplate(templateId, { q, r });
       if (!hero) {
         continue;
       }
 
       hero.id = starterHeroId;
-      hero.name = `${founder.playerName}'s ${slot === 0 ? 'Founder' : 'Scout'}`;
+      if (looperSelection) {
+        this.applyLooperlandsHeroSelection(hero, looperSelection);
+      } else if (!storyHeroIds[slot]) {
+        hero.name = `${founder.playerName}'s ${slot === 0 ? 'Founder' : 'Scout'}`;
+      }
       hero.playerId = founder.playerId;
       hero.playerName = founder.playerName;
       hero.settlementId = settlementId;
@@ -380,6 +408,7 @@ class WorldState {
 
     initializeSettlementPopulation(centerTile.id);
     loadStoryProgression(createInitialProgressionSnapshot(), centerTile.id);
+    const starterHeroes = this.ensureStarterHeroes(founder, centerTile.q, centerTile.r, centerTile.id);
     runState.initializeSettlement(centerTile.id, this.activeSeed);
 
     if (!wasTownCenter || !hadStarterStorage) {
@@ -409,8 +438,6 @@ class WorldState {
     }
 
     broadcastPopulationState();
-
-    const starterHeroes = this.ensureStarterHeroes(founder, centerTile.q, centerTile.r, centerTile.id);
 
     const result: { settlementId: string; q: number; r: number; founderHeroId?: string; founderHeroIds?: string[] } = {
       settlementId: centerTile.id,

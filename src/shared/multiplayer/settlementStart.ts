@@ -3,6 +3,7 @@ import { axialDistanceCoords } from '../game/hex.ts';
 
 export type SettlementStartBand = 'home' | 'near' | 'frontier' | 'remote';
 export type SettlementStartMode = 'candidates' | 'free';
+export type SettlementStartBlockReason = 'player_reach' | 'water' | 'vulcano' | 'small_island';
 
 export interface SettlementStartMarker {
   settlementId: string;
@@ -34,6 +35,8 @@ export interface SettlementStartTerrainTile {
   r: number;
   terrain: TerrainKey;
   blocked?: boolean;
+  blockedReason?: SettlementStartBlockReason | null;
+  connectedNonWaterTiles?: number;
   blockedByPlayerId?: string | null;
   blockedByPlayerName?: string | null;
   blockedByPlayerColor?: string | null;
@@ -79,7 +82,8 @@ const AXIAL_DIRECTIONS: Array<[number, number]> = [
 const FOUNDABLE_TERRAINS = new Set<TerrainKey>(['plains', 'dirt']);
 const STARTER_LAND_TERRAINS = new Set<TerrainKey>(['plains', 'dirt', 'forest', 'grain', 'snow', 'dessert']);
 const START_SAFETY_RADIUS = 6;
-const MIN_CONNECTED_STARTER_LAND = 25;
+export const MIN_SETTLEMENT_START_CONNECTED_LAND = 14;
+const MIN_CONNECTED_STARTER_LAND = MIN_SETTLEMENT_START_CONNECTED_LAND;
 const MIN_OUTER_LAND_EXITS = 1;
 const MAX_START_WATER_TILES = 44;
 const START_TERRAIN_PREVIEW_PADDING = 8;
@@ -213,6 +217,80 @@ function listAxialDisk(centerQ: number, centerR: number, radius: number) {
 
 function isStarterLandTerrain(terrain: TerrainKey) {
   return STARTER_LAND_TERRAINS.has(terrain);
+}
+
+function isConnectedNonWaterTerrain(terrain: TerrainKey) {
+  return terrain !== 'water';
+}
+
+export interface SettlementStartValidation {
+  valid: boolean;
+  terrain: TerrainKey;
+  connectedNonWaterTiles: number;
+  reason?: SettlementStartBlockReason;
+}
+
+export function validateSettlementStartSite(
+  q: number,
+  r: number,
+  resolveTerrain: (q: number, r: number) => TerrainKey,
+  minConnectedNonWaterTiles: number = MIN_SETTLEMENT_START_CONNECTED_LAND,
+): SettlementStartValidation {
+  const terrain = resolveTerrain(q, r);
+  if (terrain === 'water') {
+    return {
+      valid: false,
+      terrain,
+      connectedNonWaterTiles: 0,
+      reason: 'water',
+    };
+  }
+
+  if (terrain === 'vulcano') {
+    return {
+      valid: false,
+      terrain,
+      connectedNonWaterTiles: 0,
+      reason: 'vulcano',
+    };
+  }
+
+  const visited = new Set<string>([axialKey(q, r)]);
+  const queue: Array<{ q: number; r: number; terrain: TerrainKey }> = [{ q, r, terrain }];
+  let connectedNonWaterTiles = 0;
+
+  while (queue.length && connectedNonWaterTiles < minConnectedNonWaterTiles) {
+    const current = queue.shift()!;
+    if (!isConnectedNonWaterTerrain(current.terrain)) {
+      continue;
+    }
+
+    connectedNonWaterTiles++;
+    for (const [dq, dr] of AXIAL_DIRECTIONS) {
+      const nq = current.q + dq;
+      const nr = current.r + dr;
+      const key = axialKey(nq, nr);
+      if (visited.has(key)) {
+        continue;
+      }
+
+      const neighborTerrain = resolveTerrain(nq, nr);
+      visited.add(key);
+      if (!isConnectedNonWaterTerrain(neighborTerrain)) {
+        continue;
+      }
+
+      queue.push({ q: nq, r: nr, terrain: neighborTerrain });
+    }
+  }
+
+  const valid = connectedNonWaterTiles >= minConnectedNonWaterTiles;
+  return {
+    valid,
+    terrain,
+    connectedNonWaterTiles,
+    reason: valid ? undefined : 'small_island',
+  };
 }
 
 function getStartSafety(
@@ -420,17 +498,34 @@ export function generateSettlementStartTerrainTiles(options: {
 }): SettlementStartTerrainTile[] {
   if (options.freeStart) {
     const tiles: SettlementStartTerrainTile[] = [];
+    const terrainCache = new Map<string, TerrainKey>();
+    const resolveCachedTerrain = (q: number, r: number) => {
+      const key = axialKey(q, r);
+      const cached = terrainCache.get(key);
+      if (cached) {
+        return cached;
+      }
+
+      const terrain = options.resolveTerrain(q, r);
+      terrainCache.set(key, terrain);
+      return terrain;
+    };
+
     for (let q = -FREE_START_TERRAIN_PREVIEW_RADIUS; q <= FREE_START_TERRAIN_PREVIEW_RADIUS; q++) {
       for (
         let r = Math.max(-FREE_START_TERRAIN_PREVIEW_RADIUS, -q - FREE_START_TERRAIN_PREVIEW_RADIUS);
         r <= Math.min(FREE_START_TERRAIN_PREVIEW_RADIUS, -q + FREE_START_TERRAIN_PREVIEW_RADIUS);
         r++
       ) {
+        const validation = validateSettlementStartSite(q, r, resolveCachedTerrain);
         tiles.push({
           id: createSettlementId(q, r),
           q,
           r,
-          terrain: options.resolveTerrain(q, r),
+          terrain: validation.terrain,
+          blocked: !validation.valid,
+          blockedReason: validation.reason ?? null,
+          connectedNonWaterTiles: validation.connectedNonWaterTiles,
         });
       }
     }

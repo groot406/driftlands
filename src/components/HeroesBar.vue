@@ -40,8 +40,8 @@
 
             <div class="hero-card-portrait">
               <div class="hero-card-portrait-frame">
-                <div class="hero-card-sprite">
-                  <Sprite :sprite="'src/assets/heroes/' + hero.avatar + '.png'" :zoom="2" :row="8" :size="32" :frames="2" :speed="450" />
+                <div class="hero-card-sprite" :class="{ 'hero-card-sprite--looper': isLooperHero(hero) }">
+                  <Sprite :sprite="heroSprite(hero)" :fallback-sprite="hero.avatarFallbackSpriteUrl" :zoom="heroPortraitZoom(hero)" :row="8" :size="32" :frames="2" :speed="450" />
                 </div>
               </div>
               <div class="hero-card-xp">
@@ -216,6 +216,18 @@ const scoutResourceColors: Record<ScoutTargetType, string> = {
   sand: '#e7c979',
   snow: '#dbeafe',
 };
+
+function heroSprite(hero: Hero): string {
+  return hero.avatarSpriteUrl ?? `src/assets/heroes/${hero.avatar}.png`;
+}
+
+function isLooperHero(hero: Hero): boolean {
+  return hero.avatarSource === 'looperlands';
+}
+
+function heroPortraitZoom(hero: Hero): number {
+  return isLooperHero(hero) ? 1.9 : 2;
+}
 
 interface ScoutOption {
   type: ScoutTargetType;
@@ -959,6 +971,18 @@ watch(selectedHeroId, () => {
   opacity: 0.95;
 }
 
+.hero-card-sprite--looper {
+  align-items: center;
+  bottom: auto;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -48%);
+  width: 100%;
+}
+
 .hero-card-xp {
   align-self: end;
   min-width: 0;
@@ -1206,35 +1230,45 @@ watch(selectedHeroId, () => {
 .skill-controls {
   position: relative;
   display: grid;
-  padding-top: 0.25rem;
-  border-top: 1px solid rgba(250, 204, 21, 0.18);
+  padding-top: 0.18rem;
+  border-top: 1px solid rgba(216, 196, 108, 0.2);
   z-index: 3;
 }
 
 .skill-menu-trigger {
   width: 100%;
-  min-height: 1.92rem;
-  padding: 0.22rem 0.38rem;
+  min-height: 1.83rem;
+  padding: 0.2rem 0.34rem;
   display: grid;
-  grid-template-columns: 1rem minmax(4.8rem, 1fr) 0.55rem;
+  grid-template-columns: 0.95rem minmax(4.45rem, 1fr) 0.5rem;
   align-items: center;
-  gap: 0.4rem;
-  border: 1px solid rgba(250, 204, 21, 0.24);
-  border-radius: 6px;
-  background: rgba(88, 59, 18, 0.58);
+  gap: 0.34rem;
+  border: 1px solid rgba(216, 196, 108, 0.3);
+  border-radius: 0.48rem;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 179, 0.14), rgba(6, 26, 26, 0.72)),
+    rgba(55, 68, 33, 0.46);
   color: rgba(255, 251, 235, 0.96);
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .skill-menu-trigger:hover {
   border-color: rgba(250, 204, 21, 0.62);
-  background: rgba(120, 73, 18, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 242, 168, 0.2), rgba(12, 35, 29, 0.78)),
+    rgba(73, 90, 36, 0.62);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 0 12px rgba(250, 204, 21, 0.18);
   transform: translateY(-1px);
 }
 
 .skill-menu-trigger-ready {
   border-color: rgba(250, 204, 21, 0.72);
-  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.28),
+    0 0 15px rgba(250, 204, 21, 0.2);
   animation: skill-ready-pulse 1.45s ease-in-out infinite;
 }
 
@@ -1245,7 +1279,9 @@ watch(selectedHeroId, () => {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(250, 204, 21, 0.2);
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.52), transparent 28%),
+    rgba(250, 204, 21, 0.22);
   color: rgba(254, 243, 199, 0.98);
   font-size: 0.72rem;
   font-weight: 900;
@@ -1302,6 +1338,56 @@ watch(selectedHeroId, () => {
   }
 }
 
+@keyframes hero-glass-shimmer {
+  0%,
+  100% {
+    background-position: -34% 0, center;
+  }
+
+  50% {
+    background-position: 134% 0, center;
+  }
+}
+
+@keyframes hero-card-sheen {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateX(-62%) rotate(-9deg);
+  }
+
+  42%,
+  58% {
+    opacity: 0.72;
+  }
+
+  72% {
+    opacity: 0;
+    transform: translateX(62%) rotate(-9deg);
+  }
+}
+
+@keyframes hero-selected-pulse {
+  0%,
+  100% {
+    filter: saturate(1.12) brightness(1.06);
+  }
+
+  50% {
+    filter: saturate(1.2) brightness(1.1);
+  }
+}
+
+@keyframes hero-rune-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .skill-menu {
   position: absolute;
   left: 0;
@@ -1314,10 +1400,15 @@ watch(selectedHeroId, () => {
   grid-template-columns: minmax(0, 1fr);
   gap: 0.38rem;
   padding: 0.42rem;
-  border: 1px solid rgba(250, 204, 21, 0.24);
-  border-radius: 8px;
-  background: rgba(35, 28, 15, 0.97);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(178, 255, 214, 0.22);
+  border-radius: 0.8rem;
+  background:
+    linear-gradient(180deg, rgba(120, 255, 205, 0.11), rgba(8, 24, 24, 0.94)),
+    rgba(7, 27, 27, 0.94);
+  backdrop-filter: blur(12px) saturate(1.16);
+  box-shadow:
+    0 1px 0 rgba(225, 255, 238, 0.14) inset,
+    0 16px 34px rgba(0, 0, 0, 0.42);
 }
 
 .hero-floating-menu.scout-menu,
@@ -1334,9 +1425,11 @@ watch(selectedHeroId, () => {
   grid-template-columns: 1.1rem minmax(0, 1fr) auto;
   align-items: start;
   gap: 0.48rem;
-  border: 1px solid rgba(250, 204, 21, 0.18);
-  border-radius: 6px;
-  background: rgba(78, 58, 28, 0.72);
+  border: 1px solid rgba(178, 255, 214, 0.15);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 180, 0.1), rgba(8, 27, 27, 0.76)),
+    rgba(35, 59, 39, 0.68);
   color: rgba(255, 251, 235, 0.96);
   text-align: left;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
@@ -1344,7 +1437,9 @@ watch(selectedHeroId, () => {
 
 .skill-option:hover:not(:disabled) {
   border-color: rgba(250, 204, 21, 0.64);
-  background: rgba(120, 73, 18, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 180, 0.16), rgba(11, 39, 33, 0.82)),
+    rgba(55, 83, 45, 0.76);
   transform: translateY(-1px);
 }
 
@@ -1455,11 +1550,16 @@ watch(selectedHeroId, () => {
 
 @media (max-width: 640px) {
   .heroes-bar {
-    height: 13.7rem;
+    height: 13.35rem;
   }
 
   .heroes-avatar-strip {
     --mobile-card-width: min(82vw, 13.25rem);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 13.1rem;
     pointer-events: auto;
     align-items: flex-end;
     gap: 0;
@@ -1467,17 +1567,23 @@ watch(selectedHeroId, () => {
     overflow-y: visible;
     scroll-snap-type: x mandatory;
     scroll-padding-inline: calc((100vw - var(--mobile-card-width)) / 2);
-    padding: 0 calc((100vw - var(--mobile-card-width)) / 2) 0.35rem;
+    padding: 0.62rem calc((100vw - var(--mobile-card-width)) / 2) 0.45rem;
     touch-action: pan-x;
     overscroll-behavior-x: contain;
-    background: linear-gradient(to top, rgba(21, 51, 35, 0.35), rgba(21, 51, 35, 0));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 1.05rem 1.05rem 0 0;
+    background:
+      linear-gradient(180deg, rgba(118, 255, 204, 0.12), rgba(5, 21, 22, 0.74)),
+      rgba(4, 19, 20, 0.54);
   }
 
   .hero-card {
     flex: 0 0 var(--mobile-card-width);
     width: var(--mobile-card-width);
-    height: 12.35rem;
-    margin-left: -1.05rem;
+    height: 12.05rem;
+    margin-left: -0.9rem;
     scroll-snap-align: center;
     scroll-snap-stop: always;
   }
@@ -1488,12 +1594,12 @@ watch(selectedHeroId, () => {
 
   .hero-card-tucked {
     z-index: 1;
-    transform: translateY(1.6rem) rotate(var(--hero-card-rotation)) scale(0.92);
+    transform: translateY(1.38rem) rotate(var(--hero-card-rotation)) scale(0.93);
     filter: saturate(0.9) brightness(0.93);
   }
 
   .hero-card-tucked:hover {
-    transform: translateY(1.15rem) rotate(calc(var(--hero-card-rotation) * 0.55)) scale(0.95);
+    transform: translateY(1.02rem) rotate(calc(var(--hero-card-rotation) * 0.55)) scale(0.96);
   }
 
   .hero-card-selected {
@@ -1502,7 +1608,7 @@ watch(selectedHeroId, () => {
   }
 
   .hero-card-controls {
-    min-height: 4.55rem;
+    min-height: 4.18rem;
   }
 
   .scout-menu-trigger,

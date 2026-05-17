@@ -1,6 +1,6 @@
 {
-  "watch": ["server/src", "src/shared", "src/store", "src/core"],
-  "ext": "ts,js",
+  "watch": ["server/src", "src/shared", "src/store", "src/core", ".env", ".env.local", ".env.example"],
+  "ext": "ts,js,json,env",
   "ignore": [
     "**/*.test.ts",
     "server/src/**/*.spec.ts",

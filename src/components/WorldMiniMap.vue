@@ -46,6 +46,7 @@ export interface MiniMapTerrainTile {
   r: number;
   terrain: TerrainKey;
   blocked?: boolean;
+  blockedReason?: 'player_reach' | 'water' | 'vulcano' | 'small_island' | null;
   blockedByPlayerColor?: string | null;
 }
 
@@ -470,6 +471,34 @@ function drawHexPath(
   ctx.closePath();
 }
 
+function drawBlockedTileOverlay(
+  ctx: CanvasRenderingContext2D,
+  tile: MiniMapTerrainTile,
+  centerX: number,
+  centerY: number,
+  widthPx: number,
+) {
+  if (tile.blockedByPlayerColor) {
+    ctx.fillStyle = toCanvasRgba(tile.blockedByPlayerColor, 0.32) ?? 'rgba(127, 29, 29, 0.24)';
+    ctx.fill();
+    return;
+  }
+
+  const radius = widthPx / Math.sqrt(3);
+  ctx.save();
+  drawHexPath(ctx, centerX, centerY, widthPx);
+  ctx.clip();
+  ctx.strokeStyle = tile.blockedReason === 'water'
+    ? 'rgba(255, 244, 207, 0.45)'
+    : 'rgba(248, 113, 113, 0.52)';
+  ctx.lineWidth = Math.max(1, widthPx * 0.045);
+  ctx.beginPath();
+  ctx.moveTo(centerX - radius * 0.55, centerY + radius * 0.42);
+  ctx.lineTo(centerX + radius * 0.55, centerY - radius * 0.42);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawTerrain() {
   const canvas = canvasEl.value;
   const root = rootEl.value;
@@ -504,9 +533,9 @@ function drawTerrain() {
     ctx.fillStyle = TERRAIN_COLORS[tile.terrain] ?? '#67a94a';
     ctx.fill();
     if (tile.blocked) {
-      ctx.fillStyle = toCanvasRgba(tile.blockedByPlayerColor, 0.42) ?? 'rgba(127, 29, 29, 0.42)';
-      ctx.fill();
+      drawBlockedTileOverlay(ctx, tile, point.x, point.y, hexWidthPx);
     }
+    drawHexPath(ctx, point.x, point.y, hexWidthPx);
     ctx.strokeStyle = 'rgba(7, 23, 27, 0.18)';
     ctx.lineWidth = 1;
     ctx.stroke();

@@ -24,6 +24,7 @@ import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
 import { loadTestModeSettings } from '../../shared/game/testMode.ts';
 import { setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
 import { addNotification } from '../../store/notificationStore';
+import { openCalamityReport } from '../../store/calamityEventStore.ts';
 import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
 import { isWatchtowerTile } from '../../shared/game/military.ts';
 import { setWorldGenerationSpawnSafetyEnabled } from '../worldGeneration';
@@ -244,6 +245,7 @@ class WorldHandler {
             message: message.message,
             duration: message.severity === 'severe' ? 7200 : 5600,
         });
+        openCalamityReport(message);
     }
 
     private handleJobsUpdate(message: JobsUpdateMessage): void {

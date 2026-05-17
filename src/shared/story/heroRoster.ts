@@ -69,6 +69,7 @@ export function createHeroFromTemplate(
     id: template.id,
     name: template.name,
     avatar: template.avatar,
+    storyTemplateId: template.id,
     q: position.q,
     r: position.r,
     stats: { ...template.stats },

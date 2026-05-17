@@ -101,6 +101,37 @@ test('resolveWorldTile keeps the opening ring free of hard blocker biomes', () =
   }
 });
 
+test('spawn safety keeps starter water inside the founded reveal radius', () => {
+  const seeds = [1, 42, 123456789, 0xdecafbad];
+  const origins = [
+    { q: 0, r: 0 },
+    { q: 18, r: -4 },
+    { q: 22, r: -5 },
+    { q: -17, r: 31 },
+  ];
+
+  for (const seed of seeds) {
+    setWorldGenerationSeed(seed);
+
+    for (const origin of origins) {
+      let revealedWater = 0;
+
+      for (let dq = -3; dq <= 3; dq++) {
+        for (let dr = Math.max(-3, -dq - 3); dr <= Math.min(3, -dq + 3); dr++) {
+          const tile = resolveWorldTile(origin.q + dq, origin.r + dr, origin);
+          if (tile.terrain === 'water') {
+            revealedWater++;
+          }
+        }
+      }
+
+      assert.ok(revealedWater > 0, `expected visible starter water for seed ${seed} at ${origin.q},${origin.r}`);
+    }
+  }
+
+  setWorldGenerationSeed(123456789);
+});
+
 test('initial world generation leaves origin tiles undiscovered', () => {
   startWorldGeneration(1, 42);
 
@@ -133,6 +164,34 @@ test('resolveWorldTile can disable starter spawn shaping', () => {
   setWorldGenerationSeed(123456789);
 
   assert.ok(changedTile, 'expected spawn safety to alter at least one starter-area tile');
+});
+
+test('resolveWorldTile ignores custom settlement origins when spawn safety is disabled', () => {
+  setWorldGenerationSeed(42);
+  setWorldGenerationSpawnSafetyEnabled(false);
+
+  const origins = [
+    { q: 18, r: -4 },
+    { q: 22, r: -5 },
+    { q: -17, r: 31 },
+  ];
+
+  for (const origin of origins) {
+    for (let dq = -8; dq <= 8; dq++) {
+      for (let dr = Math.max(-8, -dq - 8); dr <= Math.min(8, -dq + 8); dr++) {
+        const q = origin.q + dq;
+        const r = origin.r + dr;
+        assert.deepEqual(
+          resolveWorldTile(q, r, origin),
+          resolveWorldTile(q, r),
+          `expected global terrain at ${q},${r} with spawn safety off`,
+        );
+      }
+    }
+  }
+
+  setWorldGenerationSpawnSafetyEnabled(true);
+  setWorldGenerationSeed(123456789);
 });
 
 test('discovering the same far tiles in a different order resolves to the same biome map', () => {

@@ -53,8 +53,20 @@ export function isSafariBrowser() {
         && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/i.test(ua);
 }
 
+export function isFirefoxBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    return /Firefox|FxiOS/i.test(navigator.userAgent);
+}
+
+export function shouldUseBrowserLightRendering() {
+    return isSafariBrowser() || isFirefoxBrowser();
+}
+
 export function shouldUseSafariLightRendering() {
-    return isSafariBrowser();
+    return shouldUseBrowserLightRendering();
 }
 
 export function isMotionBlurEffectEnabled() {

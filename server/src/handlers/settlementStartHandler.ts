@@ -7,6 +7,9 @@ import {
   generateSettlementStartCandidates,
   generateSettlementStartTerrainTiles,
   getSettlementIdFromStartCandidateId,
+  MIN_SETTLEMENT_START_CONNECTED_LAND,
+  validateSettlementStartSite,
+  type SettlementStartValidation,
   type SettlementStartMarker,
 } from '../../../src/shared/multiplayer/settlementStart';
 import type {
@@ -94,7 +97,10 @@ export class ServerSettlementStartHandler {
       const blockedTileOwners = this.getOtherPlayerReachTileOwners(playerId);
       for (const tile of terrainTiles) {
         const owner = blockedTileOwners.get(tile.id);
-        tile.blocked = !!owner;
+        if (owner) {
+          tile.blocked = true;
+          tile.blockedReason = 'player_reach';
+        }
         tile.blockedByPlayerId = owner?.playerId ?? null;
         tile.blockedByPlayerName = owner?.playerName ?? null;
         tile.blockedByPlayerColor = owner?.playerColor ?? null;
@@ -186,6 +192,19 @@ export class ServerSettlementStartHandler {
     this.sendOptionsToSocket(socket);
   }
 
+  private getStartValidationMessage(validation: SettlementStartValidation) {
+    switch (validation.reason) {
+      case 'water':
+        return 'Settlements cannot start on water.';
+      case 'vulcano':
+        return 'Settlements cannot start on volcanoes.';
+      case 'small_island':
+        return `That island is too small. Pick a connected non-water landmass with at least ${MIN_SETTLEMENT_START_CONNECTED_LAND} tiles.`;
+      default:
+        return 'That settlement claim is no longer valid.';
+    }
+  }
+
   private handleFoundRequest(socket: Socket, message: SettlementFoundRequestMessage): void {
     const playerId = playerSettlementState.getSocketPlayerId(socket.id) ?? socket.id;
     const existingSettlementId = playerSettlementState.getPlayerSettlement(playerId);
@@ -218,6 +237,17 @@ export class ServerSettlementStartHandler {
     if (settlementStartMode === 'free' && this.getOtherPlayerReachTileOwners(playerId).has(settlementId)) {
       this.rejectFoundRequest(socket, 'That site is already inside another player\'s reach.');
       return;
+    }
+    if (settlementStartMode === 'free') {
+      const validation = validateSettlementStartSite(
+        requestedSite.q,
+        requestedSite.r,
+        (q, r) => this.resolveTerrain(q, r),
+      );
+      if (!validation.valid) {
+        this.rejectFoundRequest(socket, this.getStartValidationMessage(validation));
+        return;
+      }
     }
 
     const founded = worldState.foundSettlementAt(requestedSite.q, requestedSite.r, {

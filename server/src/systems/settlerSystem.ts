@@ -32,6 +32,7 @@ import {
     withdrawResourceAcrossStoragesForSettlement,
     withdrawResourceFromStorage,
 } from '../../../src/shared/game/state/resourceStore';
+import { resumeWaitingTasksForResource } from '../../../src/shared/game/state/taskStore';
 import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
 import type { Settler, SettlerActivity, SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
@@ -60,7 +61,7 @@ import {
     testModeSettings,
 } from '../../../src/shared/game/testMode.ts';
 import { isWatchtowerTile } from '../../../src/shared/game/military.ts';
-import { HUNGER_FOOD_TYPES, getResourceHungerRelief, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
+import { HUNGER_FOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
 
 const pathService = new PathService();
 
@@ -675,12 +676,6 @@ function canProduceFood(settler: Settler) {
             && settler.carryingPayload.amount >= siteInfo.input.amount);
 }
 
-function getHungerFoodStock(inventory: Partial<Record<ResourceAmount['type'], number>>) {
-    return HUNGER_FOOD_TYPES.reduce((sum, resourceType) => {
-        return sum + (Math.max(0, inventory[resourceType] ?? 0) * getResourceHungerRelief(resourceType));
-    }, 0);
-}
-
 function chooseReachableWarehouseWithFood(settler: Settler) {
     for (const resourceType of HUNGER_FOOD_TYPES) {
         const result = chooseReachableWarehouseWithResource(settler, {
@@ -786,17 +781,19 @@ function tryDepositOutput(settler: Settler, storageTile: Tile) {
         return false;
     }
 
-    broadcastDeposit(settler, storageTile.id, {
-        type: settler.carryingPayload.type,
+    const deliveredResource = {
+        type: previousPayload.type,
         amount: deposited,
-    });
+    };
+    broadcastDeposit(settler, storageTile.id, deliveredResource);
 
     emitGameplayEvent({
         type: 'resource:delivered',
         heroId: settler.id,
-        resourceType: settler.carryingPayload.type,
+        resourceType: previousPayload.type,
         amount: deposited,
     });
+    resumeWaitingTasksForResource(previousPayload.type, storageTile.id);
 
     if (deposited >= previousPayload.amount) {
         settler.carryingPayload = undefined;
@@ -1840,7 +1837,7 @@ function planSettler(settler: Settler, now: number, dt: number) {
     const hungry = needsFood(settler);
     const starving = getStarvationMs(settler) > 0;
     const storedFood = isUnlimitedResourcesEnabled(testModeSettings)
-        || getHungerFoodStock(settler.settlementId ? getSettlementResourceInventory(settler.settlementId) : getEffectiveResourceInventory()) >= FOOD_PER_SETTLER_PER_MINUTE;
+        || getHungerFoodMealValue(settler.settlementId ? getSettlementResourceInventory(settler.settlementId) : getEffectiveResourceInventory()) >= FOOD_PER_SETTLER_PER_MINUTE;
 
     if (hungry && storedFood && maybeFetchFood(settler, now)) {
         return true;
@@ -1953,7 +1950,7 @@ function tryGrowPopulation(now: number) {
             .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
             .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
             .find((entry) => {
-            const currentFood = getHungerFoodStock(getSettlementResourceInventory(entry.settlementId));
+            const currentFood = getHungerFoodMealValue(getSettlementResourceInventory(entry.settlementId));
             const foodNeededNow = entry.current * FOOD_PER_SETTLER_PER_MINUTE;
             const foodNeededNext = (entry.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
             return currentFood >= foodNeededNow + foodNeededNext;
@@ -1973,7 +1970,7 @@ function tryGrowPopulation(now: number) {
     }
 
     if (population.settlements.length === 0) {
-        const currentFood = getHungerFoodStock(getEffectiveResourceInventory());
+        const currentFood = getHungerFoodMealValue(getEffectiveResourceInventory());
         const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
         const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
         if (currentFood < foodNeededNow + foodNeededNext) {

@@ -26,18 +26,21 @@
       </div>
 
       <div class="story-popup__body my-4">
-        <div class="story-popup__avatar translate-y-3">
-          <Sprite
-            v-if="speakerAvatar"
-            :sprite="speakerAvatar"
-            :zoom="1.5"
-            :row="8"
-            :frame="0"
-            :size="32"
-            :aria-label="visibleEntry.speaker.name"
-            class="-translate-x-2 -translate-y-2"
-          />
-          <div v-else class="story-popup__glyph pixel-font">LOG</div>
+        <div class="story-popup__avatar" :aria-label="visibleEntry.speaker.name">
+          <div class="story-popup__avatar-stage">
+            <Sprite
+              v-if="speakerAvatar"
+              :sprite="speakerAvatar"
+              :fallback-sprite="speakerFallbackAvatar"
+              :zoom="1.85"
+              :row="8"
+              :frame="0"
+              :size="32"
+              :aria-label="visibleEntry.speaker.name"
+              class="story-popup__avatar-sprite"
+            />
+            <div v-else class="story-popup__glyph pixel-font">LOG</div>
+          </div>
         </div>
 
         <div class="min-w-0 flex-1">
@@ -142,8 +145,22 @@ const entryIndex = computed(() => {
 });
 
 const speakerAvatar = computed(() => {
-  const avatarKey = visibleEntry.value?.speaker.avatar ?? '';
+  const speaker = visibleEntry.value?.speaker;
+  if (!speaker) {
+    return null;
+  }
+
+  if (speaker.avatarSource === 'looperlands' && speaker.avatarSpriteUrl) {
+    return speaker.avatarSpriteUrl;
+  }
+
+  const avatarKey = speaker.avatar ?? '';
   return avatarByKey[avatarKey] ?? null;
+});
+
+const speakerFallbackAvatar = computed(() => {
+  const speaker = visibleEntry.value?.speaker;
+  return speaker?.avatarSource === 'looperlands' ? speaker.avatarFallbackSpriteUrl ?? undefined : undefined;
 });
 
 const headline = computed(() => {
@@ -283,24 +300,77 @@ watch(chronicleReopenRequested, () => {
 }
 
 .story-popup__header,
-.story-popup__footer,
-.story-popup__body {
+.story-popup__footer {
   @apply flex items-center justify-between gap-3;
 }
 
 .story-popup__body {
-  @apply items-start;
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
   cursor: default;
 }
 
 .story-popup__avatar {
-  @apply flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border;
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.74);
+  position: relative;
+  width: 5.25rem;
+  height: 5.25rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(245, 195, 92, 0.32);
+  background:
+    linear-gradient(180deg, rgba(57, 42, 23, 0.76), rgba(15, 23, 42, 0.9)),
+    radial-gradient(circle at 50% 8%, rgba(252, 211, 77, 0.22), transparent 58%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 214, 0.14),
+    inset 0 -10px 22px rgba(2, 6, 23, 0.45),
+    0 12px 22px rgba(2, 6, 23, 0.24);
+}
+
+.story-popup__avatar::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    radial-gradient(circle at 50% 34%, rgba(96, 165, 250, 0.2), transparent 44%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.2), rgba(2, 6, 23, 0.52));
+}
+
+.story-popup__avatar::after {
+  content: '';
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0.65rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.48);
+  filter: blur(2px);
+}
+
+.story-popup__avatar-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0.15rem;
+}
+
+.story-popup__avatar-sprite {
+  transform: translateY(0.28rem);
+  filter: drop-shadow(0 6px 2px rgba(2, 6, 23, 0.36));
 }
 
 .story-popup__glyph {
   @apply text-[11px] uppercase tracking-[0.22em] text-amber-200;
+  position: relative;
+  z-index: 1;
 }
 
 .story-popup__chip {
@@ -363,6 +433,23 @@ watch(chronicleReopenRequested, () => {
 
 .story-popup__footer {
   @apply flex items-center justify-between gap-3;
+}
+
+@media (max-width: 520px) {
+  .story-popup__body {
+    grid-template-columns: 4.25rem minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+
+  .story-popup__avatar {
+    width: 4.25rem;
+    height: 4.25rem;
+    border-radius: 14px;
+  }
+
+  .story-popup__avatar-sprite {
+    transform: translateY(0.15rem) scale(0.9);
+  }
 }
 
 /* Backdrop transition */

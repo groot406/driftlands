@@ -6,6 +6,8 @@ import type {
   TestSetSettingsMessage,
   TestUpdateMessage,
   TileUpdatedMessage,
+  CalamityEventMessage,
+  CalamityKind,
 } from '../../../src/shared/protocol.ts';
 import {
   getTestModeSettingsSnapshot,
@@ -18,8 +20,26 @@ import { depositResourceToStorage } from '../../../src/shared/game/state/resourc
 import { ensureTownCenterMilitaryState } from '../../../src/shared/game/military.ts';
 import { setStudyOverrides, broadcastStudyState } from '../../../src/store/studyStore.ts';
 import { refreshWorkforceState } from '../systems/jobSystem';
-import { warnCalamity } from '../systems/calamitySystem';
+import { getAvailableCalamities, triggerCalamity } from '../systems/calamitySystem';
 import { runState } from './runState';
+
+function getCalamityLabel(kind: CalamityKind) {
+  switch (kind) {
+    case 'volcano_eruption':
+      return 'volcano eruption';
+    case 'lost_harvest':
+      return 'lost harvest';
+    case 'food_spoilage':
+      return 'food spoilage';
+    case 'forest_fire':
+      return 'forest fire';
+    case 'outbreak':
+      return 'outbreak';
+    case 'flood':
+    default:
+      return 'flood';
+  }
+}
 
 class TestModeState {
   private buildUpdateMessage(): TestUpdateMessage {
@@ -70,6 +90,20 @@ class TestModeState {
       },
       timestamp: Date.now(),
     } satisfies ResourceDepositMessage);
+  }
+
+  private broadcastUnavailableCalamity(kind: CalamityKind, settlementId: string | null) {
+    broadcast({
+      type: 'calamity:event',
+      kind,
+      phase: 'averted',
+      severity: 'minor',
+      title: 'Calamity unavailable',
+      message: `No valid ${getCalamityLabel(kind)} target exists for this settlement right now.`,
+      settlementId,
+      affectedTileIds: [],
+      timestamp: Date.now(),
+    } satisfies CalamityEventMessage);
   }
 
   applySettings(message: TestSetSettingsMessage) {
@@ -167,7 +201,19 @@ class TestModeState {
           return;
         }
 
-        warnCalamity(message.calamityKind ?? 'flood', { settlementId });
+        const available = getAvailableCalamities(settlementId);
+        const kind = message.calamityKind
+          ?? available[Math.floor(Math.random() * available.length)]
+          ?? null;
+        if (!kind || !available.includes(kind)) {
+          this.broadcastUnavailableCalamity(kind ?? 'flood', settlementId);
+          return;
+        }
+
+        const outcome = triggerCalamity(kind, { settlementId });
+        if (!outcome) {
+          this.broadcastUnavailableCalamity(kind, settlementId);
+        }
         return;
       }
       default:

@@ -340,7 +340,7 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   },
   clearRocks: {
     label: 'Clear Rocks',
-    description: 'Open rocky dirt into usable work plots.',
+    description: 'Open rocky ground into usable work plots.',
   },
   breakDirtRock: {
     label: 'Break Rock',
@@ -552,7 +552,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'hero', key: 'h5' },
       { kind: 'building', key: 'campfire' },
       { kind: 'building', key: 'house' },
-      { kind: 'building', key: 'dock' },
       { kind: 'task', key: 'explore' },
       { kind: 'task', key: 'gatherDriftwood' },
       { kind: 'task', key: 'chopWood' },
@@ -586,6 +585,8 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     ],
     sortOrder: 20,
     unlocks: [
+      { kind: 'building', key: 'dock' },
+      { kind: 'task', key: 'fishAtDock' },
       { kind: 'task', key: 'harvestWaterLilies' },
       { kind: 'task', key: 'placeWaterLilies' },
       { kind: 'task', key: 'buildBridge' },
@@ -1187,12 +1188,6 @@ export function evaluateProgression(
   const nextRecommendedNodeKeys = nodes
     .filter((node) => !node.unlocked)
     .sort((a, b) => {
-      const unmetA = a.requirements.filter((requirement) => !requirement.satisfied).length;
-      const unmetB = b.requirements.filter((requirement) => !requirement.satisfied).length;
-      if (unmetA !== unmetB) {
-        return unmetA - unmetB;
-      }
-
       const defA = NODE_BY_KEY.get(a.key);
       const defB = NODE_BY_KEY.get(b.key);
       return (defA?.sortOrder ?? 0) - (defB?.sortOrder ?? 0);

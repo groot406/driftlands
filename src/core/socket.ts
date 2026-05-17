@@ -1,6 +1,9 @@
 import { computed, ref } from 'vue';
 import { io } from 'socket.io-client';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
+import type { LooperlandsJoinAuth } from '../shared/looperlands.ts';
+import { buildLooperlandsPlayerId } from '../shared/looperlands.ts';
+import type { StoryHeroId } from '../shared/story/heroRoster.ts';
 import { clientMessageRouter } from './messageRouter';
 import { initializeClientHandlers } from './messageHandlers';
 import { addPlayer, removePlayer } from '../store/playerStore';
@@ -80,6 +83,8 @@ export const socket = io(SOCKET_URL, {
 });
 export const currentPlayer = ref<{ id: string; name: string } | null>(null);
 export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);
+let pendingLooperlandsAuth: LooperlandsJoinAuth | null = null;
+let pendingStoryHeroIds: StoryHeroId[] | null = null;
 
 // Generic message sending function
 export function sendMessage(message: ClientMessage): void {
@@ -100,8 +105,9 @@ socket.on('connect', () => {
 });
 
 function join() {
-  // TODO: Player id should be logged in WALLET
-  const playerId = getStoredPlayerName();
+  const playerId = pendingLooperlandsAuth
+    ? buildLooperlandsPlayerId(pendingLooperlandsAuth.walletAddress, pendingLooperlandsAuth.chainId)
+    : getStoredPlayerName();
   const playerName = getStoredPlayerName();
 
   currentPlayer.value = {
@@ -114,12 +120,20 @@ function join() {
     type: 'player:join',
     playerId,
     playerName,
+    looperlands: pendingLooperlandsAuth ?? undefined,
+    storyHeroIds: pendingStoryHeroIds ?? undefined,
     timestamp: Date.now(),
   });
 }
 
-export function connectWithNickname(nickname: string) {
+export function connectWithNickname(
+  nickname: string,
+  looperlandsAuth?: LooperlandsJoinAuth | null,
+  storyHeroIds?: StoryHeroId[] | null,
+) {
   setStoredPlayerName(nickname);
+  pendingLooperlandsAuth = looperlandsAuth ?? null;
+  pendingStoryHeroIds = storyHeroIds ?? null;
 
   if (socket.connected) {
     join();

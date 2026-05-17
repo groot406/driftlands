@@ -8,6 +8,8 @@ import {
   generateSettlementStartTerrainTiles,
   getSettlementIdFromStartCandidateId,
   getSettlementStartCandidateId,
+  MIN_SETTLEMENT_START_CONNECTED_LAND,
+  validateSettlementStartSite,
 } from './settlementStart.ts';
 
 function terrainFor(q: number, r: number): TerrainKey {
@@ -79,6 +81,41 @@ test('settlement start candidates reject waterlocked island starts', () => {
   );
 });
 
+test('settlement start validation rejects water, volcano, and small island starts', () => {
+  assert.deepEqual(
+    validateSettlementStartSite(0, 0, () => 'water'),
+    {
+      valid: false,
+      terrain: 'water',
+      connectedNonWaterTiles: 0,
+      reason: 'water',
+    },
+  );
+
+  assert.deepEqual(
+    validateSettlementStartSite(0, 0, () => 'vulcano'),
+    {
+      valid: false,
+      terrain: 'vulcano',
+      connectedNonWaterTiles: 0,
+      reason: 'vulcano',
+    },
+  );
+
+  const smallIsland = validateSettlementStartSite(0, 0, (q, r) => (
+    axialDistanceCoords(q, r, 0, 0) <= 1 ? 'plains' : 'water'
+  ));
+  assert.equal(smallIsland.valid, false);
+  assert.equal(smallIsland.reason, 'small_island');
+  assert.equal(smallIsland.connectedNonWaterTiles, 7);
+
+  const largeEnoughIsland = validateSettlementStartSite(0, 0, (q, r) => (
+    axialDistanceCoords(q, r, 0, 0) <= 2 ? 'plains' : 'water'
+  ));
+  assert.equal(largeEnoughIsland.valid, true);
+  assert.equal(largeEnoughIsland.connectedNonWaterTiles, MIN_SETTLEMENT_START_CONNECTED_LAND);
+});
+
 test('settlement start terrain preview resolves tiles from the nearest candidate origin', () => {
   const terrainTiles = generateSettlementStartTerrainTiles({
     settlements: [{ settlementId: '0,0', q: 0, r: 0 }],
@@ -103,4 +140,36 @@ test('free settlement start terrain preview exposes a broad pickable map', () =>
   assert.ok(terrainTiles.length > 20_000);
   assert.equal(terrainTiles.find((tile) => tile.id === '0,0')?.terrain, 'towncenter');
   assert.ok(terrainTiles.some((tile) => tile.id === '85,0'));
+});
+
+test('free settlement start terrain preview marks invalid founding tiles blocked', () => {
+  const terrainTiles = generateSettlementStartTerrainTiles({
+    settlements: [{ settlementId: '0,0', q: 0, r: 0 }],
+    candidates: [],
+    resolveTerrain(q, r): TerrainKey {
+      if (q === 2 && r === 0) {
+        return 'water';
+      }
+
+      if (q === 3 && r === 0) {
+        return 'vulcano';
+      }
+
+      const islandDistance = axialDistanceCoords(q, r, 10, 0);
+      if (islandDistance <= 1) {
+        return 'plains';
+      }
+      if (islandDistance <= 2) {
+        return 'water';
+      }
+
+      return 'plains';
+    },
+    freeStart: true,
+  });
+
+  assert.equal(terrainTiles.find((tile) => tile.id === '2,0')?.blockedReason, 'water');
+  assert.equal(terrainTiles.find((tile) => tile.id === '3,0')?.blockedReason, 'vulcano');
+  assert.equal(terrainTiles.find((tile) => tile.id === '10,0')?.blockedReason, 'small_island');
+  assert.equal(terrainTiles.find((tile) => tile.id === '10,0')?.connectedNonWaterTiles, 7);
 });

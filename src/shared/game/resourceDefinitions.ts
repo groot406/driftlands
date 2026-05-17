@@ -89,6 +89,13 @@ export function getResourceHungerRelief(type: ResourceType) {
   return getResourceDefinition(type).hungerRelief ?? 0;
 }
 
+export function getHungerFoodMealValue(inventory: Partial<Record<ResourceType, number>>) {
+  return HUNGER_FOOD_TYPES.reduce((sum, resourceType) => {
+    const stock = Math.max(0, inventory[resourceType] ?? 0);
+    return sum + (stock * getResourceHungerRelief(resourceType));
+  }, 0);
+}
+
 export function isHungerFoodResource(type: ResourceType) {
   return getResourceHungerRelief(type) > 0;
 }

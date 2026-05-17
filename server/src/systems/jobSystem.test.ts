@@ -1,15 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { Hero } from '../../../src/shared/game/types/Hero';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { loadWorld } from '../../../src/shared/game/world';
+import { heroes, loadHeroes } from '../../../src/shared/game/state/heroStore';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
+import { loadTasks, startTask } from '../../../src/shared/game/state/taskStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { getStudySnapshot, resetStudyState } from '../../../src/store/studyStore';
 import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
+import '../../../src/shared/tasks/taskDefinitions';
 import { jobSystem } from './jobSystem';
 import { settlerSystem } from './settlerSystem';
 
@@ -114,6 +118,24 @@ function createSettler(overrides: {
   };
 }
 
+function createHero(overrides: {
+  id: string;
+  q: number;
+  r: number;
+  settlementId?: string | null;
+}): Hero {
+  return {
+    id: overrides.id,
+    name: overrides.id,
+    avatar: 'santa',
+    q: overrides.q,
+    r: overrides.r,
+    settlementId: overrides.settlementId ?? '0,0',
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+}
+
 function tickAll(now: number, dt: number = 1_000) {
   settlerSystem.tick({
     now,
@@ -131,6 +153,8 @@ function tickAll(now: number, dt: number = 1_000) {
 
 test.afterEach(() => {
   loadWorld([]);
+  loadTasks([]);
+  loadHeroes([]);
   resetResourceState();
   resetPopulationState();
   resetSettlerState();
@@ -512,6 +536,41 @@ test('workshop turns ore into delivered tools', () => {
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('settler output deliveries wake heroes waiting for that resource', () => {
+  const roadTile = createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains' });
+  loadWorld([
+    createTowncenterTile(),
+    roadTile,
+  ]);
+  loadPopulation(1, 1);
+  loadHeroes([
+    createHero({ id: 'hero-1', q: 1, r: 0, settlementId: '0,0' }),
+  ]);
+  loadSettlers([
+    {
+      ...createSettler({ id: 'settler-1', q: 0, r: 0, settlementId: '0,0' }),
+      carryingKind: 'output',
+      carryingPayload: { type: 'wood', amount: 2 },
+    },
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  const hero = heroes[0]!;
+  const task = startTask(roadTile, 'buildRoad', hero);
+  assert.ok(task);
+  assert.equal(task.active, false);
+  assert.equal(hero.carryingPayload, undefined);
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(resourceInventory.wood, 2);
+  assert.equal(settlers[0]?.carryingKind, null);
+  assert.deepEqual(hero.carryingPayload, { type: 'wood', amount: -2 });
+  assert.deepEqual(hero.pendingTask, { tileId: '1,0', taskType: 'buildRoad' });
+  assert.deepEqual(hero.returnPos, { q: 1, r: 0 });
 });
 
 test('fast settler cycles test mode speeds production work up by 5x', () => {

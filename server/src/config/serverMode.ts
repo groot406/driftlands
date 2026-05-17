@@ -1,3 +1,5 @@
+import './envFile';
+
 export function parseBooleanEnv(value: string | undefined, defaultValue: boolean) {
   if (value === undefined) {
     return defaultValue;

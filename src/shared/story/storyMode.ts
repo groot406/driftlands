@@ -1,4 +1,7 @@
 import type { RunMutatorKey, RunMutatorSnapshot, RunStoryBeat } from '../goals/types.ts';
+import type { TerrainKey } from '../../core/terrainDefs.ts';
+import type { ResourceType } from '../../core/types/Resource.ts';
+import type { BuildingKey } from './progression.ts';
 
 export interface StoryModeFeature {
   label: string;
@@ -23,6 +26,20 @@ interface StoryChapterTemplate {
   failureTitle: string;
   failureText: string;
   nextHint: string;
+}
+
+export interface StoryChapterProgressMetrics {
+  population: number;
+  frontierDistance: number;
+  resourceStock: Partial<Record<ResourceType, number>>;
+  buildingCounts: Partial<Record<BuildingKey, number>>;
+  operationalBuildingCounts: Partial<Record<BuildingKey, number>>;
+  discoveredTerrains: TerrainKey[];
+}
+
+interface StoryChapterCheckpoint {
+  chapterNumber: number;
+  reached(metrics: StoryChapterProgressMetrics): boolean;
 }
 
 export const storyModeFeatures: StoryModeFeature[] = [
@@ -199,6 +216,79 @@ const MUTATOR_GUIDANCE: Record<RunMutatorKey, string> = {
   roadworks_drive: 'Surveyors need reliable lanes now. Clear the rough ground, keep road crews moving, and stage supplies so every new district stays reachable.',
   new_hearths: 'Command is ready to light another hearth. Found the new town center first, then bind it back into the colony with roads crews can actually hold.',
 };
+
+function building(metrics: StoryChapterProgressMetrics, key: BuildingKey) {
+  return metrics.buildingCounts[key] ?? 0;
+}
+
+function operationalBuilding(metrics: StoryChapterProgressMetrics, key: BuildingKey) {
+  return metrics.operationalBuildingCounts[key] ?? 0;
+}
+
+function resource(metrics: StoryChapterProgressMetrics, type: ResourceType) {
+  return metrics.resourceStock[type] ?? 0;
+}
+
+function discovered(metrics: StoryChapterProgressMetrics, terrain: TerrainKey) {
+  return metrics.discoveredTerrains.includes(terrain);
+}
+
+const STORY_CHAPTER_CHECKPOINTS: StoryChapterCheckpoint[] = [
+  {
+    chapterNumber: 2,
+    reached: (metrics) => building(metrics, 'house') >= 1 || metrics.population >= 2,
+  },
+  {
+    chapterNumber: 3,
+    reached: (metrics) => building(metrics, 'dock') >= 1 || (metrics.population >= 2 && discovered(metrics, 'water')),
+  },
+  {
+    chapterNumber: 4,
+    reached: (metrics) => resource(metrics, 'grain') >= 4 || discovered(metrics, 'grain'),
+  },
+  {
+    chapterNumber: 5,
+    reached: (metrics) => building(metrics, 'well') >= 1 || resource(metrics, 'grain') >= 10,
+  },
+  {
+    chapterNumber: 6,
+    reached: (metrics) => (
+      building(metrics, 'watchtower') >= 1
+      && (building(metrics, 'granary') >= 1 || building(metrics, 'bakery') >= 1)
+    ),
+  },
+  {
+    chapterNumber: 7,
+    reached: (metrics) => operationalBuilding(metrics, 'mine') >= 1 || resource(metrics, 'ore') >= 1,
+  },
+  {
+    chapterNumber: 8,
+    reached: (metrics) => building(metrics, 'supplyDepot') >= 1 && building(metrics, 'lumberCamp') >= 1,
+  },
+  {
+    chapterNumber: 9,
+    reached: (metrics) => discovered(metrics, 'snow') || discovered(metrics, 'dessert'),
+  },
+  {
+    chapterNumber: 10,
+    reached: (metrics) => building(metrics, 'townCenter') >= 2 || discovered(metrics, 'vulcano'),
+  },
+];
+
+export function evaluateStoryChapterNumber(
+  metrics: StoryChapterProgressMetrics,
+  previouslyReachedChapterNumber: number = 1,
+) {
+  let chapterNumber = Math.max(1, Math.floor(previouslyReachedChapterNumber));
+
+  for (const checkpoint of STORY_CHAPTER_CHECKPOINTS) {
+    if (checkpoint.reached(metrics)) {
+      chapterNumber = Math.max(chapterNumber, checkpoint.chapterNumber);
+    }
+  }
+
+  return Math.min(chapterNumber, STORY_CHAPTERS.length);
+}
 
 function ordinal(value: number) {
   const remainder10 = value % 10;

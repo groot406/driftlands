@@ -1,7 +1,7 @@
 import type { Socket } from 'socket.io';
 import { type BaseMessage} from "../../../src/shared/protocol";
 
-export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void;
+export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void | Promise<void>;
 
 let io: any;
 
@@ -28,16 +28,17 @@ export class ServerMessageRouter {
   }
 
   // Route an incoming message to appropriate handlers
-  route(socket: Socket, message: BaseMessage): void {
+  async route(socket: Socket, message: BaseMessage): Promise<void> {
     const typeHandlers = this.handlers.get(message.type);
     if (typeHandlers) {
-      typeHandlers.forEach(handler => {
+      for (const handler of typeHandlers) {
         try {
-          handler(socket, message);
+          await handler(socket, message);
         } catch (error) {
           console.error(`Error handling message type ${message.type}:`, error);
+          return;
         }
-      });
+      }
     } else {
       console.warn(`No handlers registered for message type: ${message.type}`);
     }

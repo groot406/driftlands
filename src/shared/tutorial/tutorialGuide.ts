@@ -10,7 +10,15 @@ export type TutorialStepId =
   | 'grow-population'
   | 'start-farming'
   | 'secure-perimeter'
-  | 'stabilize-colony';
+  | 'stabilize-colony'
+  | 'build-storage'
+  | 'irrigate-fields'
+  | 'run-job-sites'
+  | 'mine-ridges'
+  | 'stage-logistics'
+  | 'study-and-upgrade'
+  | 'found-second-hearth'
+  | 'work-harsh-frontier';
 
 export interface TutorialMetrics {
   selectedHeroCount: number;
@@ -82,6 +90,10 @@ function terrain(metrics: TutorialMetrics, key: string) {
   return count(metrics.terrainCounts, key);
 }
 
+function anyBuilding(metrics: TutorialMetrics, keys: string[]) {
+  return keys.reduce((total, key) => total + building(metrics, key), 0);
+}
+
 function formatCount(progress: number, target: number, noun: string) {
   const capped = Math.min(target, Math.max(0, Math.floor(progress)));
   return `${capped}/${target} ${noun}`;
@@ -91,6 +103,41 @@ const FARM_VARIANTS = [
   'dirt_tilled',
   'dirt_tilled_draught',
   'dirt_tilled_hydrated',
+];
+
+const ROAD_VARIANTS = [
+  'road',
+  'road_ad',
+  'road_be',
+  'road_ce',
+  'road_cf',
+  'stone_road',
+  'stone_road_ad',
+  'stone_road_be',
+  'stone_road_ce',
+  'stone_road_cf',
+];
+
+const STORAGE_BUILDINGS = [
+  'granary',
+  'supplyDepot',
+  'foodStorehouse',
+  'materialsYard',
+  'cropSilo',
+  'craftedGoodsStorehouse',
+];
+
+const PRODUCTION_BUILDINGS = [
+  'dock',
+  'granary',
+  'bakery',
+  'huntersHut',
+  'apiary',
+  'lumberCamp',
+  'mine',
+  'quarry',
+  'oven',
+  'workshop',
 ];
 
 const tutorialSteps: TutorialStepDefinition[] = [
@@ -134,16 +181,7 @@ const tutorialSteps: TutorialStepDefinition[] = [
     why: 'Roads teach connected construction and make later hauling less painful.',
     action: 'Select an open plains tile beside town, then choose Build Road.',
     target: 1,
-    progress: (metrics) => variant(metrics, 'road')
-      + variant(metrics, 'road_ad')
-      + variant(metrics, 'road_be')
-      + variant(metrics, 'road_ce')
-      + variant(metrics, 'road_cf')
-      + variant(metrics, 'stone_road')
-      + variant(metrics, 'stone_road_ad')
-      + variant(metrics, 'stone_road_be')
-      + variant(metrics, 'stone_road_ce')
-      + variant(metrics, 'stone_road_cf'),
+    progress: (metrics) => ROAD_VARIANTS.reduce((total, key) => total + variant(metrics, key), 0),
     label: (_metrics, progress) => formatCount(progress, 1, 'road built'),
   },
   {
@@ -226,6 +264,118 @@ const tutorialSteps: TutorialStepDefinition[] = [
       }
 
       return `${Math.min(4, metrics.population.current)}/4 settlers`;
+    },
+  },
+  {
+    id: 'build-storage',
+    title: 'Build storage',
+    objective: 'Add a granary, depot, or specialized storehouse before stockpiles start crowding the town center.',
+    why: 'Storage is the logistics layer: it keeps harvests usable, construction supplied, and job sites from stalling when outputs have nowhere to go.',
+    action: 'Build a granary for crops or a supply depot for frontier materials.',
+    target: 1,
+    progress: (metrics) => anyBuilding(metrics, STORAGE_BUILDINGS),
+    label: (_metrics, progress) => formatCount(progress, 1, 'storage site'),
+  },
+  {
+    id: 'irrigate-fields',
+    title: 'Move water inland',
+    objective: 'Build a well or hydrate a prepared farm plot.',
+    why: 'Irrigation turns farming from emergency planting into a repeatable food chain.',
+    action: 'Build a well near dry plots, then use Irrigate when a plot needs water.',
+    target: 1,
+    progress: (metrics) => Math.max(
+      building(metrics, 'well'),
+      variant(metrics, 'dirt_tilled_hydrated'),
+      resource(metrics, 'water') > 0 ? 1 : 0,
+    ),
+    label: (metrics, progress) => building(metrics, 'well') > 0 ? 'Well built' : formatCount(progress, 1, 'water source'),
+  },
+  {
+    id: 'run-job-sites',
+    title: 'Use job sites',
+    objective: 'Build production sites that settlers can staff automatically.',
+    why: 'Heroes start the colony, but staffed buildings turn repeated work into a settlement economy.',
+    action: 'Build a dock, granary, bakery, lumber camp, mine, quarry, oven, or workshop when the terrain supports it.',
+    target: 2,
+    progress: (metrics) => anyBuilding(metrics, PRODUCTION_BUILDINGS),
+    label: (_metrics, progress) => formatCount(progress, 2, 'production sites'),
+  },
+  {
+    id: 'mine-ridges',
+    title: 'Mine the ridges',
+    objective: 'Discover mountain ground and start stone or ore production.',
+    why: 'Stone, ore, and tools introduce the industrial layer that supports upgrades and expansion.',
+    action: 'Scout toward mountain tiles, then build a quarry or mine from active access.',
+    target: 1,
+    progress: (metrics) => Math.max(
+      building(metrics, 'mine'),
+      building(metrics, 'quarry'),
+      resource(metrics, 'ore') > 0 ? 1 : 0,
+      resource(metrics, 'stone') >= 4 ? 1 : 0,
+    ),
+    label: (metrics, progress) => {
+      if (building(metrics, 'mine') > 0) return 'Mine built';
+      if (building(metrics, 'quarry') > 0) return 'Quarry built';
+      return formatCount(progress, 1, 'ridge industry');
+    },
+  },
+  {
+    id: 'stage-logistics',
+    title: 'Stage logistics',
+    objective: 'Use depots and roads to keep the outer frontier connected.',
+    why: 'A larger map needs staging points so materials, food, and construction do not all bottleneck at the first town center.',
+    action: 'Build a supply depot near the work front and extend roads between busy sites.',
+    target: 1,
+    progress: (metrics) => Math.max(
+      building(metrics, 'supplyDepot'),
+      ROAD_VARIANTS.reduce((total, key) => total + variant(metrics, key), 0) >= 4 ? 1 : 0,
+    ),
+    label: (metrics, progress) => building(metrics, 'supplyDepot') > 0 ? 'Depot staged' : formatCount(progress, 1, 'logistics hub'),
+  },
+  {
+    id: 'study-and-upgrade',
+    title: 'Study and upgrade',
+    objective: 'Build a library or workshop so the colony can turn knowledge and ore into stronger infrastructure.',
+    why: 'Studies and upgrades are late-loop improvements; they deepen existing buildings instead of adding another basic task.',
+    action: 'Build a library for studies, or build a workshop once ore is flowing.',
+    target: 1,
+    progress: (metrics) => Math.max(
+      building(metrics, 'library'),
+      building(metrics, 'workshop'),
+      resource(metrics, 'tools') > 0 ? 1 : 0,
+    ),
+    label: (metrics, progress) => {
+      if (building(metrics, 'library') > 0) return 'Library built';
+      if (building(metrics, 'workshop') > 0) return 'Workshop built';
+      return formatCount(progress, 1, 'advanced work');
+    },
+  },
+  {
+    id: 'found-second-hearth',
+    title: 'Found a second hearth',
+    objective: 'Build another town center when the first settlement has tools and supply lines.',
+    why: 'A second town center is how the colony grows past a single support radius without stranding the frontier.',
+    action: 'Choose a deep reachable site, build a town center, then connect it back with roads and depots.',
+    target: 2,
+    progress: (metrics) => Math.max(1, building(metrics, 'townCenter')),
+    label: (metrics) => `${Math.min(2, Math.max(1, building(metrics, 'townCenter')))}/2 town centers`,
+  },
+  {
+    id: 'work-harsh-frontier',
+    title: 'Work harsh terrain',
+    objective: 'Reach snow, desert, or volcanic ground and apply the full support chain there.',
+    why: 'Late terrain tests everything together: scouting, support, roads, storage, food, industry, and recovery.',
+    action: 'Push outward only when food, support, and logistics are stable enough to keep the new ring active.',
+    target: 1,
+    progress: (metrics) => (
+      terrain(metrics, 'snow')
+      + terrain(metrics, 'dessert')
+      + terrain(metrics, 'vulcano')
+    ),
+    label: (metrics, progress) => {
+      if (terrain(metrics, 'vulcano') > 0) return 'Volcanic ridge found';
+      if (terrain(metrics, 'snow') > 0 || terrain(metrics, 'dessert') > 0) return 'Harsh frontier found';
+      return formatCount(progress, 1, 'harsh terrain');
     },
   },
 ];

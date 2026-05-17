@@ -3,13 +3,14 @@ import type {TaskDefinition} from "../../../core/types/Task";
 import { applyVariant } from '../../../core/variants';
 import type {Hero} from "../../../core/types/Hero";
 
-const clearDirtRocksTask: TaskDefinition = {
+const clearRocksTask: TaskDefinition = {
     key: 'clearRocks',
     label: 'Clear rocks',
     chainAdjacentSameTerrain: true,
 
     canStart(tile, _hero) {
-        return tile.terrain === 'dirt' && (tile.variant === 'dirt_rocks');
+        return (tile.terrain === 'dirt' && tile.variant === 'dirt_rocks')
+            || (tile.terrain === 'snow' && tile.variant === 'snow_rock');
     },
 
     requiredXp(_distance: number) {
@@ -26,10 +27,10 @@ const clearDirtRocksTask: TaskDefinition = {
     },
 
     onComplete(tile, _instance) {
-        if (tile.terrain === 'dirt') {
+        if (tile.terrain === 'dirt' || tile.terrain === 'snow') {
             applyVariant(tile, null, { stagger: false, respectBiome: true });
         }
     }
 };
 
-registerTask(clearDirtRocksTask);
+registerTask(clearRocksTask);

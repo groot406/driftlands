@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 const allowedHosts = ['.ngrok-free.app']
 const socketServerUrl = 'http://localhost:3000'
 
-const socketProxy: Record<string, ProxyOptions> = {
+const backendProxy: Record<string, ProxyOptions> = {
   '/socket.io': {
     target: socketServerUrl,
     changeOrigin: true,
@@ -16,6 +16,14 @@ const socketProxy: Record<string, ProxyOptions> = {
         proxyReq.setHeader('origin', socketServerUrl)
       })
     },
+  },
+  '/api/looperlands': {
+    target: socketServerUrl,
+    changeOrigin: true,
+  },
+  '/api/driftlands': {
+    target: socketServerUrl,
+    changeOrigin: true,
   },
 }
 
@@ -31,13 +39,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts,
-    proxy: socketProxy,
+    proxy: backendProxy,
   },
   preview: {
     host: true,
     port: 5173,
     strictPort: true,
     allowedHosts,
-    proxy: socketProxy,
+    proxy: backendProxy,
   },
 })

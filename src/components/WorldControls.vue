@@ -1,197 +1,191 @@
 <template>
   <div class="world-controls">
-    <div class="world-seed-panel">
-      <div class="world-seed-copy">
-        <span class="world-seed-badge">Seed {{ activeWorldSeed }}</span>
-        <span class="world-seed-badge">{{ storySeed !== null ? 'Live Story' : 'Awaiting Sync' }}</span>
+    <header class="debug-panel-header">
+      <div>
+        <p class="debug-kicker">Debug Helpers</p>
+        <h3 class="debug-title">Test Mode</h3>
       </div>
-
-      <label class="world-seed-label" for="world-seed-input">Restart Seed</label>
-      <input
-        id="world-seed-input"
-        v-model="seedDraft"
-        class="world-seed-input"
-        type="number"
-        inputmode="numeric"
-        min="0"
-        max="4294967295"
-        step="1"
-        placeholder="Leave blank for random"
-        @keydown.enter.prevent="restartWorldStory()"
-      />
-      <p class="world-seed-hint">
-        Leave the field blank to roll a fresh random seed, or enter one to restart the world and story with that exact seed.
-      </p>
-
-      <div class="world-seed-actions">
-        <button class="mini-btn" type="button" @click="syncDraftToCurrentSeed" title="Copy the active seed into the field">Current</button>
-        <button class="mini-btn" type="button" @click="randomizeSeed" title="Generate a random seed and place it in the field">Random</button>
-        <button class="mini-btn" type="button" @click="clearDraft" title="Clear the field so the server rolls a fresh random seed">Clear</button>
-      </div>
-    </div>
-
-    <div class="world-action-row">
-      <button class="mini-btn" type="button" @click="restartWorldStory()" title="Restart the world and story using the entered seed">Restart Story</button>
-      <button class="mini-btn" type="button" @click="restartWorldStory(true)" title="Restart the world and story with a brand new random seed">Restart Random</button>
-      <button class="mini-btn mini-btn--disabled" type="button" disabled :title="LARGE_WORLD_DISABLED_TITLE">Large World (200)</button>
-      <button class="mini-btn" type="button" @click="centerCamera()" title="Center camera on world">Center Camera</button>
-    </div>
-
-    <div class="test-mode-panel">
-      <div class="test-mode-header">
-        <div>
-          <p class="test-mode-kicker">Debug Helpers</p>
-          <h3 class="test-mode-title">Test Mode</h3>
-        </div>
-        <span class="test-mode-status" :class="{ 'test-mode-status--active': testModeSettings.enabled }">
-          {{ testModeSettings.enabled ? 'Enabled' : 'Disabled' }}
+      <div class="debug-status-row">
+        <span class="debug-badge">Seed {{ activeWorldSeed }}</span>
+        <span class="debug-badge" :class="{ 'debug-badge--active': testModeSettings.enabled }">
+          {{ testModeSettings.enabled ? 'Enabled' : 'Off' }}
         </span>
       </div>
+    </header>
 
-      <p class="test-mode-copy">
-        Server-authoritative shortcuts for faster testing. Progression and study selections are remembered and only take effect while test mode is enabled.
-      </p>
+    <div class="debug-panel-body">
+      <section class="debug-section debug-section--seed">
+        <label class="debug-label" for="world-seed-input">Restart Seed</label>
+        <div class="seed-row">
+          <input
+            id="world-seed-input"
+            v-model="seedDraft"
+            class="world-seed-input"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            max="4294967295"
+            step="1"
+            placeholder="Random"
+            @keydown.enter.prevent="restartWorldStory()"
+          />
+          <button class="mini-btn" type="button" @click="syncDraftToCurrentSeed" title="Copy the active seed into the field">Current</button>
+          <button class="mini-btn" type="button" @click="randomizeSeed" title="Generate a random seed and place it in the field">Random</button>
+          <button class="mini-btn" type="button" @click="clearDraft" title="Clear the field so the server rolls a fresh random seed">Clear</button>
+        </div>
 
-      <div class="test-mode-toggle-grid">
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.enabled" @change="handleEnabledChange" />
-          <span>Enable test mode</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.instantBuild" @change="handleInstantBuildChange" />
-          <span>Instant builds</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.unlimitedResources" @change="handleUnlimitedResourcesChange" />
-          <span>Unlimited resources</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.fastHeroMovement" @change="handleFastHeroMovementChange" />
-          <span>5x hero speed</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.fastGrowth" @change="handleFastGrowthChange" />
-          <span>60x growth speed</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.fastPopulationGrowth" @change="handleFastPopulationGrowthChange" />
-          <span>10x population growth</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.fastSettlerCycles" @change="handleFastSettlerCyclesChange" />
-          <span>5x settler cycles</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.fastGuardTraining" @change="handleFastGuardTrainingChange" />
-          <span>10x guard training</span>
-        </label>
-        <label class="test-mode-toggle">
-          <input type="checkbox" :checked="testModeSettings.supportTiles" @change="handleSupportTilesChange" />
-          <span>Support tiles</span>
-        </label>
+        <div class="world-action-row">
+          <button class="mini-btn mini-btn--strong" type="button" @click="restartWorldStory()" title="Restart the world and story using the entered seed">Restart</button>
+          <button class="mini-btn" type="button" @click="restartWorldStory(true)" title="Restart the world and story with a brand new random seed">Fresh Seed</button>
+          <button class="mini-btn mini-btn--disabled" type="button" disabled :title="LARGE_WORLD_DISABLED_TITLE">World 200</button>
+          <button class="mini-btn" type="button" @click="centerCamera()" title="Center camera on world">Center</button>
+        </div>
+      </section>
+
+      <nav class="debug-tabs" aria-label="Debug sections">
+        <button class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'quick' }" type="button" @click="activeDebugTab = 'quick'">Quick</button>
+        <button class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'progression' }" type="button" @click="activeDebugTab = 'progression'">Progress</button>
+        <button class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'studies' }" type="button" @click="activeDebugTab = 'studies'">Studies</button>
+      </nav>
+
+      <div class="debug-tab-panel">
+        <template v-if="activeDebugTab === 'quick'">
+          <div class="test-mode-toggle-grid">
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.enabled" @change="handleEnabledChange" />
+              <span>Test mode</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.instantBuild" @change="handleInstantBuildChange" />
+              <span>Instant builds</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.unlimitedResources" @change="handleUnlimitedResourcesChange" />
+              <span>Unlimited resources</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.fastHeroMovement" @change="handleFastHeroMovementChange" />
+              <span>5x hero speed</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.fastGrowth" @change="handleFastGrowthChange" />
+              <span>60x growth</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.fastPopulationGrowth" @change="handleFastPopulationGrowthChange" />
+              <span>10x population</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.fastSettlerCycles" @change="handleFastSettlerCyclesChange" />
+              <span>5x settlers</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.fastGuardTraining" @change="handleFastGuardTrainingChange" />
+              <span>10x guards</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.supportTiles" @change="handleSupportTilesChange" />
+              <span>Support tiles</span>
+            </label>
+          </div>
+
+          <section class="test-mode-section">
+            <div class="test-mode-section-header">
+              <p class="test-mode-section-title">Military</p>
+            </div>
+            <div class="test-mode-section-actions">
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="prepareMilitarySandbox">Prep</button>
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantGuardReserve">+5 Guards</button>
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantWeapons">+20 Weapons</button>
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="openBorders">Open Borders</button>
+            </div>
+          </section>
+
+          <section class="test-mode-section">
+            <div class="test-mode-section-header">
+              <p class="test-mode-section-title">Calamities</p>
+            </div>
+            <div class="test-mode-section-actions">
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="triggerRandomCalamity">Random</button>
+              <button
+                v-for="calamity in calamityButtons"
+                :key="calamity.kind"
+                class="mini-btn"
+                type="button"
+                :disabled="!currentSettlementId"
+                @click="triggerCalamity(calamity.kind)"
+              >
+                {{ calamity.label }}
+              </button>
+            </div>
+          </section>
+        </template>
+
+        <section v-else-if="activeDebugTab === 'progression'" class="test-mode-section test-mode-section--fill">
+          <div class="test-mode-section-header">
+            <div>
+              <p class="test-mode-section-title">Settlement Progression</p>
+              <p class="test-mode-section-subtitle">
+                {{ currentSettlementId ? currentSettlementId : 'No settlement selected' }}
+              </p>
+            </div>
+            <div class="test-mode-section-actions">
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="unlockAllProgression">All</button>
+              <button class="mini-btn" type="button" :disabled="!currentSettlementId || currentProgressionOverrides.length === 0" @click="clearProgressionOverrides">Clear</button>
+            </div>
+          </div>
+
+          <div class="test-mode-list" :class="{ 'test-mode-list--disabled': !currentSettlementId }">
+            <label
+              v-for="node in progressionNodes"
+              :key="node.key"
+              class="test-mode-list-item"
+            >
+              <input
+                type="checkbox"
+                :checked="currentProgressionOverrideSet.has(node.key)"
+                :disabled="!currentSettlementId"
+                @change="toggleProgressionNode(node.key)"
+              />
+              <span class="test-mode-list-copy">
+                <strong>{{ node.label }}</strong>
+                <small>{{ node.category }}</small>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section v-else class="test-mode-section test-mode-section--fill">
+          <div class="test-mode-section-header">
+            <div>
+              <p class="test-mode-section-title">Study Completions</p>
+              <p class="test-mode-section-subtitle">Complete research instantly.</p>
+            </div>
+            <div class="test-mode-section-actions">
+              <button class="mini-btn" type="button" @click="completeAllStudies">All</button>
+              <button class="mini-btn" type="button" :disabled="testModeSettings.completedStudyKeys.length === 0" @click="clearStudyOverrides">Clear</button>
+            </div>
+          </div>
+
+          <div class="test-mode-list">
+            <label
+              v-for="study in studyDefinitions"
+              :key="study.key"
+              class="test-mode-list-item"
+            >
+              <input
+                type="checkbox"
+                :checked="completedStudyKeySet.has(study.key)"
+                @change="toggleStudy(study.key)"
+              />
+              <span class="test-mode-list-copy">
+                <strong>{{ study.label }}</strong>
+                <small>{{ study.summary }}</small>
+              </span>
+            </label>
+          </div>
+        </section>
       </div>
-
-      <section class="test-mode-section">
-        <div class="test-mode-section-header">
-          <div>
-            <p class="test-mode-section-title">Military sandbox</p>
-            <p class="test-mode-section-subtitle">One-click setup for walls, barracks, borders, and tower capture testing.</p>
-          </div>
-        </div>
-        <div class="test-mode-section-actions">
-          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="prepareMilitarySandbox">Prep Sandbox</button>
-          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantGuardReserve">+5 Guards</button>
-          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="grantWeapons">+20 Weapons</button>
-          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="openBorders">Open Borders</button>
-        </div>
-      </section>
-
-      <section class="test-mode-section">
-        <div class="test-mode-section-header">
-          <div>
-            <p class="test-mode-section-title">Calamities</p>
-            <p class="test-mode-section-subtitle">Trigger one frontier event immediately for the current settlement.</p>
-          </div>
-        </div>
-        <div class="test-mode-section-actions">
-          <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="triggerRandomCalamity">Random</button>
-          <button
-            v-for="calamity in calamityButtons"
-            :key="calamity.kind"
-            class="mini-btn"
-            type="button"
-            :disabled="!currentSettlementId"
-            @click="triggerCalamity(calamity.kind)"
-          >
-            {{ calamity.label }}
-          </button>
-        </div>
-      </section>
-
-      <section class="test-mode-section">
-        <div class="test-mode-section-header">
-          <div>
-            <p class="test-mode-section-title">Settlement progression</p>
-            <p class="test-mode-section-subtitle">
-              {{ currentSettlementId ? `Applies to settlement ${currentSettlementId}` : 'Found a settlement to edit progression unlocks.' }}
-            </p>
-          </div>
-          <div class="test-mode-section-actions">
-            <button class="mini-btn" type="button" :disabled="!currentSettlementId" @click="unlockAllProgression">All</button>
-            <button class="mini-btn" type="button" :disabled="!currentSettlementId || currentProgressionOverrides.length === 0" @click="clearProgressionOverrides">Clear</button>
-          </div>
-        </div>
-
-        <div class="test-mode-list" :class="{ 'test-mode-list--disabled': !currentSettlementId }">
-          <label
-            v-for="node in progressionNodes"
-            :key="node.key"
-            class="test-mode-list-item"
-          >
-            <input
-              type="checkbox"
-              :checked="currentProgressionOverrideSet.has(node.key)"
-              :disabled="!currentSettlementId"
-              @change="toggleProgressionNode(node.key)"
-            />
-            <span class="test-mode-list-copy">
-              <strong>{{ node.label }}</strong>
-              <small>{{ node.category }}</small>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section class="test-mode-section">
-        <div class="test-mode-section-header">
-          <div>
-            <p class="test-mode-section-title">Study completions</p>
-            <p class="test-mode-section-subtitle">Marks studies complete without spending worker time.</p>
-          </div>
-          <div class="test-mode-section-actions">
-            <button class="mini-btn" type="button" @click="completeAllStudies">All</button>
-            <button class="mini-btn" type="button" :disabled="testModeSettings.completedStudyKeys.length === 0" @click="clearStudyOverrides">Clear</button>
-          </div>
-        </div>
-
-        <div class="test-mode-list">
-          <label
-            v-for="study in studyDefinitions"
-            :key="study.key"
-            class="test-mode-list-item"
-          >
-            <input
-              type="checkbox"
-              :checked="completedStudyKeySet.has(study.key)"
-              @change="toggleStudy(study.key)"
-            />
-            <span class="test-mode-list-copy">
-              <strong>{{ study.label }}</strong>
-              <small>{{ study.summary }}</small>
-            </span>
-          </label>
-        </div>
-      </section>
     </div>
   </div>
 </template>
@@ -232,6 +226,7 @@ const calamityButtons: { kind: CalamityKind; label: string }[] = [
   { kind: 'outbreak', label: 'Outbreak' },
 ];
 
+const activeDebugTab = ref<'quick' | 'progression' | 'studies'>('quick');
 const storySeed = computed(() => runSnapshot.value?.seed ?? null);
 const activeWorldSeed = ref(getWorldGenerationSeed());
 const seedDraft = ref(loadInitialSeedDraft());
@@ -508,8 +503,7 @@ function triggerCalamity(kind: CalamityKind) {
 }
 
 function triggerRandomCalamity() {
-  const index = Math.floor(Math.random() * calamityButtons.length);
-  triggerCalamity(calamityButtons[index]?.kind ?? 'flood');
+  runTestAction('trigger_calamity');
 }
 
 function openBorders() {
@@ -537,60 +531,96 @@ watch(storySeed, (seed) => {
 
 <style scoped>
 .world-controls {
-  @apply flex flex-col gap-2;
+  @apply flex flex-col overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950/90 shadow-xl backdrop-blur-md;
+  width: min(30rem, calc(100vw - 1rem));
+  max-height: calc(100vh - 7.5rem);
 }
 
-.world-seed-panel,
-.test-mode-panel {
-  @apply flex flex-col gap-2 rounded-xl border border-slate-700/80 bg-slate-950/85 p-2 shadow-xl backdrop-blur-md;
+.debug-panel-header {
+  @apply flex shrink-0 items-start justify-between gap-3 border-b border-slate-800/80 bg-slate-950/95 px-3 py-2;
 }
 
-.world-seed-copy {
-  @apply flex flex-wrap gap-2;
-}
-
-.world-seed-badge,
-.test-mode-status {
-  @apply rounded-full border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-200;
-}
-
-.test-mode-status--active {
-  @apply border-emerald-400/40 bg-emerald-950/80 text-emerald-200;
-}
-
-.world-seed-label,
-.test-mode-kicker,
+.debug-kicker,
+.debug-label,
 .test-mode-section-title {
-  @apply text-[10px] uppercase tracking-[0.18em] text-amber-200/80;
+  @apply text-[9px] uppercase tracking-normal text-amber-200/80;
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
 }
 
+.debug-title {
+  @apply mt-1 text-sm font-semibold text-white;
+}
+
+.debug-status-row {
+  @apply flex flex-wrap justify-end gap-1;
+}
+
+.debug-badge {
+  @apply rounded-md border border-slate-700/80 bg-slate-900/70 px-2 py-1 text-[10px] uppercase tracking-normal text-slate-200;
+}
+
+.debug-badge--active {
+  @apply border-emerald-400/40 bg-emerald-950/80 text-emerald-200;
+}
+
+.debug-panel-body {
+  @apply flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2;
+}
+
+.debug-section {
+  @apply flex shrink-0 flex-col gap-2 rounded-md border border-slate-800/80 bg-slate-900/55 p-2;
+}
+
+.seed-row {
+  @apply grid gap-1.5;
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+}
+
 .world-seed-input {
-  @apply rounded-lg border border-slate-600 bg-slate-900/80 px-3 py-2 text-xs font-medium text-white outline-none transition-colors;
+  @apply h-8 min-w-0 rounded-md border border-slate-600 bg-slate-950/80 px-2 text-xs font-medium text-white outline-none transition-colors;
 }
 
 .world-seed-input:focus {
   @apply border-amber-300/60;
 }
 
-.world-seed-hint,
-.test-mode-copy,
 .test-mode-section-subtitle,
 .test-mode-list-copy small {
-  @apply text-[11px] leading-5 text-slate-300/75;
+  @apply text-[10px] leading-4 text-slate-300/75;
 }
 
-.world-seed-actions,
+.world-action-row,
 .test-mode-section-actions {
-  @apply flex flex-wrap gap-2;
+  @apply flex flex-wrap gap-1.5;
 }
 
 .world-action-row {
-  @apply flex gap-2 flex-wrap justify-end;
+  @apply justify-end;
+}
+
+.debug-tabs {
+  @apply grid shrink-0 gap-1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.debug-tab {
+  @apply h-8 rounded-md border border-slate-800 bg-slate-900/75 px-2 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-800;
+}
+
+.debug-tab--active {
+  @apply border-amber-300/50 bg-amber-950/45 text-amber-100;
+}
+
+.debug-tab-panel {
+  @apply flex min-h-0 flex-1 flex-col gap-2 overflow-hidden;
 }
 
 .mini-btn {
-  @apply rounded-md border border-slate-600 bg-slate-700 px-2 py-1 text-xs font-medium text-white shadow transition-colors hover:bg-slate-600;
+  @apply h-8 rounded-md border border-slate-600 bg-slate-700 px-2 text-xs font-medium text-white shadow transition-colors hover:bg-slate-600;
+}
+
+.mini-btn--strong {
+  @apply border-amber-300/50 bg-amber-700/70 text-amber-50 hover:bg-amber-700;
 }
 
 .mini-btn:disabled,
@@ -602,21 +632,17 @@ watch(storySeed, (seed) => {
 
 .test-mode-header,
 .test-mode-section-header {
-  @apply flex items-start justify-between gap-3;
-}
-
-.test-mode-title {
-  @apply text-sm font-semibold text-white;
+  @apply flex shrink-0 items-start justify-between gap-3;
 }
 
 .test-mode-toggle-grid {
-  @apply grid gap-2;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  @apply grid gap-1.5;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .test-mode-toggle,
 .test-mode-list-item {
-  @apply flex items-start gap-2 rounded-lg border border-slate-800/80 bg-slate-900/60 px-3 py-2 text-xs text-slate-100;
+  @apply flex items-start gap-2 rounded-md border border-slate-800/80 bg-slate-900/60 px-2 py-1.5 text-xs text-slate-100;
 }
 
 .test-mode-toggle input,
@@ -625,11 +651,15 @@ watch(storySeed, (seed) => {
 }
 
 .test-mode-section {
-  @apply flex flex-col gap-2 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2;
+  @apply flex min-h-0 flex-col gap-2 rounded-md border border-slate-800/70 bg-slate-950/60 p-2;
+}
+
+.test-mode-section--fill {
+  @apply flex-1;
 }
 
 .test-mode-list {
-  @apply grid gap-2 max-h-56 overflow-y-auto pr-1;
+  @apply grid min-h-0 flex-1 gap-1.5 overflow-y-auto pr-1;
 }
 
 .test-mode-list--disabled {
@@ -641,6 +671,25 @@ watch(storySeed, (seed) => {
 }
 
 .test-mode-list-copy strong {
-  @apply text-xs font-semibold text-slate-100;
+  @apply text-xs font-semibold leading-4 text-slate-100;
+}
+
+@media (max-width: 720px) {
+  .world-controls {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 6rem);
+  }
+
+  .seed-row {
+    grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+  }
+
+  .seed-row .mini-btn:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .test-mode-toggle-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

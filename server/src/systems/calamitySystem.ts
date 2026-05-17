@@ -717,7 +717,7 @@ const CALAMITY_HANDLERS: Record<CalamityKind, (options: ResolvedCalamityOptions)
   outbreak: triggerOutbreak,
 };
 
-function getAvailableCalamities(settlementId: string | null | undefined) {
+export function getAvailableCalamities(settlementId: string | null | undefined) {
   const settlementTiles = getSettlementTiles(settlementId);
   const inventory = getSettlementResourceInventory(settlementId);
   const population = getPopulationSnapshot();

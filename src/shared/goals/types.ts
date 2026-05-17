@@ -40,6 +40,9 @@ export interface DialogueSpeakerSnapshot {
   id: string;
   name: string;
   avatar?: string | null;
+  avatarSource?: 'local' | 'looperlands' | null;
+  avatarSpriteUrl?: string | null;
+  avatarFallbackSpriteUrl?: string | null;
 }
 
 export interface DialogueEntrySnapshot {

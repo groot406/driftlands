@@ -74,10 +74,16 @@ function getStarterPondTiles(origin: {q:number, r:number} = {q:0, r:0}): Array<[
     const outward = STARTER_GROVE_DIRECTIONS[pondIndex] ?? STARTER_GROVE_DIRECTIONS[0]!;
     const clockwise = STARTER_GROVE_DIRECTIONS[(pondIndex + 2) % STARTER_GROVE_DIRECTIONS.length] ?? STARTER_GROVE_DIRECTIONS[2]!;
     const counterClockwise = STARTER_GROVE_DIRECTIONS[(pondIndex + 4) % STARTER_GROVE_DIRECTIONS.length] ?? STARTER_GROVE_DIRECTIONS[4]!;
+    const visibleEdgeQ = origin.q + outward[0] * 3;
+    const visibleEdgeR = origin.r + outward[1] * 3;
+    const nearShoreQ = origin.q + outward[0] * 4;
+    const nearShoreR = origin.r + outward[1] * 4;
     const centerQ = origin.q + outward[0] * 6;
     const centerR = origin.r + outward[1] * 6;
 
     return [
+        [visibleEdgeQ, visibleEdgeR],
+        [nearShoreQ, nearShoreR],
         [origin.q + outward[0] * 5, origin.r + outward[1] * 5],
         [centerQ, centerR],
         [centerQ + clockwise[0], centerR + clockwise[1]],
@@ -370,12 +376,12 @@ function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number, orig
         return { biome: 'plains', terrain: 'plains' };
     }
 
-    if (isStarterForestTile(q, r, origin)) {
-        return { biome: 'forest', terrain: 'forest' };
-    }
-
     if (isStarterPondTile(q, r, origin)) {
         return { biome: 'lake', terrain: 'water' };
+    }
+
+    if (isStarterForestTile(q, r, origin)) {
+        return { biome: 'forest', terrain: 'forest' };
     }
 
     if (distance <= 8 && isStarterPondShoreTile(q, r, origin)) {
@@ -396,8 +402,9 @@ function enforceSpawnSafety(tile: GeneratedWorldTile, q: number, r: number, orig
 // Simplified Minecraft-inspired generation:
 // broad climate fields first, then a terrain choice inside that biome family.
 export function resolveWorldTile(q: number, r: number, origin: { q: number, r: number} = { q: 0, r: 0}): GeneratedWorldTile {
-    const biome = resolveBiomeFamily(q, r, origin);
-    const terrain = resolveTerrainForBiome(q, r, biome, origin);
+    const generationOrigin = spawnSafetyEnabled ? origin : { q: 0, r: 0 };
+    const biome = resolveBiomeFamily(q, r, generationOrigin);
+    const terrain = resolveTerrainForBiome(q, r, biome, generationOrigin);
     const tile = { biome, terrain };
-    return spawnSafetyEnabled ? enforceSpawnSafety(tile, q, r, origin) : tile;
+    return spawnSafetyEnabled ? enforceSpawnSafety(tile, q, r, generationOrigin) : tile;
 }

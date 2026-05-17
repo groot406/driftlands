@@ -5,6 +5,8 @@ import {
   type PlayerEntitySnapshot,
 } from '../../../src/shared/multiplayer/player';
 import type { Hero } from '../../../src/core/types/Hero';
+import type { LooperlandsHeroSelection } from '../../../src/shared/looperlands';
+import type { StoryHeroId } from '../../../src/shared/story/heroRoster';
 
 interface PlayerEntityState {
   id: string;
@@ -19,6 +21,8 @@ class PlayerSettlementState {
   private readonly playerIdBySocketId = new Map<string, string>();
   private readonly settlementByPlayerId = new Map<string, string>();
   private readonly ownerBySettlementId = new Map<string, { playerId: string; playerName: string; playerColor: string }>();
+  private readonly starterHeroesByPlayerId = new Map<string, LooperlandsHeroSelection[]>();
+  private readonly starterStoryHeroIdsByPlayerId = new Map<string, StoryHeroId[]>();
 
   registerPlayer(socketId: string, requestedPlayerId: string, playerName: string) {
     const playerId = requestedPlayerId;
@@ -69,11 +73,29 @@ class PlayerSettlementState {
     this.players.get(playerId)?.connectedSocketIds.delete(socketId);
   }
 
+  setStarterHeroes(playerId: string, heroes: LooperlandsHeroSelection[]) {
+    this.starterHeroesByPlayerId.set(playerId, heroes.map((hero) => ({ ...hero })));
+  }
+
+  getStarterHeroes(playerId: string): LooperlandsHeroSelection[] {
+    return this.starterHeroesByPlayerId.get(playerId)?.map((hero) => ({ ...hero })) ?? [];
+  }
+
+  setStarterStoryHeroIds(playerId: string, heroIds: StoryHeroId[]) {
+    this.starterStoryHeroIdsByPlayerId.set(playerId, heroIds.slice());
+  }
+
+  getStarterStoryHeroIds(playerId: string): StoryHeroId[] {
+    return this.starterStoryHeroIdsByPlayerId.get(playerId)?.slice() ?? [];
+  }
+
   reset() {
     this.players.clear();
     this.playerIdBySocketId.clear();
     this.settlementByPlayerId.clear();
     this.ownerBySettlementId.clear();
+    this.starterHeroesByPlayerId.clear();
+    this.starterStoryHeroIdsByPlayerId.clear();
   }
 
   clearAssignments() {

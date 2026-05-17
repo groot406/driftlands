@@ -9,6 +9,7 @@ import {computed, onMounted, ref, watch} from "vue";
 
 interface SpriteProps {
   sprite: string;
+  fallbackSprite?: string | null;
   size?: number;
   width?: number;
   height?: number;
@@ -42,7 +43,7 @@ let cooldownInProgress = false;
 onMounted(startAnimation);
 
 function startAnimation() {
-  if (props.frame === null && props.frames) {
+  if ((props.frame === null || props.frame === undefined) && props.frames) {
     if (frameTimer) {
       clearInterval(frameTimer);
     }
@@ -82,13 +83,37 @@ watch(() => props.speed, () => {
   startAnimation();
 });
 
+const resolvedSprite = ref(props.sprite);
+
+function resolveSpriteSource() {
+  resolvedSprite.value = props.sprite;
+  if (!props.fallbackSprite) {
+    return;
+  }
+
+  const img = new Image();
+  img.onerror = () => {
+    if (props.fallbackSprite) {
+      resolvedSprite.value = props.fallbackSprite;
+    }
+  };
+  img.src = props.sprite;
+}
+
+onMounted(resolveSpriteSource);
+
+watch(() => [props.sprite, props.fallbackSprite], resolveSpriteSource);
+
 const style = computed(() => {
   const renderFrame = (props.frame !== null && props.frame !== undefined) ? props.frame : innerFrame.value;
   return {
-    backgroundImage: 'url(' + props.sprite + ')',
+    backgroundImage: `url(${resolvedSprite.value})`,
     width: dimensions.value.width + 'px',
     height: dimensions.value.height + 'px',
     overflow: 'hidden',
+    position: 'absolute',
+    top: '0',
+    left: '0',
     transform: `scale(${props.zoom})`,
     transformOrigin: 'top left',
     backgroundPositionX: (renderFrame * dimensions.value.width * -1) + 'px',
