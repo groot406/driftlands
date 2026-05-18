@@ -28,6 +28,7 @@ import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/ta
 import { canStartTaskDefinition, canTaskUseTileState } from '../shared/tasks/taskAvailability';
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { addHeroAbilityProgress } from '../shared/heroes/heroAbilities.ts';
+import { applyHeroTaskRateMultiplier } from '../shared/heroes/heroSkills.ts';
 import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
 import { isInstantBuildEnabled, isUnlimitedResourcesEnabled, testModeSettings } from '../shared/game/testMode.ts';
 
@@ -538,7 +539,12 @@ export function updateActiveTasks(heroes: Hero[]) {
         // Accumulate contributions per hero scaled by elapsed seconds
         let totalContributionThisUpdate = 0;
         for (const hero of participants) {
-            const ratePerSecond = def.heroRate(hero, tile); // treat as per-second rate now
+            const ratePerSecond = applyHeroTaskRateMultiplier(
+                def.heroRate(hero, tile),
+                hero,
+                inst.type,
+                participants.length,
+            ); // treat as per-second rate now
             const contrib = ratePerSecond * elapsedSeconds * TASK_PROGRESS_MULTIPLIER;
             inst.participants[hero.id] = (inst.participants[hero.id] || 0) + contrib;
             totalContributionThisUpdate += contrib;

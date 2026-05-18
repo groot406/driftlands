@@ -13,6 +13,7 @@ import { computePathTimings, isTileWalkable } from '../shared/game/navigation';
 import { SCOUT_RESOURCE_TASK_TYPE, shouldStopScoutResourceForMovement } from '../shared/game/scoutResources';
 import type { HeroAbilityKey } from '../shared/heroes/heroAbilities.ts';
 import type { HeroSkillKey } from '../shared/heroes/heroSkills.ts';
+import { getSkilledHeroMovementSpeedAdj } from '../shared/heroes/heroSkills.ts';
 import { getHeroMovementSpeedAdj } from '../shared/game/testMode.ts';
 
 type AxialCoord = { q: number; r: number };
@@ -127,7 +128,7 @@ export function startHeroMovement(
         && options?.authoritative
         && hero.q === target.q
         && hero.r === target.r
-        && hasMovementAlreadyElapsed(normalizedPath, origin, options)
+        && hasMovementAlreadyElapsed(hero, normalizedPath, origin, options)
     ) {
         return;
     }
@@ -223,7 +224,7 @@ function actuallyStartHeroMovement(
     let cumulative: number[] | undefined = options?.cumulative && options.cumulative.length === path.length ? options.cumulative.slice() : undefined;
 
     if (!stepDurations || !cumulative) {
-        const timings = computePathTimings(path, origin, getHeroMovementSpeedAdj());
+        const timings = computePathTimings(path, origin, getSkilledHeroMovementSpeedAdj(hero, getHeroMovementSpeedAdj()));
         stepDurations = timings.durations;
         cumulative = timings.cumulative;
     }
@@ -452,10 +453,10 @@ function samePath(a: AxialCoord[], b: AxialCoord[]) {
     return true;
 }
 
-function hasMovementAlreadyElapsed(path: AxialCoord[], origin: AxialCoord, options?: StartHeroMovementOptions) {
+function hasMovementAlreadyElapsed(hero: Hero, path: AxialCoord[], origin: AxialCoord, options?: StartHeroMovementOptions) {
     const totalDuration = options?.cumulative?.[options.cumulative.length - 1]
         ?? options?.stepDurations?.reduce((sum, duration) => sum + duration, 0)
-        ?? computePathTimings(path, origin, getHeroMovementSpeedAdj()).totalDuration;
+        ?? computePathTimings(path, origin, getSkilledHeroMovementSpeedAdj(hero, getHeroMovementSpeedAdj())).totalDuration;
     const startMs = typeof options?.startAt === 'number'
         ? options.startAt
         : Date.now() + (options?.startDelayMs || 0);

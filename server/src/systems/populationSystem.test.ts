@@ -625,6 +625,7 @@ test('tired settlers go home to sleep before resuming work', () => {
       homeAccessTileId: '0,0',
       settlementId: '0,0',
       assignedWorkTileId: '1,0',
+      assignedRole: 'job',
       activity: 'working',
       stateSinceMs: 0,
       hungerMs: 0,
@@ -639,13 +640,62 @@ test('tired settlers go home to sleep before resuming work', () => {
   tickAt(1_000, 1_000);
   assert.equal(settlers[0]?.movement?.target.q, 0);
   assert.equal(settlers[0]?.activity, 'commuting_home');
+  assert.equal(settlers[0]?.workProgressMs, 5_000);
 
   tickAt(7_000, 6_000);
   assert.equal(settlers[0]?.activity, 'sleeping');
+  assert.equal(settlers[0]?.workProgressMs, 5_000);
 
   tickAt(53_000, 46_000);
   assert.equal(settlers[0]?.fatigueMs, 0);
   assert.equal(settlers[0]?.activity === 'sleeping', false);
+});
+
+test('settlers keep partial job progress while taking a meal break', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'left',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 90_000,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 50_000,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'food', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  assert.equal(settlers[0]?.activity, 'fetching_food');
+  assert.equal(settlers[0]?.movement?.target.q, 0);
+  assert.equal(settlers[0]?.movement?.target.r, 0);
+  assert.equal(settlers[0]?.workProgressMs, 50_000);
+
+  tickAt(6_000, 5_000);
+  assert.equal(resourceInventory.food, 0);
+  assert.equal(settlers[0]?.movement?.target.q, 1);
+  assert.equal(settlers[0]?.movement?.target.r, 0);
+  assert.equal(settlers[0]?.workProgressMs, 50_000);
+
+  tickAt(12_000, 6_000);
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.ok((settlers[0]?.workProgressMs ?? 0) > 50_000);
 });
 
 test('settlers blocked by missing job inputs stay waiting instead of flickering idle', () => {

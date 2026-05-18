@@ -11,6 +11,7 @@ import type {Hero} from "../../../src/shared/game/types/Hero";
 import { computePathTimings, isTileScoutWalkable, isWalkablePosition } from '../../../src/shared/game/navigation';
 import { HERO_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBalance.ts';
 import { getHeroMovementSpeedAdj } from '../../../src/shared/game/testMode.ts';
+import { getSkilledHeroMovementSpeedAdj } from '../../../src/shared/heroes/heroSkills.ts';
 import { isAxialNeighbor } from '../../../src/shared/game/hex';
 import { getTaskDefinition } from '../../../src/shared/tasks/taskRegistry';
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
@@ -186,7 +187,7 @@ export class ServerMovementHandler {
         const now = Date.now();
         const startAt = clampMovementStart(message.startAt, now);
 
-        const {durations, cumulative} = computePathTimings(path, origin, getHeroMovementSpeedAdj());
+        const {durations, cumulative} = computePathTimings(path, origin, getSkilledHeroMovementSpeedAdj(hero, getHeroMovementSpeedAdj()));
 
         hero.pendingTask = message.task
             ? { tileId: logicalTaskTile?.id ?? targetTile.id, taskType: message.task }
@@ -287,7 +288,7 @@ export class ServerMovementHandler {
             return;
         }
 
-        const runtimeSpeedAdj = getHeroMovementSpeedAdj() / HERO_MOVEMENT_SPEED_ADJ;
+        const runtimeSpeedAdj = getSkilledHeroMovementSpeedAdj(hero, getHeroMovementSpeedAdj() / HERO_MOVEMENT_SPEED_ADJ);
         const {durations, cumulative} = computePathTimings(path, hero, runtimeSpeedAdj);
         const origin = {q: hero.q, r: hero.r};
         const targetPosition = {q: target.q, r: target.r};

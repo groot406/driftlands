@@ -9,14 +9,10 @@ import {
   addHeroAbilityProgress,
 } from './heroAbilities.ts';
 import {
-  getProductionBoostConfig,
-  getStabilizeDurationMs,
-  getTaskRushBurstAmount,
+  getHeroMovementSpeedMultiplier,
+  getHeroTaskRateMultiplier,
+  getHeroTaskSkillCategory,
   selectHeroSkill,
-  shouldRefundSurveyWhenNothingFound,
-  shouldRefundTaskRushOnCompletion,
-  shouldRepairOnStabilize,
-  shouldRevealAdjacentOnSurvey,
 } from './heroSkills.ts';
 
 function hero(overrides: Partial<Hero> = {}): Hero {
@@ -76,44 +72,45 @@ test('ability charges cap at three while skill points keep accumulating', () => 
   assert.equal(target.xpChargeProgress, 0);
 });
 
-test('skill selection spends one point and cannot exceed level three', () => {
-  const target = hero({ skillPoints: 4 });
+test('skill selection spends one point and cannot exceed level ten', () => {
+  const target = hero({ skillPoints: 11 });
 
-  assert.equal(selectHeroSkill(target, 'production_boost'), true);
-  assert.equal(selectHeroSkill(target, 'production_boost'), true);
-  assert.equal(selectHeroSkill(target, 'production_boost'), true);
-  assert.equal(selectHeroSkill(target, 'production_boost'), false);
+  for (let i = 0; i < 10; i += 1) {
+    assert.equal(selectHeroSkill(target, 'strength'), true);
+  }
+  assert.equal(selectHeroSkill(target, 'strength'), false);
 
   assert.equal(target.skillPoints, 1);
-  assert.equal(target.skills?.production_boost, 3);
+  assert.equal(target.skills?.strength, 10);
 });
 
 test('skill selection fails without an unspent skill point', () => {
   const target = hero();
 
-  assert.equal(selectHeroSkill(target, 'task_rush'), false);
-  assert.equal(target.skills?.task_rush, undefined);
+  assert.equal(selectHeroSkill(target, 'speed'), false);
+  assert.equal(target.skills?.speed, undefined);
 });
 
-test('skill helpers scale existing hero ability effects', () => {
+test('skill helpers apply direct movement and task multipliers', () => {
   const skilled = hero({
     skills: {
-      production_boost: 3,
-      task_rush: 3,
-      stabilizing_method: 3,
-      survey_method: 3,
+      speed: 3,
+      strength: 2,
+      craft: 1,
+      scouting: 3,
+      survival: 1,
+      teamwork: 2,
     },
   });
 
-  assert.deepEqual(getProductionBoostConfig(skilled), {
-    multiplier: 1.75,
-    cycles: 2,
-    inputReduction: 1,
-  });
-  assert.equal(getTaskRushBurstAmount(1000, skilled), 1500);
-  assert.equal(shouldRefundTaskRushOnCompletion(skilled), true);
-  assert.equal(getStabilizeDurationMs(120_000, skilled), 240_000);
-  assert.equal(shouldRepairOnStabilize(skilled), true);
-  assert.equal(shouldRevealAdjacentOnSurvey(skilled), true);
-  assert.equal(shouldRefundSurveyWhenNothingFound(skilled), true);
+  assert.equal(Math.round(getHeroMovementSpeedMultiplier(skilled) * 100), 112);
+  assert.equal(getHeroTaskSkillCategory('chopWood'), 'strength');
+  assert.equal(getHeroTaskSkillCategory('buildHouse'), 'craft');
+  assert.equal(getHeroTaskSkillCategory('explore'), 'scouting');
+  assert.equal(getHeroTaskSkillCategory('hunt'), 'survival');
+  assert.equal(getHeroTaskRateMultiplier(skilled, 'chopWood'), 1.1);
+  assert.equal(getHeroTaskRateMultiplier(skilled, 'buildHouse'), 1.05);
+  assert.equal(getHeroTaskRateMultiplier(skilled, 'explore'), 1.15);
+  assert.equal(getHeroTaskRateMultiplier(skilled, 'hunt'), 1.05);
+  assert.equal(Math.round(getHeroTaskRateMultiplier(skilled, 'chopWood', 3) * 1000), 1210);
 });

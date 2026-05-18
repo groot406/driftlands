@@ -17,19 +17,11 @@ import { revealTileFeatures } from '../../../src/shared/game/tileFeatures.ts';
 import { getBuildingDefinitionForTile } from '../../../src/shared/buildings/registry.ts';
 import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import {
-    getProductionBoostConfig,
-    getStabilizeDurationMs,
-    getTaskRushBurstAmount,
     isHeroSkillKey,
     selectHeroSkill,
-    shouldRefundSurveyWhenNothingFound,
-    shouldRefundTaskRushOnCompletion,
-    shouldRepairOnStabilize,
-    shouldRevealAdjacentOnSurvey,
 } from '../../../src/shared/heroes/heroSkills.ts';
-import { SIDE_NAMES, type Tile } from '../../../src/core/types/Tile.ts';
+import type { Tile } from '../../../src/core/types/Tile.ts';
 import type { Hero } from '../../../src/core/types/Hero.ts';
-import { clampBuildingCondition, updateTileCondition } from '../../../src/shared/buildings/maintenance.ts';
 import { playerSettlementState } from '../state/playerSettlementState';
 import { isTileControlledBySettlement } from '../../../src/shared/game/state/settlementSupportStore.ts';
 
@@ -110,21 +102,20 @@ export class ServerHeroAbilityHandler {
         return canSettlementManageTile(tile, playerSettlementState.getPlayerSettlement(playerId ?? ''));
     }
 
-    private boostProduction(hero: Hero, tileId: string | undefined): AbilityResult {
+    private boostProduction(_hero: Hero, tileId: string | undefined): AbilityResult {
         const tile = tileId ? tileIndex[tileId] : null;
         if (!tile || !getBuildingDefinitionForTile(tile)) {
             return { applied: false };
         }
 
-        const boost = getProductionBoostConfig(hero);
-        tile.nextProductionBoostMultiplier = Math.max(boost.multiplier, tile.nextProductionBoostMultiplier ?? 1);
-        tile.nextProductionBoostCyclesRemaining = Math.max(boost.cycles, tile.nextProductionBoostCyclesRemaining ?? 0);
-        tile.nextProductionBoostInputReduction = Math.max(boost.inputReduction, tile.nextProductionBoostInputReduction ?? 0);
+        tile.nextProductionBoostMultiplier = Math.max(1.5, tile.nextProductionBoostMultiplier ?? 1);
+        tile.nextProductionBoostCyclesRemaining = Math.max(1, tile.nextProductionBoostCyclesRemaining ?? 0);
+        tile.nextProductionBoostInputReduction = Math.max(0, tile.nextProductionBoostInputReduction ?? 0);
         broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
         return { applied: true };
     }
 
-    private instantTask(hero: Hero, taskId: string | undefined, tileId: string | undefined): AbilityResult {
+    private instantTask(_hero: Hero, taskId: string | undefined, tileId: string | undefined): AbilityResult {
         const task = taskId
             ? getTaskById(taskId)
             : (tileId ? getTasksAtTile(tileId)[0] : undefined);
@@ -133,28 +124,21 @@ export class ServerHeroAbilityHandler {
             return { applied: false };
         }
 
-        const burst = getTaskRushBurstAmount(HERO_ABILITY_TASK_PROGRESS_BURST, hero);
-        const willComplete = task.progressXp + burst >= task.requiredXp;
-        const applied = boostTaskProgress(task.id, burst);
-        return { applied, refundCharge: applied && willComplete && shouldRefundTaskRushOnCompletion(hero) };
+        return { applied: boostTaskProgress(task.id, HERO_ABILITY_TASK_PROGRESS_BURST) };
     }
 
-    private stabilizeTile(hero: Hero, tileId: string | undefined): AbilityResult {
+    private stabilizeTile(_hero: Hero, tileId: string | undefined): AbilityResult {
         const tile = tileId ? tileIndex[tileId] : null;
         if (!tile) {
             return { applied: false };
         }
 
-        const durationMs = getStabilizeDurationMs(HERO_ABILITY_STABILIZE_MS, hero);
-        tile.conditionStabilizedUntilMs = Date.now() + durationMs;
-        if (shouldRepairOnStabilize(hero)) {
-            updateTileCondition(tile, clampBuildingCondition(tile.condition) + 10);
-        }
+        tile.conditionStabilizedUntilMs = Date.now() + HERO_ABILITY_STABILIZE_MS;
         broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
         return { applied: true };
     }
 
-    private surveyBoost(hero: Hero, taskId: string | undefined, tileId: string | undefined): AbilityResult {
+    private surveyBoost(_hero: Hero, taskId: string | undefined, tileId: string | undefined): AbilityResult {
         const task = taskId ? getTaskById(taskId) : undefined;
         if (task?.type === 'surveyTile') {
             return { applied: boostTaskProgress(task.id, HERO_ABILITY_TASK_PROGRESS_BURST) };
@@ -165,31 +149,11 @@ export class ServerHeroAbilityHandler {
             return { applied: false };
         }
 
-        let changed = revealTileFeatures(tile);
-        if (shouldRevealAdjacentOnSurvey(hero)) {
-            changed = this.revealAdjacentActiveFeatures(tile) || changed;
-        }
+        const changed = revealTileFeatures(tile);
         if (changed) {
             broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
         }
-        const refundWhenEmpty = shouldRefundSurveyWhenNothingFound(hero);
-        return { applied: changed || refundWhenEmpty, refundCharge: !changed && refundWhenEmpty };
-    }
-
-    private revealAdjacentActiveFeatures(tile: Tile) {
-        let changed = false;
-        for (const side of SIDE_NAMES) {
-            const neighbor = tile.neighbors?.[side];
-            if (!neighbor?.discovered || neighbor.activationState === 'inactive') {
-                continue;
-            }
-
-            if (revealTileFeatures(neighbor)) {
-                changed = true;
-                broadcast({ type: 'tile:updated', tile: neighbor } as TileUpdatedMessage);
-            }
-        }
-        return changed;
+        return { applied: changed };
     }
 }
 

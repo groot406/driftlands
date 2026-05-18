@@ -279,6 +279,15 @@ function cloneResource(resource: ResourceAmount | null | undefined) {
     return resource ? { ...resource } : null;
 }
 
+function resetSettlerWorkProgress(settler: Settler) {
+    if (settler.workProgressMs <= 0) {
+        return false;
+    }
+
+    settler.workProgressMs = 0;
+    return true;
+}
+
 function setActivity(settler: Settler, activity: SettlerActivity, now: number) {
     let changed = false;
     if (settler.activity === activity) {
@@ -292,9 +301,6 @@ function setActivity(settler: Settler, activity: SettlerActivity, now: number) {
     settler.activity = activity;
     settler.stateSinceMs = now;
     changed = true;
-    if (activity !== 'working' && activity !== 'repairing') {
-        settler.workProgressMs = 0;
-    }
     if (activity !== 'socializing' && activity !== 'commuting_social') {
         settler.socialTileId = null;
     }
@@ -402,6 +408,7 @@ function setWaiting(
 
 function clearSettlerAssignment(settler: Settler) {
     let changed = false;
+    changed = resetSettlerWorkProgress(settler) || changed;
     if (settler.assignedWorkTileId !== null) {
         settler.assignedWorkTileId = null;
         changed = true;
@@ -1090,7 +1097,11 @@ function reconcileAssignments() {
         }
 
         assignmentCounts.set(site.tile.id, nextCount);
-        settler.assignedRole = 'job';
+        if (settler.assignedRole !== 'job') {
+            settler.assignedRole = 'job';
+            resetSettlerWorkProgress(settler);
+            changed = true;
+        }
         changed = refreshSettlerWorkPresentation(settler) || changed;
     }
 
@@ -1114,6 +1125,7 @@ function reconcileAssignments() {
 
             candidate.assignedWorkTileId = site.tile.id;
             candidate.assignedRole = 'job';
+            resetSettlerWorkProgress(candidate);
             refreshSettlerWorkPresentation(candidate);
             changed = true;
             assigned = nextCount;
@@ -1136,6 +1148,7 @@ function reconcileAssignments() {
 
         candidate.assignedWorkTileId = repairTile.id;
         candidate.assignedRole = 'repair';
+        resetSettlerWorkProgress(candidate);
         assignedRepairTargetIds.add(repairTile.id);
         refreshSettlerWorkPresentation(candidate);
         changed = true;
@@ -1190,6 +1203,7 @@ function reconcileMilitaryGuards(now: number) {
         for (const guard of currentGuards) {
             if (guard.assignedWorkTileId !== accessTile.id) {
                 guard.assignedWorkTileId = accessTile.id;
+                resetSettlerWorkProgress(guard);
                 changed = true;
             }
             changed = refreshSettlerWorkPresentation(guard) || changed;
@@ -1242,6 +1256,7 @@ function reconcileMilitaryGuards(now: number) {
             }
             if (accessTile && raider.assignedWorkTileId !== accessTile.id) {
                 raider.assignedWorkTileId = accessTile.id;
+                resetSettlerWorkProgress(raider);
                 changed = true;
             }
             changed = refreshSettlerWorkPresentation(raider) || changed;
@@ -1634,7 +1649,8 @@ function completeWorkCycle(settler: Settler, now: number) {
     }
 
     if (!siteInfo?.output || siteInfo.output.amount <= 0) {
-        return setWaiting(settler, now, { code: 'resource_depleted', tileId: settler.assignedWorkTileId ?? undefined });
+        const progressReset = resetSettlerWorkProgress(settler);
+        return setWaiting(settler, now, { code: 'resource_depleted', tileId: settler.assignedWorkTileId ?? undefined }) || progressReset;
     }
 
     settler.workProgressMs = 0;
@@ -1725,7 +1741,8 @@ function maybeWork(settler: Settler, now: number, dt: number) {
 
     if (!siteInfo || !accessTile || !workTile || !isTileActive(workTile) || isBuildingOfflineFromCondition(workTile)) {
         if (settler.assignedWorkTileId && (isBuildingOfflineFromCondition(workTile) || !isTileActive(workTile))) {
-            return setWaiting(settler, now, { code: 'site_offline', tileId: settler.assignedWorkTileId });
+            const progressReset = resetSettlerWorkProgress(settler);
+            return setWaiting(settler, now, { code: 'site_offline', tileId: settler.assignedWorkTileId }) || progressReset;
         }
         clearSettlerAssignment(settler);
         return false;

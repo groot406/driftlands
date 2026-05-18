@@ -13,6 +13,7 @@ import { isTileWalkable } from './navigation';
 import { broadcastGameMessage as broadcast, moveHeroWithRuntime } from './runtime';
 import { isTileActive } from './state/settlementSupportStore';
 import { getDistanceToNearestTowncenter } from './worldQueries';
+import { getHeroTaskSpecialtyMultiplier } from '../heroes/heroSkills';
 
 export const SCOUT_RESOURCE_TASK_TYPE = 'scoutResource';
 export const SCOUT_PING_DURATION_MS = 30000;
@@ -294,8 +295,9 @@ export function handleScoutResourceArrival(hero: Hero, tile: Tile) {
     }, intent.surveyDurationMs);
 }
 
-export function getScoutSurveyMs(hero: Pick<Hero, 'stats'>) {
-    return Math.max(650, SCOUT_TILE_SURVEY_MS - (Math.max(0, hero.stats.spd - 1) * 75));
+export function getScoutSurveyMs(hero: Pick<Hero, 'stats' | 'skills'>) {
+    const baseDuration = SCOUT_TILE_SURVEY_MS - (Math.max(0, hero.stats.spd - 1) * 75);
+    return Math.max(650, Math.round(baseDuration / getHeroTaskSpecialtyMultiplier(hero, SCOUT_RESOURCE_TASK_TYPE)));
 }
 
 export function getScoutSurveyProgress(hero: Pick<Hero, 'movement' | 'scoutResourceIntent'>, tileId: string, now: number = Date.now()) {

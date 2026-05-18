@@ -5,18 +5,20 @@
         <template
           v-for="(hero, index) in heroes"
           :key="hero.id"
-          :data-hero-id="hero.id"
-          :aria-current="selectedHeroId === hero.id ? 'true' : undefined"
         >
           <div v-if="hero.playerId === currentPlayerId" class="hero-card pointer-events-auto"
                :class="cardClass(hero.id)"
+               :data-hero-id="hero.id"
+               :aria-current="selectedHeroId === hero.id ? 'true' : undefined"
                @click="select(hero)"
                :style="cardStyle(index)">
             <div class="hero-card-shine" aria-hidden="true"></div>
+            <div class="hero-card-crest" aria-hidden="true"></div>
             <div class="hero-card-header">
               <span class="hero-card-name">
                 {{ hero.name }}
               </span>
+              <span class="hero-card-role">{{ heroRole(hero) }}</span>
 <!--              <div class="hero-card-actions">-->
 <!--                <span class="hero-status-pill" :class="statusClass(hero.id)">-->
 <!--                  {{ heroStatus(hero.id) }}-->
@@ -90,8 +92,8 @@
                 >
                   <span class="skill-trigger-code" aria-hidden="true">+</span>
                   <span class="skill-trigger-copy">
-                    <span class="skill-trigger-kicker">Skills</span>
-                    <span class="skill-trigger-label">{{ hero.skillPoints ?? 0 }} · {{ getSkillProgressLabel(hero) }}</span>
+                    <span class="skill-trigger-kicker">SP {{ hero.skillPoints ?? 0 }}</span>
+                    <span class="skill-trigger-label">{{ getSkillProgressLabel(hero) }}</span>
                   </span>
                   <span class="skill-trigger-caret" aria-hidden="true"></span>
                 </button>
@@ -162,18 +164,16 @@
             <span class="skill-option-level">Lv {{ getSkillLevel(activeFloatingHero, skill.key) }}/{{ skill.maxLevel }}</span>
           </span>
           <span class="skill-option-summary">{{ skill.menuSummary }}</span>
-          <span class="skill-option-effects">
+          <span class="skill-option-segments" aria-hidden="true">
             <span
-              v-for="effect in skill.effects"
-              :key="effect.level"
-              class="skill-option-effect"
+              v-for="segment in skill.maxLevel"
+              :key="segment"
+              class="skill-option-segment"
               :class="{
-                'skill-option-effect-active': getSkillLevel(activeFloatingHero, skill.key) >= effect.level,
-                'skill-option-effect-next': isNextSkillEffect(activeFloatingHero, skill.key, effect.level),
+                'skill-option-segment-filled': getSkillLevel(activeFloatingHero, skill.key) >= segment,
+                'skill-option-segment-next': isNextSkillLevel(activeFloatingHero, skill.key, segment),
               }"
-            >
-              {{ effect.text }}
-            </span>
+            ></span>
           </span>
         </span>
         <span class="skill-option-state">{{ skillStateLabel(activeFloatingHero, skill.key, skill.maxLevel) }}</span>
@@ -207,6 +207,7 @@ import {
 } from '../store/playerStore';
 import { runSnapshot } from '../store/runStore.ts';
 import { selectedHeroId, selectHero } from '../store/uiStore';
+import { getStoryHeroTemplate } from '../shared/story/heroRoster.ts';
 
 const scoutResourceColors: Record<ScoutTargetType, string> = {
   wood: '#79d47c',
@@ -227,6 +228,10 @@ function isLooperHero(hero: Hero): boolean {
 
 function heroPortraitZoom(hero: Hero): number {
   return isLooperHero(hero) ? 1.9 : 2;
+}
+
+function heroRole(hero: Hero): string {
+  return getStoryHeroTemplate(hero.storyTemplateId ?? hero.id)?.role ?? (isLooperHero(hero) ? 'Looper' : 'Hero');
 }
 
 interface ScoutOption {
@@ -268,54 +273,43 @@ const scoutOptions = computed<ScoutOption[]>(() => SCOUT_TARGET_DEFINITIONS.map(
 })));
 
 const skillCodes: Record<HeroSkillKey, string> = {
-  production_boost: '+',
-  task_rush: '>>',
-  stabilizing_method: '||',
-  survey_method: '?',
+  speed: '>',
+  strength: 'S',
+  craft: 'C',
+  scouting: '?',
+  survival: '+',
+  teamwork: '&',
 };
-
-interface SkillEffect {
-  level: number;
-  text: string;
-}
 
 interface SkillMenuHelp {
   menuSummary: string;
-  effects: readonly SkillEffect[];
+  perLevelText: string;
 }
 
 const skillMenuHelp: Record<HeroSkillKey, SkillMenuHelp> = {
-  production_boost: {
-    menuSummary: 'Improves the Boost ability for staffed production buildings.',
-    effects: [
-      { level: 1, text: 'L1: 1.75x output' },
-      { level: 2, text: 'L2: lasts 2 cycles' },
-      { level: 3, text: 'L3: -1 input cost' },
-    ],
+  speed: {
+    menuSummary: 'Shortens travel time between tiles.',
+    perLevelText: '+4% move speed per level',
   },
-  task_rush: {
-    menuSummary: 'Improves the Rush ability for pushing active tasks forward.',
-    effects: [
-      { level: 1, text: 'L1: +25% rush' },
-      { level: 2, text: 'L2: +50% rush' },
-      { level: 3, text: 'L3: refunds on finish' },
-    ],
+  strength: {
+    menuSummary: 'Speeds up chopping, mining, digging, and heavy clearing.',
+    perLevelText: '+5% heavy work speed per level',
   },
-  stabilizing_method: {
-    menuSummary: 'Improves the Hold ability for stabilizing unstable tiles.',
-    effects: [
-      { level: 1, text: 'L1: hold 3 min' },
-      { level: 2, text: 'L2: hold 4 min' },
-      { level: 3, text: 'L3: repairs tile' },
-    ],
+  craft: {
+    menuSummary: 'Speeds up buildings, upgrades, roads, bridges, and tunnels.',
+    perLevelText: '+5% craft work speed per level',
   },
-  survey_method: {
-    menuSummary: 'Improves the Survey ability. Explore speed comes from SPD, not skills.',
-    effects: [
-      { level: 1, text: 'L1: no speed change' },
-      { level: 2, text: 'L2: adjacent reveal' },
-      { level: 3, text: 'L3: refunds empty survey' },
-    ],
+  scouting: {
+    menuSummary: 'Speeds up exploring, surveying, and resource scouting.',
+    perLevelText: '+5% scout work speed per level',
+  },
+  survival: {
+    menuSummary: 'Speeds up food work, planting, harvesting, and field care.',
+    perLevelText: '+5% survival work speed per level',
+  },
+  teamwork: {
+    menuSummary: 'Adds task speed for each other hero on the same task.',
+    perLevelText: '+2.5% speed per helper per level',
   },
 };
 
@@ -465,11 +459,11 @@ function getSkillProgressLabel(hero: Hero) {
 }
 
 function canSelectSkill(hero: Hero, skill: HeroSkillKey) {
-  return showSkillControls(hero) && getHeroSkillPoints(hero) > 0 && getSkillLevel(hero, skill) < 3;
+  return showSkillControls(hero) && getHeroSkillPoints(hero) > 0 && getSkillLevel(hero, skill) < getSkillMaxLevel(skill);
 }
 
-function isNextSkillEffect(hero: Hero, skill: HeroSkillKey, effectLevel: number) {
-  return canSelectSkill(hero, skill) && effectLevel === getSkillLevel(hero, skill) + 1;
+function isNextSkillLevel(hero: Hero, skill: HeroSkillKey, level: number) {
+  return canSelectSkill(hero, skill) && level === getSkillLevel(hero, skill) + 1;
 }
 
 function skillStateLabel(hero: Hero, skill: HeroSkillKey, maxLevel: number) {
@@ -489,18 +483,21 @@ function selectSkill(hero: Hero, skill: HeroSkillKey) {
   closeFloatingMenus();
 }
 
-function skillTitle(hero: Hero, skill: { key: HeroSkillKey; label: string; menuSummary: string; effects: readonly SkillEffect[]; maxLevel: number }) {
+function getSkillMaxLevel(skill: HeroSkillKey) {
+  return HERO_SKILL_DEFINITIONS.find((definition) => definition.key === skill)?.maxLevel ?? 10;
+}
+
+function skillTitle(hero: Hero, skill: { key: HeroSkillKey; label: string; menuSummary: string; perLevelText: string; maxLevel: number }) {
   const level = getSkillLevel(hero, skill.key);
-  const effectSummary = skill.effects.map((effect) => effect.text).join(', ');
   if (getHeroSkillPoints(hero) <= 0) {
-    return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${effectSummary}. ${hero.name} has no skill points.`;
+    return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}. ${hero.name} has no skill points.`;
   }
 
   if (level >= skill.maxLevel) {
-    return `${skill.label} is maxed. ${skill.menuSummary} ${effectSummary}.`;
+    return `${skill.label} is maxed. ${skill.menuSummary} ${skill.perLevelText}.`;
   }
 
-  return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${effectSummary}.`;
+  return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}.`;
 }
 
 function skillTriggerTitle(hero: Hero) {
@@ -572,8 +569,18 @@ function cardClass(heroId: string) {
 
 function cardStyle(index: number) {
   const rotation = ((index % 5) - 2) * 1.7;
+  const palettes = [
+    { accent: '#55b7ff', panel: '#102f49' },
+    { accent: '#85c94c', panel: '#183d22' },
+    { accent: '#b868ff', panel: '#302044' },
+    { accent: '#e4b34b', panel: '#473017' },
+    { accent: '#7ee3cf', panel: '#133c3d' },
+  ];
+  const palette = palettes[index % palettes.length]!;
   return {
     '--hero-card-rotation': `${rotation}deg`,
+    '--hero-accent': palette.accent,
+    '--hero-panel': palette.panel,
   };
 }
 
@@ -761,25 +768,29 @@ watch(selectedHeroId, () => {
   bottom: 0;
   z-index: 30;
   width: 100%;
-  height: 12.65rem;
+  height: 14.1rem;
   pointer-events: none;
+  overflow: visible;
 }
 
 .heroes-avatar-strip {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: clamp(0.45rem, 1vw, 0.9rem);
+  right: auto;
   bottom: 0;
-  height: 100%;
+  width: 100%;
+  height: 13.75rem;
   display: flex;
   align-items: flex-end;
   overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0 0.75rem;
+  overflow-y: visible;
+  padding: 1.15rem 0.9rem 0.7rem;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   scrollbar-width: none; /* Firefox */
-  background: linear-gradient(to top, rgba(21, 51, 35, 0.22), rgba(21, 51, 35, 0));
+  background:
+    linear-gradient(to top, rgba(4, 10, 12, 0.54), rgba(4, 10, 12, 0.18) 42%, rgba(4, 10, 12, 0)),
+    radial-gradient(ellipse at 12% 100%, rgba(0, 0, 0, 0.35), transparent 68%);
 }
 
 .heroes-avatar-strip::-webkit-scrollbar {
@@ -788,28 +799,34 @@ watch(selectedHeroId, () => {
 
 .hero-card {
   --hero-card-rotation: 0deg;
+  --hero-accent: #55b7ff;
+  --hero-panel: #102f49;
   position: relative;
   isolation: isolate;
-  flex: 0 0 12.45rem;
-  width: 12.45rem;
-  height: 12.1rem;
-  margin-left: -1.8rem;
+  flex: 0 0 10.8rem;
+  width: 10.8rem;
+  height: 12rem;
+  margin-left: 0.26rem;
   display: grid;
-  grid-template-rows: auto 4.65rem auto;
-  gap: 0.36rem;
-  padding: 0.55rem;
+  grid-template-rows: 0.72rem 4.85rem 1.8rem 2.85rem;
+  gap: 0.24rem;
+  padding: 0.5rem;
   overflow: hidden;
   color: rgba(255, 251, 235, 0.96);
-  border: 1px solid rgba(24, 83, 55, 0.78);
-  border-radius: 0.82rem;
+  border: 2px solid rgba(10, 14, 18, 0.96);
+  border-radius: 0.36rem;
   background:
-    radial-gradient(circle at 28% 15%, rgb(111, 153, 108), transparent 34%),
-    radial-gradient(circle at 78% 18%, rgb(91, 139, 128), transparent 32%),
-    linear-gradient(155deg, rgb(73, 118, 73), rgb(45, 90, 68) 50%, rgb(106, 89, 49));
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-accent) 14%, transparent), transparent 20%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 14px),
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-panel) 94%, #ffffff 6%), var(--hero-panel) 58%, rgba(8, 11, 15, 0.96));
+  background-size: auto, auto, auto;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.18) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.26) inset,
-    0 12px 24px rgba(0, 0, 0, 0.3);
+    0 0 0 1px color-mix(in srgb, var(--hero-accent) 42%, rgba(0, 0, 0, 0.65)) inset,
+    0 2px 0 rgba(255, 255, 255, 0.11) inset,
+    0 -3px 0 rgba(0, 0, 0, 0.42) inset,
+    0 14px 24px rgba(0, 0, 0, 0.45);
+  image-rendering: pixelated;
+  clip-path: polygon(0.42rem 0, calc(100% - 0.42rem) 0, 100% 0.42rem, 100% calc(100% - 0.42rem), calc(100% - 0.42rem) 100%, 0.42rem 100%, 0 calc(100% - 0.42rem), 0 0.42rem);
   cursor: pointer;
   user-select: none;
   transform-origin: bottom center;
@@ -827,10 +844,26 @@ watch(selectedHeroId, () => {
 .hero-card::before {
   content: "";
   position: absolute;
-  inset: 0.28rem;
+  inset: 0.32rem;
   z-index: -1;
-  border: 1px solid rgba(13, 56, 38, 0.48);
-  border-radius: 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 46%, rgba(255, 236, 169, 0.36));
+  border-radius: 0.16rem;
+  background:
+    radial-gradient(ellipse at 50% 31%, color-mix(in srgb, var(--hero-accent) 16%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 22%, rgba(0, 0, 0, 0.18));
+  pointer-events: none;
+}
+
+.hero-card::after {
+  content: "";
+  position: absolute;
+  inset: 0.18rem;
+  z-index: -1;
+  border-radius: 0.18rem;
+  box-shadow:
+    0.18rem 0.18rem 0 color-mix(in srgb, var(--hero-accent) 42%, rgba(0, 0, 0, 0.7)) inset,
+    -0.18rem 0.18rem 0 color-mix(in srgb, var(--hero-accent) 34%, rgba(0, 0, 0, 0.7)) inset;
+  opacity: 0.34;
   pointer-events: none;
 }
 
@@ -839,33 +872,56 @@ watch(selectedHeroId, () => {
   inset: -35% -20% auto;
   height: 58%;
   z-index: -1;
-  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.16), transparent 66%);
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 246, 190, 0.1), transparent 66%);
   transform: rotate(-8deg);
-  opacity: 0.7;
+  opacity: 0.35;
   pointer-events: none;
+}
+
+.hero-card-crest {
+  position: absolute;
+  top: 0.18rem;
+  left: 50%;
+  z-index: 4;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 2px solid rgba(12, 14, 16, 0.95);
+  border-radius: 0.12rem;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.45), transparent 24%),
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-accent) 68%, #fff0a6 12%), color-mix(in srgb, var(--hero-panel) 78%, #000 22%));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--hero-accent) 60%, rgba(255, 221, 126, 0.45)),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.hero-card-crest::before {
+  content: "";
+  position: absolute;
+  inset: 0.43rem;
+  border-radius: 0.15rem;
+  background: rgba(255, 246, 207, 0.86);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hero-accent) 70%, transparent);
+  transform: rotate(45deg);
 }
 
 .hero-card-tucked {
   z-index: 1;
-  transform: translateY(48%) rotate(var(--hero-card-rotation)) scale(0.96);
-  filter: saturate(0.94) brightness(0.96);
+  transform: translateY(1.18rem) rotate(var(--hero-card-rotation)) scale(0.95);
+  filter: saturate(0.86) brightness(0.82);
 }
 
 .hero-card-tucked:hover {
   z-index: 4;
-  transform: translateY(38%) rotate(calc(var(--hero-card-rotation) * 0.55)) scale(0.98);
-  filter: saturate(1) brightness(1);
+  transform: translateY(0.68rem) rotate(calc(var(--hero-card-rotation) * 0.45)) scale(0.99);
+  filter: saturate(1.02) brightness(0.98);
 }
 
 .hero-card-selected {
   z-index: 8;
-  border-color: rgba(25, 104, 70, 0.95);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.24) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.26) inset,
-    0 8px 0 rgba(9, 27, 18, 0.22),
-    0 24px 36px rgba(0, 0, 0, 0.46);
-  transform: translateY(0) rotate(0deg) scale(1.02);
+  transform: translateY(-0.2rem) rotate(0deg) scale(1.02);
   filter: saturate(1.08) brightness(1.04);
 }
 
@@ -874,23 +930,51 @@ watch(selectedHeroId, () => {
 }
 
 .hero-card-header {
+  grid-row: 3;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.45rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 0.12rem;
+  padding: 0.26rem 0.28rem;
+  border-top: 1px solid color-mix(in srgb, var(--hero-accent) 38%, rgba(255, 234, 180, 0.22));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.34);
+  background:
+    linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.25), transparent),
+    rgba(0, 0, 0, 0.16);
+  text-align: center;
 }
 
 .hero-card-name {
   min-width: 0;
-  padding-left: 0.25rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8rem;
+  max-width: 100%;
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 0.95;
+  color: rgba(255, 248, 220, 0.98);
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.68),
+    0 0 8px rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+}
+
+.hero-card-role {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hero-accent);
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.46rem;
   font-weight: 900;
   line-height: 1;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72);
+  text-transform: uppercase;
 }
 
 .hero-card-actions {
@@ -936,39 +1020,60 @@ watch(selectedHeroId, () => {
 }
 
 .hero-card-portrait {
+  grid-row: 2;
+  position: relative;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.25rem;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  gap: 0.38rem;
 }
 
 .hero-card-portrait-frame {
   position: relative;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(20, 78, 53, 0.68);
-  border-radius: 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 42%, rgba(255, 231, 164, 0.18));
+  border-radius: 0.14rem;
   background:
-    linear-gradient(180deg, rgba(255, 248, 205, 0.12), rgba(12, 31, 23, 0.22)),
-    radial-gradient(circle at 50% 74%, rgba(52, 211, 153, 0.2), transparent 45%);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2) inset;
+    radial-gradient(ellipse at 50% 76%, color-mix(in srgb, var(--hero-accent) 24%, transparent), transparent 54%),
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.07), transparent 36%),
+    rgba(0, 0, 0, 0.18);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.11) inset,
+    0 10px 18px rgba(0, 0, 0, 0.22) inset;
+}
+
+.hero-card-portrait-frame::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0.32rem;
+  width: 4.8rem;
+  height: 0.72rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hero-accent) 32%, rgba(0, 0, 0, 0.62));
+  filter: blur(1px);
+  transform: translateX(-50%);
+  opacity: 0.78;
 }
 
 .hero-card-sprite {
   position: absolute;
   left: 50%;
-  bottom: 3.2325rem;
-  width: 2rem;
-  height: 2rem;
-  transform: translateX(calc(-50% - 2.1875rem)) scale(1.04);
+  top: 50%;
+  width: 4rem;
+  height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -42%);
   z-index: 2;
   mix-blend-mode: normal;
-  filter: saturate(0.96) contrast(0.98) brightness(0.98);
-  opacity: 0.95;
+  filter: saturate(1.05) contrast(1.02) brightness(1.02) drop-shadow(0 8px 7px rgba(0, 0, 0, 0.36));
+  opacity: 0.98;
 }
 
 .hero-card-sprite--looper {
@@ -984,15 +1089,22 @@ watch(selectedHeroId, () => {
 }
 
 .hero-card-xp {
-  align-self: end;
+  position: absolute;
+  right: 0.32rem;
+  top: 0.3rem;
+  z-index: 3;
   min-width: 0;
   display: grid;
   justify-items: center;
   gap: 0.05rem;
-  padding: 0.24rem 0.2rem;
-  border: 1px solid rgba(20, 78, 53, 0.64);
-  border-radius: 0.5rem;
-  background: rgba(22, 60, 45, 0.44);
+  width: 2.1rem;
+  padding: 0.22rem 0.16rem;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 48%, rgba(255, 226, 144, 0.28));
+  border-radius: 0.12rem;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 190, 0.16), rgba(0, 0, 0, 0.36)),
+    rgba(7, 12, 16, 0.74);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.22);
 }
 
 .hero-card-xp span {
@@ -1010,11 +1122,19 @@ watch(selectedHeroId, () => {
 }
 
 .hero-card-controls {
+  grid-row: 4;
   display: grid;
-  gap: 0.28rem;
-  min-height: 4.45rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-content: end;
+  gap: 0.22rem;
+  min-height: 2.65rem;
+  padding: 0.14rem 0.06rem 0.02rem;
+  border-top: 1px solid color-mix(in srgb, var(--hero-accent) 22%, rgba(255, 232, 170, 0.14));
+  background:
+    linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.2), transparent),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(0, 0, 0, 0.18));
   opacity: 0;
-  transform: translateY(0.25rem);
+  transform: translateY(0.22rem);
   pointer-events: none;
   transition: opacity 0.16s ease, transform 0.2s ease;
 }
@@ -1028,30 +1148,59 @@ watch(selectedHeroId, () => {
 .scout-controls {
   position: relative;
   display: grid;
-  padding-top: 0.25rem;
-  border-top: 1px solid rgba(225, 244, 190, 0.16);
+  padding-top: 0;
   z-index: 4;
 }
 
 .scout-menu-trigger {
   --scout-color: #e2e8f0;
+  position: relative;
   width: 100%;
-  min-height: 1.92rem;
-  padding: 0.22rem 0.38rem;
+  min-height: 2.08rem;
+  padding: 0.2rem 0.18rem 0.16rem;
   display: grid;
-  grid-template-columns: 1rem minmax(4.8rem, 1fr) 0.55rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0.88rem auto;
+  justify-items: center;
   align-items: center;
-  gap: 0.4rem;
-  border: 1px solid rgba(225, 244, 190, 0.18);
-  border-radius: 6px;
-  background: rgba(35, 83, 46, 0.52);
+  gap: 0.08rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 28%, rgba(255, 237, 164, 0.12));
+  border-radius: 0.08rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 36%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 8px),
+    color-mix(in srgb, var(--hero-panel) 72%, rgba(5, 8, 10, 0.88));
   color: rgba(236, 253, 245, 0.92);
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  image-rendering: pixelated;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.44) inset,
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset;
+  clip-path: polygon(0.22rem 0, calc(100% - 0.22rem) 0, 100% 0.22rem, 100% calc(100% - 0.22rem), calc(100% - 0.22rem) 100%, 0.22rem 100%, 0 calc(100% - 0.22rem), 0 0.22rem);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.scout-menu-trigger::before,
+.skill-menu-trigger::before {
+  content: "";
+  position: absolute;
+  inset: 0.17rem;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 16%, rgba(255, 255, 255, 0.08));
+  pointer-events: none;
 }
 
 .scout-menu-trigger:hover:not(:disabled) {
-  border-color: var(--scout-color);
-  background: rgba(65, 103, 49, 0.78);
+  border-color: color-mix(in srgb, var(--hero-accent) 44%, rgba(255, 237, 164, 0.16));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 36%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 8px),
+    color-mix(in srgb, var(--hero-panel) 66%, rgba(7, 12, 14, 0.88));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.44) inset,
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset,
+    0 0 8px color-mix(in srgb, var(--hero-accent) 18%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1061,14 +1210,16 @@ watch(selectedHeroId, () => {
 }
 
 .scout-menu-trigger-active {
-  border-color: var(--scout-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--scout-color) 42%, transparent);
+  border-color: color-mix(in srgb, var(--scout-color) 54%, var(--hero-accent) 18%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--scout-color) 22%, transparent),
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset;
 }
 
 .scout-trigger-icon {
   position: relative;
-  width: 0.9rem;
-  height: 0.9rem;
+  width: 0.92rem;
+  height: 0.86rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1076,20 +1227,26 @@ watch(selectedHeroId, () => {
 }
 
 .scout-trigger-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: var(--scout-color);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--scout-color) 65%, transparent);
+  width: 0.58rem;
+  height: 0.58rem;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 0.08rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent 36%),
+    var(--scout-color);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.44),
+    0 0 8px color-mix(in srgb, var(--scout-color) 46%, transparent);
+  transform: rotate(45deg);
 }
 
 .scout-trigger-sweep {
   position: absolute;
-  width: 0.42rem;
-  height: 0.1rem;
+  width: 0.48rem;
+  height: 0.11rem;
   right: 0.05rem;
   bottom: 0.1rem;
-  border-radius: 999px;
+  border-radius: 0.02rem;
   background: currentColor;
   transform: rotate(45deg);
   transform-origin: center;
@@ -1098,40 +1255,34 @@ watch(selectedHeroId, () => {
 .scout-trigger-copy {
   min-width: 0;
   display: grid;
-  gap: 0.08rem;
-  text-align: left;
+  gap: 0.04rem;
+  text-align: center;
 }
 
 .scout-trigger-kicker {
-  font-size: 0.5rem;
-  font-weight: 800;
-  line-height: 1;
-  color: rgba(190, 242, 100, 0.78);
-  text-transform: uppercase;
+  display: none;
 }
 
 .scout-trigger-label {
   min-width: 0;
+  max-width: 4.2rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.66rem;
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.42rem;
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1;
+  color: rgba(236, 253, 245, 0.84);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72);
 }
 
 .scout-trigger-caret {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  opacity: 0.72;
-  transition: transform 0.15s ease;
+  display: none;
 }
 
 .scout-controls-open .scout-trigger-caret {
-  transform: translateY(0.15rem) rotate(225deg);
+  display: none;
 }
 
 .scout-menu {
@@ -1230,101 +1381,122 @@ watch(selectedHeroId, () => {
 .skill-controls {
   position: relative;
   display: grid;
-  padding-top: 0.18rem;
-  border-top: 1px solid rgba(216, 196, 108, 0.2);
+  padding-top: 0;
   z-index: 3;
 }
 
 .skill-menu-trigger {
+  position: relative;
   width: 100%;
-  min-height: 1.83rem;
-  padding: 0.2rem 0.34rem;
+  min-height: 2.08rem;
+  padding: 0.2rem 0.18rem 0.16rem;
   display: grid;
-  grid-template-columns: 0.95rem minmax(4.45rem, 1fr) 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0.88rem auto;
+  justify-items: center;
   align-items: center;
-  gap: 0.34rem;
-  border: 1px solid rgba(216, 196, 108, 0.3);
-  border-radius: 0.48rem;
+  gap: 0.08rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 28%, rgba(250, 204, 21, 0.16));
+  border-radius: 0.08rem;
   background:
-    linear-gradient(180deg, rgba(255, 244, 179, 0.14), rgba(6, 26, 26, 0.72)),
-    rgba(55, 68, 33, 0.46);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 36%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 8px),
+    color-mix(in srgb, var(--hero-panel) 68%, rgba(7, 9, 11, 0.9));
   color: rgba(255, 251, 235, 0.96);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  image-rendering: pixelated;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.44) inset,
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset;
+  clip-path: polygon(0.22rem 0, calc(100% - 0.22rem) 0, 100% 0.22rem, 100% calc(100% - 0.22rem), calc(100% - 0.22rem) 100%, 0.22rem 100%, 0 calc(100% - 0.22rem), 0 0.22rem);
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .skill-menu-trigger:hover {
-  border-color: rgba(250, 204, 21, 0.62);
+  border-color: color-mix(in srgb, var(--hero-accent) 42%, rgba(250, 204, 21, 0.18));
   background:
-    linear-gradient(180deg, rgba(255, 242, 168, 0.2), rgba(12, 35, 29, 0.78)),
-    rgba(73, 90, 36, 0.62);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 36%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 8px),
+    color-mix(in srgb, var(--hero-panel) 62%, rgba(8, 12, 13, 0.9));
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.14) inset,
-    0 0 12px rgba(250, 204, 21, 0.18);
+    0 0 0 1px rgba(0, 0, 0, 0.44) inset,
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset,
+    0 0 8px color-mix(in srgb, var(--hero-accent) 16%, transparent);
   transform: translateY(-1px);
 }
 
 .skill-menu-trigger-ready {
-  border-color: rgba(250, 204, 21, 0.72);
+  border-color: color-mix(in srgb, var(--hero-accent) 48%, rgba(250, 204, 21, 0.32));
   box-shadow:
-    0 0 0 1px rgba(250, 204, 21, 0.28),
-    0 0 15px rgba(250, 204, 21, 0.2);
+    0 0 0 1px color-mix(in srgb, var(--hero-accent) 18%, rgba(250, 204, 21, 0.14)),
+    0 -2px 0 rgba(0, 0, 0, 0.34) inset;
   animation: skill-ready-pulse 1.45s ease-in-out infinite;
 }
 
 .skill-trigger-code {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 0.92rem;
+  height: 0.86rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--hero-accent) 28%, rgba(254, 243, 199, 0.2));
+  border-radius: 0.08rem;
   background:
-    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.52), transparent 28%),
-    rgba(250, 204, 21, 0.22);
-  color: rgba(254, 243, 199, 0.98);
-  font-size: 0.72rem;
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--hero-accent) 35%, rgba(254, 243, 199, 0.28)), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.26));
+  color: color-mix(in srgb, var(--hero-accent) 42%, rgba(254, 243, 199, 0.96));
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.66rem;
   font-weight: 900;
   line-height: 1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.42) inset,
+    0 0 7px color-mix(in srgb, var(--hero-accent) 18%, transparent);
 }
 
 .skill-trigger-copy {
   min-width: 0;
   display: grid;
-  gap: 0.08rem;
-  text-align: left;
+  gap: 0.04rem;
+  text-align: center;
 }
 
 .skill-trigger-kicker {
-  font-size: 0.5rem;
-  font-weight: 800;
-  line-height: 1;
-  color: rgba(253, 230, 138, 0.78);
-  text-transform: uppercase;
-}
-
-.skill-trigger-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.66rem;
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.35rem;
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1;
+  color: color-mix(in srgb, var(--hero-accent) 48%, rgba(255, 251, 235, 0.8));
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72);
+}
+
+.skill-trigger-label {
+  min-width: 0;
+  max-width: 4.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.39rem;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(254, 243, 199, 0.82);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72);
 }
 
 .skill-trigger-caret {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  opacity: 0.72;
-  transition: transform 0.15s ease;
+  display: none;
 }
 
 .skill-controls-open .skill-trigger-caret {
-  transform: translateY(0.15rem) rotate(225deg);
+  display: none;
 }
 
 @keyframes skill-ready-pulse {
@@ -1335,56 +1507,6 @@ watch(selectedHeroId, () => {
 
   50% {
     box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.52), 0 0 12px rgba(250, 204, 21, 0.36);
-  }
-}
-
-@keyframes hero-glass-shimmer {
-  0%,
-  100% {
-    background-position: -34% 0, center;
-  }
-
-  50% {
-    background-position: 134% 0, center;
-  }
-}
-
-@keyframes hero-card-sheen {
-  0%,
-  100% {
-    opacity: 0;
-    transform: translateX(-62%) rotate(-9deg);
-  }
-
-  42%,
-  58% {
-    opacity: 0.72;
-  }
-
-  72% {
-    opacity: 0;
-    transform: translateX(62%) rotate(-9deg);
-  }
-}
-
-@keyframes hero-selected-pulse {
-  0%,
-  100% {
-    filter: saturate(1.12) brightness(1.06);
-  }
-
-  50% {
-    filter: saturate(1.2) brightness(1.1);
-  }
-}
-
-@keyframes hero-rune-spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
   }
 }
 
@@ -1508,37 +1630,46 @@ watch(selectedHeroId, () => {
   max-width: 100%;
 }
 
-.skill-option-effects {
+.skill-option-segments {
   min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.22rem;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 0.16rem;
+  padding: 0.18rem;
+  border: 1px solid rgba(255, 251, 235, 0.12);
+  border-radius: 0.32rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.2)),
+    rgba(8, 13, 16, 0.36);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 
-.skill-option-effect {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1rem;
-  padding: 0.14rem 0.28rem;
+.skill-option-segment {
+  min-width: 0;
+  height: 0.58rem;
   border: 1px solid rgba(255, 251, 235, 0.1);
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.22);
-  color: rgba(255, 251, 235, 0.64);
-  font-size: 0.5rem;
-  font-weight: 800;
-  line-height: 1.05;
+  border-radius: 0.08rem;
+  background: rgba(15, 23, 42, 0.35);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.22) inset;
 }
 
-.skill-option-effect-active {
+.skill-option-segment-filled {
   border-color: rgba(134, 239, 172, 0.34);
-  background: rgba(21, 128, 61, 0.22);
-  color: rgba(220, 252, 231, 0.92);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.12)),
+    color-mix(in srgb, var(--hero-accent) 48%, rgba(34, 197, 94, 0.64));
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--hero-accent) 32%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
 }
 
-.skill-option-effect-next {
+.skill-option-segment-next {
   border-color: rgba(250, 204, 21, 0.52);
-  background: rgba(161, 98, 7, 0.32);
-  color: rgba(254, 243, 199, 0.98);
+  background:
+    linear-gradient(180deg, rgba(250, 204, 21, 0.28), rgba(161, 98, 7, 0.22)),
+    rgba(15, 23, 42, 0.35);
 }
 
 .skill-option-state {
@@ -1550,16 +1681,16 @@ watch(selectedHeroId, () => {
 
 @media (max-width: 640px) {
   .heroes-bar {
-    height: 13.35rem;
+    height: 13.55rem;
   }
 
   .heroes-avatar-strip {
-    --mobile-card-width: min(82vw, 13.25rem);
+    --mobile-card-width: min(76vw, 11.8rem);
     left: 0;
     right: 0;
     bottom: 0;
     width: 100%;
-    height: 13.1rem;
+    height: 13.4rem;
     pointer-events: auto;
     align-items: flex-end;
     gap: 0;
@@ -1567,23 +1698,19 @@ watch(selectedHeroId, () => {
     overflow-y: visible;
     scroll-snap-type: x mandatory;
     scroll-padding-inline: calc((100vw - var(--mobile-card-width)) / 2);
-    padding: 0.62rem calc((100vw - var(--mobile-card-width)) / 2) 0.45rem;
+    padding: 1rem calc((100vw - var(--mobile-card-width)) / 2) 0.55rem;
     touch-action: pan-x;
     overscroll-behavior-x: contain;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 1.05rem 1.05rem 0 0;
     background:
-      linear-gradient(180deg, rgba(118, 255, 204, 0.12), rgba(5, 21, 22, 0.74)),
-      rgba(4, 19, 20, 0.54);
+      linear-gradient(to top, rgba(4, 10, 12, 0.7), rgba(4, 10, 12, 0.18) 58%, transparent),
+      radial-gradient(ellipse at 50% 100%, rgba(0, 0, 0, 0.34), transparent 70%);
   }
 
   .hero-card {
     flex: 0 0 var(--mobile-card-width);
     width: var(--mobile-card-width);
-    height: 12.05rem;
-    margin-left: -0.9rem;
+    height: 11.85rem;
+    margin-left: 0.55rem;
     scroll-snap-align: center;
     scroll-snap-stop: always;
   }
@@ -1594,21 +1721,21 @@ watch(selectedHeroId, () => {
 
   .hero-card-tucked {
     z-index: 1;
-    transform: translateY(1.38rem) rotate(var(--hero-card-rotation)) scale(0.93);
-    filter: saturate(0.9) brightness(0.93);
+    transform: translateY(1.2rem) rotate(var(--hero-card-rotation)) scale(0.93);
+    filter: saturate(0.82) brightness(0.82);
   }
 
   .hero-card-tucked:hover {
-    transform: translateY(1.02rem) rotate(calc(var(--hero-card-rotation) * 0.55)) scale(0.96);
+    transform: translateY(0.88rem) rotate(calc(var(--hero-card-rotation) * 0.55)) scale(0.96);
   }
 
   .hero-card-selected {
     z-index: 6;
-    transform: translateY(0) rotate(0deg) scale(1);
+    transform: translateY(-0.16rem) rotate(0deg) scale(1);
   }
 
   .hero-card-controls {
-    min-height: 4.18rem;
+    min-height: 2.55rem;
   }
 
   .scout-menu-trigger,

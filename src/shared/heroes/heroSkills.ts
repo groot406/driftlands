@@ -1,10 +1,15 @@
 import type { Hero } from '../../core/types/Hero.ts';
+import type { TaskType } from '../../core/types/Task.ts';
 
 export type HeroSkillKey =
-  | 'production_boost'
-  | 'task_rush'
-  | 'stabilizing_method'
-  | 'survey_method';
+  | 'speed'
+  | 'strength'
+  | 'craft'
+  | 'scouting'
+  | 'survival'
+  | 'teamwork';
+
+export type HeroTaskSkillCategory = 'strength' | 'craft' | 'scouting' | 'survival';
 
 export interface HeroSkillDefinition {
   key: HeroSkillKey;
@@ -13,34 +18,88 @@ export interface HeroSkillDefinition {
   maxLevel: number;
 }
 
-export const HERO_SKILL_MAX_LEVEL = 3;
+export const HERO_SKILL_MAX_LEVEL = 10;
 
 export const HERO_SKILL_DEFINITIONS: readonly HeroSkillDefinition[] = [
   {
-    key: 'production_boost',
-    label: 'Production Boost',
-    summary: 'Improves Boost with stronger and longer production surges.',
+    key: 'speed',
+    label: 'Speed',
+    summary: 'Moves faster between tiles.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
-    key: 'task_rush',
-    label: 'Task Rush',
-    summary: 'Improves Rush with larger task progress bursts.',
+    key: 'strength',
+    label: 'Strength',
+    summary: 'Works faster on chopping, mining, digging, and heavy clearing.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
-    key: 'stabilizing_method',
-    label: 'Stabilizing Method',
-    summary: 'Improves Hold with longer stabilization and condition repair.',
+    key: 'craft',
+    label: 'Craft',
+    summary: 'Builds roads, structures, bridges, tunnels, and upgrades faster.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
-    key: 'survey_method',
-    label: 'Survey Method',
-    summary: 'Improves Survey with wider reveal and smarter charge use.',
+    key: 'scouting',
+    label: 'Scouting',
+    summary: 'Explores, surveys, and resource-scouts faster.',
+    maxLevel: HERO_SKILL_MAX_LEVEL,
+  },
+  {
+    key: 'survival',
+    label: 'Survival',
+    summary: 'Works faster on hunting, fishing, cooking, planting, and field care.',
+    maxLevel: HERO_SKILL_MAX_LEVEL,
+  },
+  {
+    key: 'teamwork',
+    label: 'Teamwork',
+    summary: 'Gains extra task speed when working with other heroes.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
 ] as const;
+
+const TASK_SKILL_MULTIPLIER_PER_LEVEL = 0.05;
+const MOVEMENT_SPEED_MULTIPLIER_PER_LEVEL = 0.04;
+const TEAMWORK_MULTIPLIER_PER_LEVEL_PER_HELPER = 0.025;
+
+const STRENGTH_TASKS = new Set<string>([
+  'breakDirtRock',
+  'chopWood',
+  'clearRocks',
+  'dig',
+  'gatherDriftwood',
+  'gatherSand',
+  'gatherTimber',
+  'mineOre',
+  'removeTrunks',
+]);
+
+const SCOUTING_TASKS = new Set<string>([
+  'activateRuins',
+  'explore',
+  'scoutResource',
+  'surveyTile',
+]);
+
+const SURVIVAL_TASKS = new Set<string>([
+  'campfireRations',
+  'collectRations',
+  'convertToGrass',
+  'fishAtDock',
+  'harvestGrain',
+  'harvestGrapes',
+  'harvestHops',
+  'harvestWaterLilies',
+  'hunt',
+  'irregateDirtTask',
+  'placeWaterLilies',
+  'plantTrees',
+  'seedGrain',
+  'seedGrapes',
+  'seedHops',
+  'tillLand',
+]);
 
 const SKILL_KEYS = new Set<HeroSkillKey>(HERO_SKILL_DEFINITIONS.map((skill) => skill.key));
 
@@ -92,40 +151,67 @@ export function selectHeroSkill(hero: Hero, skill: HeroSkillKey) {
   return true;
 }
 
-export function getProductionBoostConfig(hero: Pick<Hero, 'skills'> | null | undefined) {
-  const level = getHeroSkillLevel(hero, 'production_boost');
-  return {
-    multiplier: level >= 1 ? 1.75 : 1.5,
-    cycles: level >= 2 ? 2 : 1,
-    inputReduction: level >= 3 ? 1 : 0,
-  };
+export function getHeroMovementSpeedMultiplier(hero: Pick<Hero, 'skills'> | null | undefined) {
+  return 1 + (getHeroSkillLevel(hero, 'speed') * MOVEMENT_SPEED_MULTIPLIER_PER_LEVEL);
 }
 
-export function getTaskRushBurstAmount(baseAmount: number, hero: Pick<Hero, 'skills'> | null | undefined) {
-  const level = getHeroSkillLevel(hero, 'task_rush');
-  const multiplier = level >= 2 ? 1.5 : level >= 1 ? 1.25 : 1;
-  return Math.round(baseAmount * multiplier);
+export function getSkilledHeroMovementSpeedAdj(hero: Pick<Hero, 'skills'> | null | undefined, baseSpeedAdj: number) {
+  return Math.max(0.1, baseSpeedAdj / getHeroMovementSpeedMultiplier(hero));
 }
 
-export function shouldRefundTaskRushOnCompletion(hero: Pick<Hero, 'skills'> | null | undefined) {
-  return getHeroSkillLevel(hero, 'task_rush') >= 3;
+export function getHeroTaskSkillCategory(taskType: TaskType): HeroTaskSkillCategory | null {
+  if (taskType.startsWith('build') || taskType.startsWith('upgrade') || taskType === 'dismantle') {
+    return 'craft';
+  }
+
+  if (STRENGTH_TASKS.has(taskType)) {
+    return 'strength';
+  }
+
+  if (SCOUTING_TASKS.has(taskType)) {
+    return 'scouting';
+  }
+
+  if (SURVIVAL_TASKS.has(taskType)) {
+    return 'survival';
+  }
+
+  return null;
 }
 
-export function getStabilizeDurationMs(baseDurationMs: number, hero: Pick<Hero, 'skills'> | null | undefined) {
-  const level = getHeroSkillLevel(hero, 'stabilizing_method');
-  if (level >= 2) return 4 * 60_000;
-  if (level >= 1) return 3 * 60_000;
-  return baseDurationMs;
+export function getHeroTaskSpecialtyMultiplier(
+  hero: Pick<Hero, 'skills'> | null | undefined,
+  taskType: TaskType,
+) {
+  const category = getHeroTaskSkillCategory(taskType);
+  if (!category) {
+    return 1;
+  }
+
+  return 1 + (getHeroSkillLevel(hero, category) * TASK_SKILL_MULTIPLIER_PER_LEVEL);
 }
 
-export function shouldRepairOnStabilize(hero: Pick<Hero, 'skills'> | null | undefined) {
-  return getHeroSkillLevel(hero, 'stabilizing_method') >= 3;
+export function getHeroTeamworkMultiplier(
+  hero: Pick<Hero, 'skills'> | null | undefined,
+  participantCount: number,
+) {
+  const helperCount = Math.max(0, Math.floor(participantCount) - 1);
+  return 1 + (getHeroSkillLevel(hero, 'teamwork') * TEAMWORK_MULTIPLIER_PER_LEVEL_PER_HELPER * helperCount);
 }
 
-export function shouldRevealAdjacentOnSurvey(hero: Pick<Hero, 'skills'> | null | undefined) {
-  return getHeroSkillLevel(hero, 'survey_method') >= 2;
+export function getHeroTaskRateMultiplier(
+  hero: Pick<Hero, 'skills'> | null | undefined,
+  taskType: TaskType,
+  participantCount: number = 1,
+) {
+  return getHeroTaskSpecialtyMultiplier(hero, taskType) * getHeroTeamworkMultiplier(hero, participantCount);
 }
 
-export function shouldRefundSurveyWhenNothingFound(hero: Pick<Hero, 'skills'> | null | undefined) {
-  return getHeroSkillLevel(hero, 'survey_method') >= 3;
+export function applyHeroTaskRateMultiplier(
+  baseRate: number,
+  hero: Pick<Hero, 'skills'> | null | undefined,
+  taskType: TaskType,
+  participantCount: number = 1,
+) {
+  return baseRate * getHeroTaskRateMultiplier(hero, taskType, participantCount);
 }

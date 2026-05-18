@@ -1,10 +1,10 @@
 <template>
-  <div class="absolute top-0 left-0 w-full h-full z-20 pointer-events-none select-none p-2 flex flex-col gap-4">
-    <div class="flex flex-row justify-between gap-2 md:gap-40 items-start">
-      <div class="min-w-0 flex-1 flex flex-col gap-4">
+  <div class="game-gui-shell absolute top-0 left-0 w-full h-full z-20 pointer-events-none select-none p-2 flex flex-col gap-4">
+    <div class="game-gui-top flex flex-row justify-between gap-2 md:gap-40 items-start">
+      <div class="game-gui-resources min-w-0 flex-1 flex flex-col gap-4">
         <ResourceBar/>
       </div>
-      <div class="pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
+      <div class="game-gui-menu pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
       <div class="pointer-events-auto gap-2 flex flex-col items-end" v-if="showHelpers && serverDebugModeEnabled">
@@ -198,6 +198,37 @@ watch(serverDebugModeEnabled, (enabled) => {
 
 .menu-shortcut-btn:hover {
   filter: brightness(1.06);
+}
+
+@media (max-width: 640px) {
+  .game-gui-shell {
+    padding: 0.35rem;
+    gap: 0.75rem;
+  }
+
+  .game-gui-top {
+    position: relative;
+    display: block;
+  }
+
+  .game-gui-resources {
+    width: 100%;
+    padding-right: 4.2rem;
+  }
+
+  .game-gui-menu {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 5;
+  }
+
+  .menu-shortcut-btn {
+    min-width: 3.55rem;
+    min-height: 2.35rem;
+    padding-inline: 0.55rem;
+    font-size: 8px;
+  }
 }
 
 .conversation-recall-btn {
