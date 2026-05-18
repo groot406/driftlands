@@ -14,6 +14,8 @@ import { reactive, ref } from 'vue';
 const RESOURCE_TYPES: ResourceType[] = [
     'wood',
     'ore',
+    'iron',
+    'coal',
     'stone',
     'tools',
     'weapons',
@@ -24,6 +26,7 @@ const RESOURCE_TYPES: ResourceType[] = [
     'beer',
     'wine',
     'crystal',
+    'diamonds',
     'artifact',
     'water',
     'grain',
@@ -38,6 +41,8 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
     return {
         wood: 0,
         ore: 0,
+        iron: 0,
+        coal: 0,
         stone: 0,
         tools: 0,
         weapons: 0,
@@ -48,6 +53,7 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         beer: 0,
         wine: 0,
         crystal: 0,
+        diamonds: 0,
         artifact: 0,
         water: 0,
         grain: 0,
@@ -312,6 +318,20 @@ function compareStorageWithdrawalPriority(a: string, b: string) {
     return a.localeCompare(b);
 }
 
+function getPrioritizedStorageIdsForSettlement(settlementId: string | null | undefined) {
+    if (settlementId) {
+        for (const tile of Object.values(tileIndex)) {
+            if (getTileSettlementId(tile) === settlementId) {
+                ensureStorageSnapshotForTileInternal(tile);
+            }
+        }
+    }
+
+    return Object.keys(storageInventories)
+        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
+        .sort(compareStorageWithdrawalPriority);
+}
+
 export function withdrawResourceFromStorage(tileId: string, type: ResourceType, amount: number = 1) {
     if (amount <= 0) return 0;
 
@@ -348,9 +368,7 @@ export function withdrawResourceAcrossStoragesForSettlement(
     const transfers: StorageResourceTransfer[] = [];
     let remaining = amount;
 
-    const prioritizedStorageIds = Object.keys(storageInventories)
-        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
-        .sort(compareStorageWithdrawalPriority);
+    const prioritizedStorageIds = getPrioritizedStorageIdsForSettlement(settlementId);
     for (const storageTileId of prioritizedStorageIds) {
         if (remaining <= 0) {
             break;
@@ -407,9 +425,7 @@ export function planResourceWithdrawalsAcrossStoragesForSettlement(
 
     const transfers: StorageResourceTransfer[] = [];
     let remaining = amount;
-    const prioritizedStorageIds = Object.keys(storageInventories)
-        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
-        .sort(compareStorageWithdrawalPriority);
+    const prioritizedStorageIds = getPrioritizedStorageIdsForSettlement(settlementId);
 
     for (const storageTileId of prioritizedStorageIds) {
         if (remaining <= 0) {
@@ -445,6 +461,68 @@ export function planResourceWithdrawalsAcrossStoragesForSettlement(
         storageTileId: settlementId ?? '0,0',
         amount: amountToTake,
     }];
+}
+
+export function planResourceDepositsAcrossStoragesForSettlement(
+    settlementId: string | null | undefined,
+    type: ResourceType,
+    amount: number = 1,
+): StorageResourceTransfer[] {
+    if (amount <= 0) {
+        return [];
+    }
+
+    const transfers: StorageResourceTransfer[] = [];
+    let remaining = amount;
+
+    for (const storageTileId of getPrioritizedStorageIdsForSettlement(settlementId)) {
+        if (remaining <= 0) {
+            break;
+        }
+
+        const snapshot = storageInventories[storageTileId];
+        if (!snapshot || !canStorageKindStoreResource(snapshot.kind, type)) {
+            continue;
+        }
+
+        const amountToStore = Math.min(remaining, Math.max(0, snapshot.capacity - getStorageUsedCapacityInternal(snapshot)));
+        if (amountToStore <= 0) {
+            continue;
+        }
+
+        transfers.push({
+            storageTileId,
+            amount: amountToStore,
+        });
+        remaining -= amountToStore;
+    }
+
+    return transfers;
+}
+
+export function depositResourceAcrossStoragesForSettlement(
+    settlementId: string | null | undefined,
+    type: ResourceType,
+    amount: number = 1,
+): StorageResourceTransfer[] {
+    const plannedTransfers = planResourceDepositsAcrossStoragesForSettlement(settlementId, type, amount);
+    const plannedAmount = plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+    if (plannedAmount < amount) {
+        return [];
+    }
+
+    const transfers: StorageResourceTransfer[] = [];
+    for (const transfer of plannedTransfers) {
+        const depositedAmount = depositResourceToStorage(transfer.storageTileId, type, transfer.amount);
+        if (depositedAmount > 0) {
+            transfers.push({
+                storageTileId: transfer.storageTileId,
+                amount: depositedAmount,
+            });
+        }
+    }
+
+    return transfers;
 }
 
 /**

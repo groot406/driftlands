@@ -6,6 +6,7 @@ import {
 import { getBuildingOutputMultiplier } from '../../../src/shared/buildings/state.ts';
 import { getTileProductionBoostInputReduction, getVolcanicProductionMultiplier } from '../../../src/shared/game/tileFeatures.ts';
 import { isJobSiteEnabled } from '../../../src/shared/buildings/jobSites';
+import { findNearestWaterAccessTile } from '../../../src/shared/buildings/water';
 import { planNearestStorageDeposits } from '../../../src/shared/buildings/storage';
 import { isBuildingOfflineFromCondition } from '../../../src/shared/buildings/maintenance';
 import type { JobSiteStatus } from '../../../src/shared/game/state/jobStore';
@@ -131,9 +132,21 @@ export function resolveJobResources(site: ResolvedJobSite, assignedWorkers: numb
 }
 
 function getAvailableResourceAmount(tile: Tile, resource: ResourceAmount) {
+    if (isVirtualJobInput(tile, resource)) {
+        return resource.amount;
+    }
+
     const settlementId = getJobSiteSettlementId(tile);
     const inventory = settlementId ? getSettlementResourceInventory(settlementId) : getEffectiveResourceInventory();
     return inventory[resource.type] ?? 0;
+}
+
+export function isVirtualJobInput(tile: Tile, resource: ResourceAmount) {
+    if (resource.type !== 'water' || resource.amount <= 0) {
+        return false;
+    }
+
+    return !!findNearestWaterAccessTile(tile.q, tile.r, getJobSiteSettlementId(tile));
 }
 
 function hasMissingInputs(tile: Tile, resources: ResourceAmount[], mode: 'all' | 'any' = 'all') {
@@ -197,6 +210,10 @@ function buildFreedCapacityByTileId(tile: Tile, resources: ResourceAmount[]) {
     const freedCapacityByTileId = new Map<string, number>();
 
     for (const resource of resources) {
+        if (isVirtualJobInput(tile, resource)) {
+            continue;
+        }
+
         const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(getJobSiteSettlementId(tile), resource.type, resource.amount);
         const plannedAmount = plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
         if (plannedAmount < resource.amount) {

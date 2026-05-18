@@ -524,6 +524,149 @@ test('settlers do not use a pub when no drinks are stocked', () => {
   assert.equal(settlers[0]?.socialTileId ?? null, null);
 });
 
+test('unlimited resources do not bypass morale unless morale bypass is enabled', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 75,
+      traits: ['long_worker'],
+      drinkPreference: 'beer',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+    {
+      id: 'publican',
+      q: 1,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 2,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      traits: ['long_worker'],
+      drinkPreference: 'beer',
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: true,
+    bypassHunger: true,
+    bypassMorale: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: true,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'socializing');
+
+  settlers[0]!.activity = 'idle';
+  settlers[0]!.happiness = 40;
+  settlers[0]!.socialTileId = null;
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: true,
+    bypassHunger: true,
+    bypassMorale: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: true,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  tickAt(2_000, 1_000);
+
+  assert.equal(settlers[0]?.happiness, 100);
+  assert.notEqual(settlers[0]?.activity, 'socializing');
+});
+
+test('hunger bypass keeps settlers fed independently from unlimited resources', () => {
+  loadWorld([
+    createTowncenterTile(),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'down',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 120_000,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    bypassMorale: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.hungerMs, 0);
+  assert.equal(settlers[0]?.activity, 'idle');
+});
+
 test('settlers only consume food after they arrive at storage', () => {
   loadWorld([
     createTowncenterTile(),

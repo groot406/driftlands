@@ -10,20 +10,42 @@
     >
       <div v-if="!detailOnlyMode" class="tc-panel smooth-modal-surface">
         <div class="tc-header">
+          <div class="tc-header-emblem" aria-hidden="true">
+            <span>⌂</span>
+          </div>
           <div class="tc-header-copy">
             <p class="tc-kicker pixel-font">Settlement</p>
             <h3 class="tc-title">{{ townCenterTitle }}</h3>
+            <p class="tc-subtitle">{{ townCenterSubtitle }}</p>
           </div>
           <button class="tc-close" @click.stop.prevent="close" title="Close">
             &#x2715;
           </button>
         </div>
 
-        <div class="tc-section tc-section-progress">
+        <nav class="tc-tab-bar" aria-label="Town center sections">
+          <button
+            v-for="tab in townCenterTabs"
+            :key="tab.key"
+            type="button"
+            class="tc-tab-button"
+            :class="{ 'tc-tab-button-active': activeTownCenterTab === tab.key }"
+            @click.stop="activeTownCenterTab = tab.key"
+          >
+            <span class="tc-tab-glyph" aria-hidden="true">{{ tab.glyph }}</span>
+            <span class="tc-tab-copy">
+              <span class="tc-tab-label">{{ tab.label }}</span>
+              <span class="tc-tab-note">{{ tab.note }}</span>
+            </span>
+          </button>
+        </nav>
+
+        <div v-show="activeTownCenterTab === 'overview'" class="tc-tab-panel tc-tab-panel-overview">
+        <div class="tc-section tc-section-progress tc-section-command">
           <div class="tc-section-row">
-            <div class="tc-section-title">Colony Progress</div>
+            <div class="tc-section-title">Command Overview</div>
           </div>
-          <div class="tc-stat-grid">
+          <div class="tc-stat-grid tc-stat-grid-4">
             <div class="tc-stat">
               <span class="tc-stat-value">{{ playerPopulation.current }}</span>
               <span class="tc-stat-label">Population</span>
@@ -31,6 +53,14 @@
             <div class="tc-stat">
               <span class="tc-stat-value">{{ exploredTiles }}</span>
               <span class="tc-stat-label">Explored Tiles</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ inspectedWorkforce.availableWorkers }}</span>
+              <span class="tc-stat-label">Workers</span>
+            </div>
+            <div class="tc-stat">
+              <span class="tc-stat-value">{{ tradeCharterStatusLabel }}</span>
+              <span class="tc-stat-label">Trade</span>
             </div>
           </div>
         </div>
@@ -84,7 +114,49 @@
           </div>
         </div>
 
-        <div class="tc-section tc-section-military">
+        <div class="tc-section tc-section-trade">
+          <div class="tc-section-row">
+            <div class="tc-section-title">Trade Charter</div>
+            <div class="tc-section-caption">{{ tradeCharterStatusLabel }}</div>
+          </div>
+          <div class="tc-status-row" :class="tradeCharterStatusClass">
+            <span class="tc-status-dot" :class="tradeCharterStatusClass" />
+            <span class="tc-status-text">{{ tradeCharterStatusText }}</span>
+          </div>
+          <div v-if="townCenterOrderActions.length" class="tc-detail-order-list tc-town-center-order-list">
+            <div v-for="action in townCenterOrderActions" :key="action.key" class="tc-detail-order-card">
+              <div class="tc-detail-order-top">
+                <div>
+                  <p class="tc-detail-order-title">{{ action.label }}</p>
+                  <p class="tc-detail-order-copy">{{ action.summary }}</p>
+                  <p v-if="!action.unlocked && action.lockHint" class="tc-detail-order-note">{{ action.lockHint }}</p>
+                </div>
+                <button
+                  class="tc-detail-order-button"
+                  :class="{ 'tc-detail-order-button-disabled': !action.unlocked }"
+                  :disabled="!action.unlocked"
+                  @click.stop="startBuildingAction(action.tileId, action.definition)"
+                >
+                  {{ !action.unlocked ? 'Locked' : (selectedHero ? 'Send Hero' : 'Select Hero') }}
+                </button>
+              </div>
+              <div v-if="action.costs.length" class="tc-detail-chip-row">
+                <span
+                  v-for="resource in action.costs"
+                  :key="`${action.key}:${resource.type}`"
+                  class="tc-detail-chip"
+                  :class="{ 'tc-detail-chip-alert': getWarehouseAmount(resource.type) < resource.amount }"
+                >
+                  {{ formatNumber(resource.amount) }} {{ formatResourceType(resource.type) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div v-show="activeTownCenterTab === 'defense'" class="tc-tab-panel tc-tab-panel-defense">
+        <div class="tc-section tc-section-military tc-section-wide">
           <div class="tc-section-row">
             <div class="tc-section-title">Border Control</div>
             <div class="tc-section-caption">{{ borderCooldownText }}</div>
@@ -138,8 +210,10 @@
             </button>
           </div>
         </div>
+        </div>
 
         <!-- Food Section -->
+        <div v-show="activeTownCenterTab === 'economy'" class="tc-tab-panel tc-tab-panel-economy">
         <div class="tc-section tc-section-food">
           <div class="tc-section-row">
             <div class="tc-section-title">Food Supply</div>
@@ -214,8 +288,10 @@
             </div>
           </div>
         </div>
+        </div>
 
         <!-- Job Sites Section (placeholder) -->
+        <div v-show="activeTownCenterTab === 'sites'" class="tc-tab-panel tc-tab-panel-sites">
         <div class="tc-section tc-section-jobs">
           <div class="tc-section-row">
             <div class="tc-section-title">Job Sites</div>
@@ -275,6 +351,7 @@
             </div>
           </div>
           <p v-else class="tc-placeholder-text">Build a dock, granary, apiary, bakery, lumber camp, library, or mine to create settler jobs.</p>
+        </div>
         </div>
       </div>
 
@@ -421,6 +498,26 @@
                 <div class="tc-detail-card-value">{{ selectedJobSiteDetail.fullStaffingLabel }}</div>
                 <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.maxThroughputLabel }}</p>
               </section>
+            </div>
+
+            <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-section">
+              <div class="tc-detail-section-title">Assigned Workers</div>
+              <div v-if="selectedJobSiteDetail.assignedWorkerDetails.length" class="tc-worker-list">
+                <button
+                  v-for="worker in selectedJobSiteDetail.assignedWorkerDetails"
+                  :key="worker.id"
+                  type="button"
+                  class="tc-worker-row"
+                  @click.stop="inspectAssignedWorker(worker.settler)"
+                >
+                  <span class="tc-worker-copy">
+                    <span class="tc-worker-name">{{ worker.name }}</span>
+                    <span class="tc-worker-meta">{{ worker.activityLabel }} · {{ worker.statusLabel }}</span>
+                  </span>
+                  <span class="tc-worker-progress">{{ worker.progressLabel }}</span>
+                </button>
+              </div>
+              <p v-else class="tc-placeholder-text tc-worker-empty">No workers assigned.</p>
             </div>
 
             <div class="tc-detail-dashboard">
@@ -601,6 +698,7 @@ import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
 import type { TileConditionState } from '../core/types/Tile.ts';
 import type { Hero } from '../core/types/Hero.ts';
 import type { TaskDefinition } from '../core/types/Task.ts';
+import type { Settler } from '../core/types/Settler.ts';
 import { requestHeroMovement, startTaskRequest } from '../core/heroService';
 import { PathService } from '../core/PathService';
 import { getBuildingDefinitionByKey, getBuildingDefinitionByTaskKey, resolveBuildingJobResources } from '../shared/buildings/registry';
@@ -620,6 +718,7 @@ import { listTaskDefinitions } from '../shared/tasks/taskRegistry.ts';
 import { getTaskUnlockStatus, isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
 import { isRoadTile } from '../shared/game/roads.ts';
+import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
 import {
   GUARD_TRAINING_DURATION_MS,
   getAvailableGuardReserve,
@@ -646,7 +745,7 @@ import { studyState, studyVersion } from '../store/clientStudyStore';
 import { getSettlementResourceInventory, resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
 import { settlers, settlerVersion } from '../store/settlerStore';
-import { getSelectedHero } from '../store/uiStore';
+import { getSelectedHero, openSettlerModal } from '../store/uiStore';
 import { detachHeroFromCurrentTask } from '../store/taskStore.ts';
 import { addNotification } from '../store/notificationStore';
 import { canControlHero, getHeroOwnerName, getPlayerEntities } from '../store/playerStore';
@@ -675,6 +774,8 @@ const emit = defineEmits<{
 const selectedJobSiteId = ref<string | null>(null);
 const detailOnlyMode = ref(false);
 const pathService = new PathService();
+type TownCenterTabKey = 'overview' | 'economy' | 'defense' | 'sites';
+const activeTownCenterTab = ref<TownCenterTabKey>('overview');
 
 const inspectedSettlementId = computed(() => props.townCenterTileId ?? currentPlayerSettlementId.value);
 
@@ -742,6 +843,58 @@ const playerTiles = computed(() => {
 const inspectedTownCenterTile = computed(() => {
   const settlementId = inspectedSettlementId.value;
   return settlementId ? tileIndex[settlementId] ?? null : null;
+});
+
+const marketCharterTask = computed(() => listTaskDefinitions().find((task) => task.key === 'grantMarketCharter') ?? null);
+const marketCharterGranted = computed(() => !!inspectedTownCenterTile.value?.marketCharterUnlocked);
+const townCenterOrderActions = computed(() => {
+  const tile = inspectedTownCenterTile.value;
+  const task = marketCharterTask.value;
+  if (!tile || !task || marketCharterGranted.value) {
+    return [];
+  }
+
+  const inspectorHero = selectedHero.value ?? createInspectorHero(tile);
+  if (!canStartTaskDefinition(task, tile, inspectorHero)) {
+    return [];
+  }
+
+  return [{
+    key: task.key,
+    tileId: tile.id,
+    definition: task,
+    label: task.label,
+    summary: getActionSummary(task),
+    costs: getTaskCosts(task),
+    unlocked: isTaskUnlockedForUse(task.key, inspectedSettlementId.value),
+    lockHint: getTaskLockHint(task),
+  }];
+});
+const tradeCharterStatusLabel = computed(() => (
+  marketCharterGranted.value
+    ? 'Granted'
+    : townCenterOrderActions.value.some((action) => action.unlocked)
+      ? 'Available'
+      : 'Locked'
+));
+const tradeCharterStatusClass = computed(() => (
+  marketCharterGranted.value
+    ? 'tc-status-ok'
+    : townCenterOrderActions.value.some((action) => action.unlocked)
+      ? 'tc-status-warn'
+      : 'tc-status-muted'
+));
+const tradeCharterStatusText = computed(() => {
+  if (marketCharterGranted.value) {
+    return 'This settlement can trade through the global market.';
+  }
+
+  const action = townCenterOrderActions.value[0];
+  if (action?.unlocked) {
+    return 'Grant the charter here to unlock settlement trading.';
+  }
+
+  return action?.lockHint ?? 'Reach Logistics to authorize market trading.';
 });
 
 const currentPlayerTownCenterTile = computed(() => {
@@ -878,6 +1031,12 @@ function formatNumber(value: number) {
   return `${Math.floor(value)}`;
 }
 
+function formatTitleCase(value: string) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function formatCycleDuration(cycleMs: number | undefined) {
   if (!cycleMs || cycleMs <= 0) return 'No cycle';
   const totalSeconds = Math.max(1, Math.round(cycleMs / 1000));
@@ -979,6 +1138,56 @@ function formatAlternativeRateList(resources: ResourceAmount[], emptyText: strin
   return resources
     .map((resource) => `${formatNumber(resource.amount)} ${formatResourceType(resource.type)}/min`)
     .join(' or ');
+}
+
+function formatAssignedWorkerStatus(settler: Settler) {
+  const blocker = formatSettlerBlocker(settler.blockerReason);
+  if (blocker) {
+    return blocker;
+  }
+
+  switch (settler.activity) {
+    case 'working':
+      return 'Working this site';
+    case 'commuting_work':
+      return 'Heading to site';
+    case 'fetching_input':
+      return 'Fetching supplies';
+    case 'delivering':
+      return 'Delivering output';
+    case 'waiting':
+      return 'Waiting for work';
+    case 'sleeping':
+      return 'Off shift at home';
+    case 'fetching_food':
+      return 'Fetching food';
+    default:
+      return 'Assigned to this site';
+  }
+}
+
+function formatAssignedWorkerProgress(settler: Settler, cycleMs: number | undefined) {
+  if (!cycleMs || cycleMs <= 0) {
+    return 'Assigned';
+  }
+
+  const progress = Math.max(0, Math.min(settler.workProgressMs, cycleMs));
+  return `${Math.round((progress / cycleMs) * 100)}%`;
+}
+
+function getAssignedWorkerDetails(tileId: string, cycleMs: number | undefined) {
+  return playerSettlers.value
+    .filter((settler) => settler.assignedRole === 'job' && settler.assignedWorkTileId === tileId)
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((settler) => ({
+      id: settler.id,
+      settler,
+      name: getSettlerDisplayName(settler.id, settler.nameSeed),
+      activityLabel: formatTitleCase(settler.activity),
+      statusLabel: formatAssignedWorkerStatus(settler),
+      progressLabel: formatAssignedWorkerProgress(settler, cycleMs),
+    }));
 }
 
 function getStatusClassFromTone(tone: 'ok' | 'warn' | 'danger') {
@@ -1356,6 +1565,7 @@ const inspectedWorkforce = computed(() => {
 const selectedJobSiteDetail = computed(() => {
   void worldVersion.value;
   void studyVersion.value;
+  void settlerVersion.value;
   if (!selectedJobSiteId.value) {
     return null;
   }
@@ -1555,6 +1765,9 @@ const selectedJobSiteDetail = computed(() => {
   if (!building && !isInfrastructure) {
     return null;
   }
+  const assignedWorkerDetails = hasJobSite
+    ? getAssignedWorkerDetails(tile.id, building?.cycleMs)
+    : [];
 
   return {
     ...(site ?? {
@@ -1577,6 +1790,7 @@ const selectedJobSiteDetail = computed(() => {
     cycleLabel: formatCycleDuration(building?.cycleMs),
     studyProgress,
     studyOptions,
+    assignedWorkerDetails,
     assignedWorkersLabel: currentWorkerCount > 0
       ? `${currentWorkerCount} ${building?.jobLabel ?? 'worker'}${currentWorkerCount === 1 ? '' : 's'} on duty`
       : 'No crew assigned',
@@ -1657,6 +1871,10 @@ function closeJobSiteDetail() {
   if (shouldClosePanel) {
     emit('close');
   }
+}
+
+function inspectAssignedWorker(settler: Settler) {
+  openSettlerModal(settler);
 }
 
 function getTaskCosts(def: TaskDefinition) {
@@ -1779,6 +1997,43 @@ const jobsStatusText = computed(() => {
   return 'Every available worker is assigned';
 });
 
+const townCenterSubtitle = computed(() => {
+  const charter = marketCharterGranted.value ? 'market charter granted' : 'market charter needed';
+  return `${ownedTiles.value} tiles held · ${jobSites.value.length} job sites · ${charter}`;
+});
+
+const townCenterTabs = computed<Array<{
+  key: TownCenterTabKey;
+  label: string;
+  glyph: string;
+  note: string;
+}>>(() => [
+  {
+    key: 'overview',
+    label: 'Overview',
+    glyph: '⌂',
+    note: `${playerPopulation.value.current}/${playerPopulation.value.max} settlers`,
+  },
+  {
+    key: 'economy',
+    label: 'Economy',
+    glyph: '◆',
+    note: `${foodStock.value} meals`,
+  },
+  {
+    key: 'defense',
+    label: 'Defense',
+    glyph: '⚔',
+    note: militarySummary.value.borderModeLabel,
+  },
+  {
+    key: 'sites',
+    label: 'Sites',
+    glyph: '⚒',
+    note: `${inspectedWorkforce.value.assignedWorkers}/${inspectedWorkforce.value.availableWorkers} staffed`,
+  },
+]);
+
 // --- Keyboard ---
 
 let listenerActive = false;
@@ -1803,6 +2058,10 @@ function handleKeydown(e: KeyboardEvent) {
 watch(() => props.visible, (isVisible) => {
   if (!isVisible) {
     clearJobSiteDetailState();
+  }
+
+  if (isVisible) {
+    activeTownCenterTab.value = 'overview';
   }
 
   if (isVisible && !listenerActive) {
@@ -1868,23 +2127,22 @@ onUnmounted(() => {
 
 .tc-panel {
   position: relative;
-  width: min(940px, calc(100vw - 32px));
+  width: min(980px, calc(100vw - 32px));
   padding: 20px;
-  border-radius: 28px;
+  border-radius: 22px;
   max-height: min(82vh, calc(100vh - 32px));
   overflow-x: hidden;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 12px;
   background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.14), transparent 32%),
-    radial-gradient(circle at 86% 18%, rgba(34, 211, 238, 0.12), transparent 26%),
-    linear-gradient(180deg, rgba(7, 12, 24, 0.995), rgba(12, 18, 33, 0.99));
-  border: 1px solid rgba(148, 163, 184, 0.2);
+    linear-gradient(180deg, rgba(26, 41, 37, 0.99), rgba(20, 26, 42, 0.99) 58%, rgba(12, 18, 24, 0.99));
+  border: 1px solid rgba(232, 196, 119, 0.28);
   box-shadow:
     0 30px 60px rgba(2, 6, 23, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    0 0 0 1px rgba(255, 244, 214, 0.05) inset,
+    0 16px 0 rgba(21, 94, 117, 0.12) inset;
   backdrop-filter: none;
 }
 
@@ -1895,9 +2153,9 @@ onUnmounted(() => {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 22%),
-    linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.14));
-  opacity: 0.8;
+    linear-gradient(90deg, rgba(255, 244, 214, 0.07), transparent 24%, transparent 76%, rgba(255, 244, 214, 0.04)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 18%, rgba(0, 0, 0, 0.12));
+  opacity: 0.9;
 }
 
 .tc-panel::-webkit-scrollbar {
@@ -1914,14 +2172,40 @@ onUnmounted(() => {
 .tc-header {
   position: relative;
   z-index: 1;
-  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  min-height: 86px;
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(19, 30, 27, 0.78), rgba(10, 17, 21, 0.54));
+  border: 1px solid rgba(232, 196, 119, 0.18);
+  box-shadow: 0 1px 0 rgba(255, 244, 214, 0.06) inset;
+}
+
+.tc-header-emblem {
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  background:
+    linear-gradient(180deg, rgba(91, 104, 58, 0.64), rgba(30, 64, 55, 0.7));
+  color: rgba(254, 243, 199, 0.94);
+  font-size: 28px;
+  line-height: 1;
+  box-shadow:
+    0 10px 22px rgba(2, 6, 23, 0.26),
+    0 0 0 1px rgba(255, 244, 214, 0.05) inset;
 }
 
 .tc-header-copy {
+  min-width: 0;
   flex: 1;
 }
 
@@ -1930,16 +2214,23 @@ onUnmounted(() => {
   font-size: 9px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(252, 211, 77, 0.82);
+  color: rgba(252, 211, 77, 0.88);
 }
 
 .tc-title {
   margin: 8px 0 0;
-  font-size: 1.25rem;
+  font-size: 1.34rem;
   font-weight: 700;
   line-height: 1.05;
-  color: #f8fafc;
+  color: #fff7ed;
   text-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+}
+
+.tc-subtitle {
+  margin: 7px 0 0;
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .tc-close {
@@ -1949,10 +2240,10 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.42);
-  color: rgba(248, 250, 252, 0.9);
+  border-radius: 10px;
+  border: 1px solid rgba(232, 196, 119, 0.18);
+  background: rgba(15, 23, 18, 0.5);
+  color: rgba(255, 247, 237, 0.9);
   font-size: 14px;
   cursor: pointer;
   transition: transform .15s, border-color .15s, background .15s;
@@ -1960,8 +2251,105 @@ onUnmounted(() => {
 
 .tc-close:hover {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.32);
-  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(252, 211, 77, 0.36);
+  background: rgba(20, 83, 45, 0.38);
+}
+
+.tc-tab-bar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tc-tab-button {
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(232, 196, 119, 0.12);
+  background:
+    linear-gradient(180deg, rgba(22, 32, 29, 0.7), rgba(13, 18, 22, 0.7));
+  color: rgba(226, 232, 240, 0.76);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.tc-tab-button:hover,
+.tc-tab-button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.28);
+  background:
+    linear-gradient(180deg, rgba(38, 48, 39, 0.78), rgba(18, 24, 24, 0.78));
+  outline: none;
+}
+
+.tc-tab-button-active {
+  border-color: rgba(252, 211, 77, 0.46);
+  background:
+    linear-gradient(180deg, rgba(31, 78, 65, 0.72), rgba(30, 41, 59, 0.84));
+  color: rgba(255, 247, 237, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(255, 244, 214, 0.04) inset,
+    0 10px 24px rgba(2, 6, 23, 0.2);
+}
+
+.tc-tab-glyph {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(15, 23, 18, 0.56);
+  border: 1px solid rgba(232, 196, 119, 0.12);
+  color: rgba(252, 211, 77, 0.9);
+  font-size: 16px;
+}
+
+.tc-tab-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.tc-tab-label {
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-tab-note {
+  overflow: hidden;
+  color: rgba(203, 213, 225, 0.58);
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-tab-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px;
+}
+
+.tc-tab-panel-economy,
+.tc-tab-panel-defense,
+.tc-tab-panel-sites {
+  grid-template-columns: 1fr;
 }
 
 /* Sections */
@@ -1971,9 +2359,11 @@ onUnmounted(() => {
   z-index: 1;
   margin-top: 0;
   padding: 14px;
-  border-radius: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.3);
+  border-radius: 16px;
+  border: 1px solid rgba(232, 196, 119, 0.13);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 18, 0.56), rgba(9, 13, 18, 0.46));
+  box-shadow: 0 1px 0 rgba(255, 244, 214, 0.035) inset;
 }
 
 .tc-section-jobs {
@@ -2003,14 +2393,14 @@ onUnmounted(() => {
 
 .tc-section-title {
   font-size: 10px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(191, 219, 254, 0.72);
+  color: rgba(253, 230, 138, 0.76);
 }
 
 .tc-section-caption {
   font-size: 10px;
-  color: rgba(191, 219, 254, 0.44);
+  color: rgba(203, 213, 225, 0.5);
   font-style: italic;
 }
 
@@ -2078,6 +2468,11 @@ onUnmounted(() => {
 .tc-status-dot.tc-status-warn {
   background: rgba(251, 191, 36, 0.9);
   box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+}
+
+.tc-status-dot.tc-status-muted {
+  background: rgba(148, 163, 184, 0.72);
+  box-shadow: 0 0 6px rgba(148, 163, 184, 0.24);
 }
 
 .tc-status-dot.tc-status-danger {
@@ -2704,7 +3099,102 @@ onUnmounted(() => {
   color: rgba(226, 232, 240, 0.78);
 }
 
+.tc-worker-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tc-worker-row {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  text-align: left;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.tc-worker-row:hover,
+.tc-worker-row:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.32);
+  background: rgba(37, 99, 235, 0.16);
+  outline: none;
+}
+
+.tc-worker-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.tc-worker-name {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.tc-worker-meta {
+  color: rgba(148, 163, 184, 0.78);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.tc-worker-progress {
+  flex-shrink: 0;
+  min-width: 44px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: rgba(56, 189, 248, 0.12);
+  color: rgba(186, 230, 253, 0.92);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tc-worker-empty {
+  margin-top: 10px;
+}
+
 @media (max-width: 760px) {
+  .tc-tab-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tc-tab-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .tc-header {
+    align-items: center;
+  }
+
+  .tc-header-emblem {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    font-size: 23px;
+  }
+
+  .tc-tab-button {
+    min-height: 54px;
+  }
+
+  .tc-tab-note {
+    white-space: normal;
+  }
+
+  .tc-stat-grid-3,
   .tc-stat-grid-4,
   .tc-detail-grid,
   .tc-detail-flow-grid,

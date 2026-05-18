@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { loadWorld } from '../../../src/shared/game/world';
-import { listResolvedJobSites, resolveJobResources } from './jobSiteRuntime';
+import { depositResourceToStorage, resetResourceState } from '../../../src/shared/game/state/resourceStore';
+import { listResolvedJobSites, resolveJobResources, resolveSiteStatus } from './jobSiteRuntime';
 import { resetStudyState } from '../../../src/store/studyStore';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
@@ -26,6 +27,7 @@ function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'te
 
 test.afterEach(() => {
   loadWorld([]);
+  resetResourceState();
   resetStudyState();
 });
 
@@ -76,4 +78,19 @@ test('winery sites resolve into grape-to-wine job sites', () => {
   const resources = winerySite ? resolveJobResources(winerySite, 1) : null;
   assert.deepEqual(resources?.consumes, [{ type: 'grapes', amount: 2 }]);
   assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 1 }]);
+});
+
+test('brewery water input is satisfied by settlement water access', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water' }),
+  ]);
+  depositResourceToStorage('0,0', 'grain', 2);
+  depositResourceToStorage('0,0', 'hops', 1);
+
+  const brewerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+
+  assert.equal(brewerySite?.building.key, 'brewery');
+  assert.equal(brewerySite ? resolveSiteStatus(brewerySite, 1) : null, 'staffed');
 });

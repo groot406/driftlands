@@ -89,6 +89,7 @@ function createStorehouseBuildingDefinition(config: {
     storageKind: StorageKind;
     plainsVariant: typeof STORAGE_BUILDING_VARIANTS[number];
     dirtVariant: typeof STORAGE_BUILDING_VARIANTS[number];
+    overlayAssetKey: string;
     requiredResources: ResourceAmount[];
 }): BuildingDefinition {
     return {
@@ -102,7 +103,7 @@ function createStorehouseBuildingDefinition(config: {
         requiredPopulation: 3,
         variantKeys: [config.plainsVariant, config.dirtVariant],
         renderDecoration: 'depot',
-        overlayAssetKey: 'building_depot_overlay',
+        overlayAssetKey: config.overlayAssetKey,
         providesWarehouse: true,
         storageKind: config.storageKind,
         maxIncomingRoads: 1,
@@ -555,7 +556,7 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['plains_depot', 'dirt_depot', 'plains_warehouse', 'dirt_warehouse'],
         renderDecoration: 'depot',
-        overlayAssetKey: 'building_depot_overlay',
+        overlayAssetKey: 'building_supply_depot',
         providesWarehouse: true,
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }],
@@ -593,6 +594,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'food_storehouse',
         plainsVariant: 'plains_food_storehouse',
         dirtVariant: 'dirt_food_storehouse',
+        overlayAssetKey: 'building_food_storehouse',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -605,6 +607,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'materials_yard',
         plainsVariant: 'plains_materials_yard',
         dirtVariant: 'dirt_materials_yard',
+        overlayAssetKey: 'building_materials_yard',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -617,6 +620,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'crop_silo',
         plainsVariant: 'plains_crop_silo',
         dirtVariant: 'dirt_crop_silo',
+        overlayAssetKey: 'building_crop_silo',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -629,6 +633,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'crafted_goods_storehouse',
         plainsVariant: 'plains_crafted_goods_storehouse',
         dirtVariant: 'dirt_crafted_goods_storehouse',
+        overlayAssetKey: 'building_crafted_goods_storehouse',
         requiredResources: [
             { type: 'wood', amount: 6 },
             { type: 'stone', amount: 2 },
@@ -888,7 +893,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.2,
         requiredPopulation: 6,
         variantKeys: ['plains_brewery', 'dirt_brewery'],
-        overlayAssetKey: 'building_bakery',
+        overlayAssetKey: 'building_brewery',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -935,7 +940,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.25,
         requiredPopulation: 6,
         variantKeys: ['plains_winery', 'dirt_winery'],
-        overlayAssetKey: 'building_bakery',
+        overlayAssetKey: 'building_winery',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 90_000,
@@ -978,7 +983,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.3,
         requiredPopulation: 6,
         variantKeys: ['plains_pub', 'dirt_pub'],
-        overlayAssetKey: 'building_hunters_hut',
+        overlayAssetKey: 'building_pub',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 20_000,
@@ -1026,7 +1031,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.5,
         requiredPopulation: 3,
         variantKeys: ['plains_apiary', 'dirt_apiary'],
-        overlayAssetKey: 'building_hunters_hut',
+        overlayAssetKey: 'building_apiary',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1169,7 +1174,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 39,
         requiredPopulation: 5,
         variantKeys: ['plains_library', 'dirt_library'],
-        overlayAssetKey: 'building_library_overlay',
+        overlayAssetKey: 'building_library',
         maxIncomingRoads: 1,
         jobSlots: 2,
         cycleMs: STUDY_WORK_CYCLE_MS,
@@ -1217,7 +1222,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 39.5,
         requiredPopulation: 5,
         variantKeys: ['plains_weapon_smith', 'dirt_weapon_smith'],
-        overlayAssetKey: 'building_workshop',
+        overlayAssetKey: 'building_weapon_smith',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1264,7 +1269,7 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 40,
         requiredPopulation: 5,
         variantKeys: ['plains_barracks', 'dirt_barracks'],
-        overlayAssetKey: 'building_workshop',
+        overlayAssetKey: 'building_barracks',
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.5,

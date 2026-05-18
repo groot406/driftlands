@@ -150,9 +150,11 @@ test('frontier and logistics milestones unlock mining, depots, and the fourth he
   assert.ok(progression.unlocked.buildings.includes('quarry'));
   assert.ok(progression.unlocked.buildings.includes('supplyDepot'));
   assert.ok(progression.unlocked.buildings.includes('lumberCamp'));
+  assert.ok(progression.unlocked.upgrades.includes('market_charter'));
   assert.ok(taskKeys.includes('buildMine'));
   assert.ok(taskKeys.includes('buildQuarry'));
   assert.ok(taskKeys.includes('buildSupplyDepot'));
+  assert.ok(taskKeys.includes('grantMarketCharter'));
 });
 
 test('masonry, expansion, and deep frontier unlock upgrades and late terrain bands', () => {

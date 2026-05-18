@@ -8,6 +8,7 @@ import { heroMessageHandler } from './handlers/heroMessageHandler';
 import { runHandler } from './handlers/runHandler';
 import { coopHandler } from './handlers/coopHandler';
 import { settlementStartHandler } from './handlers/settlementStartHandler';
+import { marketHandler } from './handlers/marketHandler';
 import { clientMessageRouter } from './messageRouter';
 
 // Initialize all handlers
@@ -24,4 +25,5 @@ export function initializeClientHandlers(): void {
   runHandler.init();
   coopHandler.init();
   settlementStartHandler.init();
+  marketHandler.init();
 }

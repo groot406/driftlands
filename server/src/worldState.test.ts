@@ -168,6 +168,19 @@ test('worldState.foundSettlementAt reveals a landing, creates a town center, and
   assert.equal(revealedLandingTiles.length, 37);
 });
 
+test('worldState.foundSettlementAt does not create an extra town center at the world origin', async () => {
+  setIo({ emit() {} });
+
+  await worldState.init(42);
+
+  const founded = worldState.foundSettlementAt(2, 0);
+
+  assert.deepEqual(founded, { settlementId: '2,0', q: 2, r: 0 });
+  assert.equal(tileIndex['2,0']?.terrain, 'towncenter');
+  assert.equal(tileIndex['0,0']?.terrain, resolveWorldTile(0, 0, { q: 2, r: 0 }).terrain);
+  assert.notEqual(tileIndex['0,0']?.terrain, 'towncenter');
+});
+
 test('worldState.foundSettlementAt reveals starter water when spawn safety is enabled', async () => {
   const previousSpawnSafety = isWorldGenerationSpawnSafetyEnabled();
   setWorldGenerationSpawnSafetyEnabled(true);

@@ -35,6 +35,7 @@ export type BuildingKey =
   | 'barracks';
 
 export type UpgradeKey =
+  | 'market_charter'
   | 'stone_house_upgrade'
   | 'glass_house_upgrade'
   | 'warehouse_upgrade'
@@ -515,6 +516,11 @@ const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; tas
     description: 'Turns a frontier depot into a full-capacity warehouse.',
     taskKey: 'upgradeDepotToWarehouse',
   },
+  market_charter: {
+    label: 'Market Charter',
+    description: 'Grants this settlement access to the global resource market.',
+    taskKey: 'grantMarketCharter',
+  },
   sawmill_upgrade: {
     label: 'Sawmill',
     description: 'Mechanizes the lumber camp and boosts timber output.',
@@ -734,6 +740,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'building', key: 'cropSilo' },
       { kind: 'building', key: 'craftedGoodsStorehouse' },
       { kind: 'building', key: 'library' },
+      { kind: 'upgrade', key: 'market_charter' },
     ],
   },
   {

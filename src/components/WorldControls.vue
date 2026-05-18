@@ -64,6 +64,14 @@
               <span>Unlimited resources</span>
             </label>
             <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.bypassHunger" @change="handleBypassHungerChange" />
+              <span>Bypass hunger</span>
+            </label>
+            <label class="test-mode-toggle">
+              <input type="checkbox" :checked="testModeSettings.bypassMorale" @change="handleBypassMoraleChange" />
+              <span>Bypass morale</span>
+            </label>
+            <label class="test-mode-toggle">
               <input type="checkbox" :checked="testModeSettings.fastHeroMovement" @change="handleFastHeroMovementChange" />
               <span>5x hero speed</span>
             </label>
@@ -332,6 +340,8 @@ function sendTestSettings(message: {
   enabled?: boolean;
   instantBuild?: boolean;
   unlimitedResources?: boolean;
+  bypassHunger?: boolean;
+  bypassMorale?: boolean;
   fastHeroMovement?: boolean;
   fastGrowth?: boolean;
   fastPopulationGrowth?: boolean;
@@ -359,6 +369,14 @@ function setInstantBuild(enabled: boolean) {
 
 function setUnlimitedResources(enabled: boolean) {
   sendTestSettings({ unlimitedResources: enabled });
+}
+
+function setBypassHunger(enabled: boolean) {
+  sendTestSettings({ bypassHunger: enabled });
+}
+
+function setBypassMorale(enabled: boolean) {
+  sendTestSettings({ bypassMorale: enabled });
 }
 
 function setFastHeroMovement(enabled: boolean) {
@@ -410,6 +428,14 @@ function handleInstantBuildChange(event: Event) {
 
 function handleUnlimitedResourcesChange(event: Event) {
   setUnlimitedResources((event.target as HTMLInputElement).checked);
+}
+
+function handleBypassHungerChange(event: Event) {
+  setBypassHunger((event.target as HTMLInputElement).checked);
+}
+
+function handleBypassMoraleChange(event: Event) {
+  setBypassMorale((event.target as HTMLInputElement).checked);
 }
 
 function handleFastHeroMovementChange(event: Event) {

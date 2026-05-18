@@ -471,6 +471,20 @@ test('granary and bakery form a settler-driven production chain', () => {
       carryingKind: null,
     },
   ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
   settlerSystem.init();
   jobSystem.init();
 
@@ -482,7 +496,7 @@ test('granary and bakery form a settler-driven production chain', () => {
   tickAll(145_000, 8_000);
 
   assert.equal(resourceInventory.grain, 0);
-  assert.equal(resourceInventory.food, 2);
+  assert.equal(resourceInventory.bread, 2);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.assignedWorkers, 2);
@@ -536,6 +550,93 @@ test('workshop turns ore into delivered tools', () => {
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('brewery draws water from source access and consumes stored grain and hops', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'grain', 2);
+  depositResourceToStorage('0,0', 'hops', 1);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(7_000, 6_000);
+  tickAll(68_000, 61_000);
+  tickAll(75_000, 7_000);
+
+  assert.equal(resourceInventory.grain, 0);
+  assert.equal(resourceInventory.hops, 0);
+  assert.equal(resourceInventory.water, 0);
+  assert.equal(resourceInventory.beer, 1);
+
+  const snapshot = getWorkforceSnapshot();
+  assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('multi-input jobs consume stored secondary ingredients', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_oven' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('0,0', 'sand', 2);
+  depositResourceToStorage('0,0', 'wood', 1);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(7_000, 6_000);
+  tickAll(68_000, 61_000);
+  tickAll(75_000, 7_000);
+
+  assert.equal(resourceInventory.sand, 0);
+  assert.equal(resourceInventory.wood, 0);
+  assert.equal(resourceInventory.glass, 1);
 });
 
 test('settler output deliveries wake heroes waiting for that resource', () => {

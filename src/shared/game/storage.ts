@@ -38,6 +38,20 @@ export function getStorageCapacity(kind: StorageKind): number {
     return STORAGE_CAPACITY_BY_KIND[kind];
 }
 
+export function formatStorageAmount(amount: number): string {
+    if (!Number.isFinite(amount)) {
+        return '0';
+    }
+
+    const roundedInteger = Math.round(amount);
+    if (Math.abs(amount - roundedInteger) < 0.000001) {
+        return `${roundedInteger}`;
+    }
+
+    const roundedHundredths = Math.round((amount + Number.EPSILON) * 100) / 100;
+    return Number(roundedHundredths.toFixed(2)).toString();
+}
+
 export function getStorageAcceptedGroup(kind: StorageKind): ResourceGroup | null {
     return STORAGE_GROUP_BY_KIND[kind] ?? null;
 }

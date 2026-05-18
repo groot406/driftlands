@@ -72,6 +72,215 @@ Materials/textures: thatch roof, wooden wall planks, stone oven, small bread sha
 Constraints: no text, no logo, no watermark, no UI frame, no photorealism, no blur, no smooth gradients, no antialiasing, no square border
 Avoid: modern bakery, oversized bread sign, smoke cloud hiding silhouette, tiny clutter""",
     ),
+    "building_brewery": BuildingAsset(
+        key="building_brewery",
+        label="Brewery Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact rustic brewery building sprite for a cozy settlement game
+Scene/backdrop: transparent background only, no terrain
+Subject: small timber-and-stone brewery with a squat copper brew kettle visible under a roof, two tiny barrels, a short chimney or vent, and hints of grain/hops as chunky pixels
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x64 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, warm craft-production feel
+Color palette: weathered wood brown, stone gray, muted copper, tiny green hops accents, warm amber highlights
+Materials/textures: timber beams, stone base, copper kettle, barrel hoops, compact roof pixels
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: modern factory, large tavern sign, oversized smoke cloud, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_winery": BuildingAsset(
+        key="building_winery",
+        label="Winery Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact rustic winery building sprite for a cozy settlement game
+Scene/backdrop: transparent background only, no terrain
+Subject: small stone-and-timber winery with a sloped tiled roof, grape press or tiny vat near the doorway, two wine barrels, and purple grape clusters/vine leaves around one side
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 52x64 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, refined rural production feel
+Color palette: weathered wood brown, pale stone, dark muted red roof, grape purple accents, leafy green, warm amber highlights
+Materials/textures: stone base, timber beams, roof tiles, barrels, chunky grape clusters
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: modern vineyard estate, wine bottle label, sign text, oversized grape bunch, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_pub": BuildingAsset(
+        key="building_pub",
+        label="Pub Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact rustic pub building sprite for a cozy settlement game
+Scene/backdrop: transparent background only, no terrain
+Subject: small welcoming timber pub with warm lit windows, chunky thatched or shingled roof, round barrel table or keg by the door, hanging mug-shaped sign with no writing, and a small lantern
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 52x62 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: cozy daylight with warm window glow, social hospitality feel
+Color palette: weathered wood brown, honey straw, muted slate shadow, amber window light, small brass lantern accents
+Materials/textures: timber beams, thatch or shingles, barrel staves, warm glass pixels
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: modern bar, readable sign text, giant beer mug, crowded characters, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_weapon_smith": BuildingAsset(
+        key="building_weapon_smith",
+        label="Weapon Smith Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact frontier weapon smith building sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small timber-and-stone weaponsmith forge with a dark shingled roof, tiny chimney, glowing forge mouth, anvil outside the doorway, rack with a few chunky swords or spear tips, and a small ore pile
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x64 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight with small warm forge glow, practical frontier military-production feel
+Color palette: weathered wood brown, stone gray, iron charcoal, muted steel highlights, small ember orange glow
+Materials/textures: timber beams, stone forge, metal anvil, weapon rack, compact roof pixels
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: modern factory, huge fantasy sword, castle tower, unreadable clutter, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_barracks": BuildingAsset(
+        key="building_barracks",
+        label="Barracks Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact frontier barracks building sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small sturdy wooden barracks with a low longhouse silhouette, reinforced door, short watch post or training dummy, tiny shield rack, crossed spear shapes, and a compact red-brown roof
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x62 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, sturdy frontier defense feel, not aggressive or grim
+Color palette: weathered wood brown, muted red-brown roof, stone gray footings, dull steel highlights, small warm window pixels
+Materials/textures: timber beams, plank roof, shield rack, simple spear shapes, compact reinforced doorway
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: castle keep, giant tower, modern military base, huge flags, readable text, crowded soldiers, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_library": BuildingAsset(
+        key="building_library",
+        label="Library Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact frontier library building sprite that fits the existing cozy settlement game style
+Scene/backdrop: transparent background only, no terrain
+Subject: small timber-and-stone library with a warm lit arched doorway, modest book stacks or scroll bundle near the entrance, small reading window, and a tiny roof cupola or sign-like plaque with no writing
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x64 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight with warm scholarly window glow, cozy frontier knowledge building
+Color palette: weathered wood brown, soft stone gray, muted slate roof, parchment tan, small amber window light
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: grand castle library, tall tower, modern schoolhouse, readable letters, huge sign, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_apiary": BuildingAsset(
+        key="building_apiary",
+        label="Apiary Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact apiary building sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small beekeeper hut with two or three chunky beehive boxes, honeycomb crate, tiny flower pot or pollen basket, simple sloped roof, and a few small bee-like golden pixels near the hives
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 52x58 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: sunny daylight, gentle productive farm-building feel
+Color palette: honey yellow, weathered wood brown, straw tan, muted cream, tiny dark bee pixels
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: giant insect, realistic swarm, oversized flowers, modern beekeeping suit, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_supply_depot": BuildingAsset(
+        key="building_supply_depot",
+        label="Supply Depot Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact frontier supply depot sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: open wooden storage shelter with stacked crates, two barrels, cloth sacks, simple roof on posts, and a small handcart wheel
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x60 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, practical frontier logistics hub
+Color palette: weathered wood brown, canvas tan, barrel dark brown, rope beige, muted shadow gray
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: modern pallets, giant warehouse, unreadable crate noise, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_food_storehouse": BuildingAsset(
+        key="building_food_storehouse",
+        label="Food Storehouse Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact food storehouse sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small pantry storehouse with sturdy wooden walls, cool stone base, covered roof, stacked food crates, hanging fish bundle, bread basket, and a small clay jar by the door
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x60 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, stocked pantry and food preservation feel
+Color palette: weathered wood brown, cool stone gray, bread tan, fish blue-gray, muted red jar accent
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: restaurant, kitchen stove, modern freezer, giant food icons, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_materials_yard": BuildingAsset(
+        key="building_materials_yard",
+        label="Materials Yard Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact materials yard sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: open raw-materials yard with simple lean-to roof, stacked logs, stone blocks, ore chunks, sand sack, and a low wooden rack
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x58 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, practical rough storage yard feel
+Color palette: log brown, stone gray, ore dark gray, sand tan, muted wood posts
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: giant warehouse, construction crane, modern lumberyard, unreadable clutter, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_crop_silo": BuildingAsset(
+        key="building_crop_silo",
+        label="Crop Silo Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact crop silo sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small round wooden grain silo with short conical roof, attached tiny shed, grain sacks, grape basket, hops bundle, and a small chute or ladder
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 50x64 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, tidy crop storage feel
+Color palette: golden grain tan, weathered wood brown, muted straw roof, small purple grape and green hop accents
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: giant industrial silo, modern metal tank, huge crop icons, square background, terrain chunk, realistic perspective""",
+    ),
+    "building_crafted_goods_storehouse": BuildingAsset(
+        key="building_crafted_goods_storehouse",
+        label="Crafted Goods Storehouse Overlay",
+        kind="overlay",
+        size=(66, 82),
+        prompt="""Use case: stylized-concept
+Asset type: transparent pixel-art building overlay for Driftlands
+Primary request: create a compact crafted goods storehouse sprite for a cozy settlement strategy game
+Scene/backdrop: transparent background only, no terrain
+Subject: small secure workshop-storehouse with reinforced wooden door, stone footings, locked chest, tools crate, weapon rack with tiny spear or sword shapes, and a modest dark roof
+Style/medium: true pixel art, hard-edged sprite clusters, limited palette
+Composition/framing: top-down slight three-quarter sprite, centered in a 66x82 canvas, visible building footprint about 54x60 pixels with extra transparent padding below so it sits high on the hex tile
+Lighting/mood: clear daylight, orderly secure crafted-goods storage feel
+Color palette: weathered wood brown, stone gray, muted steel, dark roof charcoal, small brass lock accent
+Constraints: transparent background, no ground tile, no text, no logo, no watermark, no photorealism, no blur, no smooth gradients, no antialiasing
+Avoid: bank vault, castle armory, giant weapons, modern safe, readable text, square background, terrain chunk, realistic perspective""",
+    ),
     "plains_depot": BuildingAsset(
         key="plains_depot",
         label="Supply Depot",

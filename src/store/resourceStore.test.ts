@@ -5,6 +5,7 @@ import type { Tile } from '../core/types/Tile.ts';
 import { loadWorld } from '../core/world.ts';
 import {
   depositResourceToStorage,
+  depositResourceAcrossStoragesForSettlement,
   getSettlementResourceInventory,
   getStorageResourceAmount,
   resetResourceState,
@@ -100,4 +101,18 @@ test('resource-group storage only accepts matching resources', () => {
   assert.equal(getStorageResourceAmount('1,0', 'wood'), 0);
   assert.equal(getStorageResourceAmount('2,0', 'wood'), 5);
   assert.equal(getStorageResourceAmount('2,0', 'bread'), 0);
+});
+
+test('settlement resource deposits can spread across matching storage', () => {
+  loadWorld([
+    createTowncenterTile('0,0', 0, 0),
+    createStorageTile('1,0', 1, 0, 'plains_materials_yard'),
+  ]);
+
+  depositResourceToStorage('0,0', 'wood', 240);
+  const transfers = depositResourceAcrossStoragesForSettlement('0,0', 'iron', 20);
+
+  assert.deepEqual(transfers, [{ storageTileId: '1,0', amount: 20 }]);
+  assert.equal(getStorageResourceAmount('1,0', 'iron'), 20);
+  assert.equal(getSettlementResourceInventory('0,0').iron, 20);
 });

@@ -22,6 +22,7 @@ import type { TestModeSettingsSnapshot } from './game/testMode.ts';
 import type { SettlementBorderMode } from '../core/types/Tile.ts';
 import type { LooperlandsJoinAuth } from './looperlands.ts';
 import type { StoryHeroId } from './story/heroRoster.ts';
+import type { MarketOverviewSnapshot } from './game/market.ts';
 
 export interface BaseMessage {
     type: string;
@@ -223,6 +224,8 @@ export interface TestSetSettingsMessage extends BaseMessage {
     enabled?: boolean;
     instantBuild?: boolean;
     unlimitedResources?: boolean;
+    bypassHunger?: boolean;
+    bypassMorale?: boolean;
     fastHeroMovement?: boolean;
     fastGrowth?: boolean;
     fastPopulationGrowth?: boolean;
@@ -254,6 +257,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
+    market?: MarketOverviewSnapshot;
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
 }
@@ -272,8 +276,14 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     population: PopulationSnapshot;
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
+    market?: MarketOverviewSnapshot;
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
+}
+
+export interface MarketUpdateMessage extends BaseMessage {
+    type: 'market:update';
+    market: MarketOverviewSnapshot;
 }
 
 export interface WorldSnapshotChunkMessage extends BaseMessage {
@@ -544,6 +554,7 @@ export type ServerMessage =
     | TaskCompletedMessage
     | ResourceDepositMessage
     | ResourceWithdrawMessage
+    | MarketUpdateMessage
     | HeroPayloadUpdateMessage
     | HeroScoutResourceUpdateMessage
     | HeroAbilityUpdateMessage

@@ -18,6 +18,23 @@
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
+      class="market-toggle-btn"
+      :class="{ 'market-toggle-btn--active': marketplaceOpen, 'market-toggle-btn--locked': !marketAccessUnlocked }"
+      type="button"
+      :disabled="!marketAccessUnlocked"
+      @click="openMarketplace()"
+      :title="marketButtonTitle"
+      aria-label="Open system market"
+    >
+      <svg class="market-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 8.5h16" />
+        <path d="M7 8.5l-2.4 5.2a2.8 2.8 0 0 0 5.6 0L7.8 8.5" />
+        <path d="M16.2 8.5l-2.4 5.2a2.8 2.8 0 0 0 5.6 0L17 8.5" />
+        <path d="M12 5v14" />
+        <path d="M8.5 19h7" />
+      </svg>
+    </button>
+    <button
       v-if="serverDebugModeEnabled"
       class="debug-toggle-btn pixel-font"
       :class="{ 'debug-toggle-btn--active': showHelpers }"
@@ -72,6 +89,7 @@
   <PlayerModal />
   <PopulationOverviewModal />
   <ResourceDetailModal />
+  <MarketplaceModal />
   <SettlerModal />
   <CalamityEventModal />
   <NotificationOverlay />
@@ -94,6 +112,7 @@ import InGameMiniMap from './InGameMiniMap.vue';
 import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
+import MarketplaceModal from './MarketplaceModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import CalamityEventModal from './CalamityEventModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
@@ -109,6 +128,10 @@ import {
   tutorialSnapshot,
   visibleTutorialStepNumber,
 } from '../store/tutorialStore';
+import { marketplaceOpen, marketWallet, openMarketplace } from '../store/marketStore.ts';
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+import { worldVersion } from '../core/world.ts';
+import { hasSettlementMarketAccess } from '../shared/game/marketAccess.ts';
 
 const showHelpers = ref(false);
 const globalKeyListenerOptions = { capture: true };
@@ -128,6 +151,33 @@ const openGoalCount = computed(() => {
   const recommended = new Set(run.progression.nextRecommendedNodeKeys);
   return run.progression.nodes.filter((n) => recommended.has(n.key) && !n.unlocked).length;
 });
+
+const marketGold = computed(() => marketWallet.value?.gold ?? 0);
+const marketAccessUnlocked = computed(() => {
+  worldVersion.value;
+  return hasSettlementMarketAccess(currentPlayerSettlementId.value);
+});
+const marketButtonTitle = computed(() => {
+  if (!currentPlayerSettlementId.value) {
+    return 'Start a settlement before opening the market';
+  }
+
+  if (!marketAccessUnlocked.value) {
+    return 'Grant a Market Charter at the town center to unlock trading';
+  }
+
+  return marketWallet.value
+    ? `Open system market · ${formatGold(marketGold.value)} Gold`
+    : 'Open system market';
+});
+
+function formatGold(value: number) {
+  if (value >= 1000) {
+    return `${Math.floor(value / 100) / 10}k`;
+  }
+
+  return `${Math.floor(value)}`;
+}
 
 function recallConversation() {
   requestChronicleReopen();
@@ -239,6 +289,52 @@ watch(serverDebugModeEnabled, (enabled) => {
 
 .conversation-recall-btn:hover {
   background-color: rgb(80 103 49 / 0.84);
+}
+
+.market-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 197, 95, 0.42);
+  background:
+    linear-gradient(180deg, rgba(73, 50, 23, 0.88), rgba(31, 20, 12, 0.86));
+  color: rgb(255 241 204);
+  box-shadow: 0 8px 18px rgba(25, 18, 12, 0.24);
+  backdrop-filter: blur(8px);
+  font-weight: 900;
+  line-height: 1;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.market-toggle-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.market-toggle-btn:hover,
+.market-toggle-btn--active {
+  transform: translateY(-1px);
+  border-color: rgba(245, 197, 95, 0.72);
+  background:
+    linear-gradient(180deg, rgba(112, 74, 28, 0.92), rgba(48, 30, 13, 0.9));
+}
+
+.market-toggle-btn--locked,
+.market-toggle-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  transform: none;
+  border-color: rgba(148, 127, 83, 0.28);
+  background: rgba(28, 22, 16, 0.76);
+  color: rgba(255, 241, 204, 0.58);
 }
 
 .debug-toggle-btn {

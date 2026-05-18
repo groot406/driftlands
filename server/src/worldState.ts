@@ -51,6 +51,8 @@ import {
   ensureWatchtowerMilitaryState,
 } from '../../src/shared/game/military.ts';
 import { playerSettlementState } from './state/playerSettlementState';
+import { marketState } from './state/marketState';
+import type { MarketOverviewSnapshot } from '../../src/shared/game/market';
 
 const STARTING_FOOD = 12;
 const SETTLEMENT_START_REVEAL_RADIUS = 3;
@@ -274,6 +276,7 @@ class WorldState {
     resetSettlementSupportState();
     resetMineReserveState();
     resetCalamitySystem();
+    marketState.reset();
     loadTasks([]);
     loadHeroes([]);
     loadSettlers([]);
@@ -282,7 +285,6 @@ class WorldState {
     startWorldGeneration(worldRadius, resolvedSeed);
     initializePopulation();
     syncSettlerPopulation(Date.now());
-    depositResourceToStorage('0,0', 'food', STARTING_FOOD);
     const population = getPopulationState();
     const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
     setSupportMetrics(support.snapshot);
@@ -452,7 +454,7 @@ class WorldState {
     return result;
   }
 
-  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, settlementResources: ReturnType<typeof listSettlementResourceSnapshots>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot } {
+  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, settlementResources: ReturnType<typeof listSettlementResourceSnapshots>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot, market: MarketOverviewSnapshot } {
     const resources: Partial<Record<ResourceType, number>> = {};
     for (const [k, v] of Object.entries(resourceInventory)) {
       (resources as any)[k] = v as number;
@@ -464,6 +466,7 @@ class WorldState {
     const jobs = getWorkforceSnapshot();
     const studies = getStudySnapshot();
     const settlers = getSettlerSnapshot();
+    const market = marketState.getOverview();
 
     for (const tile of tiles) {
       ensureTownCenterMilitaryState(tile);
@@ -482,6 +485,7 @@ class WorldState {
       population,
       jobs,
       studies,
+      market,
     };
   }
 }

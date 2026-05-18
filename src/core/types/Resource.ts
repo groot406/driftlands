@@ -1,6 +1,8 @@
 export type ResourceType =
     | 'wood'
     | 'ore'
+    | 'iron'
+    | 'coal'
     | 'stone'
     | 'tools'
     | 'weapons'
@@ -11,6 +13,7 @@ export type ResourceType =
     | 'beer'
     | 'wine'
     | 'crystal'
+    | 'diamonds'
     | 'artifact'
     | 'water'
     | 'grain'

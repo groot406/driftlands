@@ -44,7 +44,7 @@ import { resolveRenderFeatureEnabled } from '../store/renderFeatureStore';
 import { getStorageFreeCapacity, getStorageUsedCapacity, storageInventories } from '../store/resourceStore';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/buildings/storage';
-import { getStorageCapacity } from '../shared/game/storage';
+import { formatStorageAmount, getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
 import { isRenderableExplorationTile } from '../shared/game/explorationFrontier';
 import { getScoutSurveyProgress, isHeroSurveyingScoutResource } from '../shared/game/scoutResources';
@@ -2918,9 +2918,9 @@ export class HexMapService {
                 .slice(0, 2)
             : [];
 
-        const textParts = [`${usedCapacity}/${capacity}`];
+        const textParts = [`${formatStorageAmount(usedCapacity)}/${formatStorageAmount(capacity)}`];
         if (topResources.length) {
-            textParts.push(topResources.map(([type, amount]) => `${this.RESOURCE_ICON_MAP[type] ?? '?'}${amount}`).join(' '));
+            textParts.push(topResources.map(([type, amount]) => `${this.RESOURCE_ICON_MAP[type] ?? '?'}${formatStorageAmount(amount)}`).join(' '));
         }
         const text = textParts.join('  ');
 
@@ -4202,7 +4202,7 @@ export class HexMapService {
         if (terrain === 'snow' || key.startsWith('snow')) return 'snow';
         if (terrain === 'mountain' || key.startsWith('mountain')) return 'mountain';
         if (terrain === 'vulcano' || key.startsWith('vulcano')) return 'volcano';
-        if (terrain === 'towncenter' || key.startsWith('towncenter') || key === 'house') return 'towncenter';
+        if (terrain === 'towncenter' || key.startsWith('towncenter') || key === 'house' || key.startsWith('house_')) return 'towncenter';
         if (terrain === 'dessert' || key.startsWith('dessert') || key === 'cactus') return 'desert';
         if (terrain === 'dirt' || key.startsWith('dirt')) return 'dirt';
         return 'plains';
@@ -4766,7 +4766,7 @@ export class HexMapService {
             return false;
         }
 
-        return !(typeof tile.variant === 'string' && tile.variant.startsWith('water_dock_'));
+        return true;
     }
 
     private getWaterReflectionEdgeVertexIndexes(side: TileSide): [number, number] {
@@ -5997,6 +5997,8 @@ export class HexMapService {
     RESOURCE_ICON_MAP: Record<ResourceType, string> = {
         wood: '🪵',
         ore: '⛏️',
+        iron: '⚙️',
+        coal: '◆',
         stone: '🪨',
         tools: '🛠️',
         weapons: '🗡️',
@@ -6007,6 +6009,7 @@ export class HexMapService {
         beer: '🍺',
         wine: '🍷',
         crystal: '🔮',
+        diamonds: '💎',
         artifact: '🗿',
         water: '💧',
         grain: '🌾',
@@ -6938,8 +6941,11 @@ export class HexMapService {
         const branchSides = connectionSides.length ? connectionSides : this.getWallInteriorStubSides(tile);
         const center = this.getRoadCenter(x, y);
         const anchors = branchSides
-            .map((side) => this.getRoadAnchorPoint(x, y, side))
-            .filter((point): point is { x: number; y: number } => !!point);
+            .map((side) => {
+                const point = this.getRoadAnchorPoint(x, y, side);
+                return point ? { side, ...point } : null;
+            })
+            .filter((point): point is { side: TileSide; x: number; y: number } => !!point);
 
         if (!anchors.length) {
             return;
@@ -6947,14 +6953,17 @@ export class HexMapService {
 
         const stoneWall = isStoneWallTile(tile);
         const shadowColor = stoneWall
-            ? `rgba(15, 23, 42, ${Math.min(1, opacity * 0.4)})`
-            : `rgba(69, 26, 3, ${Math.min(1, opacity * 0.34)})`;
-        const baseColor = stoneWall
-            ? `rgba(100, 116, 139, ${Math.min(1, opacity * 0.96)})`
-            : `rgba(146, 64, 14, ${Math.min(1, opacity * 0.94)})`;
-        const coreColor = stoneWall
-            ? `rgba(203, 213, 225, ${Math.min(1, opacity * 0.92)})`
-            : `rgba(253, 186, 116, ${Math.min(1, opacity * 0.82)})`;
+            ? `rgba(15, 23, 42, ${Math.min(1, opacity * 0.38)})`
+            : `rgba(50, 24, 11, ${Math.min(1, opacity * 0.34)})`;
+        const footColor = stoneWall
+            ? `rgba(55, 65, 81, ${Math.min(1, opacity * 0.74)})`
+            : `rgba(86, 44, 22, ${Math.min(1, opacity * 0.74)})`;
+        const rimColor = stoneWall
+            ? `rgba(231, 235, 240, ${Math.min(1, opacity * 0.28)})`
+            : `rgba(249, 211, 154, ${Math.min(1, opacity * 0.34)})`;
+        const seamColor = stoneWall
+            ? `rgba(52, 63, 78, ${Math.min(1, opacity * 0.34)})`
+            : `rgba(74, 37, 18, ${Math.min(1, opacity * 0.42)})`;
 
         ctx.save();
         this.traceHexClipPath(ctx, x, y);
@@ -6963,35 +6972,143 @@ export class HexMapService {
         ctx.lineJoin = 'round';
 
         for (const anchor of anchors) {
+            const dx = anchor.x - center.x;
+            const dy = anchor.y - center.y;
+            const distance = Math.hypot(dx, dy);
+            if (!distance) {
+                continue;
+            }
+
+            const dirX = dx / distance;
+            const dirY = dy / distance;
+            const perpX = -dirY;
+            const perpY = dirX;
+            const startInset = stoneWall ? 3.2 : 4;
+            const endInset = stoneWall ? 3 : 4.8;
+            const startX = center.x + (dirX * startInset);
+            const startY = center.y + (dirY * startInset);
+            const endX = anchor.x - (dirX * endInset);
+            const endY = anchor.y - (dirY * endInset);
+
+            const traceWallLine = (lateralOffset = 0, verticalOffset = 0) => {
+                ctx.moveTo(startX + (perpX * lateralOffset), startY + (perpY * lateralOffset) + verticalOffset);
+                ctx.lineTo(endX + (perpX * lateralOffset), endY + (perpY * lateralOffset) + verticalOffset);
+            };
+
             ctx.beginPath();
-            ctx.moveTo(center.x, center.y);
-            ctx.lineTo(anchor.x, anchor.y);
-            ctx.lineWidth = stoneWall ? 11 : 9;
+            traceWallLine(0, stoneWall ? 2.6 : 2.4);
+            ctx.lineWidth = stoneWall ? 14.5 : 13.5;
             ctx.strokeStyle = shadowColor;
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.moveTo(center.x, center.y);
-            ctx.lineTo(anchor.x, anchor.y);
-            ctx.lineWidth = stoneWall ? 8 : 6.5;
-            ctx.strokeStyle = baseColor;
+            traceWallLine();
+            ctx.lineWidth = stoneWall ? 11.2 : 10.2;
+            ctx.strokeStyle = footColor;
+            ctx.stroke();
+
+            const wallGradient = ctx.createLinearGradient(startX, startY, endX, endY);
+            if (stoneWall) {
+                wallGradient.addColorStop(0, `rgba(100, 113, 128, ${Math.min(1, opacity * 0.98)})`);
+                wallGradient.addColorStop(0.46, `rgba(166, 176, 188, ${Math.min(1, opacity * 0.98)})`);
+                wallGradient.addColorStop(1, `rgba(119, 130, 144, ${Math.min(1, opacity * 0.98)})`);
+            } else {
+                wallGradient.addColorStop(0, `rgba(112, 63, 34, ${Math.min(1, opacity * 0.98)})`);
+                wallGradient.addColorStop(0.5, `rgba(177, 112, 59, ${Math.min(1, opacity * 0.98)})`);
+                wallGradient.addColorStop(1, `rgba(132, 76, 39, ${Math.min(1, opacity * 0.98)})`);
+            }
+
+            ctx.beginPath();
+            traceWallLine();
+            ctx.lineWidth = stoneWall ? 8.4 : 7.5;
+            ctx.strokeStyle = wallGradient;
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.moveTo(center.x, center.y);
-            ctx.lineTo(anchor.x, anchor.y);
-            ctx.lineWidth = stoneWall ? 2.4 : 1.8;
-            ctx.strokeStyle = coreColor;
+            traceWallLine(stoneWall ? -2.4 : -2.1);
+            ctx.lineWidth = stoneWall ? 1.65 : 1.8;
+            ctx.strokeStyle = rimColor;
             ctx.stroke();
+
+            ctx.beginPath();
+            traceWallLine(stoneWall ? 2.8 : 2.4);
+            ctx.lineWidth = stoneWall ? 1.8 : 1.55;
+            ctx.strokeStyle = seamColor;
+            ctx.stroke();
+
+            const detailSpacing = stoneWall ? 8.2 : 7.1;
+            const detailCount = Math.max(2, Math.floor((distance - startInset - endInset) / detailSpacing));
+            const seedBase = this.seedFromString(`${tile.q},${tile.r}:wall-detail:${anchor.side}`);
+            for (let i = 0; i <= detailCount; i++) {
+                const t = (i + 0.45) / (detailCount + 1.1);
+                const jitterSeed = this.seedFromString(`${seedBase}:${i}`);
+                const jitter = (((jitterSeed % 1000) / 999) - 0.5) * (stoneWall ? 0.9 : 1.2);
+                const px = startX + ((endX - startX) * t) + (dirX * jitter);
+                const py = startY + ((endY - startY) * t) + (dirY * jitter);
+                const halfWidth = stoneWall ? 4.15 : 4.85;
+
+                ctx.beginPath();
+                ctx.moveTo(px - (perpX * halfWidth), py - (perpY * halfWidth));
+                ctx.lineTo(px + (perpX * halfWidth), py + (perpY * halfWidth));
+                ctx.lineWidth = stoneWall ? 1.25 : 2.15;
+                ctx.strokeStyle = seamColor;
+                ctx.stroke();
+
+                if (!stoneWall) {
+                    ctx.beginPath();
+                    ctx.moveTo(px - (perpX * (halfWidth - 1.2)) - (dirX * 0.55), py - (perpY * (halfWidth - 1.2)) - (dirY * 0.55));
+                    ctx.lineTo(px + (perpX * (halfWidth - 1.2)) - (dirX * 0.55), py + (perpY * (halfWidth - 1.2)) - (dirY * 0.55));
+                    ctx.lineWidth = 0.8;
+                    ctx.strokeStyle = `rgba(255, 226, 174, ${Math.min(1, opacity * 0.2)})`;
+                    ctx.stroke();
+                } else if (i % 2 === 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(px - (dirX * 1.8) - (perpX * 2.1), py - (dirY * 1.8) - (perpY * 2.1));
+                    ctx.lineTo(px + (dirX * 2.2) - (perpX * 2.1), py + (dirY * 2.2) - (perpY * 2.1));
+                    ctx.lineWidth = 0.9;
+                    ctx.strokeStyle = `rgba(248, 250, 252, ${Math.min(1, opacity * 0.18)})`;
+                    ctx.stroke();
+                }
+            }
+
+            const capRadius = stoneWall ? 3.6 : 3.2;
+            ctx.beginPath();
+            ctx.ellipse(endX, endY + 1.3, capRadius + 1.2, capRadius * 0.78, 0, 0, Math.PI * 2);
+            ctx.fillStyle = shadowColor;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(endX, endY, capRadius, capRadius * 0.78, 0, 0, Math.PI * 2);
+            ctx.fillStyle = footColor;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(endX - 0.8, endY - 0.9, capRadius * 0.52, capRadius * 0.28, 0, 0, Math.PI * 2);
+            ctx.fillStyle = rimColor;
+            ctx.fill();
         }
 
         ctx.beginPath();
-        ctx.arc(center.x, center.y, stoneWall ? 4.6 : 3.8, 0, Math.PI * 2);
-        ctx.fillStyle = baseColor;
+        ctx.ellipse(center.x, center.y + 2.4, stoneWall ? 7.2 : 6.2, stoneWall ? 5.1 : 4.6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = shadowColor;
+        ctx.fill();
+
+        const hubGradient = ctx.createRadialGradient(center.x - 1.2, center.y - 1.6, 0, center.x, center.y, stoneWall ? 6.6 : 5.8);
+        if (stoneWall) {
+            hubGradient.addColorStop(0, `rgba(220, 227, 236, ${Math.min(1, opacity * 0.98)})`);
+            hubGradient.addColorStop(0.54, `rgba(135, 148, 164, ${Math.min(1, opacity * 0.98)})`);
+            hubGradient.addColorStop(1, `rgba(72, 84, 100, ${Math.min(1, opacity * 0.96)})`);
+        } else {
+            hubGradient.addColorStop(0, `rgba(236, 166, 92, ${Math.min(1, opacity * 0.98)})`);
+            hubGradient.addColorStop(0.54, `rgba(148, 78, 39, ${Math.min(1, opacity * 0.98)})`);
+            hubGradient.addColorStop(1, `rgba(81, 41, 20, ${Math.min(1, opacity * 0.96)})`);
+        }
+
+        ctx.beginPath();
+        ctx.ellipse(center.x, center.y, stoneWall ? 5.9 : 5.2, stoneWall ? 4.4 : 3.9, 0, 0, Math.PI * 2);
+        ctx.fillStyle = hubGradient;
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(center.x, center.y, stoneWall ? 1.7 : 1.3, 0, Math.PI * 2);
-        ctx.fillStyle = coreColor;
+        ctx.ellipse(center.x - 1.4, center.y - 1.5, stoneWall ? 2.1 : 1.8, stoneWall ? 1.05 : 0.95, 0, 0, Math.PI * 2);
+        ctx.fillStyle = rimColor;
         ctx.fill();
         ctx.restore();
     }

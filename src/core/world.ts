@@ -294,33 +294,6 @@ export function discoverTile(tile: Tile, origin: DiscoveryContext = { q:0, r: 0}
     const discoverySettlementId = resolveDiscoverySettlementId(origin);
     const generationOrigin = resolveDiscoveryGenerationOrigin(origin, discoverySettlementId);
 
-    if (tile.q === 0 && tile.r === 0) {
-        tile.terrain = 'towncenter';
-        tile.variant = null;
-        tile.isBaseTile = true;
-        if (discoverySettlementId) {
-            tile.controlledBySettlementId = discoverySettlementId;
-            tile.ownerSettlementId = discoverySettlementId;
-        }
-
-        tile.discovered = true;
-        if (!tileIndex[tile.id]) indexTile(tile);
-        ensureTileNeighbors(tile);
-        terrainPositions.towncenter.add(tile.id);
-        emitGameplayEvent({
-            type: 'tile:discovered',
-            tileId: tile.id,
-            q: tile.q,
-            r: tile.r,
-            terrain: tile.terrain,
-        });
-        if (!generating) {
-            pendingRenderDiscoveredTileIds.add(tile.id);
-        }
-        markTileAndNeighborsRenderDirty(tile);
-        bumpWorldRenderVersion();
-        return;
-    }
     const generated = resolveWorldTile(tile.q, tile.r, generationOrigin);
 
     tile.biome = generated.biome;

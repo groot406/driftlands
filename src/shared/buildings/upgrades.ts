@@ -4,6 +4,9 @@ import type { ResourceAmount } from '../../core/types/Resource.ts';
 import type { TaskDefinition, TaskInstance, TaskType } from '../../core/types/Task.ts';
 import type { Tile } from '../../core/types/Tile.ts';
 import { onBuildingCompleted as onPopulationBuildingCompleted } from '../../store/populationStore';
+import type { TileUpdatedMessage } from '../protocol.ts';
+import { broadcastGameMessage as broadcast } from '../game/runtime';
+import { canGrantMarketCharter, grantMarketCharter } from '../game/marketAccess.ts';
 import type { BuildingKey, ProgressionNodeKey, UpgradeKey } from '../story/progression.ts';
 import type { StorageKind } from '../game/storage.ts';
 
@@ -27,11 +30,48 @@ export interface UpgradeDefinition {
   requiredXp(distance: number): number;
   heroRate(hero: Hero, tile: Tile): number;
   effects: UpgradeEffect[];
+  canStart?(tile: Tile, hero: Hero): boolean;
+  allowCompletionWithoutVariant?: boolean;
   resolveToVariant(tile: Tile): string | null;
   onComplete?(tile: Tile, instance: TaskInstance, participants: Hero[]): void;
 }
 
 const upgrades: UpgradeDefinition[] = [
+  {
+    key: 'market_charter',
+    label: 'Market Charter',
+    summary: 'Authorize this settlement to trade with the global resource market from its town center.',
+    baseBuildingKey: 'townCenter',
+    taskKey: 'grantMarketCharter',
+    buildTaskLabel: 'Grant Market Charter',
+    sortOrder: 205,
+    fromVariants: [],
+    toVariant: 'market_charter',
+    progressionNodeKeys: ['logistics'],
+    costs: [
+      { type: 'wood', amount: 6 },
+      { type: 'stone', amount: 4 },
+      { type: 'food', amount: 4 },
+    ],
+    requiredXp(_distance: number) {
+      return 2600;
+    },
+    heroRate(hero: Hero) {
+      return 18 * Math.max(1, hero.stats.atk);
+    },
+    effects: [],
+    canStart(tile) {
+      return canGrantMarketCharter(tile);
+    },
+    allowCompletionWithoutVariant: true,
+    resolveToVariant() {
+      return null;
+    },
+    onComplete(tile) {
+      grantMarketCharter(tile);
+      broadcast({ type: 'tile:updated', tile } satisfies TileUpdatedMessage);
+    },
+  },
   {
     key: 'stone_house_upgrade',
     label: 'Stone House',
@@ -310,7 +350,11 @@ export function createUpgradeTaskDefinition(upgrade: UpgradeDefinition): TaskDef
     key: upgrade.taskKey,
     label: upgrade.buildTaskLabel,
     chainAdjacentSameTerrain: false,
-    canStart(tile) {
+    canStart(tile, hero) {
+      if (upgrade.canStart) {
+        return upgrade.canStart(tile, hero);
+      }
+
       return !!tile.variant && upgrade.fromVariants.includes(tile.variant);
     },
     requiredXp(distance: number) {
@@ -324,11 +368,13 @@ export function createUpgradeTaskDefinition(upgrade: UpgradeDefinition): TaskDef
     },
     onComplete(tile, instance, participants) {
       const nextVariant = upgrade.resolveToVariant(tile);
-      if (!nextVariant) {
+      if (!nextVariant && !upgrade.allowCompletionWithoutVariant) {
         return;
       }
 
-      applyVariant(tile, nextVariant, { stagger: false, respectBiome: false });
+      if (nextVariant) {
+        applyVariant(tile, nextVariant, { stagger: false, respectBiome: false });
+      }
       upgrade.onComplete?.(tile, instance, participants);
     },
   };

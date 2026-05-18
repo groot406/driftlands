@@ -27,6 +27,7 @@ import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from 
 import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
 import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
 import { playerSettlementState } from './state/playerSettlementState';
+import { registerMarketRoutes } from './market/marketRoutes';
 
 setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
 
@@ -80,6 +81,7 @@ app.use(['/api/looperlands', '/api/driftlands'], (req: any, res: any, next: any)
 });
 app.use(express.json({ limit: '1mb' }));
 registerLooperlandsProxy(app);
+registerMarketRoutes(app);
 app.get('/api/driftlands/player/:playerId/settlement', (req: any, res: any) => {
   const playerId = String(req.params.playerId ?? '');
   res.json({

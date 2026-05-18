@@ -59,6 +59,7 @@ export interface Tile {
     borderModeCooldownUntilMs?: number | null;
     borderLockedUntilMs?: number | null;
     guardReserve?: number | null;
+    marketCharterUnlocked?: boolean | null;
     raidTargetTileId?: string | null;
     raidCommittedGuards?: number | null;
     raidBlockedReason?: string | null;

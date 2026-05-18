@@ -152,9 +152,42 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     },
   },
   {
-    key: 'sand',
+    key: 'iron',
     kind: 'stock',
     sortOrder: 33,
+    topBarGroup: 'materials',
+    relevantWhen: {
+      nodes: ['mountain_frontier', 'toolmaking'],
+      terrains: ['mountain'],
+      buildings: ['mine', 'workshop', 'weaponSmith'],
+    },
+  },
+  {
+    key: 'coal',
+    kind: 'stock',
+    sortOrder: 34,
+    topBarGroup: 'materials',
+    relevantWhen: {
+      nodes: ['mountain_frontier', 'toolmaking'],
+      terrains: ['mountain'],
+      buildings: ['mine', 'workshop'],
+    },
+  },
+  {
+    key: 'diamonds',
+    kind: 'inventory',
+    sortOrder: 35,
+    topBarGroup: 'materials',
+    relevantWhen: {
+      nodes: ['mountain_frontier'],
+      terrains: ['mountain'],
+      buildings: ['mine'],
+    },
+  },
+  {
+    key: 'sand',
+    kind: 'stock',
+    sortOrder: 36,
     topBarGroup: 'materials',
     relevantWhen: {
       nodes: ['harsh_frontier', 'desert_industry'],
@@ -167,7 +200,7 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
   {
     key: 'glass',
     kind: 'stock',
-    sortOrder: 34,
+    sortOrder: 37,
     topBarGroup: 'materials',
     relevantWhen: {
       nodes: ['desert_industry'],

@@ -13,24 +13,6 @@
         <button class="task-close" @click.stop.prevent="close" title="Close">✕</button>
       </div>
 
-      <div v-if="showHeroAbilities" class="task-ability-bar">
-        <span class="task-ability-charge">
-          {{ selectedHeroForAbilities?.name }} · {{ selectedHeroCharges }}/3
-        </span>
-        <button
-          v-for="ability in heroAbilityOptions"
-          :key="ability.key"
-          type="button"
-          class="task-ability-button"
-          :disabled="!canUseHeroAbility(ability.key)"
-          :title="heroAbilityTitle(ability)"
-          @click.stop.prevent="useHeroAbility(ability.key)"
-        >
-          <span class="task-ability-code">{{ ability.code }}</span>
-          <span class="task-ability-label">{{ ability.label }}</span>
-        </button>
-      </div>
-
       <div class="task-body">
         <div class="task-list-pane" :class="{ 'task-list-pane--actions-only': !constructionTasks.length }">
           <div class="task-command-strip">
@@ -342,7 +324,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Tile, TileModifierKey, TileSpecialKey } from '../core/types/Tile';
-import { requestHeroAbilityUse, requestHeroMovement, startTaskRequest } from '../core/heroService';
+import { requestHeroMovement, startTaskRequest } from '../core/heroService';
 import { canStartTaskWhileCarrying, detachHeroFromCurrentTask, taskStore } from '../store/taskStore';
 import { PathService } from '../core/PathService';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
@@ -378,7 +360,6 @@ import { getStoryTaskDescriptor } from '../shared/story/progression';
 import { getScoutCancelMovementPathOptions } from '../shared/game/scoutResources';
 import { getInventoryEntryDefinition } from '../shared/game/inventoryPresentation.ts';
 import { runSnapshot } from '../store/runStore.ts';
-import type { HeroAbilityKey } from '../shared/heroes/heroAbilities.ts';
 
 interface Props {
   tile: Tile | null;
@@ -431,13 +412,6 @@ function canManageTile(tile: Tile | null | undefined) {
   return tile.controlledBySettlementId === settlementId;
 }
 
-const heroAbilityOptions: Array<{ key: HeroAbilityKey; label: string; code: string; title: string }> = [
-  { key: 'boostProduction', label: 'Boost', code: '+', title: 'Boost the staffed building on this tile for its next cycle.' },
-  { key: 'instantTask', label: 'Rush', code: '>>', title: 'Add a burst of progress to an active task on this tile.' },
-  { key: 'stabilizeTile', label: 'Hold', code: '||', title: 'Pause condition decay on this tile for a short time.' },
-  { key: 'surveyBoost', label: 'Survey', code: '?', title: 'Complete surveying here immediately.' },
-];
-
 function checkMobile() {
   isMobile.value = window.matchMedia('(max-width: 640px)').matches || 'ontouchstart' in window;
 }
@@ -445,6 +419,8 @@ function checkMobile() {
 const resourceLabels: Record<ResourceType, string> = {
   wood: getInventoryEntryDefinition('wood').label,
   ore: getInventoryEntryDefinition('ore').label,
+  iron: getInventoryEntryDefinition('iron').label,
+  coal: getInventoryEntryDefinition('coal').label,
   stone: getInventoryEntryDefinition('stone').label,
   tools: getInventoryEntryDefinition('tools').label,
   weapons: getInventoryEntryDefinition('weapons').label,
@@ -455,6 +431,7 @@ const resourceLabels: Record<ResourceType, string> = {
   beer: getInventoryEntryDefinition('beer').label,
   wine: getInventoryEntryDefinition('wine').label,
   crystal: getInventoryEntryDefinition('crystal').label,
+  diamonds: getInventoryEntryDefinition('diamonds').label,
   artifact: getInventoryEntryDefinition('artifact').label,
   sand: getInventoryEntryDefinition('sand').label,
   glass: getInventoryEntryDefinition('glass').label,
@@ -747,98 +724,6 @@ const selectedTaskHint = computed(() => {
 
   return null;
 });
-
-const heroMethodsUnlocked = computed(() =>
-  runSnapshot.value?.progression.unlockedNodeKeys.includes('hero_methods') ?? false,
-);
-
-const selectedHeroForAbilities = computed(() => getSelectedHero());
-
-const selectedHeroCharges = computed(() => {
-  const hero = selectedHeroForAbilities.value;
-  return Math.max(0, Math.min(3, Math.floor(hero?.abilityCharges ?? 0)));
-});
-
-const selectedTileTaskIds = computed(() => {
-  const tile = props.tile;
-  if (!tile) {
-    return [];
-  }
-
-  return Object.values(taskStore.tasksByTile[tile.id] ?? {});
-});
-
-const selectedTaskInstanceId = computed(() => {
-  const tile = props.tile;
-  if (!tile) {
-    return null;
-  }
-
-  const tileTasks = taskStore.tasksByTile[tile.id] ?? {};
-  const preferredTaskKey = selectedTask.value?.key;
-  if (preferredTaskKey && tileTasks[preferredTaskKey]) {
-    return tileTasks[preferredTaskKey]!;
-  }
-
-  return selectedTileTaskIds.value[0] ?? null;
-});
-
-const showHeroAbilities = computed(() =>
-  heroMethodsUnlocked.value
-  && !!props.tile
-  && !!selectedHeroForAbilities.value,
-);
-
-function canUseHeroAbility(ability: HeroAbilityKey) {
-  const hero = selectedHeroForAbilities.value;
-  const tile = props.tile;
-  if (!hero || !tile || selectedHeroCharges.value <= 0 || !canControlHero(hero.id, currentPlayerId.value) || !canManageTile(tile)) {
-    return false;
-  }
-
-  switch (ability) {
-    case 'boostProduction':
-      return !!getBuildingDefinitionForTile(tile)?.jobSlots;
-    case 'instantTask':
-      return !!selectedTaskInstanceId.value;
-    case 'surveyBoost':
-      return tile.surveyed !== true;
-    case 'stabilizeTile':
-      return tile.activationState !== 'inactive';
-    default:
-      return false;
-  }
-}
-
-function heroAbilityTitle(ability: { key: HeroAbilityKey; title: string }) {
-  const hero = selectedHeroForAbilities.value;
-  if (!hero) {
-    return 'Select a hero first.';
-  }
-
-  if (!canControlHero(hero.id, currentPlayerId.value)) {
-    return `${getHeroOwnerName(hero.id) ?? 'Another player'} is controlling ${hero.name}.`;
-  }
-
-  if (selectedHeroCharges.value <= 0) {
-    return `${hero.name} has no ability charges.`;
-  }
-
-  return ability.title;
-}
-
-function useHeroAbility(ability: HeroAbilityKey) {
-  const hero = selectedHeroForAbilities.value;
-  const tile = props.tile;
-  if (!hero || !tile || !canUseHeroAbility(ability)) {
-    return;
-  }
-
-  requestHeroAbilityUse(hero.id, ability, {
-    tileId: tile.id,
-    taskId: selectedTaskInstanceId.value ?? undefined,
-  });
-}
 
 interface TaskFlowGroup {
   label: string;
@@ -1944,68 +1829,6 @@ onUnmounted(() => {
   transform: translateY(-1px);
   border-color: rgba(74, 222, 128, 0.26);
   background: rgba(6, 78, 59, 0.42);
-}
-
-.task-ability-bar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.task-ability-bar::-webkit-scrollbar {
-  display: none;
-}
-
-.task-ability-charge {
-  flex: 0 0 auto;
-  min-width: 88px;
-  color: rgba(254, 243, 199, 0.9);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.task-ability-button {
-  flex: 0 0 auto;
-  min-width: 74px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 8px;
-  border: 1px solid rgba(56, 189, 248, 0.24);
-  border-radius: 6px;
-  background: rgba(8, 47, 73, 0.58);
-  color: rgba(255, 251, 235, 0.96);
-  transition: background .15s, border-color .15s, transform .15s;
-}
-
-.task-ability-button:hover:not(:disabled) {
-  border-color: rgba(56, 189, 248, 0.62);
-  background: rgba(12, 74, 110, 0.78);
-  transform: translateY(-1px);
-}
-
-.task-ability-button:disabled {
-  opacity: 0.44;
-  cursor: not-allowed;
-}
-
-.task-ability-code {
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.task-ability-label {
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1;
 }
 
 /* ── Body: two-column left/right split ───────────────── */

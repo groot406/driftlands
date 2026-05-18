@@ -28,6 +28,7 @@ import { openCalamityReport } from '../../store/calamityEventStore.ts';
 import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
 import { isWatchtowerTile } from '../../shared/game/military.ts';
 import { setWorldGenerationSpawnSafetyEnabled } from '../worldGeneration';
+import { replaceMarketOverview } from '../../store/marketStore.ts';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -43,6 +44,7 @@ interface PendingWorldSnapshot {
     population: WorldSnapshotMessage['population'];
     jobs: WorldSnapshotMessage['jobs'];
     studies: WorldSnapshotMessage['studies'];
+    market: WorldSnapshotMessage['market'];
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
     timestamp?: number;
@@ -77,7 +79,7 @@ class WorldHandler {
         clientMessageRouter.on('calamity:event', this.handleCalamityEvent.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
         setServerDebugModeEnabled((message as WorldSnapshotMessage).debugModeEnabled);
         setWorldGenerationSpawnSafetyEnabled((message as WorldSnapshotMessage).spawnSafetyEnabled === true);
         loadWorld(message.tiles);
@@ -98,6 +100,9 @@ class WorldHandler {
         loadPopulation(message.population);
         loadWorkforce(message.jobs);
         loadStudyState(message.studies);
+        if (message.market) {
+            replaceMarketOverview(message.market);
+        }
     }
 
     private handleWorldSnapshot(message: WorldSnapshotMessage): void {
@@ -120,6 +125,7 @@ class WorldHandler {
             population: message.population,
             jobs: message.jobs,
             studies: message.studies,
+            market: message.market,
             debugModeEnabled: message.debugModeEnabled,
             spawnSafetyEnabled: message.spawnSafetyEnabled,
             timestamp: message.timestamp,
@@ -161,6 +167,15 @@ class WorldHandler {
 
         const settlementId = currentPlayerSettlementId.value;
         if (settlementId && message.tile.id === settlementId && message.tile.terrain === 'towncenter') {
+            if (!previousTile?.marketCharterUnlocked && message.tile.marketCharterUnlocked) {
+                addNotification({
+                    type: 'settlement',
+                    title: 'Market charter granted',
+                    message: 'This settlement can now trade through the global resource market.',
+                    duration: 3600,
+                });
+            }
+
             const previousTarget = previousTile?.raidTargetTileId ?? null;
             const nextTarget = message.tile.raidTargetTileId ?? null;
             if (previousTarget !== nextTarget) {

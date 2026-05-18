@@ -51,6 +51,7 @@ export class ServerGameStateHandler {
       population: snapshot.population,
       jobs: snapshot.jobs,
       studies: snapshot.studies,
+      market: snapshot.market,
       debugModeEnabled: serverDebugModeEnabled,
       spawnSafetyEnabled,
       timestamp: Date.now(),

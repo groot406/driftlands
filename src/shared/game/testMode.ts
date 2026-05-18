@@ -13,6 +13,8 @@ export interface TestModeSettingsSnapshot {
   enabled: boolean;
   instantBuild: boolean;
   unlimitedResources: boolean;
+  bypassHunger?: boolean;
+  bypassMorale?: boolean;
   fastHeroMovement: boolean;
   fastGrowth: boolean;
   fastPopulationGrowth: boolean;
@@ -92,6 +94,8 @@ export function createDefaultTestModeSettings(): TestModeSettingsSnapshot {
     enabled: false,
     instantBuild: false,
     unlimitedResources: false,
+    bypassHunger: false,
+    bypassMorale: false,
     fastHeroMovement: false,
     fastGrowth: false,
     fastPopulationGrowth: false,
@@ -110,6 +114,8 @@ export function cloneTestModeSettings(snapshot: TestModeSettingsSnapshot | null 
     enabled: !!normalized.enabled,
     instantBuild: !!normalized.instantBuild,
     unlimitedResources: !!normalized.unlimitedResources,
+    bypassHunger: !!normalized.bypassHunger,
+    bypassMorale: !!normalized.bypassMorale,
     fastHeroMovement: !!normalized.fastHeroMovement,
     fastGrowth: !!normalized.fastGrowth,
     fastPopulationGrowth: !!normalized.fastPopulationGrowth,
@@ -129,6 +135,8 @@ export function loadTestModeSettings(snapshot: TestModeSettingsSnapshot | null |
   testModeSettings.enabled = next.enabled;
   testModeSettings.instantBuild = next.instantBuild;
   testModeSettings.unlimitedResources = next.unlimitedResources;
+  testModeSettings.bypassHunger = next.bypassHunger;
+  testModeSettings.bypassMorale = next.bypassMorale;
   testModeSettings.fastHeroMovement = next.fastHeroMovement;
   testModeSettings.fastGrowth = next.fastGrowth;
   testModeSettings.fastPopulationGrowth = next.fastPopulationGrowth;
@@ -161,6 +169,14 @@ export function isInstantBuildEnabled(snapshot: TestModeSettingsSnapshot | null 
 
 export function isUnlimitedResourcesEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
   return isTestModeEnabled(snapshot) && !!snapshot?.unlimitedResources;
+}
+
+export function isHungerBypassEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
+  return isTestModeEnabled(snapshot) && !!snapshot?.bypassHunger;
+}
+
+export function isMoraleBypassEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
+  return isTestModeEnabled(snapshot) && !!snapshot?.bypassMorale;
 }
 
 export function isFastHeroMovementEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {

@@ -118,6 +118,12 @@ class TestModeState {
     if (typeof message.unlimitedResources === 'boolean') {
       next.unlimitedResources = message.unlimitedResources;
     }
+    if (typeof message.bypassHunger === 'boolean') {
+      next.bypassHunger = message.bypassHunger;
+    }
+    if (typeof message.bypassMorale === 'boolean') {
+      next.bypassMorale = message.bypassMorale;
+    }
     if (typeof message.fastHeroMovement === 'boolean') {
       next.fastHeroMovement = message.fastHeroMovement;
     }
@@ -166,6 +172,8 @@ class TestModeState {
         next.enabled = true;
         next.instantBuild = true;
         next.unlimitedResources = true;
+        next.bypassHunger = true;
+        next.bypassMorale = false;
         next.fastSettlerCycles = true;
         next.fastGuardTraining = true;
         next.progressionOverridesBySettlementId[settlementId] = listProgressionNodeDefinitions().map((node) => node.key);

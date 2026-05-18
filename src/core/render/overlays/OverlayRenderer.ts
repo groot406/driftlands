@@ -2,7 +2,7 @@ import { getStorageFreeCapacity, getStorageUsedCapacity, storageInventories } fr
 import { heroes } from '../../../store/heroStore';
 import { selectedHeroId } from '../../../store/uiStore';
 import { taskStore } from '../../../store/taskStore';
-import { getStorageCapacity, getStorageKindLabel } from '../../../shared/game/storage';
+import { formatStorageAmount, getStorageCapacity, getStorageKindLabel } from '../../../shared/game/storage';
 import { getScoutSurveyProgress } from '../../../shared/game/scoutResources';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../../../shared/buildings/storage';
 import { camera, axialToPixel, hexDistance } from '../../camera';
@@ -730,9 +730,9 @@ export class OverlayRenderer {
                 .slice(0, 2)
             : [];
 
-        const textParts = [`${getStorageKindLabel(storageKind)} ${usedCapacity}/${capacity}`];
+        const textParts = [`${getStorageKindLabel(storageKind)} ${formatStorageAmount(usedCapacity)}/${formatStorageAmount(capacity)}`];
         if (topResources.length) {
-            textParts.push(topResources.map(([type, amount]) => `${deps.resourceIconMap[type] ?? '?'}${amount}`).join(' '));
+            textParts.push(topResources.map(([type, amount]) => `${deps.resourceIconMap[type] ?? '?'}${formatStorageAmount(amount)}`).join(' '));
         }
         const text = textParts.join('  ');
 
