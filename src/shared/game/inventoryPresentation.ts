@@ -152,39 +152,6 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     },
   },
   {
-    key: 'iron',
-    kind: 'stock',
-    sortOrder: 33,
-    topBarGroup: 'materials',
-    relevantWhen: {
-      nodes: ['mountain_frontier', 'toolmaking'],
-      terrains: ['mountain'],
-      buildings: ['mine', 'workshop', 'weaponSmith'],
-    },
-  },
-  {
-    key: 'coal',
-    kind: 'stock',
-    sortOrder: 34,
-    topBarGroup: 'materials',
-    relevantWhen: {
-      nodes: ['mountain_frontier', 'toolmaking'],
-      terrains: ['mountain'],
-      buildings: ['mine', 'workshop'],
-    },
-  },
-  {
-    key: 'diamonds',
-    kind: 'inventory',
-    sortOrder: 35,
-    topBarGroup: 'materials',
-    relevantWhen: {
-      nodes: ['mountain_frontier'],
-      terrains: ['mountain'],
-      buildings: ['mine'],
-    },
-  },
-  {
     key: 'sand',
     kind: 'stock',
     sortOrder: 36,
@@ -234,7 +201,7 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
     key: 'water',
     kind: 'stock',
     sortOrder: 50,
-    topBarGroup: 'utility',
+    topBarGroup: 'crops',
   },
   {
     key: 'water_lily',
@@ -245,18 +212,6 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
       nodes: ['shoreline'],
       tasks: ['harvestWaterLilies', 'placeWaterLilies', 'buildBridge'],
     },
-  },
-  {
-    key: 'crystal',
-    kind: 'inventory',
-    sortOrder: 52,
-    topBarGroup: 'utility',
-  },
-  {
-    key: 'artifact',
-    kind: 'inventory',
-    sortOrder: 53,
-    topBarGroup: 'utility',
   },
 ] as const;
 

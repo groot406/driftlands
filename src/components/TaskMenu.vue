@@ -419,8 +419,6 @@ function checkMobile() {
 const resourceLabels: Record<ResourceType, string> = {
   wood: getInventoryEntryDefinition('wood').label,
   ore: getInventoryEntryDefinition('ore').label,
-  iron: getInventoryEntryDefinition('iron').label,
-  coal: getInventoryEntryDefinition('coal').label,
   stone: getInventoryEntryDefinition('stone').label,
   tools: getInventoryEntryDefinition('tools').label,
   weapons: getInventoryEntryDefinition('weapons').label,
@@ -430,9 +428,6 @@ const resourceLabels: Record<ResourceType, string> = {
   meat: getInventoryEntryDefinition('meat').label,
   beer: getInventoryEntryDefinition('beer').label,
   wine: getInventoryEntryDefinition('wine').label,
-  crystal: getInventoryEntryDefinition('crystal').label,
-  diamonds: getInventoryEntryDefinition('diamonds').label,
-  artifact: getInventoryEntryDefinition('artifact').label,
   sand: getInventoryEntryDefinition('sand').label,
   glass: getInventoryEntryDefinition('glass').label,
   water: getInventoryEntryDefinition('water').label,

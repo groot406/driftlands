@@ -301,7 +301,7 @@ function buildResourceInsight(resourceType: ResourceType) {
 }
 
 function isResourceGroupKey(value: string): value is ResourceGroup {
-  return ['food', 'crops', 'materials', 'crafted_goods', 'utility'].includes(value);
+  return ['food', 'crops', 'materials', 'crafted_goods'].includes(value);
 }
 
 const activeResource = computed(() => {

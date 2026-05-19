@@ -4,9 +4,6 @@ export const MARKET_RESOURCE_TYPES = [
   'wood',
   'stone',
   'food',
-  'iron',
-  'coal',
-  'diamonds',
 ] as const satisfies readonly ResourceType[];
 
 export type MarketResourceType = typeof MARKET_RESOURCE_TYPES[number];
@@ -75,9 +72,6 @@ export const DEFAULT_MARKET_RESOURCE_CONFIGS: readonly MarketResourceConfig[] = 
   { resourceType: 'wood', basePrice: 2, targetStock: 10_000, minPrice: 1, maxPrice: 5 },
   { resourceType: 'stone', basePrice: 3, targetStock: 8_000, minPrice: 1, maxPrice: 8 },
   { resourceType: 'food', basePrice: 4, targetStock: 12_000, minPrice: 1, maxPrice: 10 },
-  { resourceType: 'coal', basePrice: 6, targetStock: 5_000, minPrice: 2, maxPrice: 18 },
-  { resourceType: 'iron', basePrice: 10, targetStock: 4_000, minPrice: 4, maxPrice: 30 },
-  { resourceType: 'diamonds', basePrice: 100, targetStock: 500, minPrice: 40, maxPrice: 300 },
 ] as const;
 
 export const MARKET_SELL_PRICE_MULTIPLIER = 0.85;

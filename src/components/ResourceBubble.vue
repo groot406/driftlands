@@ -56,7 +56,7 @@ const props = withDefaults(defineProps<{
     value: number;
   }>;
 }>(), {
-  tone: 'utility',
+  tone: 'materials',
 });
 
 const emit = defineEmits<{
@@ -136,11 +136,6 @@ onBeforeUnmount(() => {
 .resource-bubble[data-resource-tone="crafted_goods"] {
   --resource-accent: #aaa085;
   --resource-panel: rgba(31, 32, 30, 0.95);
-}
-
-.resource-bubble[data-resource-tone="utility"] {
-  --resource-accent: #7fa99e;
-  --resource-panel: rgba(24, 43, 39, 0.95);
 }
 
 .resource-bubble::after {

@@ -10,7 +10,7 @@ import {
   type ProgressionSnapshot,
   type UpgradeKey,
 } from '../story/progression.ts';
-import { getVisibleInventoryEntries } from './inventoryPresentation.ts';
+import { getVisibleInventoryEntries, getVisibleInventoryGroups } from './inventoryPresentation.ts';
 
 function visibleKeys(
   inventory: Partial<Record<ResourceType, number>> = {},
@@ -86,4 +86,17 @@ test('positive stock reveals entries even without progression relevance', () => 
     stocks: ['food', 'grain', 'wood', 'stone', 'ore', 'sand', 'glass'],
     items: ['tools', 'water_lily'],
   });
+});
+
+test('water rolls into crops now that utility is no longer a top-bar group', () => {
+  const groups = getVisibleInventoryGroups({
+    inventory: { water: 3 },
+    progression: createInitialProgressionSnapshot(),
+  });
+
+  assert.deepEqual(groups.map((group) => group.key), ['food', 'crops', 'materials', 'crafted_goods']);
+  assert.deepEqual(groups.find((group) => group.key === 'crops')?.entries.map((entry) => entry.key), [
+    'grain',
+    'water',
+  ]);
 });

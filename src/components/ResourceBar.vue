@@ -33,12 +33,28 @@
         clickable
         @select="openResourceDetailModal(group.key)"
       />
+
+      <button
+        v-if="marketAccessUnlocked"
+        type="button"
+        class="pop-bubble gold-bubble"
+        :title="goldTitle"
+        :aria-label="goldTitle"
+        @click="openMarketplace()"
+      >
+        <span class="pop-bubble-frame" aria-hidden="true"></span>
+        <span class="pop-bubble-icon" aria-hidden="true">⛃</span>
+        <span class="pop-bubble-copy">
+          <span class="pop-bubble-label">Gold</span>
+          <span class="pop-bubble-value">{{ formattedGold }}</span>
+        </span>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import ResourceBubble from './ResourceBubble.vue';
 import {getSettlementResourceInventory, resourceInventory, resourceVersion} from '../store/resourceStore';
 import {populationState} from '../store/clientPopulationStore';
@@ -46,6 +62,10 @@ import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
 import { runSnapshot, runVersion } from '../store/runStore.ts';
 import { getVisibleInventoryGroups } from '../shared/game/inventoryPresentation.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+import { fetchMarketOverview, marketWallet, openMarketplace } from '../store/marketStore.ts';
+import { worldVersion } from '../core/world.ts';
+import { hasSettlementMarketAccess } from '../shared/game/marketAccess.ts';
+import { currentPlayerId } from '../core/socket.ts';
 
 const playerPopulation = computed(() => {
   const settlementId = currentPlayerSettlementId.value;
@@ -75,6 +95,35 @@ const populationPressureClass = computed(() => `pop-bubble-${playerPopulation.va
 const populationTitle = computed(() => (
   `Open settler overview (${playerPopulation.value.current}/${playerPopulation.value.max})`
 ));
+
+const marketAccessUnlocked = computed(() => {
+  worldVersion.value;
+  return hasSettlementMarketAccess(currentPlayerSettlementId.value);
+});
+
+const marketGold = computed(() => marketWallet.value?.gold ?? 0);
+const formattedGold = computed(() => formatGold(marketGold.value));
+const goldTitle = computed(() => `Open market (${formattedGold.value} Gold)`);
+
+function formatGold(value: number) {
+  const normalized = Math.max(0, Math.floor(value));
+  if (normalized >= 1000) {
+    return `${Math.floor(normalized / 100) / 10}k`;
+  }
+
+  return `${normalized}`;
+}
+
+function refreshMarketWallet() {
+  if (!marketAccessUnlocked.value || !currentPlayerId.value) {
+    return;
+  }
+
+  void fetchMarketOverview(currentPlayerId.value).catch(() => {});
+}
+
+onMounted(refreshMarketWallet);
+watch([marketAccessUnlocked, currentPlayerId], refreshMarketWallet);
 </script>
 
 <script lang="ts">
@@ -240,6 +289,14 @@ export default {name: 'ResourceBar'};
 .pop-bubble-value span {
   color: rgba(218, 197, 159, 0.68);
   font-size: 0.74rem;
+}
+
+.gold-bubble {
+  --pop-accent: #d8b45f;
+  background:
+    linear-gradient(180deg, rgba(255, 236, 178, 0.16), rgba(0, 0, 0, 0.05) 48%, rgba(0, 0, 0, 0.22)),
+    radial-gradient(ellipse at 38% 4%, color-mix(in srgb, var(--pop-accent) 18%, transparent), transparent 66%),
+    linear-gradient(180deg, rgba(55, 38, 16, 0.72), rgba(18, 13, 8, 0.52));
 }
 
 .pop-bubble:hover {

@@ -4,8 +4,7 @@ export type ResourceGroup =
   | 'food'
   | 'crops'
   | 'materials'
-  | 'crafted_goods'
-  | 'utility';
+  | 'crafted_goods';
 
 export type ResourceCategory =
   | 'hunger_food'
@@ -38,7 +37,6 @@ export const RESOURCE_GROUP_DEFINITIONS: readonly ResourceGroupDefinition[] = [
   { key: 'crops', label: 'Crops', shortLabel: 'Crops', icon: '🌿', sortOrder: 20 },
   { key: 'materials', label: 'Materials', shortLabel: 'Materials', icon: '🧱', sortOrder: 30 },
   { key: 'crafted_goods', label: 'Crafted Goods', shortLabel: 'Crafted', icon: '🛠️', sortOrder: 40 },
-  { key: 'utility', label: 'Utility', shortLabel: 'Utility', icon: '💧', sortOrder: 50 },
 ] as const;
 
 export const RESOURCE_DEFINITIONS: readonly ResourceDefinition[] = [
@@ -55,16 +53,11 @@ export const RESOURCE_DEFINITIONS: readonly ResourceDefinition[] = [
   { type: 'wood', label: 'Wood', icon: '🌲', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'stone', label: 'Stone', icon: '🪨', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'ore', label: 'Ore', icon: '⛏️', group: 'materials', category: 'raw_material', isConsumable: false },
-  { type: 'iron', label: 'Iron', icon: '⚙️', group: 'materials', category: 'raw_material', isConsumable: false },
-  { type: 'coal', label: 'Coal', icon: '◆', group: 'materials', category: 'raw_material', isConsumable: false },
-  { type: 'diamonds', label: 'Diamonds', icon: '💎', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'sand', label: 'Sand', icon: '⌁', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'glass', label: 'Glass', icon: '◇', group: 'materials', category: 'raw_material', isConsumable: false },
   { type: 'tools', label: 'Tools', icon: '🛠️', group: 'crafted_goods', category: 'crafted_good', isConsumable: false },
   { type: 'weapons', label: 'Weapons', icon: '🗡️', group: 'crafted_goods', category: 'crafted_good', isConsumable: false },
-  { type: 'water', label: 'Water', icon: '💧', group: 'utility', category: 'utility', isConsumable: false },
-  { type: 'crystal', label: 'Crystal', icon: '💎', group: 'utility', category: 'utility', isConsumable: false },
-  { type: 'artifact', label: 'Artifact', icon: '🏺', group: 'utility', category: 'utility', isConsumable: false },
+  { type: 'water', label: 'Water', icon: '💧', group: 'crops', category: 'utility', isConsumable: false },
 ] as const;
 
 const RESOURCE_DEFINITION_BY_TYPE = new Map<ResourceType, ResourceDefinition>(
@@ -80,7 +73,7 @@ export function getResourceDefinition(type: ResourceType): ResourceDefinition {
     type,
     label: type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '),
     icon: '?',
-    group: 'utility',
+    group: 'materials',
     category: 'utility',
     isConsumable: false,
   };

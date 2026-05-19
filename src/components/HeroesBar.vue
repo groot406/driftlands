@@ -952,15 +952,15 @@ watch(selectedHeroId, () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
-  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  /* font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace; */
   font-size: 0.64rem;
   font-weight: 900;
-  line-height: 0.95;
+  line-height: 1;
   color: rgba(255, 248, 220, 0.98);
-  text-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.68),
-    0 0 8px rgba(0, 0, 0, 0.55);
+  /* text-shadow: 0 1px 0px rgb(5 4 4 / 68%), 0 0 8px rgba(0, 0, 0, 0.55); */
   text-transform: uppercase;
+  margin-top: 4px;
+  margin: 4px;
 }
 
 .hero-card-role {

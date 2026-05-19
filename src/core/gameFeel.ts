@@ -72,8 +72,6 @@ export interface GameplayImpactOptions {
 const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     wood: {icon: getInventoryEntryDefinition('wood').icon, color: '#85c46c'},
     ore: {icon: getInventoryEntryDefinition('ore').icon, color: '#9aa6c7'},
-    iron: {icon: getInventoryEntryDefinition('iron').icon, color: '#b6bdc7'},
-    coal: {icon: getInventoryEntryDefinition('coal').icon, color: '#5c6068'},
     stone: {icon: getInventoryEntryDefinition('stone').icon, color: '#b9b3a1'},
     tools: {icon: getInventoryEntryDefinition('tools').icon, color: '#d8b46a'},
     weapons: {icon: getInventoryEntryDefinition('weapons').icon, color: '#d98f70'},
@@ -83,9 +81,6 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     meat: {icon: getInventoryEntryDefinition('meat').icon, color: '#e78974'},
     beer: {icon: getInventoryEntryDefinition('beer').icon, color: '#f2b948'},
     wine: {icon: getInventoryEntryDefinition('wine').icon, color: '#cc7fe7'},
-    crystal: {icon: getInventoryEntryDefinition('crystal').icon, color: '#8cd6ff'},
-    diamonds: {icon: getInventoryEntryDefinition('diamonds').icon, color: '#9be8ff'},
-    artifact: {icon: getInventoryEntryDefinition('artifact').icon, color: '#e5d489'},
     sand: {icon: getInventoryEntryDefinition('sand').icon, color: '#e7c979'},
     glass: {icon: getInventoryEntryDefinition('glass').icon, color: '#b7f2ff'},
     water: {icon: getInventoryEntryDefinition('water').icon, color: '#70d6ff'},

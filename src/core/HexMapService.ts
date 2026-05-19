@@ -106,8 +106,10 @@ import {
 } from './render/entities/settlerRender';
 import {canControlHero} from "../store/playerStore.ts";
 import {currentPlayerId} from "./socket.ts";
+import {createLoader, finishLoader, updateLoader} from './loader';
 
 const TEXT_INDICATOR_STACK_GAP_PX = 18;
+const MAP_ASSET_LOADER_ID = 'map-assets';
 
 const SCOUTED_TILE_STYLE = {
     fill: 'rgba(100, 116, 139, 0.13)',
@@ -509,6 +511,8 @@ export class HexMapService {
     private _tileDepthShadowCanvas: HTMLCanvasElement | null = null;
     private _tileDepthShadowCtx: CanvasRenderingContext2D | null = null;
     private _currentRenderQuality: RenderQualityProfile = { ...DEFAULT_RENDER_QUALITY };
+    private _assetLoaderCompleted = 0;
+    private _assetLoaderTotal = 0;
 
     //stores heroes in the exact draw layering order (top drawn first, bottom drawn last)
     private _sortedHeroes: Hero[] = [];
@@ -532,10 +536,17 @@ export class HexMapService {
         this._container = containerEl;
         this._dpr = 1;
         this.setupCanvas();
-        await this.loadTileImages();
-        await this.ensureHeroAssets();
-        await this.loadToolImages();
-        await this.loadSettlerImages();
+        this.startAssetLoader();
+        try {
+            await this.loadTileImages();
+            await this.ensureHeroAssets(true);
+            await this.loadToolImages();
+            await this.loadSettlerImages();
+            finishLoader(MAP_ASSET_LOADER_ID, 'Ready');
+        } catch (error) {
+            finishLoader(MAP_ASSET_LOADER_ID, 'Unable to load all assets');
+            throw error;
+        }
         this.resize();
         stopCameraAnimation();
         animateCamera();
@@ -594,6 +605,45 @@ export class HexMapService {
         };
         this.resetCameraCompositeState();
         this._currentRenderQuality = { ...DEFAULT_RENDER_QUALITY };
+    }
+
+    private startAssetLoader() {
+        const heroCount = new Set(heroes.map((hero) => hero.avatar)).size;
+        this._assetLoaderTotal = Object.keys(this.tileImgSources).length
+            + heroCount
+            + Object.keys(this.toolImgSources).length
+            + Object.keys(this.settlerImgSources).length;
+        this._assetLoaderCompleted = 0;
+
+        createLoader(MAP_ASSET_LOADER_ID, {
+            title: 'Preparing map',
+            status: 'Loading terrain tiles...',
+            completed: 0,
+            total: this._assetLoaderTotal,
+            unitLabel: 'Assets',
+            popup: true,
+        });
+    }
+
+    private recordAssetLoaded(status: string) {
+        if (this._assetLoaderTotal <= 0) {
+            return;
+        }
+
+        this._assetLoaderCompleted = Math.min(this._assetLoaderCompleted + 1, this._assetLoaderTotal);
+        updateLoader(MAP_ASSET_LOADER_ID, {
+            status,
+            completed: this._assetLoaderCompleted,
+            total: this._assetLoaderTotal,
+        });
+    }
+
+    private async decodeImage(src: string) {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = src;
+        await img.decode().catch(() => {});
+        return img;
     }
 
     resize() {
@@ -5997,8 +6047,6 @@ export class HexMapService {
     RESOURCE_ICON_MAP: Record<ResourceType, string> = {
         wood: '🪵',
         ore: '⛏️',
-        iron: '⚙️',
-        coal: '◆',
         stone: '🪨',
         tools: '🛠️',
         weapons: '🗡️',
@@ -6008,9 +6056,6 @@ export class HexMapService {
         meat: '🍖',
         beer: '🍺',
         wine: '🍷',
-        crystal: '🔮',
-        diamonds: '💎',
-        artifact: '🗿',
         water: '💧',
         grain: '🌾',
         hops: '🌿',
@@ -6065,10 +6110,8 @@ export class HexMapService {
     private async loadTileImages() {
         // Pre-mask all static images; if animated frames needed later, handled per draw.
         const canvasCache = new Map<string, HTMLCanvasElement>();
-        for (const [key, src] of Object.entries(this.tileImgSources)) {
-            const img = new Image();
-            img.src = src;
-            await img.decode().catch(() => {});
+        await Promise.all(Object.entries(this.tileImgSources).map(async ([key, src]) => {
+            const img = await this.decodeImage(src);
             this._images[key] = img;
             // Build masked hex canvas
             const c = document.createElement('canvas');
@@ -6090,28 +6133,27 @@ export class HexMapService {
             g.drawImage(img, 0, 0, w, h);
             g.restore();
             canvasCache.set(key, c);
-        }
+            this.recordAssetLoaded('Loading terrain tiles...');
+        }));
         this._maskedImages = canvasCache;
         this._imagesLoaded = true;
     }
 
     private async loadToolImages() {
-        for (const [key, src] of Object.entries(this.toolImgSources)) {
-            const img = new Image();
-            img.src = src;
-            await img.decode().catch(() => {});
+        await Promise.all(Object.entries(this.toolImgSources).map(async ([key, src]) => {
+            const img = await this.decodeImage(src);
             this._toolImages[key] = img;
-        }
+            this.recordAssetLoaded('Loading tools...');
+        }));
         this._toolImagesLoaded = true;
     }
 
     private async loadSettlerImages() {
-        for (const [key, src] of Object.entries(this.settlerImgSources)) {
-            const img = new Image();
-            img.src = src;
-            await img.decode().catch(() => {});
+        await Promise.all(Object.entries(this.settlerImgSources).map(async ([key, src]) => {
+            const img = await this.decodeImage(src);
             this._settlerImages[key] = img;
-        }
+            this.recordAssetLoaded('Loading settlers...');
+        }));
         this._settlerImagesLoaded = true;
     }
 
@@ -6231,20 +6273,32 @@ export class HexMapService {
         updateCameraRadius(targetRadius, inner);
     }
 
-    private loadHeroAsset(avatar: string): Promise<void> {
+    private loadHeroAsset(avatar: string, trackProgress = false): Promise<void> {
         if (this._heroImages[avatar]) {
             this.buildHeroMasks(this._heroImages[avatar], avatar);
+            if (trackProgress) {
+                this.recordAssetLoaded('Loading heroes...');
+            }
             return Promise.resolve();
         }
 
         const existingPromise = this._pendingHeroImageLoads.get(avatar);
         if (existingPromise) {
-            return existingPromise;
+            if (!trackProgress) {
+                return existingPromise;
+            }
+
+            return existingPromise.then(() => {
+                this.recordAssetLoaded('Loading heroes...');
+            });
         }
 
         const hero = heroes.find((entry) => entry.avatar === avatar);
         const source = hero?.avatarSpriteUrl ?? this.heroImgSources[avatar];
         if (!source) {
+            if (trackProgress) {
+                this.recordAssetLoaded('Loading heroes...');
+            }
             return Promise.resolve();
         }
 
@@ -6253,6 +6307,9 @@ export class HexMapService {
             const fallbackSource = hero?.avatarFallbackSpriteUrl;
             const finalize = () => {
                 this._pendingHeroImageLoads.delete(avatar);
+                if (trackProgress) {
+                    this.recordAssetLoaded('Loading heroes...');
+                }
                 resolve();
             };
 
@@ -6291,9 +6348,9 @@ export class HexMapService {
         }
     }
 
-    private async ensureHeroAssets() {
+    private async ensureHeroAssets(trackProgress = false) {
         const uniqueAvatars = Array.from(new Set(heroes.map((hero) => hero.avatar)));
-        await Promise.all(uniqueAvatars.map((avatar) => this.loadHeroAsset(avatar)));
+        await Promise.all(uniqueAvatars.map((avatar) => this.loadHeroAsset(avatar, trackProgress)));
         this._heroImagesLoaded = true;
     }
 

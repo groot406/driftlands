@@ -8,6 +8,13 @@ import {getActiveWindow, isWindowActive, WINDOW_IDS} from './core/windowManager'
 const app = createApp(App);
 app.mount('#app');
 
+requestAnimationFrame(() => {
+  document.body.classList.add('app-ready');
+  window.setTimeout(() => {
+    document.getElementById('boot-splash')?.remove();
+  }, 320);
+});
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (isWindowActive(WINDOW_IDS.IN_GAME_MENU)) {

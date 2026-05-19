@@ -110,9 +110,9 @@ test('settlement resource deposits can spread across matching storage', () => {
   ]);
 
   depositResourceToStorage('0,0', 'wood', 240);
-  const transfers = depositResourceAcrossStoragesForSettlement('0,0', 'iron', 20);
+  const transfers = depositResourceAcrossStoragesForSettlement('0,0', 'stone', 20);
 
   assert.deepEqual(transfers, [{ storageTileId: '1,0', amount: 20 }]);
-  assert.equal(getStorageResourceAmount('1,0', 'iron'), 20);
-  assert.equal(getSettlementResourceInventory('0,0').iron, 20);
+  assert.equal(getStorageResourceAmount('1,0', 'stone'), 20);
+  assert.equal(getSettlementResourceInventory('0,0').stone, 20);
 });
