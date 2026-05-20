@@ -1,5 +1,6 @@
 import type { ResourceAmount } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
+import type { BuildingKey } from '../story/progression.ts';
 
 export type SideQuestDefinitionId = 'lost_hero_distress';
 export type SideQuestInstanceStatus = 'signaled' | 'active' | 'completed';
@@ -8,6 +9,23 @@ export interface SideQuestSignalDefinition {
   label: string;
   minDistance: number;
   maxDistance: number;
+}
+
+export type SideQuestTriggerConditionDefinition =
+  | {
+      kind: 'building_count_at_least';
+      buildingKey: BuildingKey;
+      amount: number;
+    };
+
+export interface SideQuestTriggerDelayDefinition {
+  minMinutes: number;
+  maxMinutes: number;
+}
+
+export interface SideQuestTriggerDefinition {
+  conditions?: SideQuestTriggerConditionDefinition[];
+  delayAfterConditionsMet?: SideQuestTriggerDelayDefinition;
 }
 
 export type SideQuestObjectiveDefinition =
@@ -43,6 +61,7 @@ export interface SideQuestDefinition {
   id: SideQuestDefinitionId;
   title: string;
   signal: SideQuestSignalDefinition;
+  trigger?: SideQuestTriggerDefinition;
   npc: SideQuestNpcDefinition;
   objectives: SideQuestObjectiveDefinition[];
   rewards: SideQuestRewardDefinition[];

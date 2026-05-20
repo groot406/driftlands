@@ -1,5 +1,5 @@
 <template>
-  <div v-if="tile" class="task-overlay" @pointerdown.stop.prevent @pointerup.stop>
+  <div v-if="tile" class="task-overlay" @pointerdown.stop @pointerup.stop>
     <!-- Backdrop (click to close) -->
     <div class="task-backdrop" @click.stop="close"></div>
 
@@ -363,6 +363,7 @@ import {
   getBuildingDefinitionByKey,
   getBuildingDefinitionByTaskKey,
   getBuildingDefinitionForTile,
+  getBuildingOverlayAssetKeyForTile,
   resolveBuildingJobResources,
 } from '../shared/buildings/registry';
 import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
@@ -702,14 +703,13 @@ function getTaskPreviewVisual(task: TaskDefinition): PreviewBuildingVisual | nul
     terrainOverlayKey = variantDef.overlayAssetKey;
   }
 
-  const buildingDefinition = previewResult.variant
-    ? getBuildingDefinitionForTile({ variant: previewResult.variant } as Tile)
-    : null;
+  const previewTile = previewResult.variant ? { variant: previewResult.variant } as Tile : null;
+  const buildingDefinition = previewTile ? getBuildingDefinitionForTile(previewTile) : null;
 
   return {
     baseSrc: getTileImageSource(baseKey),
     terrainOverlaySrc: getTileImageSource(terrainOverlayKey),
-    buildingOverlaySrc: getTileImageSource(buildingDefinition?.overlayAssetKey),
+    buildingOverlaySrc: getTileImageSource(getBuildingOverlayAssetKeyForTile(previewTile)),
     terrainOverlayStyle: createOverlayStyle(terrainOverlayOffset),
     buildingOverlayStyle: createOverlayStyle(buildingDefinition?.overlayOffset ?? { x: 0, y: 0 }),
   };
@@ -1914,6 +1914,9 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 0 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
@@ -1953,11 +1956,15 @@ onUnmounted(() => {
 
 .task-detail-scroll {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 0 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.2) transparent;

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { Tile } from '../../core/types/Tile.ts';
 import { ensureTileExists, loadWorld, tileIndex } from '../../core/world.ts';
-import { getBuildingDefinitionByKey, promoteTileToTowncenter } from './registry.ts';
+import { getBuildingDefinitionByKey, getBuildingOverlayAssetKeyForTile, promoteTileToTowncenter } from './registry.ts';
 
 function createOwnedTile(q: number, r: number, terrain: Tile['terrain'], settlementId: string): Tile {
   return {
@@ -58,4 +58,23 @@ test('promoting a tile to towncenter establishes settlement ownership', () => {
   assert.equal(frontierTile.terrain, 'towncenter');
   assert.equal(frontierTile.ownerSettlementId, frontierTile.id);
   assert.equal(frontierTile.controlledBySettlementId, frontierTile.id);
+});
+
+test('upgraded building variants resolve distinct overlay artwork', () => {
+  assert.equal(
+    getBuildingOverlayAssetKeyForTile({ variant: 'plains_depot' } as Tile),
+    'building_supply_depot_animated',
+  );
+  assert.equal(
+    getBuildingOverlayAssetKeyForTile({ variant: 'plains_warehouse' } as Tile),
+    'building_warehouse_animated',
+  );
+  assert.equal(
+    getBuildingOverlayAssetKeyForTile({ variant: 'forest_sawmill' } as Tile),
+    'building_sawmill_overlay_animated',
+  );
+  assert.equal(
+    getBuildingOverlayAssetKeyForTile({ variant: 'plains_watchtower', towerWallLevel: 1 } as Tile),
+    'building_watchtower_palisade_overlay_animated',
+  );
 });

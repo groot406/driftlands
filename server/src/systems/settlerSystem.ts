@@ -21,6 +21,7 @@ import {
     getSettlerSocialThreshold,
     getSettlerTradeGoodHappinessGain,
     getSettlerWorkFatigueMultiplier,
+    hasSettlerTrait,
     normalizeDrinkPreference,
     normalizeSettlerTraits,
 } from '../../../src/shared/game/settlerPreferences.ts';
@@ -1888,6 +1889,15 @@ function maybeVisitShop(settler: Settler, now: number) {
     return true;
 }
 
+function getSettlerShoppingPriorityThreshold(settler: Settler) {
+    const shopThreshold = getSettlerShopThreshold(settler);
+    if (hasSettlerTrait(settler, 'frugal')) {
+        return shopThreshold;
+    }
+
+    return Math.max(shopThreshold, getSettlerSocialThreshold(settler));
+}
+
 function maybeDeliverOutput(settler: Settler, now: number) {
     if (settler.carryingKind !== 'output' || !settler.carryingPayload) {
         return false;
@@ -2261,11 +2271,11 @@ function planSettler(settler: Settler, now: number, dt: number) {
         return true;
     }
 
-    if (settler.happiness <= getSettlerSocialThreshold(settler) && maybeVisitPub(settler, now)) {
+    if (settler.happiness <= getSettlerShoppingPriorityThreshold(settler) && maybeVisitShop(settler, now)) {
         return true;
     }
 
-    if (settler.happiness <= getSettlerShopThreshold(settler) && maybeVisitShop(settler, now)) {
+    if (settler.happiness <= getSettlerSocialThreshold(settler) && maybeVisitPub(settler, now)) {
         return true;
     }
 

@@ -6,7 +6,7 @@ import type { Settler } from '../../../src/shared/game/types/Settler';
 import { loadWorld, tileIndex } from '../../../src/shared/game/world';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
-import { resetResourceState } from '../../../src/shared/game/state/resourceStore';
+import { depositResourceToStorage, resetResourceState } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { resetStudyState } from '../../../src/store/studyStore';
@@ -266,6 +266,76 @@ test('fast settler cycles speed up house trade-good happiness recovery', () => {
 
   assert.equal(tileIndex['1,0']?.houseGoods?.silk, 0);
   assert.ok((settlers[0]?.happiness ?? 0) > 50);
+});
+
+test('settlers prioritize shopping for home goods before pub visits', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'plains', variant: 'plains_shop', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 3,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 3,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 1,
+      settlementId: '0,0',
+      homeTileId: '2,0',
+      homeAccessTileId: '1,0',
+      happiness: 70,
+    }),
+    createSettler({
+      id: 'publican',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+    createSettler({
+      id: 'shopkeeper',
+      q: 0,
+      r: 1,
+      settlementId: '0,0',
+      assignedWorkTileId: '0,1',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'beer', 1);
+  depositResourceToStorage('0,0', 'silk', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'shopping');
+  assert.equal(tileIndex['2,0']?.houseGoods?.silk, 1);
 });
 
 test('upgraded houses slowly restore resident happiness from comfort', () => {

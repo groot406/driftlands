@@ -146,6 +146,18 @@ function createDependencies(capturedOverlayCounts: number[], drawOrder: string[]
         getBuildingOverlayOffset: () => ({ x: 0, y: 0 }),
         getTileImageKey: () => 'grain-v2',
         buildShadedTileOverlayCanvas: () => null,
+        getTileOverlayDrawSpec: () => ({
+            sourceRect: { sx: 0, sy: 0, sw: 64, sh: 64 },
+            drawWidth: 66,
+            drawHeight: 66,
+            frameCacheKey: 'grain_overhang',
+        }),
+        getBuildingOverlayDrawSpec: () => ({
+            sourceRect: { sx: 0, sy: 0, sw: 64, sh: 64 },
+            drawWidth: 66,
+            drawHeight: 66,
+            frameCacheKey: 'building',
+        }),
         images: {
             grain_overhang: {
                 naturalWidth: 64,

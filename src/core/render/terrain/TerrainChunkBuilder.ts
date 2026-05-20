@@ -13,6 +13,7 @@ interface TerrainChunkBuilderDependencies {
     get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null;
     drawTile(tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number): void;
     getSupportAwareTileOpacity(tile: Tile, opacity: number): number;
+    shouldBuildTileInChunk?(tile: Tile): boolean;
 }
 
 export class TerrainChunkBuilder {
@@ -41,6 +42,9 @@ export class TerrainChunkBuilder {
             for (let r = chunk.minR; r <= chunk.maxR; r++) {
                 const tile = tileIndex[axialKey(q, r)];
                 if (!tile?.discovered) {
+                    continue;
+                }
+                if (this.deps.shouldBuildTileInChunk && !this.deps.shouldBuildTileInChunk(tile)) {
                     continue;
                 }
 

@@ -40,6 +40,22 @@ function createTownCenter(): Tile {
   };
 }
 
+function createWorkshop(): Tile {
+  return {
+    id: '1,0',
+    q: 1,
+    r: 0,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: 'plains_workshop',
+  };
+}
+
 function createHero(): Hero {
   return {
     id: 'h1',
@@ -102,20 +118,44 @@ function createRunSnapshot(): RunSnapshot {
   };
 }
 
-function setupSideQuestWorld() {
-  loadWorld([createTownCenter()]);
+let nowMs = 1_000_000;
+const realDateNow = Date.now;
+
+function setupSideQuestWorld(options: {
+  workshopBuilt?: boolean;
+  advancePastTriggerDelay?: boolean;
+  expectQuest?: boolean;
+} = {}) {
+  const {
+    workshopBuilt = true,
+    advancePastTriggerDelay = true,
+    expectQuest = true,
+  } = options;
+  loadWorld(workshopBuilt ? [createTownCenter(), createWorkshop()] : [createTownCenter()]);
   loadHeroes([createHero()]);
   currentPlayerSettlementId.value = '0,0';
   runSnapshot.value = createRunSnapshot();
   runVersion.value++;
   initializeSideQuestRuntime();
   syncSideQuestSignals();
+  if (advancePastTriggerDelay) {
+    nowMs += 8 * 60_000;
+    syncSideQuestSignals();
+  }
   const quest = sideQuestState.instances[0];
-  assert.ok(quest);
-  return quest;
+  if (expectQuest) {
+    assert.ok(quest);
+  }
+  return quest!;
 }
 
+test.beforeEach(() => {
+  nowMs = 1_000_000;
+  Date.now = () => nowMs;
+});
+
 test.afterEach(() => {
+  Date.now = realDateNow;
   teardownSideQuestRuntime();
   resetSideQuests();
   clearStoryTileHints();
@@ -125,6 +165,34 @@ test.afterEach(() => {
   currentPlayerSettlementId.value = null;
   runSnapshot.value = null;
   runVersion.value++;
+});
+
+test('syncSideQuestSignals waits for configured trigger conditions before spawning a signal', () => {
+  loadWorld([createTownCenter()]);
+  loadHeroes([createHero()]);
+  currentPlayerSettlementId.value = '0,0';
+  runSnapshot.value = createRunSnapshot();
+  runVersion.value++;
+  initializeSideQuestRuntime();
+  syncSideQuestSignals();
+
+  assert.equal(sideQuestState.instances.length, 0);
+  assert.equal(getActiveStoryTileHints.value.length, 0);
+});
+
+test('syncSideQuestSignals waits for the configured random delay after trigger conditions are met', () => {
+  setupSideQuestWorld({ advancePastTriggerDelay: false, expectQuest: false });
+
+  assert.equal(sideQuestState.instances.length, 0);
+  assert.equal(getActiveStoryTileHints.value.length, 0);
+
+  nowMs += 8 * 60_000;
+  syncSideQuestSignals();
+
+  const quest = sideQuestState.instances[0];
+  assert.ok(quest);
+  assert.equal(quest.status, 'signaled');
+  assert.equal(getActiveStoryTileHints.value.length, 1);
 });
 
 test('syncSideQuestSignals spawns a reusable side quest signal hint', () => {

@@ -1,6 +1,11 @@
 // Centralized terrain definitions with full properties.
 // If you add new terrain types, update TerrainKey and definitions here.
 
+export interface TileAnimationDef {
+    frames: number;
+    frameMs: number;
+}
+
 export interface TerrainDef {
     color: string;
     baseWeight: number;
@@ -11,8 +16,10 @@ export interface TerrainDef {
     minSeparation?: number; // must be at least this far from any same-terrain tile
     preserveIsolation?: boolean; // if true, island reduction will not modify solitary instances
     // --- Animation (optional) ---
-    frames?: number; // number of animation frames (>=2 for animation)
-    frameTime?: number; // ms per frame
+    animation?: TileAnimationDef; // horizontal spritesheet frames for the base tile art
+    overlayAnimation?: TileAnimationDef; // horizontal spritesheet frames for overlayAssetKey art
+    frames?: number; // legacy terrain-only alias for animation.frames
+    frameTime?: number; // legacy terrain-only alias for animation.frameMs
     // --- Movement (optional) ---
     moveCost?: number;
     // --- Variations (optional) ---
@@ -52,9 +59,11 @@ export interface TerrainVariationDef {
     minRuggedness?: number;
     maxRuggedness?: number;
     assetKey?: string; // optional override for image filename base if different from key
+    animation?: TileAnimationDef; // horizontal spritesheet frames for this variation's base art
     growth?: { next: string | null; ageMs?: number, ageMsRange?: number[] }; // biome scaling moved to biomes
 
     overlayAssetKey?: string|false; // optional overlay image key for this specific variant (overrides base terrain overlayAssetKey if present)
+    overlayAnimation?: TileAnimationDef; // horizontal spritesheet frames for this variation's overlay art
     overlayOffset?: { x: number; y: number }; // variant-specific overlay offset overrides base terrain overlayOffset
     heroOffset?: { x: number; y: number }; // optional pixel offset applied to hero drawing on this terrain
     // --- Road connection (optional) ---
@@ -222,8 +231,8 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         heroOffset: { x: 0, y: 10 },
         variations: [
             {key: 'mountains_with_mine', weight: 0, heroOffset: { x:0, y: 15 }, moveCost: 0.95, connectsToRoad: true },
-            {key: 'mountains_with_quarry', weight: 0, assetKey: 'mountains_with_mine', heroOffset: { x:0, y: 15 }, moveCost: 0.95, connectsToRoad: true },
-            {key: 'mountains_reinforced_mine', weight: 0, assetKey: 'mountains_with_mine', heroOffset: { x:0, y: 15 }, moveCost: 0.95, connectsToRoad: true },
+            {key: 'mountains_with_quarry', weight: 0, assetKey: 'mountains_with_quarry', heroOffset: { x:0, y: 15 }, moveCost: 0.95, connectsToRoad: true },
+            {key: 'mountains_reinforced_mine', weight: 0, assetKey: 'mountains_reinforced_mine', heroOffset: { x:0, y: 15 }, moveCost: 0.95, connectsToRoad: true },
             {key: 'mountains_watchtower', weight: 0, assetKey: 'mountains-v2', overlayAssetKey: false, heroOffset: { x:0, y: 15 }},
             {key: 'mountain_tunnel_ad', weight: 0, moveCost: 0.45, connectsToRoad: true, fencedEdges: { b: true, c: true, e: true, f: true }},
             {key: 'mountain_tunnel_be', weight: 0, moveCost: 0.45, connectsToRoad: true, fencedEdges: { a: true, c: true, d: true, f: true }},

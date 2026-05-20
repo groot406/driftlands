@@ -12,6 +12,15 @@ const SIDE_QUEST_DEFINITIONS: readonly SideQuestDefinition[] = [
       minDistance: 7,
       maxDistance: 10,
     },
+    trigger: {
+      conditions: [
+        { kind: 'building_count_at_least', buildingKey: 'workshop', amount: 1 },
+      ],
+      delayAfterConditionsMet: {
+        minMinutes: 3,
+        maxMinutes: 7,
+      },
+    },
     npc: {
       id: 'trailbreaker_ren',
       name: 'Ren',

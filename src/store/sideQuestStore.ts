@@ -1,5 +1,5 @@
 import { computed, reactive, watch } from 'vue';
-import { ensureTileExists, tileIndex, worldVersion } from '../core/world.ts';
+import { ensureTileExists, tileIndex, tiles, worldVersion } from '../core/world.ts';
 import { currentPlayerId } from '../core/socket.ts';
 import type { Hero } from '../core/types/Hero.ts';
 import type { TaskType } from '../core/types/Task.ts';
@@ -14,7 +14,9 @@ import type {
   SideQuestInstance,
   SideQuestObjectiveSnapshot,
   SideQuestRewardDefinition,
+  SideQuestTriggerConditionDefinition,
 } from '../shared/sideQuests/types.ts';
+import { resolveBuildingStateForTile } from '../shared/buildings/state.ts';
 import { heroes, upsertHero } from './heroStore.ts';
 import { addNotification } from './notificationStore.ts';
 import { appendRunDialogueEntries, runSnapshot, runVersion } from './runStore.ts';
@@ -37,6 +39,11 @@ let initialized = false;
 let stopEventListener: (() => void) | null = null;
 let stopSignalWatcher: (() => void) | null = null;
 let activeRunKey: string | null = null;
+const triggerGateStateByKey = new Map<string, {
+  conditionsMetAt: number;
+  eligibleAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}>();
 
 function hintIdForQuest(quest: Pick<SideQuestInstance, 'id'>) {
   return `${SIDE_QUEST_HINT_PREFIX}${quest.id}`;
@@ -75,6 +82,121 @@ function scoreCandidate(seed: string) {
   }
 
   return hash >>> 0;
+}
+
+function sideQuestGateKey(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return `${activeRunKey ?? 'no-run'}:${definition.id}:${settlementId ?? 'global'}`;
+}
+
+function countSettlementBuildings(buildingKey: string, settlementId: string | null | undefined) {
+  let count = 0;
+  for (const tile of tiles) {
+    if (
+      settlementId
+      && tile.ownerSettlementId !== settlementId
+      && tile.controlledBySettlementId !== settlementId
+      && tile.id !== settlementId
+    ) {
+      continue;
+    }
+
+    const buildingState = resolveBuildingStateForTile(tile);
+    if (buildingState?.building.key === buildingKey) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function isTriggerConditionMet(condition: SideQuestTriggerConditionDefinition, settlementId: string | null | undefined) {
+  switch (condition.kind) {
+    case 'building_count_at_least':
+      return countSettlementBuildings(condition.buildingKey, settlementId) >= condition.amount;
+    default:
+      return false;
+  }
+}
+
+function areTriggerConditionsMet(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return (definition.trigger?.conditions ?? []).every((condition) => isTriggerConditionMet(condition, settlementId));
+}
+
+function resolveTriggerDelayMs(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  const delay = definition.trigger?.delayAfterConditionsMet;
+  if (!delay) {
+    return 0;
+  }
+
+  const minMinutes = Math.max(0, Math.min(delay.minMinutes, delay.maxMinutes));
+  const maxMinutes = Math.max(0, Math.max(delay.minMinutes, delay.maxMinutes));
+  if (maxMinutes <= minMinutes) {
+    return minMinutes * 60_000;
+  }
+
+  const seed = `${activeRunKey ?? 'no-run'}:${definition.id}:${settlementId ?? 'global'}:trigger-delay`;
+  const randomUnit = scoreCandidate(seed) / 0xffffffff;
+  return (minMinutes + (maxMinutes - minMinutes) * randomUnit) * 60_000;
+}
+
+function clearTriggerGateTimer(key: string) {
+  const gate = triggerGateStateByKey.get(key);
+  if (gate?.timer) {
+    clearTimeout(gate.timer);
+    gate.timer = null;
+  }
+}
+
+function clearTriggerGateState() {
+  for (const key of triggerGateStateByKey.keys()) {
+    clearTriggerGateTimer(key);
+  }
+  triggerGateStateByKey.clear();
+}
+
+function scheduleTriggerGateSync(key: string, delayMs: number) {
+  const gate = triggerGateStateByKey.get(key);
+  if (!gate || gate.timer || delayMs <= 0) {
+    return;
+  }
+
+  gate.timer = setTimeout(() => {
+    gate.timer = null;
+    syncSideQuestSignals();
+  }, delayMs);
+}
+
+function isDefinitionReadyToSpawn(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  if (!definition.trigger) {
+    return true;
+  }
+
+  const key = sideQuestGateKey(definition, settlementId);
+  if (!areTriggerConditionsMet(definition, settlementId)) {
+    clearTriggerGateTimer(key);
+    triggerGateStateByKey.delete(key);
+    return false;
+  }
+
+  let gate = triggerGateStateByKey.get(key);
+  if (!gate) {
+    const conditionsMetAt = Date.now();
+    gate = {
+      conditionsMetAt,
+      eligibleAt: conditionsMetAt + resolveTriggerDelayMs(definition, settlementId),
+      timer: null,
+    };
+    triggerGateStateByKey.set(key, gate);
+  }
+
+  const remainingMs = gate.eligibleAt - Date.now();
+  if (remainingMs > 0) {
+    scheduleTriggerGateSync(key, remainingMs);
+    return false;
+  }
+
+  clearTriggerGateTimer(key);
+  return true;
 }
 
 function listRingCoordinates(origin: { q: number; r: number }, minDistance: number, maxDistance: number) {
@@ -163,7 +285,7 @@ export function syncSideQuestSignals() {
   }
 
   for (const definition of listSideQuestDefinitions()) {
-    if (!hasQuestInstanceForDefinition(definition, settlementId)) {
+    if (!hasQuestInstanceForDefinition(definition, settlementId) && isDefinitionReadyToSpawn(definition, settlementId)) {
       spawnSideQuest(definition, settlementId);
     }
   }
@@ -417,6 +539,7 @@ export function teardownSideQuestRuntime() {
   stopEventListener = null;
   stopSignalWatcher?.();
   stopSignalWatcher = null;
+  clearTriggerGateState();
   initialized = false;
 }
 
@@ -425,6 +548,7 @@ export function resetSideQuests() {
     clearStoryTileHint(hintIdForQuest(quest));
   }
   sideQuestState.instances = [];
+  clearTriggerGateState();
   activeRunKey = null;
 }
 

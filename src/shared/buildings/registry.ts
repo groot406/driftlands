@@ -12,6 +12,7 @@ import type { Hero } from '../../core/types/Hero';
 import type { ResourceAmount } from '../../core/types/Resource';
 import { SIDE_NAMES, type Tile, type TileSide } from '../../core/types/Tile';
 import type { TaskDefinition, TaskInstance, TaskType } from '../../core/types/Task';
+import type { TileAnimationDef } from '../../core/terrainDefs.ts';
 import type { TileUpdatedMessage } from '../protocol.ts';
 import { broadcastGameMessage as broadcast } from '../game/runtime';
 import { getMineOrePerCycle } from './mine.ts';
@@ -42,6 +43,9 @@ export interface BuildingDefinition {
     variantKeys: string[];
     renderDecoration?: 'well' | 'watchtower' | 'depot' | 'lumberCamp' | 'granary';
     overlayAssetKey?: string;
+    variantOverlayAssetKeys?: Partial<Record<string, string>>;
+    overlayAssetAnimations?: Partial<Record<string, TileAnimationDef>>;
+    overlayAnimation?: TileAnimationDef;
     overlayOffset?: { x: number; y: number };
     providesWaterSource?: boolean;
     providesWarehouse?: boolean;
@@ -105,6 +109,7 @@ function createStorehouseBuildingDefinition(config: {
         variantKeys: [config.plainsVariant, config.dirtVariant],
         renderDecoration: 'depot',
         overlayAssetKey: config.overlayAssetKey,
+        overlayAnimation: { frames: 4, frameMs: 180 },
         providesWarehouse: true,
         storageKind: config.storageKind,
         maxIncomingRoads: 1,
@@ -342,7 +347,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 10,
         variantKeys: ['plains_well', 'dirt_well'],
         renderDecoration: 'well',
-        overlayAssetKey: 'building_well_overlay',
+        overlayAssetKey: 'building_well_overlay_animated',
+        overlayAnimation: { frames: 6, frameMs: 140 },
         providesWaterSource: true,
         canPlace(tile, _hero) {
             return (
@@ -382,7 +388,11 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower'],
         renderDecoration: 'watchtower',
-        overlayAssetKey: 'building_watchtower_overlay',
+        overlayAssetKey: 'building_watchtower_overlay_animated',
+        overlayAssetAnimations: {
+            building_watchtower_palisade_overlay_animated: { frames: 6, frameMs: 130 },
+        },
+        overlayAnimation: { frames: 6, frameMs: 130 },
         maxIncomingRoads: 1,
         canPlace(tile, _hero) {
             return (
@@ -524,7 +534,15 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['plains_depot', 'dirt_depot', 'plains_warehouse', 'dirt_warehouse'],
         renderDecoration: 'depot',
-        overlayAssetKey: 'building_supply_depot',
+        overlayAssetKey: 'building_supply_depot_animated',
+        variantOverlayAssetKeys: {
+            plains_warehouse: 'building_warehouse_animated',
+            dirt_warehouse: 'building_warehouse_animated',
+        },
+        overlayAssetAnimations: {
+            building_warehouse_animated: { frames: 4, frameMs: 180 },
+        },
+        overlayAnimation: { frames: 4, frameMs: 180 },
         providesWarehouse: true,
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }],
@@ -562,7 +580,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'food_storehouse',
         plainsVariant: 'plains_food_storehouse',
         dirtVariant: 'dirt_food_storehouse',
-        overlayAssetKey: 'building_food_storehouse',
+        overlayAssetKey: 'building_food_storehouse_animated',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -575,7 +593,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'materials_yard',
         plainsVariant: 'plains_materials_yard',
         dirtVariant: 'dirt_materials_yard',
-        overlayAssetKey: 'building_materials_yard',
+        overlayAssetKey: 'building_materials_yard_animated',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -588,7 +606,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'crop_silo',
         plainsVariant: 'plains_crop_silo',
         dirtVariant: 'dirt_crop_silo',
-        overlayAssetKey: 'building_crop_silo',
+        overlayAssetKey: 'building_crop_silo_animated',
         requiredResources: [{ type: 'wood', amount: 6 }],
     }),
     createStorehouseBuildingDefinition({
@@ -601,7 +619,7 @@ const buildings: BuildingDefinition[] = [
         storageKind: 'crafted_goods_storehouse',
         plainsVariant: 'plains_crafted_goods_storehouse',
         dirtVariant: 'dirt_crafted_goods_storehouse',
-        overlayAssetKey: 'building_crafted_goods_storehouse',
+        overlayAssetKey: 'building_crafted_goods_storehouse_animated',
         requiredResources: [
             { type: 'wood', amount: 6 },
             { type: 'stone', amount: 2 },
@@ -685,7 +703,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 26,
         requiredPopulation: 5,
         variantKeys: ['plains_harbor', 'dirt_harbor'],
-        overlayAssetKey: 'building_harbor',
+        overlayAssetKey: 'building_harbor_animated',
+        overlayAnimation: { frames: 6, frameMs: 140 },
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.8,
@@ -727,7 +746,14 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['forest_lumber_camp', 'forest_sawmill'],
         renderDecoration: 'lumberCamp',
-        overlayAssetKey: 'building_lumber_camp_overlay',
+        overlayAssetKey: 'building_lumber_camp_overlay_animated',
+        variantOverlayAssetKeys: {
+            forest_sawmill: 'building_sawmill_overlay_animated',
+        },
+        overlayAssetAnimations: {
+            building_sawmill_overlay_animated: { frames: 8, frameMs: 90 },
+        },
+        overlayAnimation: { frames: 6, frameMs: 120 },
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Timber crew',
@@ -771,7 +797,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 31,
         requiredPopulation: 3,
         variantKeys: ['forest_hunters_hut'],
-        overlayAssetKey: 'building_hunters_hut',
+        overlayAssetKey: 'building_hunters_hut_animated',
+        overlayAnimation: { frames: 6, frameMs: 140 },
         jobSlots: 2,
         cycleMs: 60_000,
         produces: [{ type: 'meat', amount: 1 }],
@@ -817,7 +844,8 @@ const buildings: BuildingDefinition[] = [
         requiredPopulation: 3,
         variantKeys: ['grain_granary'],
         renderDecoration: 'granary',
-        overlayAssetKey: 'building_granary_overlay',
+        overlayAssetKey: 'building_granary_overlay_animated',
+        overlayAnimation: { frames: 8, frameMs: 90 },
         jobSlots: 1,
         cycleMs: 60_000,
         jobLabel: 'Grain keeper',
@@ -859,7 +887,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36,
         requiredPopulation: 3,
         variantKeys: ['plains_bakery', 'dirt_bakery'],
-        overlayAssetKey: 'building_bakery',
+        overlayAssetKey: 'building_bakery_animated',
+        overlayAnimation: { frames: 6, frameMs: 120 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -902,7 +931,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.2,
         requiredPopulation: 6,
         variantKeys: ['plains_brewery', 'dirt_brewery'],
-        overlayAssetKey: 'building_brewery',
+        overlayAssetKey: 'building_brewery_animated',
+        overlayAnimation: { frames: 6, frameMs: 150 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -949,7 +979,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.25,
         requiredPopulation: 6,
         variantKeys: ['plains_winery', 'dirt_winery'],
-        overlayAssetKey: 'building_winery',
+        overlayAssetKey: 'building_winery_animated',
+        overlayAnimation: { frames: 6, frameMs: 150 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 90_000,
@@ -992,7 +1023,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.3,
         requiredPopulation: 6,
         variantKeys: ['plains_pub', 'dirt_pub'],
-        overlayAssetKey: 'building_pub',
+        overlayAssetKey: 'building_pub_animated',
+        overlayAnimation: { frames: 6, frameMs: 150 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 20_000,
@@ -1040,7 +1072,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.35,
         requiredPopulation: 6,
         variantKeys: ['plains_shop', 'dirt_shop'],
-        overlayAssetKey: 'building_shop',
+        overlayAssetKey: 'building_shop_animated',
+        overlayAnimation: { frames: 4, frameMs: 180 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 20_000,
@@ -1090,7 +1123,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 36.5,
         requiredPopulation: 3,
         variantKeys: ['plains_apiary', 'dirt_apiary'],
-        overlayAssetKey: 'building_apiary',
+        overlayAssetKey: 'building_apiary_animated',
+        overlayAnimation: { frames: 8, frameMs: 90 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1142,7 +1176,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 37,
         requiredPopulation: 6,
         variantKeys: ['plains_oven', 'dirt_oven'],
-        overlayAssetKey: 'building_oven',
+        overlayAssetKey: 'building_oven_animated',
+        overlayAnimation: { frames: 6, frameMs: 120 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1189,7 +1224,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 38,
         requiredPopulation: 5,
         variantKeys: ['plains_workshop', 'dirt_workshop'],
-        overlayAssetKey: 'building_workshop',
+        overlayAssetKey: 'building_workshop_animated',
+        overlayAnimation: { frames: 6, frameMs: 110 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1233,7 +1269,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 39,
         requiredPopulation: 5,
         variantKeys: ['plains_library', 'dirt_library'],
-        overlayAssetKey: 'building_library',
+        overlayAssetKey: 'building_library_animated',
+        overlayAnimation: { frames: 6, frameMs: 160 },
         maxIncomingRoads: 1,
         jobSlots: 2,
         cycleMs: STUDY_WORK_CYCLE_MS,
@@ -1281,7 +1318,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 39.5,
         requiredPopulation: 5,
         variantKeys: ['plains_weapon_smith', 'dirt_weapon_smith'],
-        overlayAssetKey: 'building_weapon_smith',
+        overlayAssetKey: 'building_weapon_smith_animated',
+        overlayAnimation: { frames: 6, frameMs: 110 },
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
@@ -1328,7 +1366,8 @@ const buildings: BuildingDefinition[] = [
         sortOrder: 40,
         requiredPopulation: 5,
         variantKeys: ['plains_barracks', 'dirt_barracks'],
-        overlayAssetKey: 'building_barracks',
+        overlayAssetKey: 'building_barracks_animated',
+        overlayAnimation: { frames: 6, frameMs: 130 },
         maxIncomingRoads: 1,
         repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.5,
@@ -1491,6 +1530,21 @@ export function getBuildingDefinitionByKey(buildingKey: string) {
 export function getBuildingDefinitionForTile(tile: Tile | null | undefined) {
     if (!tile?.variant) return null;
     return buildings.find((building) => building.variantKeys.includes(tile.variant ?? '')) ?? null;
+}
+
+export function getBuildingOverlayAssetKeyForTile(tile: Tile | null | undefined) {
+    const building = getBuildingDefinitionForTile(tile);
+    if (!building) return null;
+
+    if (building.key === 'watchtower' && (tile?.towerWallLevel ?? 0) > 0) {
+        return 'building_watchtower_palisade_overlay_animated';
+    }
+
+    if (tile?.variant) {
+        return building.variantOverlayAssetKeys?.[tile.variant] ?? building.overlayAssetKey ?? null;
+    }
+
+    return building.overlayAssetKey ?? null;
 }
 
 export function isBuildingTask(taskKey: TaskType) {

@@ -2386,6 +2386,8 @@ onUnmounted(() => {
   gap: 0.65rem;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding-right: 0.45rem;
   scrollbar-color: rgba(198, 149, 73, 0.78) rgba(7, 10, 12, 0.48);
   scrollbar-width: thin;
@@ -2878,6 +2880,8 @@ onUnmounted(() => {
 .tc-detail-modal {
   position: relative;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   width: min(58rem, calc(100vw - 32px));
   max-height: min(75vh, calc(100vh - 48px));
   overflow: hidden;
@@ -2901,10 +2905,12 @@ onUnmounted(() => {
 .tc-detail-scroll {
   position: relative;
   z-index: 1;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 0.1rem 0.55rem 0 0;
   scrollbar-color: rgba(198, 149, 73, 0.78) rgba(7, 10, 12, 0.48);
   scrollbar-width: thin;

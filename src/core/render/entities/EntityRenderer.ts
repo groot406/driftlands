@@ -3,6 +3,7 @@ import type { Hero } from '../../types/Hero';
 import type { Tile } from '../../types/Tile';
 import type { RenderPassContext } from '../RenderPassContext';
 import { HeroRenderer, type HeroOverlayRecord } from './HeroRenderer';
+import type { TileAnimationFrameRect } from '../../tileAnimation';
 
 interface CameraCompositeStateLike {
     offsetX: number;
@@ -69,7 +70,31 @@ interface EntityRendererDependencies {
         overlayImg: HTMLImageElement,
         drawWidth: number,
         drawHeight: number,
+        sourceRect?: TileAnimationFrameRect,
+        frameCacheKey?: string,
     ): HTMLCanvasElement | null;
+    getTileOverlayDrawSpec(
+        tile: Tile,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        now: number,
+    ): {
+        sourceRect: TileAnimationFrameRect;
+        drawWidth: number;
+        drawHeight: number;
+        frameCacheKey: string;
+    };
+    getBuildingOverlayDrawSpec(
+        tile: Tile,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        now: number,
+    ): {
+        sourceRect: TileAnimationFrameRect;
+        drawWidth: number;
+        drawHeight: number;
+        frameCacheKey: string;
+    };
     images: Record<string, HTMLImageElement>;
     drawDepthEdgeHighlights(
         ctx: CanvasRenderingContext2D,
@@ -148,24 +173,24 @@ export class EntityRenderer {
                 if (ovImg) {
                     const off = deps.getTileOverlayOffset(tile);
                     const baseKey = deps.getTileImageKey(tile) ?? tile.terrain ?? 'plains';
-                    const sourceWidth = ovImg.naturalWidth || ovImg.width || deps.tileDrawSize;
-                    const sourceHeight = ovImg.naturalHeight || ovImg.height || deps.tileDrawSize;
-                    const drawWidth = deps.tileDrawSize;
-                    const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+                    const drawSpec = deps.getTileOverlayDrawSpec(tile, overlayKey, ovImg, now);
                     const overlaySource = deps.buildShadedTileOverlayCanvas(
                         tile,
                         baseKey,
                         overlayKey,
                         ovImg,
-                        drawWidth,
-                        drawHeight,
-                    ) ?? ovImg;
+                        drawSpec.drawWidth,
+                        drawSpec.drawHeight,
+                        drawSpec.sourceRect,
+                        drawSpec.frameCacheKey,
+                    );
                     overlayRecords.push({
-                        source: overlaySource,
+                        source: overlaySource ?? ovImg,
+                        sourceRect: overlaySource ? undefined : drawSpec.sourceRect,
                         x: x - deps.hexSize + off.x,
                         y: y - deps.hexSize + off.y,
-                        width: drawWidth,
-                        height: drawHeight,
+                        width: drawSpec.drawWidth,
+                        height: drawSpec.drawHeight,
                         q: tile.q,
                         r: tile.r,
                         opacity,
@@ -179,16 +204,14 @@ export class EntityRenderer {
                 const buildingImg = deps.images[buildingOverlayKey];
                 if (buildingImg) {
                     const off = deps.getBuildingOverlayOffset(tile);
-                    const sourceWidth = buildingImg.naturalWidth || buildingImg.width || deps.tileDrawSize;
-                    const sourceHeight = buildingImg.naturalHeight || buildingImg.height || deps.tileDrawSize;
-                    const drawWidth = deps.tileDrawSize;
-                    const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+                    const drawSpec = deps.getBuildingOverlayDrawSpec(tile, buildingOverlayKey, buildingImg, now);
                     overlayRecords.push({
                         source: buildingImg,
+                        sourceRect: drawSpec.sourceRect,
                         x: x - deps.hexSize + off.x,
-                        y: y + deps.hexSize - drawHeight + off.y,
-                        width: drawWidth,
-                        height: drawHeight,
+                        y: y + deps.hexSize - drawSpec.drawHeight + off.y,
+                        width: drawSpec.drawWidth,
+                        height: drawSpec.drawHeight,
                         q: tile.q,
                         r: tile.r,
                         opacity,

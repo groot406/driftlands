@@ -21,7 +21,7 @@ import {
 } from './camera';
 import {heroes} from '../store/heroStore';
 import { settlers } from '../store/settlerStore';
-import {TERRAIN_DEFS} from './terrainDefs';
+import {TERRAIN_DEFS, type TileAnimationDef} from './terrainDefs';
 import { selectedHeroId } from '../store/uiStore';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
@@ -44,7 +44,7 @@ import {
 import { updateRenderDebugState } from '../store/renderDebugStore';
 import { resolveRenderFeatureEnabled } from '../store/renderFeatureStore';
 import { getStorageFreeCapacity, getStorageUsedCapacity, storageInventories } from '../store/resourceStore';
-import { getBuildingDefinitionForTile } from '../shared/buildings/registry';
+import { getBuildingDefinitionForTile, getBuildingOverlayAssetKeyForTile } from '../shared/buildings/registry';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/buildings/storage';
 import { formatStorageAmount, getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
@@ -82,6 +82,15 @@ import { TerrainChunkCache } from './render/terrain/TerrainChunkCache';
 import { TerrainRenderer } from './render/terrain/TerrainRenderer';
 import { TerrainChunkBuilder } from './render/terrain/TerrainChunkBuilder';
 import { getDirtyChunkKeysForTiles } from './render/terrain/TerrainInvalidation';
+import {
+    getAnimationFrameCacheKey,
+    getAnimationSourceRect,
+    resolveBuildingOverlayVisual,
+    resolveTerrainAnimation,
+    resolveTerrainBaseVisual,
+    resolveTerrainOverlayVisual,
+    type TileAnimationFrameRect,
+} from './tileAnimation';
 import { EntityRenderer } from './render/entities/EntityRenderer';
 import { HeroRenderer } from './render/entities/HeroRenderer';
 import { OverlayRenderer } from './render/overlays/OverlayRenderer';
@@ -203,6 +212,7 @@ interface DrawOptions {
 
 interface OverlayRecord {
     source: CanvasImageSource;
+    sourceRect?: TileAnimationFrameRect;
     x: number;
     y: number;
     width: number;
@@ -247,6 +257,13 @@ interface TileRenderState {
     opacity: number;
     maskedCanvasKey: string;
     maskedCanvas: HTMLCanvasElement | null;
+}
+
+interface TileVisualFrameSpec {
+    sourceRect: TileAnimationFrameRect;
+    drawWidth: number;
+    drawHeight: number;
+    frameCacheKey: string;
 }
 
 interface TileColorAdjustment {
@@ -755,7 +772,13 @@ export class HexMapService {
                     this.drawTile(tile, now, ctx, opacity);
                 },
                 getSupportAwareTileOpacity: (tile, opacity) => this.getSupportAwareTileOpacity(tile, opacity),
+                shouldBuildTileInChunk: (tile) => !this.hasAnimatedTileBase(tile),
             }),
+            shouldDrawAnimatedTile: (tile) => this.hasAnimatedTileBase(tile),
+            drawAnimatedTile: (tile, now, ctx, opacity) => {
+                this.drawTile(tile, now, ctx, opacity);
+            },
+            getSupportAwareTileOpacity: (tile, opacity) => this.getSupportAwareTileOpacity(tile, opacity),
         });
         }
         if (!self._entityRenderer) {
@@ -1020,8 +1043,23 @@ export class HexMapService {
                         getBuildingOverlayKey: (tile) => this.getBuildingOverlayKey(tile),
                         getBuildingOverlayOffset: (tile) => this.getBuildingOverlayOffset(tile),
                         getTileImageKey: (tile) => this.getTileImageKey(tile),
-                        buildShadedTileOverlayCanvas: (tile, baseKey, overlayKey, overlayImg, drawWidth, drawHeight) => (
-                            this.buildShadedTileOverlayCanvas(tile, baseKey, overlayKey, overlayImg, drawWidth, drawHeight)
+                        buildShadedTileOverlayCanvas: (tile, baseKey, overlayKey, overlayImg, drawWidth, drawHeight, sourceRect, frameCacheKey) => (
+                            this.buildShadedTileOverlayCanvas(
+                                tile,
+                                baseKey,
+                                overlayKey,
+                                overlayImg,
+                                drawWidth,
+                                drawHeight,
+                                sourceRect,
+                                frameCacheKey,
+                            )
+                        ),
+                        getTileOverlayDrawSpec: (tile, overlayKey, overlayImg, now) => (
+                            this.getTileOverlayDrawSpec(tile, overlayKey, overlayImg, now)
+                        ),
+                        getBuildingOverlayDrawSpec: (tile, overlayKey, overlayImg, now) => (
+                            this.getBuildingOverlayDrawSpec(tile, overlayKey, overlayImg, now)
                         ),
                         images: this._images,
                         drawDepthEdgeHighlights: (ctx, frame, opts) => {
@@ -2789,25 +2827,25 @@ export class HexMapService {
                     if (ovImg) {
                         const off = this.getTileOverlayOffset(t);
                         const baseKey = this.getTileImageKey(t) ?? t.terrain ?? 'plains';
-                        const sourceWidth = ovImg.naturalWidth || ovImg.width || this.TILE_DRAW_SIZE;
-                        const sourceHeight = ovImg.naturalHeight || ovImg.height || this.TILE_DRAW_SIZE;
-                        const drawWidth = this.TILE_DRAW_SIZE;
-                        const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+                        const drawSpec = this.getTileOverlayDrawSpec(t, overlayKey, ovImg, now);
                         const overlaySource = this.buildShadedTileOverlayCanvas(
                             t,
                             baseKey,
                             overlayKey,
                             ovImg,
-                            drawWidth,
-                            drawHeight,
-                        ) ?? ovImg;
+                            drawSpec.drawWidth,
+                            drawSpec.drawHeight,
+                            drawSpec.sourceRect,
+                            drawSpec.frameCacheKey,
+                        );
                         // store axial coords for later layering sort (r,q)
                         overlayRecords.push({
-                            source: overlaySource,
+                            source: overlaySource ?? ovImg,
+                            sourceRect: overlaySource ? undefined : drawSpec.sourceRect,
                             x: x - this.HEX_SIZE + off.x,
                             y: y - this.HEX_SIZE + off.y,
-                            width: drawWidth,
-                            height: drawHeight,
+                            width: drawSpec.drawWidth,
+                            height: drawSpec.drawHeight,
                             q: t.q,
                             r: t.r,
                             opacity,
@@ -2821,16 +2859,14 @@ export class HexMapService {
                     const buildingImg = this._images[buildingOverlayKey];
                     if (buildingImg) {
                         const off = this.getBuildingOverlayOffset(t);
-                        const sourceWidth = buildingImg.naturalWidth || buildingImg.width || this.TILE_DRAW_SIZE;
-                        const sourceHeight = buildingImg.naturalHeight || buildingImg.height || this.TILE_DRAW_SIZE;
-                        const drawWidth = this.TILE_DRAW_SIZE;
-                        const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+                        const drawSpec = this.getBuildingOverlayDrawSpec(t, buildingOverlayKey, buildingImg, now);
                         overlayRecords.push({
                             source: buildingImg,
+                            sourceRect: drawSpec.sourceRect,
                             x: x - this.HEX_SIZE + off.x,
-                            y: y + this.HEX_SIZE - drawHeight + off.y,
-                            width: drawWidth,
-                            height: drawHeight,
+                            y: y + this.HEX_SIZE - drawSpec.drawHeight + off.y,
+                            width: drawSpec.drawWidth,
+                            height: drawSpec.drawHeight,
                             q: t.q,
                             r: t.r,
                             opacity,
@@ -4036,17 +4072,81 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private getTileMaskedCanvasKey(t: Tile, key: string, now: number) {
-        const def: any = t.terrain ? (TERRAIN_DEFS as any)[t.terrain] : null;
-        const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
-        if (!frames) {
-            return key;
+    private isTileAssetAvailable(assetKey: string) {
+        return !!this.tileImgSources[assetKey];
+    }
+
+    private getTileBaseVisual(t: Tile) {
+        if (!t.terrain) {
+            return null;
         }
 
-        const frameTime = (def.frameTime && def.frameTime > 0) ? def.frameTime : 250;
-        const elapsed = now - this._tileAnimStart;
-        const frameIndex = Math.floor(elapsed / frameTime) % frames;
-        return key + '__f' + frameIndex;
+        const def: any = (TERRAIN_DEFS as any)[t.terrain];
+        if (!def) {
+            return null;
+        }
+
+        if (isProceduralRoadVariant(t.variant) || isProceduralWallVariant(t.variant)) {
+            const baseKey = def.assetKey || t.terrain;
+            if (!this.isTileAssetAvailable(baseKey)) {
+                return null;
+            }
+            return {
+                assetKey: baseKey,
+                animation: resolveTerrainAnimation(def),
+            };
+        }
+
+        if (t.variant) {
+            const variantDef = def.variations?.find((v: any) => v.key === t.variant) ?? null;
+            const visual = resolveTerrainBaseVisual(
+                { terrain: t.terrain, variant: t.variant },
+                def,
+                (key) => this.isTileAssetAvailable(key),
+                variantDef,
+            );
+            if (visual) {
+                return visual;
+            }
+        }
+
+        const decorative = getDecorativeSelectionForTile(t);
+        if (decorative?.variant) {
+            const visual = resolveTerrainBaseVisual(
+                { terrain: t.terrain, variant: decorative.variant.key },
+                def,
+                (key) => this.isTileAssetAvailable(key),
+                decorative.variant,
+            );
+            if (visual) {
+                return visual;
+            }
+        }
+
+        return resolveTerrainBaseVisual(
+            { terrain: t.terrain, variant: null },
+            def,
+            (key) => this.isTileAssetAvailable(key),
+            null,
+        );
+    }
+
+    private getTileBaseAnimation(t: Tile, key: string) {
+        const visual = this.getTileBaseVisual(t);
+        return visual?.assetKey === key ? visual.animation : null;
+    }
+
+    private hasAnimatedTileBase(tile: Tile) {
+        return !!this.getTileBaseVisual(tile)?.animation;
+    }
+
+    private getTileMaskedCanvasKey(t: Tile, key: string, now: number) {
+        return getAnimationFrameCacheKey(
+            key,
+            this.getTileBaseAnimation(t, key),
+            now,
+            this._tileAnimStart,
+        );
     }
 
     private resolveTileMaskedCanvas(t: Tile, key: string, baseImg: HTMLImageElement, now: number): HTMLCanvasElement | null {
@@ -4056,16 +4156,18 @@ export class HexMapService {
             return existingCanvas;
         }
 
-        const def: any = t.terrain ? (TERRAIN_DEFS as any)[t.terrain] : null;
-        const frames = (def?.frames && def.frames >= 2) ? def.frames : 0;
-        if (!frames) {
+        const animation = this.getTileBaseAnimation(t, key);
+        if (!animation) {
             return null;
         }
 
-        const frameIndexText = cacheKey.split('__f')[1] ?? '0';
-        const frameIndex = Number.parseInt(frameIndexText, 10) || 0;
-        const frameWidth = baseImg.width / frames;
-        const sx = frameIndex * frameWidth;
+        const sourceRect = getAnimationSourceRect(
+            baseImg.naturalWidth || baseImg.width,
+            baseImg.naturalHeight || baseImg.height,
+            animation,
+            now,
+            this._tileAnimStart,
+        );
         const c = document.createElement('canvas');
         c.width = this.TILE_DRAW_SIZE;
         c.height = this.TILE_DRAW_SIZE;
@@ -4077,7 +4179,17 @@ export class HexMapService {
         g.save();
         this.traceHexClipPath(g, this.HEX_SIZE, this.HEX_SIZE);
         g.clip();
-        g.drawImage(baseImg, sx, 0, frameWidth, baseImg.height, 0, 0, this.TILE_DRAW_SIZE, this.TILE_DRAW_SIZE);
+        g.drawImage(
+            baseImg,
+            sourceRect.sx,
+            sourceRect.sy,
+            sourceRect.sw,
+            sourceRect.sh,
+            0,
+            0,
+            this.TILE_DRAW_SIZE,
+            this.TILE_DRAW_SIZE,
+        );
         g.restore();
         return this.storeCachedCanvas(
             this._maskedImages,
@@ -4757,12 +4869,14 @@ export class HexMapService {
         overlayImg: HTMLImageElement,
         drawWidth: number,
         drawHeight: number,
+        sourceRect?: TileAnimationFrameRect,
+        frameCacheKey: string = overlayKey,
     ): HTMLCanvasElement | null {
         const variant = this.getTileShaderVariant(tile, baseKey);
         const palette = this.getTileShaderPalette(tile.terrain ?? 'plains', baseKey, variant);
         const geometry = this.getTileShaderGeometry(variant, drawWidth, drawHeight);
         const adjustment = this.normalizeTileColorAdjustment(this.getTileColorAdjustment(tile, baseKey, variant));
-        const cacheKey = `v${HexMapService.TILE_OVERLAY_SHADER_VERSION}:${overlayKey}:${drawWidth}x${drawHeight}:${this.getTileShaderCacheKey(tile, baseKey)}:${this.getTileColorAdjustmentKey(adjustment)}`;
+        const cacheKey = `v${HexMapService.TILE_OVERLAY_SHADER_VERSION}:${frameCacheKey}:${drawWidth}x${drawHeight}:${this.getTileShaderCacheKey(tile, baseKey)}:${this.getTileColorAdjustmentKey(adjustment)}`;
         const cached = this.getCachedCanvas(this._tileOverlayShaderCache, cacheKey);
         if (cached) {
             return cached;
@@ -4778,7 +4892,21 @@ export class HexMapService {
 
         ctx.imageSmoothingEnabled = false;
         ctx.filter = this.getTileColorFilter(adjustment);
-        ctx.drawImage(overlayImg, 0, 0, drawWidth, drawHeight);
+        if (sourceRect) {
+            ctx.drawImage(
+                overlayImg,
+                sourceRect.sx,
+                sourceRect.sy,
+                sourceRect.sw,
+                sourceRect.sh,
+                0,
+                0,
+                drawWidth,
+                drawHeight,
+            );
+        } else {
+            ctx.drawImage(overlayImg, 0, 0, drawWidth, drawHeight);
+        }
         ctx.filter = 'none';
 
         const harmonySweep = ctx.createLinearGradient(
@@ -4806,7 +4934,7 @@ export class HexMapService {
         ctx.fillStyle = shadeSweep;
         ctx.fillRect(0, 0, geometry.width, geometry.height);
 
-        this.applyOverlayFeatherMask(ctx, overlayKey, overlayImg, drawWidth, drawHeight);
+        this.applyOverlayFeatherMask(ctx, frameCacheKey, overlayImg, drawWidth, drawHeight, sourceRect);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
 
@@ -5129,27 +5257,40 @@ export class HexMapService {
 
         const off = this.getTileOverlayOffset(state.tile);
         const baseKey = this.getTileImageKey(state.tile) ?? state.tile.terrain ?? 'plains';
-        const sourceWidth = overlayImg.naturalWidth || overlayImg.width || this.TILE_DRAW_SIZE;
-        const sourceHeight = overlayImg.naturalHeight || overlayImg.height || this.TILE_DRAW_SIZE;
-        const drawWidth = this.TILE_DRAW_SIZE;
-        const drawHeight = Math.round((sourceHeight / sourceWidth) * drawWidth);
+        const drawSpec = this.getTileOverlayDrawSpec(state.tile, overlayKey, overlayImg, state.now);
         const overlaySource = this.buildShadedTileOverlayCanvas(
             state.tile,
             baseKey,
             overlayKey,
             overlayImg,
-            drawWidth,
-            drawHeight,
-        ) ?? overlayImg;
+            drawSpec.drawWidth,
+            drawSpec.drawHeight,
+            drawSpec.sourceRect,
+            drawSpec.frameCacheKey,
+        );
 
         ctx.globalAlpha = state.opacity;
-        ctx.drawImage(
-            overlaySource,
-            state.x - this.HEX_SIZE + off.x,
-            state.y - this.HEX_SIZE + off.y,
-            drawWidth,
-            drawHeight,
-        );
+        if (overlaySource) {
+            ctx.drawImage(
+                overlaySource,
+                state.x - this.HEX_SIZE + off.x,
+                state.y - this.HEX_SIZE + off.y,
+                drawSpec.drawWidth,
+                drawSpec.drawHeight,
+            );
+        } else {
+            ctx.drawImage(
+                overlayImg,
+                drawSpec.sourceRect.sx,
+                drawSpec.sourceRect.sy,
+                drawSpec.sourceRect.sw,
+                drawSpec.sourceRect.sh,
+                state.x - this.HEX_SIZE + off.x,
+                state.y - this.HEX_SIZE + off.y,
+                drawSpec.drawWidth,
+                drawSpec.drawHeight,
+            );
+        }
     }
 
     private drawTileProceduralStage(ctx: CanvasRenderingContext2D, state: TileRenderState) {
@@ -5501,13 +5642,17 @@ export class HexMapService {
         return canvas;
     }
 
-    private getOverlayOpaqueBounds(overlayKey: string, overlayImg: HTMLImageElement) {
+    private getOverlayOpaqueBounds(
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        sourceRect?: TileAnimationFrameRect,
+    ) {
         if (this._tileOverlayAlphaBoundsCache.has(overlayKey)) {
             return this._tileOverlayAlphaBoundsCache.get(overlayKey) ?? null;
         }
 
-        const sourceWidth = overlayImg.naturalWidth || overlayImg.width;
-        const sourceHeight = overlayImg.naturalHeight || overlayImg.height;
+        const sourceWidth = sourceRect?.sw ?? (overlayImg.naturalWidth || overlayImg.width);
+        const sourceHeight = sourceRect?.sh ?? (overlayImg.naturalHeight || overlayImg.height);
         if (!sourceWidth || !sourceHeight) {
             this._tileOverlayAlphaBoundsCache.set(overlayKey, null);
             return null;
@@ -5523,7 +5668,21 @@ export class HexMapService {
         }
 
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(overlayImg, 0, 0, sourceWidth, sourceHeight);
+        if (sourceRect) {
+            ctx.drawImage(
+                overlayImg,
+                sourceRect.sx,
+                sourceRect.sy,
+                sourceRect.sw,
+                sourceRect.sh,
+                0,
+                0,
+                sourceWidth,
+                sourceHeight,
+            );
+        } else {
+            ctx.drawImage(overlayImg, 0, 0, sourceWidth, sourceHeight);
+        }
         const data = ctx.getImageData(0, 0, sourceWidth, sourceHeight).data;
 
         let top = -1;
@@ -5550,13 +5709,14 @@ export class HexMapService {
         overlayImg: HTMLImageElement,
         drawWidth: number,
         drawHeight: number,
+        sourceRect?: TileAnimationFrameRect,
     ) {
-        const bounds = this.getOverlayOpaqueBounds(overlayKey, overlayImg);
+        const bounds = this.getOverlayOpaqueBounds(overlayKey, overlayImg, sourceRect);
         if (!bounds) {
             return;
         }
 
-        const sourceHeight = overlayImg.naturalHeight || overlayImg.height || drawHeight;
+        const sourceHeight = sourceRect?.sh ?? (overlayImg.naturalHeight || overlayImg.height || drawHeight);
         if (!sourceHeight) {
             return;
         }
@@ -5891,7 +6051,7 @@ export class HexMapService {
             for (const ov of overlayRecords) {
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
+                this.drawOverlayRecord(ctx, ov);
             }
             ctx.globalAlpha = 1;
             return;
@@ -5999,7 +6159,7 @@ export class HexMapService {
                 const {ov} = layer;
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
+                this.drawOverlayRecord(ctx, ov);
                 continue;
             }
             const { hero: h, img, pos, interp, destX, destY, opacity, frameIndex, animRow } = layer.rec;
@@ -6082,6 +6242,25 @@ export class HexMapService {
         ctx.globalAlpha = 1;
     }
 
+    private drawOverlayRecord(ctx: CanvasRenderingContext2D, ov: OverlayRecord) {
+        if (ov.sourceRect) {
+            ctx.drawImage(
+                ov.source,
+                ov.sourceRect.sx,
+                ov.sourceRect.sy,
+                ov.sourceRect.sw,
+                ov.sourceRect.sh,
+                ov.x,
+                ov.y,
+                ov.width,
+                ov.height,
+            );
+            return;
+        }
+
+        ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
+    }
+
     RESOURCE_ICON_MAP: Record<ResourceType, string> = {
         wood: '🪵',
         ore: '⛏️',
@@ -6104,20 +6283,40 @@ export class HexMapService {
     };
 
     private getTileOverlayKey(t: Tile): string | null {
+        return this.getTileOverlayVisual(t)?.assetKey ?? null;
+    }
+
+    private getTileOverlayVisual(t: Tile) {
         if (!t.terrain) return null;
         const def: any = (TERRAIN_DEFS as any)[t.terrain];
-        let overlayKey: string | undefined = def?.overlayAssetKey;
-        if (t.variant && def?.variations) {
-            const vDef = def.variations.find((v: any) => v.key === t.variant);
-            if (vDef?.overlayAssetKey) overlayKey = vDef.overlayAssetKey;
-            if(vDef?.overlayAssetKey === false) overlayKey = undefined;
-        } else {
-            const decorative = getDecorativeSelectionForTile(t);
-            if (decorative?.overlayKey) overlayKey = decorative.overlayKey;
-            if (decorative?.overlayKey === null) overlayKey = undefined;
+        if (!def) return null;
+
+        if (t.variant && def.variations) {
+            const vDef = def.variations.find((v: any) => v.key === t.variant) ?? null;
+            return resolveTerrainOverlayVisual(def, (key) => this.isTileAssetAvailable(key), vDef);
         }
-        if (!overlayKey) return null;
-        return this.tileImgSources[overlayKey] ? overlayKey : null;
+
+        const decorative = getDecorativeSelectionForTile(t);
+        if (decorative?.variant || decorative?.overlayKey !== undefined) {
+            return resolveTerrainOverlayVisual(
+                def,
+                (key) => this.isTileAssetAvailable(key),
+                decorative.variant
+                    ? {
+                        ...decorative.variant,
+                        overlayAssetKey: decorative.overlayKey === null ? false : decorative.overlayKey ?? decorative.variant.overlayAssetKey,
+                        overlayAnimation: decorative.variant.overlayAnimation,
+                    }
+                    : null,
+            );
+        }
+
+        return resolveTerrainOverlayVisual(def, (key) => this.isTileAssetAvailable(key), null);
+    }
+
+    private getTileOverlayAnimation(t: Tile, overlayKey: string) {
+        const visual = this.getTileOverlayVisual(t);
+        return visual?.assetKey === overlayKey ? visual.animation : null;
     }
 
     private getTileOverlayOffset(t: Tile): { x: number; y: number } {
@@ -6135,14 +6334,71 @@ export class HexMapService {
     }
 
     private getBuildingOverlayKey(tile: Tile): string | null {
-        const building = getBuildingDefinitionForTile(tile);
-        const overlayKey = building?.overlayAssetKey;
-        if (!overlayKey) return null;
-        return this.tileImgSources[overlayKey] ? overlayKey : null;
+        return this.getBuildingOverlayVisual(tile)?.assetKey ?? null;
     }
 
     private getBuildingOverlayOffset(tile: Tile): { x: number; y: number } {
         return getBuildingDefinitionForTile(tile)?.overlayOffset ?? { x: 0, y: 0 };
+    }
+
+    private getBuildingOverlayVisual(tile: Tile) {
+        const building = getBuildingDefinitionForTile(tile);
+        const assetKey = getBuildingOverlayAssetKeyForTile(tile);
+        if (!assetKey || !this.isTileAssetAvailable(assetKey)) {
+            return null;
+        }
+
+        return {
+            assetKey,
+            animation: resolveBuildingOverlayVisual(
+                building,
+                (key) => this.isTileAssetAvailable(key),
+                assetKey,
+            )?.animation ?? null,
+        };
+    }
+
+    private getBuildingOverlayAnimation(tile: Tile, overlayKey: string) {
+        const visual = this.getBuildingOverlayVisual(tile);
+        return visual?.assetKey === overlayKey ? visual.animation : null;
+    }
+
+    private getImageDrawSpec(
+        assetKey: string,
+        img: HTMLImageElement,
+        now: number,
+        animation: TileAnimationDef | null,
+    ): TileVisualFrameSpec {
+        const sourceWidth = img.naturalWidth || img.width || this.TILE_DRAW_SIZE;
+        const sourceHeight = img.naturalHeight || img.height || this.TILE_DRAW_SIZE;
+        const sourceRect = getAnimationSourceRect(sourceWidth, sourceHeight, animation, now, this._tileAnimStart);
+        const drawWidth = this.TILE_DRAW_SIZE;
+        const drawHeight = Math.round((sourceRect.sh / Math.max(1, sourceRect.sw)) * drawWidth);
+
+        return {
+            sourceRect,
+            drawWidth,
+            drawHeight,
+            frameCacheKey: getAnimationFrameCacheKey(assetKey, animation, now, this._tileAnimStart),
+        };
+    }
+
+    private getTileOverlayDrawSpec(
+        tile: Tile,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        now: number,
+    ): TileVisualFrameSpec {
+        return this.getImageDrawSpec(overlayKey, overlayImg, now, this.getTileOverlayAnimation(tile, overlayKey));
+    }
+
+    private getBuildingOverlayDrawSpec(
+        tile: Tile,
+        overlayKey: string,
+        overlayImg: HTMLImageElement,
+        now: number,
+    ): TileVisualFrameSpec {
+        return this.getImageDrawSpec(overlayKey, overlayImg, now, this.getBuildingOverlayAnimation(tile, overlayKey));
     }
 
     private async loadTileImages() {
@@ -7358,21 +7614,7 @@ export class HexMapService {
 
     // RESTORED: original tile image key resolution (variant overrides base)
     private getTileImageKey(t: Tile): string | null {
-        if (!t.terrain) return null;
-        const def: any = (TERRAIN_DEFS as any)[t.terrain];
-        if (isProceduralRoadVariant(t.variant) || isProceduralWallVariant(t.variant)) {
-            const baseKey = def?.assetKey || t.terrain;
-            return this.tileImgSources[baseKey] ? baseKey : null;
-        }
-        if (t.variant) {
-            const variantDef = def?.variations?.find((v: any) => v.key === t.variant);
-            const vk = variantDef?.assetKey || t.variant;
-            if (this.tileImgSources[vk]) return vk;
-        }
-        const decorative = getDecorativeSelectionForTile(t);
-        if (decorative && this.tileImgSources[decorative.assetKey]) return decorative.assetKey;
-        const baseKey = def?.assetKey || t.terrain;
-        return this.tileImgSources[baseKey] ? baseKey : null;
+        return this.getTileBaseVisual(t)?.assetKey ?? null;
     }
 
 }

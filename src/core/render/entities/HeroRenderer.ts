@@ -19,6 +19,7 @@ import {
     getSettlerInterpolatedPixelPosition,
     isSettlerVisibleOnMap,
 } from './settlerRender';
+import type { TileAnimationFrameRect } from '../../tileAnimation';
 
 const SETTLER_PALETTES = [
     { cloak: '#5b6b8c', trim: '#d7c6a2', cap: '#3d4f74' },
@@ -80,6 +81,7 @@ function isSettlerWalking(settler: Settler) {
 
 export interface HeroOverlayRecord {
     source: CanvasImageSource;
+    sourceRect?: TileAnimationFrameRect;
     x: number;
     y: number;
     width: number;
@@ -158,7 +160,7 @@ export class HeroRenderer {
             for (const ov of overlayRecords) {
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
+                this.drawOverlayRecord(ctx, ov);
             }
             ctx.globalAlpha = 1;
             return;
@@ -377,7 +379,7 @@ export class HeroRenderer {
                 const { ov } = layer;
                 ctx.globalAlpha = ov.opacity;
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
+                this.drawOverlayRecord(ctx, ov);
                 continue;
             }
 
@@ -753,5 +755,24 @@ export class HeroRenderer {
         }
 
         ctx.globalAlpha = 1;
+    }
+
+    private drawOverlayRecord(ctx: CanvasRenderingContext2D, ov: HeroOverlayRecord) {
+        if (ov.sourceRect) {
+            ctx.drawImage(
+                ov.source,
+                ov.sourceRect.sx,
+                ov.sourceRect.sy,
+                ov.sourceRect.sw,
+                ov.sourceRect.sh,
+                ov.x,
+                ov.y,
+                ov.width,
+                ov.height,
+            );
+            return;
+        }
+
+        ctx.drawImage(ov.source, ov.x, ov.y, ov.width, ov.height);
     }
 }
