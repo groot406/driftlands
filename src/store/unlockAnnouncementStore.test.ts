@@ -51,6 +51,23 @@ test('study unlock announcements include buildings unlocked by completed studies
   assert.equal(wall.preview?.baseAssetKey, 'plains');
 });
 
+test('unlock announcement previews carry building animation metadata', () => {
+  const previous = createInitialProgressionSnapshot();
+  const metrics = createEmptyProgressionMetrics();
+  metrics.population = 3;
+  metrics.beds = 4;
+  metrics.discoveredTerrains = ['water', 'forest', 'dirt', 'grain'];
+  metrics.resourceStock.grain = 10;
+
+  const next = evaluateProgression(metrics, previous.unlockedNodeKeys);
+  const items = buildProgressionUnlockAnnouncementItems(previous, next);
+  const granary = items.find((item) => item.kind === 'building' && item.key === 'granary');
+
+  assert.ok(granary);
+  assert.equal(granary.preview?.buildingOverlayAssetKey, 'building_granary_overlay_animated');
+  assert.deepEqual(granary.preview?.buildingOverlayAnimation, { frames: 8, frameMs: 90 });
+});
+
 test('unlock announcements queue and dismiss in order', () => {
   queueUnlockAnnouncement([
     {

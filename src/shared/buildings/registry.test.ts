@@ -63,18 +63,18 @@ test('promoting a tile to towncenter establishes settlement ownership', () => {
 test('upgraded building variants resolve distinct overlay artwork', () => {
   assert.equal(
     getBuildingOverlayAssetKeyForTile({ variant: 'plains_depot' } as Tile),
-    'building_supply_depot_animated',
+    'building_supply_depot',
   );
   assert.equal(
     getBuildingOverlayAssetKeyForTile({ variant: 'plains_warehouse' } as Tile),
-    'building_warehouse_animated',
+    'building_warehouse',
   );
   assert.equal(
     getBuildingOverlayAssetKeyForTile({ variant: 'forest_sawmill' } as Tile),
-    'building_sawmill_overlay_animated',
+    'building_sawmill_overlay',
   );
   assert.equal(
     getBuildingOverlayAssetKeyForTile({ variant: 'plains_watchtower', towerWallLevel: 1 } as Tile),
-    'building_watchtower_palisade_overlay_animated',
+    'building_watchtower_palisade_overlay',
   );
 });

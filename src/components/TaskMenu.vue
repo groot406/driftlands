@@ -71,29 +71,32 @@
                     >
                       <span class="task-list-row__glyph" :class="{ 'task-list-row__glyph--visual': item.previewVisual }">
                         <template v-if="item.previewVisual">
-                          <img
+                          <AnimatedTileLayer
                             v-if="item.previewVisual.baseSrc"
                             :src="item.previewVisual.baseSrc"
+                            :animation="item.previewVisual.baseAnimation"
                             alt=""
                             class="task-list-row__icon-layer task-list-row__icon-layer--base"
                             aria-hidden="true"
-                          >
-                          <img
+                          />
+                          <AnimatedTileLayer
                             v-if="item.previewVisual.terrainOverlaySrc"
                             :src="item.previewVisual.terrainOverlaySrc"
+                            :animation="item.previewVisual.terrainOverlayAnimation"
                             alt=""
                             class="task-list-row__icon-layer"
-                            :style="item.previewVisual.terrainOverlayStyle"
+                            :layer-style="item.previewVisual.terrainOverlayStyle"
                             aria-hidden="true"
-                          >
-                          <img
+                          />
+                          <AnimatedTileLayer
                             v-if="item.previewVisual.buildingOverlaySrc"
                             :src="item.previewVisual.buildingOverlaySrc"
+                            :animation="item.previewVisual.buildingOverlayAnimation"
                             alt=""
                             class="task-list-row__icon-layer"
-                            :style="item.previewVisual.buildingOverlayStyle"
+                            :layer-style="item.previewVisual.buildingOverlayStyle"
                             aria-hidden="true"
-                          >
+                          />
                         </template>
                         <span v-else>{{ getTaskGlyph(item.task) }}</span>
                       </span>
@@ -155,29 +158,32 @@
                 >
                   <span class="task-list-row__glyph" :class="{ 'task-list-row__glyph--visual': item.previewVisual }">
                     <template v-if="item.previewVisual">
-                      <img
+                      <AnimatedTileLayer
                         v-if="item.previewVisual.baseSrc"
                         :src="item.previewVisual.baseSrc"
+                        :animation="item.previewVisual.baseAnimation"
                         alt=""
                         class="task-list-row__icon-layer task-list-row__icon-layer--base"
                         aria-hidden="true"
-                      >
-                      <img
+                      />
+                      <AnimatedTileLayer
                         v-if="item.previewVisual.terrainOverlaySrc"
                         :src="item.previewVisual.terrainOverlaySrc"
+                        :animation="item.previewVisual.terrainOverlayAnimation"
                         alt=""
                         class="task-list-row__icon-layer"
-                        :style="item.previewVisual.terrainOverlayStyle"
+                        :layer-style="item.previewVisual.terrainOverlayStyle"
                         aria-hidden="true"
-                      >
-                      <img
+                      />
+                      <AnimatedTileLayer
                         v-if="item.previewVisual.buildingOverlaySrc"
                         :src="item.previewVisual.buildingOverlaySrc"
+                        :animation="item.previewVisual.buildingOverlayAnimation"
                         alt=""
                         class="task-list-row__icon-layer"
-                        :style="item.previewVisual.buildingOverlayStyle"
+                        :layer-style="item.previewVisual.buildingOverlayStyle"
                         aria-hidden="true"
-                      >
+                      />
                     </template>
                     <span v-else>{{ getTaskGlyph(item.task) }}</span>
                   </span>
@@ -222,26 +228,29 @@
               <!-- Building preview image -->
               <section v-if="previewBuildingVisual" class="task-preview-card">
                 <div class="task-preview-stage">
-                  <img
+                  <AnimatedTileLayer
                     v-if="previewBuildingVisual.baseSrc"
                     :src="previewBuildingVisual.baseSrc"
+                    :animation="previewBuildingVisual.baseAnimation"
                     :alt="`${selectedTask.label} base`"
                     class="task-preview-stage__layer task-preview-stage__layer--base"
-                  >
-                  <img
+                  />
+                  <AnimatedTileLayer
                     v-if="previewBuildingVisual.terrainOverlaySrc"
                     :src="previewBuildingVisual.terrainOverlaySrc"
+                    :animation="previewBuildingVisual.terrainOverlayAnimation"
                     :alt="`${selectedTask.label} terrain overlay`"
                     class="task-preview-stage__layer task-preview-stage__layer--terrain-overlay"
-                    :style="previewBuildingVisual.terrainOverlayStyle"
-                  >
-                  <img
+                    :layer-style="previewBuildingVisual.terrainOverlayStyle"
+                  />
+                  <AnimatedTileLayer
                     v-if="previewBuildingVisual.buildingOverlaySrc"
                     :src="previewBuildingVisual.buildingOverlaySrc"
+                    :animation="previewBuildingVisual.buildingOverlayAnimation"
                     :alt="`${selectedTask.label} building overlay`"
                     class="task-preview-stage__layer task-preview-stage__layer--building-overlay"
-                    :style="previewBuildingVisual.buildingOverlayStyle"
-                  >
+                    :layer-style="previewBuildingVisual.buildingOverlayStyle"
+                  />
                 </div>
               </section>
 
@@ -367,7 +376,12 @@ import {
   resolveBuildingJobResources,
 } from '../shared/buildings/registry';
 import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
-import { TERRAIN_DEFS } from '../core/terrainDefs';
+import { TERRAIN_DEFS, type TileAnimationDef } from '../core/terrainDefs';
+import {
+  resolveBuildingOverlayVisual,
+  resolveTerrainBaseVisual,
+  resolveTerrainOverlayVisual,
+} from '../core/tileAnimation.ts';
 import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
 import { populationState } from '../store/clientPopulationStore';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
@@ -392,6 +406,7 @@ import { getInventoryEntryDefinition } from '../shared/game/inventoryPresentatio
 import { runSnapshot } from '../store/runStore.ts';
 import PanelModalShell from './ui/PanelModalShell.vue';
 import PanelActionButton from './ui/PanelActionButton.vue';
+import AnimatedTileLayer from './ui/AnimatedTileLayer.vue';
 
 interface Props {
   tile: Tile | null;
@@ -656,8 +671,11 @@ interface TaskFlowGroup {
 
 interface PreviewBuildingVisual {
   baseSrc: string | null;
+  baseAnimation: TileAnimationDef | null;
   terrainOverlaySrc: string | null;
+  terrainOverlayAnimation: TileAnimationDef | null;
   buildingOverlaySrc: string | null;
+  buildingOverlayAnimation: TileAnimationDef | null;
   terrainOverlayStyle: { transform: string };
   buildingOverlayStyle: { transform: string };
 }
@@ -693,23 +711,33 @@ function getTaskPreviewVisual(task: TaskDefinition): PreviewBuildingVisual | nul
   const variantDef = previewResult.variant
     ? terrainDef.variations?.find((variant) => variant.key === previewResult.variant) ?? null
     : null;
-  const baseKey = variantDef?.assetKey ?? terrainDef.assetKey ?? previewResult.terrain;
-  let terrainOverlayKey = terrainDef.overlayAssetKey ?? null;
+  const previewTileVisual = {
+    terrain: previewResult.terrain,
+    variant: previewResult.variant,
+  };
+  const baseVisual = resolveTerrainBaseVisual(previewTileVisual, terrainDef, isTileImageAvailable, variantDef);
+  const terrainOverlayVisual = resolveTerrainOverlayVisual(terrainDef, isTileImageAvailable, variantDef);
   const terrainOverlayOffset = variantDef?.overlayOffset ?? terrainDef.overlayOffset ?? { x: 0, y: 0 };
 
-  if (variantDef?.overlayAssetKey === false) {
-    terrainOverlayKey = null;
-  } else if (typeof variantDef?.overlayAssetKey === 'string') {
-    terrainOverlayKey = variantDef.overlayAssetKey;
-  }
-
-  const previewTile = previewResult.variant ? { variant: previewResult.variant } as Tile : null;
+  const previewTile = previewResult.variant
+    ? { terrain: previewResult.terrain, variant: previewResult.variant } as Tile
+    : null;
   const buildingDefinition = previewTile ? getBuildingDefinitionForTile(previewTile) : null;
+  const buildingVisual = buildingDefinition
+    ? resolveBuildingOverlayVisual(
+      buildingDefinition,
+      isTileImageAvailable,
+      getBuildingOverlayAssetKeyForTile(previewTile),
+    )
+    : null;
 
   return {
-    baseSrc: getTileImageSource(baseKey),
-    terrainOverlaySrc: getTileImageSource(terrainOverlayKey),
-    buildingOverlaySrc: getTileImageSource(getBuildingOverlayAssetKeyForTile(previewTile)),
+    baseSrc: getTileImageSource(baseVisual?.assetKey),
+    baseAnimation: baseVisual?.animation ?? null,
+    terrainOverlaySrc: getTileImageSource(terrainOverlayVisual?.assetKey),
+    terrainOverlayAnimation: terrainOverlayVisual?.animation ?? null,
+    buildingOverlaySrc: getTileImageSource(buildingVisual?.assetKey),
+    buildingOverlayAnimation: buildingVisual?.animation ?? null,
     terrainOverlayStyle: createOverlayStyle(terrainOverlayOffset),
     buildingOverlayStyle: createOverlayStyle(buildingDefinition?.overlayOffset ?? { x: 0, y: 0 }),
   };
@@ -733,6 +761,10 @@ function getTileImageSource(key: string | null | undefined) {
   }
 
   return tileImageSources[key] ?? null;
+}
+
+function isTileImageAvailable(key: string) {
+  return !!tileImageSources[key];
 }
 
 function createOverlayStyle(offset: { x: number; y: number }) {

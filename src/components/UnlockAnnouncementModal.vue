@@ -32,21 +32,30 @@
               >
                 <div v-if="currentPreview" class="unlock-modal__preview" aria-hidden="true">
                   <div class="unlock-modal__preview-tile">
-                    <img v-if="currentPreview.baseSrc" :src="currentPreview.baseSrc" alt="" class="unlock-modal__preview-base">
-                    <img
+                    <AnimatedTileLayer
+                      v-if="currentPreview.baseSrc"
+                      :src="currentPreview.baseSrc"
+                      alt=""
+                      class="unlock-modal__preview-base"
+                      aria-hidden="true"
+                    />
+                    <AnimatedTileLayer
                       v-if="currentPreview.terrainOverlaySrc"
                       :src="currentPreview.terrainOverlaySrc"
                       alt=""
                       class="unlock-modal__preview-overlay"
-                      :style="currentPreview.terrainOverlayStyle"
-                    >
-                    <img
+                      :layer-style="currentPreview.terrainOverlayStyle"
+                      aria-hidden="true"
+                    />
+                    <AnimatedTileLayer
                       v-if="currentPreview.buildingOverlaySrc"
                       :src="currentPreview.buildingOverlaySrc"
+                      :animation="currentPreview.buildingOverlayAnimation"
                       alt=""
                       class="unlock-modal__preview-overlay"
-                      :style="currentPreview.buildingOverlayStyle"
-                    >
+                      :layer-style="currentPreview.buildingOverlayStyle"
+                      aria-hidden="true"
+                    />
                   </div>
                 </div>
 
@@ -101,6 +110,8 @@ import {
   type UnlockAnnouncementPreview,
   unlockAnnouncementCount,
 } from '../store/unlockAnnouncementStore.ts';
+import type { TileAnimationDef } from '../core/terrainDefs.ts';
+import AnimatedTileLayer from './ui/AnimatedTileLayer.vue';
 import PanelActionButton from './ui/PanelActionButton.vue';
 import PanelModalShell from './ui/PanelModalShell.vue';
 
@@ -108,6 +119,7 @@ interface ResolvedUnlockPreview {
   baseSrc: string | null;
   terrainOverlaySrc: string | null;
   buildingOverlaySrc: string | null;
+  buildingOverlayAnimation: TileAnimationDef | null;
   terrainOverlayStyle: { transform: string };
   buildingOverlayStyle: { transform: string };
 }
@@ -201,6 +213,7 @@ function resolvePreview(preview: UnlockAnnouncementPreview | null | undefined): 
     baseSrc: getTileImageSource(preview.baseAssetKey),
     terrainOverlaySrc: getTileImageSource(preview.terrainOverlayAssetKey),
     buildingOverlaySrc: getTileImageSource(preview.buildingOverlayAssetKey),
+    buildingOverlayAnimation: preview.buildingOverlayAnimation ?? null,
     terrainOverlayStyle: createOverlayStyle(preview.terrainOverlayOffset),
     buildingOverlayStyle: createOverlayStyle(preview.buildingOverlayOffset),
   };

@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 
 import type { ResourceAmount } from '../core/types/Resource.ts';
 import type { TaskType } from '../core/types/Task.ts';
-import { TERRAIN_DEFS, type TerrainKey } from '../core/terrainDefs.ts';
+import { TERRAIN_DEFS, type TerrainKey, type TileAnimationDef } from '../core/terrainDefs.ts';
 import { getBuildingDefinitionByKey, getBuildingDefinitionByTaskKey } from '../shared/buildings/registry.ts';
 import { getResourceDefinition } from '../shared/game/resourceDefinitions.ts';
 import type { ProgressionSnapshot } from '../shared/story/progression.ts';
@@ -22,6 +22,7 @@ export interface UnlockAnnouncementPreview {
   baseAssetKey: string | null;
   terrainOverlayAssetKey: string | null;
   buildingOverlayAssetKey: string | null;
+  buildingOverlayAnimation?: TileAnimationDef | null;
   terrainOverlayOffset: { x: number; y: number };
   buildingOverlayOffset: { x: number; y: number };
 }
@@ -150,6 +151,7 @@ function resolveBuildingPreview(buildingKey: string): UnlockAnnouncementPreview 
       baseAssetKey: terrainDef.assetKey ?? 'towncenter',
       terrainOverlayAssetKey: terrainDef.overlayAssetKey ?? null,
       buildingOverlayAssetKey: building.overlayAssetKey ?? null,
+      buildingOverlayAnimation: building.overlayAnimation ?? null,
       terrainOverlayOffset: terrainDef.overlayOffset ?? { x: 0, y: 0 },
       buildingOverlayOffset: building.overlayOffset ?? { x: 0, y: 0 },
     };
@@ -180,6 +182,7 @@ function resolveBuildingPreview(buildingKey: string): UnlockAnnouncementPreview 
     baseAssetKey,
     terrainOverlayAssetKey,
     buildingOverlayAssetKey: building.overlayAssetKey ?? null,
+    buildingOverlayAnimation: building.overlayAnimation ?? null,
     terrainOverlayOffset: variantDef?.overlayOffset ?? terrainDef.overlayOffset ?? { x: 0, y: 0 },
     buildingOverlayOffset: building.overlayOffset ?? { x: 0, y: 0 },
   };
