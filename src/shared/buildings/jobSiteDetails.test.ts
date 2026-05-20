@@ -31,7 +31,7 @@ test('missing input advice calls out shortages and upstream bakery guidance', ()
     building: {
       key: 'bakery',
       consumes: [{ type: 'grain', amount: 1 }],
-      produces: [{ type: 'food', amount: 3 }],
+      produces: [{ type: 'bread', amount: 3 }],
       jobSlots: 1,
       cycleMs: 60_000,
     },

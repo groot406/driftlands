@@ -24,7 +24,6 @@ already represented by a terrain variant.
 - `plains_bakery`
 - `plains_depot`
 - `plains_warehouse`
-- `plains_campfire`
 - `plains_house`
 - `plains_stone_house`
 

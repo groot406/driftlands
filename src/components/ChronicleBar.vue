@@ -173,6 +173,8 @@ const headline = computed(() => {
       return 'New Unlock';
     case 'advice':
       return 'Advice';
+    case 'side_quest':
+      return 'Side Quest';
     default:
       return 'Conversation';
   }

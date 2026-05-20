@@ -110,15 +110,6 @@ MANIFEST: list[TileDef] = [
         tags=["building", "plains"],
     ),
     TileDef(
-        "plains_campfire",
-        "A small campfire ring on a grassy green plains hex tile. "
-        "Circle of stones around a crackling fire with orange-yellow flames, "
-        "a log seat nearby. Green grass surrounds it.",
-        category="building",
-        base_terrain="plains",
-        tags=["building", "plains"],
-    ),
-    TileDef(
         "plains_depot",
         "A small supply depot on a grassy green plains hex tile. "
         "Open-air wooden storage structure with crates, barrels, and sacks. "
@@ -151,15 +142,6 @@ MANIFEST: list[TileDef] = [
         "A small crafting workshop on a brown dirt hex tile. "
         "Open-sided wooden structure with a workbench and tools. "
         "Earth-toned materials on brown packed dirt.",
-        category="building",
-        base_terrain="dirt",
-        tags=["building", "dirt"],
-    ),
-    TileDef(
-        "dirt_campfire",
-        "A small campfire ring on a brown dirt hex tile. "
-        "Circle of stones around a fire with embers, a log seat. "
-        "Brown packed dirt ground.",
         category="building",
         base_terrain="dirt",
         tags=["building", "dirt"],
@@ -199,15 +181,6 @@ MANIFEST: list[TileDef] = [
         "Open-sided structure with workbench, anvil, tool rack. "
         "Viewed from above. Wood and metal tones. Just the building, "
         "no ground.",
-        category="overlay",
-        is_overlay=True,
-        tags=["overlay", "building"],
-    ),
-    TileDef(
-        "building_campfire_overlay",
-        "A campfire sprite with transparent background. "
-        "Stone ring around a fire with orange-yellow flames, a log seat. "
-        "Viewed from above. Just the campfire, no ground.",
         category="overlay",
         is_overlay=True,
         tags=["overlay", "building"],

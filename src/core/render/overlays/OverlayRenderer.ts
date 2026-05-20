@@ -3,7 +3,7 @@ import { heroes } from '../../../store/heroStore';
 import { selectedHeroId } from '../../../store/uiStore';
 import { taskStore } from '../../../store/taskStore';
 import { formatStorageAmount, getStorageCapacity, getStorageKindLabel } from '../../../shared/game/storage';
-import { getScoutSurveyProgress } from '../../../shared/game/scoutResources';
+import { getScoutScanProgress } from '../../../shared/game/scoutResources';
 import { canUseWarehouseAtTile, getStorageKindForTile } from '../../../shared/buildings/storage';
 import { camera, axialToPixel, hexDistance } from '../../camera';
 import type { Hero } from '../../types/Hero';
@@ -518,7 +518,7 @@ export class OverlayRenderer {
     ) {
         for (const tile of tiles) {
             const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            const scoutProgress = this.getScoutSurveyProgressForTile(tile, nowMs);
+            const scoutProgress = this.getScoutScanProgressForTile(tile, nowMs);
             if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
@@ -543,7 +543,7 @@ export class OverlayRenderer {
     ) {
         for (const tile of tiles) {
             const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            const scoutProgress = this.getScoutSurveyProgressForTile(tile, nowMs);
+            const scoutProgress = this.getScoutScanProgressForTile(tile, nowMs);
             if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
@@ -586,11 +586,11 @@ export class OverlayRenderer {
         return chosenTask;
     }
 
-    private getScoutSurveyProgressForTile(tile: Tile, nowMs: number = Date.now()) {
+    private getScoutScanProgressForTile(tile: Tile, nowMs: number = Date.now()) {
         let bestProgress: number | null = null;
 
         for (const hero of heroes) {
-            const progress = getScoutSurveyProgress(hero, tile.id, nowMs);
+            const progress = getScoutScanProgress(hero, tile.id, nowMs);
             if (progress === null) {
                 continue;
             }

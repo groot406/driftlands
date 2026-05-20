@@ -27,6 +27,7 @@ import { canControlHero } from '../store/playerStore';
 import { currentPlayerId } from '../core/socket';
 import { isKeyboardBlocked } from '../core/windowManager';
 import {createLoader, updateLoader, finishLoader} from "../core/loader.ts";
+import { initializeSideQuestRuntime, teardownSideQuestRuntime } from '../store/sideQuestStore.ts';
 
 const playing = computed(() => isPlaying());
 
@@ -41,6 +42,7 @@ onMounted(async () => {
   musicManager.initialize();
 
   updateLoader('init', {title: 'Initializing heroes...'});
+  initializeSideQuestRuntime();
 
   // Register global hotkeys for hero selection
   window.addEventListener('keydown', onGlobalKeyDown);
@@ -52,6 +54,7 @@ onUnmounted(() => {
   // Cleanup sound system
   soundService.destroy();
   musicManager.destroy();
+  teardownSideQuestRuntime();
 
   // Remove global hotkeys
   window.removeEventListener('keydown', onGlobalKeyDown);

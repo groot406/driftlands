@@ -65,6 +65,17 @@ function townCenter() {
   });
 }
 
+function townCenterAt(id: string, q: number, r: number) {
+  return tile({
+    id,
+    q,
+    r,
+    terrain: 'towncenter',
+    ownerSettlementId: id,
+    controlledBySettlementId: id,
+  });
+}
+
 function loadSettlementPopulation(current: number) {
   loadPopulationSnapshot({
     current,
@@ -149,19 +160,19 @@ test('lost harvest turns crop fields back into dry tilled dirt', () => {
   assert.equal(tileIndex['1,0']?.variant, 'dirt_tilled_draught');
 });
 
-test('food spoilage withdraws stored food resources', () => {
+test('food spoilage withdraws stored meal resources', () => {
   loadWorld([townCenter()]);
-  depositResourceToStorage('0,0', 'food', 20);
+  depositResourceToStorage('0,0', 'meat', 20);
   depositResourceToStorage('0,0', 'bread', 10);
 
   const outcome = triggerCalamity('food_spoilage', { settlementId: '0,0', rng: firstRng, now: 10_000 });
   const inventory = getSettlementResourceInventory('0,0');
 
   assert.equal(outcome?.kind, 'food_spoilage');
-  assert.equal(inventory.food, 15);
+  assert.equal(inventory.meat, 15);
   assert.equal(inventory.bread, 7);
   assert.deepEqual(outcome?.resourceLosses, [
-    { type: 'food', amount: 5 },
+    { type: 'meat', amount: 5 },
     { type: 'bread', amount: 3 },
   ]);
 });
@@ -203,19 +214,60 @@ test('warning broadcasts before delayed impact', () => {
   const pending = warnCalamity('flood', { settlementId: '0,0', rng: firstRng, now: 10_000 });
 
   assert.equal(pending.kind, 'flood');
+  assert.equal(pending.impactAt - 10_000, 180_000);
   assert.equal(messages.at(-1)?.type, 'calamity:event');
   assert.equal((messages.at(-1) as any).phase, 'warning');
   assert.equal(tileIndex['0,1']?.variant, 'road');
 
   calamitySystem.tick({
     now: pending.impactAt,
-    dt: 90_000,
+    dt: 180_000,
     tick: 1,
     rng: firstRng as never,
   });
 
   assert.equal(tileIndex['0,1']?.variant, null);
   assert.ok(messages.some((message) => message.type === 'calamity:event' && (message as any).phase === 'impact'));
+});
+
+test('automatic calamity roll warns all discovered settlements for the same impact time', () => {
+  const messages = captureBroadcasts();
+  resetCalamitySystem(0);
+  const firstAutomaticRollAt = 12 * 60_000;
+  loadWorld([
+    townCenter(),
+    tile({ id: '1,0', q: 1, r: 0, terrain: 'water' }),
+    tile({ id: '0,1', q: 0, r: 1, terrain: 'plains', variant: 'road', isBaseTile: false }),
+    townCenterAt('5,0', 5, 0),
+    tile({ id: '6,0', q: 6, r: 0, terrain: 'water', ownerSettlementId: '5,0', controlledBySettlementId: '5,0' }),
+    tile({ id: '5,1', q: 5, r: 1, terrain: 'plains', variant: 'road', isBaseTile: false, ownerSettlementId: '5,0', controlledBySettlementId: '5,0' }),
+  ]);
+
+  calamitySystem.tick({
+    now: firstAutomaticRollAt,
+    dt: 1_000,
+    tick: 1,
+    rng: firstRng as never,
+  });
+
+  const warnings = messages.filter((message) => (
+    message.type === 'calamity:event'
+    && (message as any).phase === 'warning'
+  ));
+  assert.equal(warnings.length, 2);
+  assert.deepEqual(warnings.map((message) => (message as any).settlementId).sort(), ['0,0', '5,0']);
+  assert.equal(new Set(warnings.map((message) => (message as any).impactAt)).size, 1);
+  assert.equal((warnings[0] as any).impactAt - firstAutomaticRollAt, 180_000);
+
+  calamitySystem.tick({
+    now: firstAutomaticRollAt + 3 * 60_000,
+    dt: 180_000,
+    tick: 2,
+    rng: firstRng as never,
+  });
+
+  assert.equal(tileIndex['0,1']?.variant, null);
+  assert.equal(tileIndex['5,1']?.variant, null);
 });
 
 test('flood control reduces road washout during impact', () => {

@@ -8,21 +8,15 @@
       @pointerup.stop
       @click.self="close"
     >
-      <div v-if="!detailOnlyMode" class="tc-panel smooth-modal-surface">
-        <div class="tc-header">
-          <div class="tc-header-emblem" aria-hidden="true">
-            <span>⌂</span>
-          </div>
-          <div class="tc-header-copy">
-            <p class="tc-kicker pixel-font">Settlement</p>
-            <h3 class="tc-title">{{ townCenterTitle }}</h3>
-            <p class="tc-subtitle">{{ townCenterSubtitle }}</p>
-          </div>
-          <button class="tc-close" @click.stop.prevent="close" title="Close">
-            &#x2715;
-          </button>
-        </div>
-
+      <PanelModalShell
+        v-if="!detailOnlyMode"
+        as="div"
+        class="tc-panel"
+        header-label="Settlement"
+        :header-title="townCenterTitle"
+        header-icon="⌂"
+        @close="close"
+      >
         <nav class="tc-tab-bar" aria-label="Town center sections">
           <button
             v-for="tab in townCenterTabs"
@@ -46,22 +40,10 @@
             <div class="tc-section-title">Command Overview</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-4">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.current }}</span>
-              <span class="tc-stat-label">Population</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ exploredTiles }}</span>
-              <span class="tc-stat-label">Explored Tiles</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ inspectedWorkforce.availableWorkers }}</span>
-              <span class="tc-stat-label">Workers</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ tradeCharterStatusLabel }}</span>
-              <span class="tc-stat-label">Trade</span>
-            </div>
+            <PanelStatCard label="Population" :value="playerPopulation.current" />
+            <PanelStatCard label="Explored Tiles" :value="exploredTiles" />
+            <PanelStatCard label="Workers" :value="inspectedWorkforce.availableWorkers" />
+            <PanelStatCard label="Trade" :value="tradeCharterStatusLabel" />
           </div>
         </div>
 
@@ -71,18 +53,9 @@
             <div class="tc-section-title">Housing</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.current }}</span>
-              <span class="tc-stat-label">Settlers</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.beds }}</span>
-              <span class="tc-stat-label">Beds</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.max }}</span>
-              <span class="tc-stat-label">Capacity</span>
-            </div>
+            <PanelStatCard label="Settlers" :value="playerPopulation.current" />
+            <PanelStatCard label="Beds" :value="playerPopulation.beds" />
+            <PanelStatCard label="Capacity" :value="playerPopulation.max" />
           </div>
           <div class="tc-status-row" :class="populationStatusClass">
             <span class="tc-status-dot" :class="populationStatusClass" />
@@ -95,18 +68,9 @@
             <div class="tc-section-title">Frontier Support</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.activeTileCount }}/{{ ownedTiles }}</span>
-              <span class="tc-stat-label">Active / Owned</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.supportCapacity }}</span>
-              <span class="tc-stat-label">Support Capacity</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ playerPopulation.inactiveTileCount }}</span>
-              <span class="tc-stat-label">Inactive Tiles</span>
-            </div>
+            <PanelStatCard label="Active / Owned" :value="`${playerPopulation.activeTileCount}/${ownedTiles}`" />
+            <PanelStatCard label="Support Capacity" :value="playerPopulation.supportCapacity" />
+            <PanelStatCard label="Inactive Tiles" :value="playerPopulation.inactiveTileCount" />
           </div>
           <div class="tc-status-row" :class="supportStatusClass">
             <span class="tc-status-dot" :class="supportStatusClass" />
@@ -131,21 +95,22 @@
                   <p class="tc-detail-order-copy">{{ action.summary }}</p>
                   <p v-if="!action.unlocked && action.lockHint" class="tc-detail-order-note">{{ action.lockHint }}</p>
                 </div>
-                <button
+                <PanelActionButton
                   class="tc-detail-order-button"
-                  :class="{ 'tc-detail-order-button-disabled': !action.unlocked }"
+                  size="small"
+                  variant="secondary"
                   :disabled="!action.unlocked"
                   @click.stop="startBuildingAction(action.tileId, action.definition)"
                 >
                   {{ !action.unlocked ? 'Locked' : (selectedHero ? 'Send Hero' : 'Select Hero') }}
-                </button>
+                </PanelActionButton>
               </div>
               <div v-if="action.costs.length" class="tc-detail-chip-row">
                 <span
                   v-for="resource in action.costs"
                   :key="`${action.key}:${resource.type}`"
                   class="tc-detail-chip"
-                  :class="{ 'tc-detail-chip-alert': getWarehouseAmount(resource.type) < resource.amount }"
+                  :class="{ 'tc-detail-chip-alert': getRequirementWarehouseAmount(resource.type) < resource.amount }"
                 >
                   {{ formatNumber(resource.amount) }} {{ formatResourceType(resource.type) }}
                 </span>
@@ -162,22 +127,10 @@
             <div class="tc-section-caption">{{ borderCooldownText }}</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-4">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ militarySummary.borderModeLabel }}</span>
-              <span class="tc-stat-label">Mode</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ militarySummary.reserveGuards }}</span>
-              <span class="tc-stat-label">Reserve Guards</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ militarySummary.vulnerableTowerCount }}</span>
-              <span class="tc-stat-label">Threatened Towers</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ militarySummary.attackTargetLabel }}</span>
-              <span class="tc-stat-label">Raid Target</span>
-            </div>
+            <PanelStatCard label="Mode" :value="militarySummary.borderModeLabel" />
+            <PanelStatCard label="Reserve Guards" :value="militarySummary.reserveGuards" />
+            <PanelStatCard label="Threatened Towers" :value="militarySummary.vulnerableTowerCount" />
+            <PanelStatCard label="Raid Target" :value="militarySummary.attackTargetLabel" />
           </div>
           <div class="tc-status-row" :class="militaryStatusClass">
             <span class="tc-status-dot" :class="militaryStatusClass" />
@@ -219,14 +172,8 @@
             <div class="tc-section-title">Food Supply</div>
           </div>
           <div class="tc-stat-grid">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ foodStock }}</span>
-              <span class="tc-stat-label">Meals</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ foodPerMinute }}</span>
-              <span class="tc-stat-label">Per minute</span>
-            </div>
+            <PanelStatCard label="Meals" :value="foodStock" />
+            <PanelStatCard label="Per minute" :value="foodPerMinute" />
           </div>
           <div class="tc-food-bar-track">
             <div class="tc-food-bar-fill" :style="{ width: foodBarPercent + '%' }" :class="foodBarClass" />
@@ -243,22 +190,10 @@
             <div class="tc-section-caption">{{ maintenanceSummary.assignedRepairers }}/{{ maintenanceSummary.crewDemand }} crews assigned</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-4">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ maintenanceSummary.maintainedCount }}</span>
-              <span class="tc-stat-label">Maintained</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ maintenanceSummary.needsRepairCount }}</span>
-              <span class="tc-stat-label">Needs Repair</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ maintenanceSummary.offlineCount }}</span>
-              <span class="tc-stat-label">Offline</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ maintenanceSummary.averageCondition }}%</span>
-              <span class="tc-stat-label">Avg Condition</span>
-            </div>
+            <PanelStatCard label="Maintained" :value="maintenanceSummary.maintainedCount" />
+            <PanelStatCard label="Needs Repair" :value="maintenanceSummary.needsRepairCount" />
+            <PanelStatCard label="Offline" :value="maintenanceSummary.offlineCount" />
+            <PanelStatCard label="Avg Condition" :value="`${maintenanceSummary.averageCondition}%`" />
           </div>
           <div class="tc-status-row" :class="maintenanceStatusClass">
             <span class="tc-status-dot" :class="maintenanceStatusClass" />
@@ -298,18 +233,9 @@
             <div class="tc-section-caption">{{ inspectedWorkforce.assignedWorkers }}/{{ inspectedWorkforce.availableWorkers }} staffed</div>
           </div>
           <div class="tc-stat-grid tc-stat-grid-3">
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ inspectedWorkforce.availableWorkers }}</span>
-              <span class="tc-stat-label">Available</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ inspectedWorkforce.assignedWorkers }}</span>
-              <span class="tc-stat-label">Assigned</span>
-            </div>
-            <div class="tc-stat">
-              <span class="tc-stat-value">{{ inspectedWorkforce.idleWorkers }}</span>
-              <span class="tc-stat-label">Idle</span>
-            </div>
+            <PanelStatCard label="Available" :value="inspectedWorkforce.availableWorkers" />
+            <PanelStatCard label="Assigned" :value="inspectedWorkforce.assignedWorkers" />
+            <PanelStatCard label="Idle" :value="inspectedWorkforce.idleWorkers" />
           </div>
           <div class="tc-status-row" :class="jobsStatusClass">
             <span class="tc-status-dot" :class="jobsStatusClass" />
@@ -353,7 +279,7 @@
           <p v-else class="tc-placeholder-text">Build a dock, granary, apiary, bakery, lumber camp, library, or mine to create settler jobs.</p>
         </div>
         </div>
-      </div>
+      </PanelModalShell>
 
       <div
         v-if="selectedJobSiteDetail"
@@ -361,16 +287,14 @@
         :class="{ 'tc-detail-backdrop-standalone': detailOnlyMode }"
         @click.self="closeJobSiteDetail"
       >
-        <div class="tc-detail-modal smooth-modal-surface" @click.stop>
+        <PanelModalShell as="div" class="tc-detail-modal" close-title="Close details" close-aria-label="Close building details" @close="closeJobSiteDetail">
+          <div class="tc-detail-scroll">
             <div class="tc-detail-header">
               <div>
                 <p class="tc-detail-kicker pixel-font">{{ selectedJobSiteDetail.detailKicker }}</p>
                 <h4 class="tc-detail-title">{{ selectedJobSiteDetail.label }}</h4>
                 <p class="tc-detail-summary">{{ selectedJobSiteDetail.summary }}</p>
               </div>
-              <button class="tc-detail-close" @click.stop="closeJobSiteDetail" title="Close details">
-                &#x2715;
-              </button>
             </div>
 
             <div class="tc-detail-pill-row">
@@ -401,6 +325,64 @@
 
             <div v-if="selectedJobSiteDetail.blockerText" class="tc-detail-blocker">
               {{ selectedJobSiteDetail.blockerText }}
+            </div>
+
+            <div v-if="selectedJobSiteDetail.houseDetails" class="tc-detail-section">
+              <div class="tc-detail-section-title">Household</div>
+              <div class="tc-detail-grid">
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Residents</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.houseDetails.residentCountLabel }}</div>
+                  <p class="tc-detail-card-copy">Settlers assigned to sleep and keep personal goods here.</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Home Goods</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.houseDetails.goodsCapacityLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.houseDetails.consumptionLabel }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Home Comfort</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.houseDetails.comfortLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.houseDetails.comfortCopy }}</p>
+                </section>
+              </div>
+
+              <div class="tc-house-lists">
+                <div>
+                  <div v-if="selectedJobSiteDetail.houseDetails.residents.length" class="tc-worker-list">
+                    <button
+                      v-for="resident in selectedJobSiteDetail.houseDetails.residents"
+                      :key="resident.id"
+                      type="button"
+                      class="tc-worker-row"
+                      @click.stop="inspectAssignedWorker(resident.settler)"
+                    >
+                      <span class="tc-worker-copy">
+                        <span class="tc-worker-name">{{ resident.name }}</span>
+                        <span class="tc-worker-meta">{{ resident.activityLabel }}</span>
+                      </span>
+                      <span class="tc-worker-progress">{{ resident.happinessLabel }}</span>
+                    </button>
+                  </div>
+                  <p v-else class="tc-placeholder-text tc-worker-empty">No residents assigned to this house yet.</p>
+                </div>
+
+                <div class="tc-house-good-list">
+                  <div
+                    v-for="good in selectedJobSiteDetail.houseDetails.goods"
+                    :key="good.type"
+                    class="tc-house-good-row"
+                    :class="{ 'tc-house-good-row-empty': !good.stocked }"
+                  >
+                    <span class="tc-house-good-icon" aria-hidden="true">{{ good.icon }}</span>
+                    <span class="tc-house-good-copy">
+                      <span class="tc-house-good-title">{{ good.label }} · {{ good.amount }}</span>
+                      <span class="tc-house-good-effect">{{ good.effectLabel }}</span>
+                      <span class="tc-house-good-note">{{ good.note }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div v-if="selectedJobSiteDetail.watchtowerDetails" class="tc-detail-section">
@@ -468,7 +450,7 @@
                 <section class="tc-detail-card">
                   <p class="tc-detail-card-label">Weapons</p>
                   <div class="tc-detail-card-value">{{ selectedJobSiteDetail.barracksDetails.weapons }}</div>
-                  <p class="tc-detail-card-copy">Each recruit consumes 1 weapon and 2 rations.</p>
+                  <p class="tc-detail-card-copy">Each recruit consumes 1 weapon and 2 meals.</p>
                 </section>
                 <section class="tc-detail-card">
                   <p class="tc-detail-card-label">Queue</p>
@@ -483,7 +465,7 @@
                 <button class="tc-detail-toggle" @click.stop="queueGuardTraining(selectedJobSiteDetail.tileId)">
                   Train Guard
                 </button>
-                <p class="tc-detail-action-copy">Queues one guard. Training finishes once the barracks can draw both weapons and rations from storage.</p>
+                <p class="tc-detail-action-copy">Queues one guard. Training finishes once the barracks can draw both weapons and meals from storage.</p>
               </div>
             </div>
 
@@ -661,21 +643,22 @@
                           <p class="tc-detail-order-copy">{{ action.summary }}</p>
                           <p v-if="!action.unlocked && action.lockHint" class="tc-detail-order-note">{{ action.lockHint }}</p>
                         </div>
-                        <button
+                        <PanelActionButton
                           class="tc-detail-order-button"
-                          :class="{ 'tc-detail-order-button-disabled': !action.unlocked }"
+                          size="small"
+                          variant="secondary"
                           :disabled="!action.unlocked"
                           @click.stop="startBuildingAction(selectedJobSiteDetail.tileId, action.definition)"
                         >
                           {{ !action.unlocked ? 'Locked' : (selectedHero ? 'Send Hero' : 'Select Hero') }}
-                        </button>
+                        </PanelActionButton>
                       </div>
                       <div v-if="action.costs.length" class="tc-detail-chip-row">
                         <span
                           v-for="resource in action.costs"
                           :key="`${action.key}:${resource.type}`"
                           class="tc-detail-chip"
-                          :class="{ 'tc-detail-chip-alert': getWarehouseAmount(resource.type) < resource.amount }"
+                          :class="{ 'tc-detail-chip-alert': getRequirementWarehouseAmount(resource.type) < resource.amount }"
                         >
                           {{ formatNumber(resource.amount) }} {{ formatResourceType(resource.type) }}
                         </span>
@@ -686,7 +669,8 @@
                 </div>
               </div>
             </div>
-        </div>
+          </div>
+        </PanelModalShell>
       </div>
     </div>
   </transition>
@@ -754,11 +738,21 @@ import { currentPlayerId } from '../core/socket';
 import { currentPlayerSettlementId, settlementStartMarkers } from '../store/settlementStartStore.ts';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import { getTileSettlementId, isTileInSettlement } from '../shared/game/settlement';
+import PanelModalShell from './ui/PanelModalShell.vue';
+import PanelActionButton from './ui/PanelActionButton.vue';
+import PanelIconBanner from './ui/PanelIconBanner.vue';
+import PanelStatCard from './ui/PanelStatCard.vue';
 import {
   FOOD_PER_SETTLER_PER_MINUTE,
   HUNGER_GRACE_MINUTES,
 } from '../store/populationStore';
-import { getHungerFoodMealValue } from '../shared/game/resourceDefinitions.ts';
+import {
+  TRADE_GOOD_TYPES,
+  getHungerFoodMealValue,
+  getResourceDefinition,
+  getResourceRequirementStock,
+  getTradeGoodHappinessGain,
+} from '../shared/game/resourceDefinitions.ts';
 
 interface Props {
   visible: boolean;
@@ -1183,11 +1177,48 @@ function getAssignedWorkerDetails(tileId: string, cycleMs: number | undefined) {
     .map((settler) => ({
       id: settler.id,
       settler,
-      name: getSettlerDisplayName(settler.id, settler.nameSeed),
+      name: getSettlerDisplayName(settler.id, settler.nameSeed, settler.gender),
       activityLabel: formatTitleCase(settler.activity),
       statusLabel: formatAssignedWorkerStatus(settler),
       progressLabel: formatAssignedWorkerProgress(settler, cycleMs),
     }));
+}
+
+function getHouseResidentDetails(tileId: string) {
+  return playerSettlers.value
+    .filter((settler) => settler.homeTileId === tileId)
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((settler) => ({
+      id: settler.id,
+      settler,
+      name: getSettlerDisplayName(settler.id, settler.nameSeed, settler.gender),
+      activityLabel: formatTitleCase(settler.activity),
+      happinessLabel: `${Math.round(settler.happiness)} happiness`,
+    }));
+}
+
+function getHouseGoodDetails(tile: { houseGoods?: Partial<Record<ResourceType, number>> } | null | undefined, capacity = 0) {
+  const stockedTotal = TRADE_GOOD_TYPES.reduce((sum, resourceType) => sum + Math.max(0, tile?.houseGoods?.[resourceType] ?? 0), 0);
+  const isFull = capacity > 0 && stockedTotal >= capacity;
+  return TRADE_GOOD_TYPES.map((resourceType) => {
+    const definition = getResourceDefinition(resourceType);
+    const amount = Math.max(0, tile?.houseGoods?.[resourceType] ?? 0);
+    const happinessGain = getTradeGoodHappinessGain(resourceType);
+    return {
+      type: resourceType,
+      icon: definition.icon,
+      label: definition.label,
+      amount,
+      stocked: amount > 0,
+      effectLabel: happinessGain > 0 ? `+${happinessGain} happiness when used` : 'Comfort good',
+      note: amount > 0
+        ? 'Residents will not buy another while this home still has one stocked.'
+        : isFull
+          ? 'Storage is full; residents will wait until another good is used.'
+          : 'Can be bought at a staffed shop when trade goods are in storage.',
+    };
+  });
 }
 
 function getStatusClassFromTone(tone: 'ok' | 'warn' | 'danger') {
@@ -1247,8 +1278,8 @@ function formatMaintenanceBacklog(resource: {
   return resource.shortfall > 0 ? `${base} · short ${formatNumber(resource.shortfall)}` : base;
 }
 
-function getWarehouseAmount(type: ResourceType) {
-  return Math.floor(playerInventory.value[type] ?? 0);
+function getRequirementWarehouseAmount(type: ResourceType) {
+  return Math.floor(getResourceRequirementStock(playerInventory.value, type));
 }
 
 function getActionSummary(def: TaskDefinition) {
@@ -1768,6 +1799,27 @@ const selectedJobSiteDetail = computed(() => {
   const assignedWorkerDetails = hasJobSite
     ? getAssignedWorkerDetails(tile.id, building?.cycleMs)
     : [];
+  const houseGoodCapacity = buildingState?.houseGoodsCapacity ?? 0;
+  const houseComfortHappiness = buildingState?.houseComfortHappiness ?? 0;
+  const houseResidentDetails = building?.key === 'house' ? getHouseResidentDetails(tile.id) : [];
+  const houseGoodDetails = building?.key === 'house' ? getHouseGoodDetails(tile, houseGoodCapacity) : [];
+  const stockedHouseGoodCount = houseGoodDetails.reduce((sum, good) => sum + good.amount, 0);
+  const houseDetails = building?.key === 'house'
+    ? {
+      residents: houseResidentDetails,
+      residentCountLabel: `${houseResidentDetails.length} resident${houseResidentDetails.length === 1 ? '' : 's'}`,
+      goods: houseGoodDetails,
+      goodsCapacityLabel: `${stockedHouseGoodCount}/${houseGoodCapacity} stocked`,
+      stockedCountLabel: stockedHouseGoodCount > 0
+        ? `${stockedHouseGoodCount} good${stockedHouseGoodCount === 1 ? '' : 's'} stocked`
+        : 'No goods stocked',
+      comfortLabel: houseComfortHappiness > 0 ? `+${houseComfortHappiness} comfort` : 'Basic comfort',
+      comfortCopy: houseComfortHappiness > 0
+        ? 'This upgrade adds a small happiness recovery when residents rest at home.'
+        : 'Stone and glass upgrades add passive home comfort.',
+      consumptionLabel: 'Home goods are consumed slowly for happiness. Shops skip goods already stocked here and stop when storage is full.',
+    }
+    : null;
 
   return {
     ...(site ?? {
@@ -1790,6 +1842,7 @@ const selectedJobSiteDetail = computed(() => {
     cycleLabel: formatCycleDuration(building?.cycleMs),
     studyProgress,
     studyOptions,
+    houseDetails,
     assignedWorkerDetails,
     assignedWorkersLabel: currentWorkerCount > 0
       ? `${currentWorkerCount} ${building?.jobLabel ?? 'worker'}${currentWorkerCount === 1 ? '' : 's'} on duty`
@@ -2109,9 +2162,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(4px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 38%, rgba(50, 66, 47, 0.22), transparent 23rem),
+    radial-gradient(circle at 55% 115%, rgba(57, 80, 57, 0.14), transparent 28rem),
+    rgba(1, 5, 12, 0.78);
+  backdrop-filter: blur(4px) saturate(0.82) brightness(0.78);
   pointer-events: auto;
 }
 
@@ -2127,22 +2183,29 @@ onUnmounted(() => {
 
 .tc-panel {
   position: relative;
-  width: min(980px, calc(100vw - 32px));
-  padding: 20px;
-  border-radius: 22px;
-  max-height: min(82vh, calc(100vh - 32px));
-  overflow-x: hidden;
-  overflow-y: auto;
+  box-sizing: border-box;
+  --panel-modal-border-width: 20px;
+  --tc-panel-padding-top: 1.55rem;
+  --tc-panel-padding-x: 1.65rem;
+  --tc-panel-padding-bottom: 1.35rem;
+  --panel-header-margin: calc(-1 * var(--tc-panel-padding-top)) calc(-1 * (var(--panel-modal-border-width) + var(--tc-panel-padding-x))) 0 calc(-1 * (var(--panel-modal-border-width) + var(--tc-panel-padding-x)));
+  width: min(68rem, calc(100vw - 28px));
+  height: min(46rem, calc(100vh - 36px));
+  overflow: hidden;
+  padding: var(--tc-panel-padding-top) var(--tc-panel-padding-x) var(--tc-panel-padding-bottom);
+  border: 20px solid transparent;
+  border-image: url('../assets/ui/settler-modal/panel-frame.png') 72 / 36px stretch;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.75rem;
   background:
-    linear-gradient(180deg, rgba(26, 41, 37, 0.99), rgba(20, 26, 42, 0.99) 58%, rgba(12, 18, 24, 0.99));
-  border: 1px solid rgba(232, 196, 119, 0.28);
-  box-shadow:
-    0 30px 60px rgba(2, 6, 23, 0.5),
-    0 0 0 1px rgba(255, 244, 214, 0.05) inset,
-    0 16px 0 rgba(21, 94, 117, 0.12) inset;
+    radial-gradient(circle at 66% 0%, rgba(83, 57, 32, 0.2), transparent 24rem),
+    radial-gradient(circle at 15% 100%, rgba(47, 31, 20, 0.22), transparent 18rem),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #121619 0%, #0a0d10 100%);
+  color: #f3e4c9;
   backdrop-filter: none;
 }
 
@@ -2150,12 +2213,13 @@ onUnmounted(() => {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: inherit;
   pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(255, 244, 214, 0.07), transparent 24%, transparent 76%, rgba(255, 244, 214, 0.04)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 18%, rgba(0, 0, 0, 0.12));
-  opacity: 0.9;
+  opacity: 0.16;
+  background-image:
+    radial-gradient(circle at 12% 24%, rgba(255, 228, 169, 0.12) 0 1px, transparent 1px),
+    radial-gradient(circle at 74% 68%, rgba(255, 228, 169, 0.1) 0 1px, transparent 1px),
+    radial-gradient(circle at 46% 44%, rgba(0, 0, 0, 0.42) 0 1px, transparent 1px);
+  background-size: 13px 17px, 19px 23px, 11px 13px;
 }
 
 .tc-panel::-webkit-scrollbar {
@@ -2174,34 +2238,20 @@ onUnmounted(() => {
   z-index: 1;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 86px;
-  padding: 14px;
-  border-radius: 18px;
+  gap: 1rem;
+  min-height: 5rem;
+  padding: 0.05rem 3.15rem 0.75rem 0;
+  border-bottom: 1px solid rgba(130, 88, 43, 0.24);
   background:
-    linear-gradient(180deg, rgba(19, 30, 27, 0.78), rgba(10, 17, 21, 0.54));
-  border: 1px solid rgba(232, 196, 119, 0.18);
-  box-shadow: 0 1px 0 rgba(255, 244, 214, 0.06) inset;
+    linear-gradient(90deg, rgba(74, 48, 25, 0.22), transparent 70%);
+  box-shadow: inset 0 -1px 0 rgba(255, 226, 161, 0.035);
 }
 
 .tc-header-emblem {
   flex-shrink: 0;
-  width: 58px;
-  height: 58px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16px;
-  border: 1px solid rgba(250, 204, 21, 0.28);
-  background:
-    linear-gradient(180deg, rgba(91, 104, 58, 0.64), rgba(30, 64, 55, 0.7));
-  color: rgba(254, 243, 199, 0.94);
-  font-size: 28px;
-  line-height: 1;
-  box-shadow:
-    0 10px 22px rgba(2, 6, 23, 0.26),
-    0 0 0 1px rgba(255, 244, 214, 0.05) inset;
+  width: 3.45rem;
+  height: 5.58rem;
+  margin-top: -0.35rem;
 }
 
 .tc-header-copy {
@@ -2211,48 +2261,30 @@ onUnmounted(() => {
 
 .tc-kicker {
   margin: 0;
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(252, 211, 77, 0.88);
+  color: #c69549;
 }
 
 .tc-title {
-  margin: 8px 0 0;
-  font-size: 1.34rem;
+  margin: 0.34rem 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.55rem, 3vw, 2rem);
   font-weight: 700;
-  line-height: 1.05;
-  color: #fff7ed;
-  text-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+  line-height: 1.1;
+  color: #fff1d4;
+  text-shadow: 0 2px 0 #090807, 0 0 10px rgba(216, 170, 83, 0.18);
 }
 
 .tc-subtitle {
-  margin: 7px 0 0;
-  color: rgba(226, 232, 240, 0.68);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.tc-close {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  border: 1px solid rgba(232, 196, 119, 0.18);
-  background: rgba(15, 23, 18, 0.5);
-  color: rgba(255, 247, 237, 0.9);
-  font-size: 14px;
-  cursor: pointer;
-  transition: transform .15s, border-color .15s, background .15s;
-}
-
-.tc-close:hover {
-  transform: translateY(-1px);
-  border-color: rgba(252, 211, 77, 0.36);
-  background: rgba(20, 83, 45, 0.38);
+  margin: 0.38rem 0 0;
+  color: #d7c8a7;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.9rem;
+  line-height: 1.3;
 }
 
 .tc-tab-bar {
@@ -2260,57 +2292,62 @@ onUnmounted(() => {
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0.38rem;
 }
 
 .tc-tab-button {
+  position: relative;
   min-width: 0;
-  min-height: 58px;
+  min-height: 3.85rem;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(232, 196, 119, 0.12);
+  gap: 0.62rem;
+  padding: 0.48rem 0.72rem;
+  border: 8px solid transparent;
+  border-image: url('../assets/ui/settler-modal/stat-badge.png') 46 fill / 8px stretch;
   background:
-    linear-gradient(180deg, rgba(22, 32, 29, 0.7), rgba(13, 18, 22, 0.7));
-  color: rgba(226, 232, 240, 0.76);
+    radial-gradient(circle at 20% 0%, rgba(255, 226, 161, 0.06), transparent 6rem),
+    linear-gradient(180deg, rgba(18, 18, 17, 0.66), rgba(8, 10, 12, 0.72));
+  color: #d7c8a7;
   text-align: left;
   cursor: pointer;
-  transition: transform .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
+  filter: saturate(0.86) brightness(0.86);
+  transition: transform .15s ease, filter .15s ease, color .15s ease;
 }
 
 .tc-tab-button:hover,
 .tc-tab-button:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(252, 211, 77, 0.28);
-  background:
-    linear-gradient(180deg, rgba(38, 48, 39, 0.78), rgba(18, 24, 24, 0.78));
+  filter: saturate(1.04) brightness(1.04);
   outline: none;
 }
 
 .tc-tab-button-active {
-  border-color: rgba(252, 211, 77, 0.46);
   background:
-    linear-gradient(180deg, rgba(31, 78, 65, 0.72), rgba(30, 41, 59, 0.84));
-  color: rgba(255, 247, 237, 0.96);
+    radial-gradient(circle at 18% 0%, rgba(255, 216, 135, 0.2), transparent 6rem),
+    linear-gradient(180deg, rgba(74, 48, 25, 0.78), rgba(16, 14, 13, 0.82));
+  color: #fff1d4;
+  filter: saturate(1.12) brightness(1.1);
   box-shadow:
-    0 0 0 1px rgba(255, 244, 214, 0.04) inset,
-    0 10px 24px rgba(2, 6, 23, 0.2);
+    0 0 0 1px rgba(233, 174, 74, 0.18),
+    0 0 18px rgba(198, 149, 73, 0.13);
 }
 
 .tc-tab-glyph {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 2.05rem;
+  height: 2.05rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: rgba(15, 23, 18, 0.56);
-  border: 1px solid rgba(232, 196, 119, 0.12);
-  color: rgba(252, 211, 77, 0.9);
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 45% 28%, rgba(255, 226, 161, 0.14), transparent 62%),
+    rgba(16, 17, 17, 0.54);
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  color: #e5b957;
   font-size: 16px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.46);
 }
 
 .tc-tab-copy {
@@ -2322,6 +2359,7 @@ onUnmounted(() => {
 .tc-tab-label {
   overflow: hidden;
   color: inherit;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.1;
@@ -2331,7 +2369,8 @@ onUnmounted(() => {
 
 .tc-tab-note {
   overflow: hidden;
-  color: rgba(203, 213, 225, 0.58);
+  color: #a99b82;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -2341,9 +2380,33 @@ onUnmounted(() => {
 .tc-tab-panel {
   position: relative;
   z-index: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 12px;
+  gap: 0.65rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.45rem;
+  scrollbar-color: rgba(198, 149, 73, 0.78) rgba(7, 10, 12, 0.48);
+  scrollbar-width: thin;
+}
+
+.tc-tab-panel::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.tc-tab-panel::-webkit-scrollbar-track {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 5px),
+    rgba(7, 10, 12, 0.58);
+  border-left: 1px solid rgba(130, 88, 43, 0.2);
+}
+
+.tc-tab-panel::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(29, 18, 10, 0.9);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(223, 165, 70, 0.92), rgba(102, 65, 31, 0.9));
 }
 
 .tc-tab-panel-economy,
@@ -2358,12 +2421,16 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
   margin-top: 0;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(232, 196, 119, 0.13);
+  padding: 0.88rem;
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.22);
   background:
-    linear-gradient(180deg, rgba(15, 23, 18, 0.56), rgba(9, 13, 18, 0.46));
-  box-shadow: 0 1px 0 rgba(255, 244, 214, 0.035) inset;
+    radial-gradient(circle at 18% 0%, rgba(255, 226, 161, 0.038), transparent 7rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 8px),
+    linear-gradient(180deg, rgba(23, 25, 26, 0.48), rgba(9, 11, 13, 0.34));
+  box-shadow:
+    inset 0 0 24px rgba(0, 0, 0, 0.2),
+    0 1px 0 rgba(255, 226, 161, 0.035);
 }
 
 .tc-section-jobs {
@@ -2392,15 +2459,18 @@ onUnmounted(() => {
 }
 
 .tc-section-title {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(253, 230, 138, 0.76);
+  color: #c69549;
 }
 
 .tc-section-caption {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
-  color: rgba(203, 213, 225, 0.5);
+  color: #a99b82;
   font-style: italic;
 }
 
@@ -2409,8 +2479,37 @@ onUnmounted(() => {
 .tc-stat-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 0.45rem;
+  margin-bottom: 0.62rem;
+}
+
+.tc-panel :deep(.panel-stat-card) {
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.48rem 0.58rem;
+  border: 1px solid rgba(130, 88, 43, 0.26);
+  border-image: none;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 226, 161, 0.036), transparent 6rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 8px),
+    rgba(8, 10, 12, 0.42);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.22),
+    0 1px 0 rgba(255, 226, 161, 0.025);
+}
+
+.tc-panel :deep(.panel-stat-card__label) {
+  font-size: 0.54rem;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+}
+
+.tc-panel :deep(.panel-stat-card__value) {
+  font-size: clamp(0.88rem, 1.25vw, 1.18rem);
+  line-height: 1.05;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .tc-stat-grid-3 {
@@ -2419,30 +2518,6 @@ onUnmounted(() => {
 
 .tc-stat-grid-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.tc-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.52);
-  border: 1px solid rgba(148, 163, 184, 0.08);
-}
-
-.tc-stat-value {
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1;
-  color: #f8fafc;
-}
-
-.tc-stat-label {
-  font-size: 10px;
-  color: rgba(191, 219, 254, 0.56);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 /* Status row */
@@ -2482,25 +2557,29 @@ onUnmounted(() => {
 }
 
 .tc-status-text {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
   line-height: 1.35;
-  color: rgba(226, 232, 240, 0.72);
+  color: #d7c8a7;
 }
 
 /* Food bar */
 
 .tc-food-bar-track {
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  height: 0.55rem;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(7, 10, 12, 0.72);
+  border: 1px solid rgba(130, 88, 43, 0.34);
   overflow: hidden;
   margin-bottom: 10px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.58);
 }
 
 .tc-food-bar-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 2px;
   transition: width 0.5s ease;
 }
 
@@ -2525,9 +2604,13 @@ onUnmounted(() => {
 
 .tc-job-site {
   padding: 10px 12px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.52);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.22);
 }
 
 .tc-job-site-clickable {
@@ -2538,8 +2621,11 @@ onUnmounted(() => {
 .tc-job-site-clickable:hover,
 .tc-job-site-clickable:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.26);
-  background: rgba(15, 23, 42, 0.68);
+  border-color: rgba(223, 165, 70, 0.44);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.065), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 7px),
+    rgba(28, 22, 17, 0.48);
   outline: none;
 }
 
@@ -2558,36 +2644,43 @@ onUnmounted(() => {
 }
 
 .tc-job-site-name {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 12px;
-  font-weight: 600;
-  color: #f8fafc;
+  font-weight: 700;
+  color: #fff0d2;
 }
 
 .tc-job-site-meta {
   margin-top: 2px;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
-  color: rgba(191, 219, 254, 0.44);
+  color: #a99b82;
 }
 
 .tc-job-site-staff {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
   font-weight: 700;
-  color: rgba(252, 211, 77, 0.9);
+  color: #e5b957;
 }
 
 .tc-job-site-open {
   padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(56, 189, 248, 0.14);
-  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.46);
+  border: 1px solid rgba(130, 88, 43, 0.32);
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(186, 230, 253, 0.9);
+  color: #d7c8a7;
 }
 
 .tc-job-site-status {
   margin-top: 8px;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
   line-height: 1.35;
 }
@@ -2595,17 +2688,27 @@ onUnmounted(() => {
 .tc-job-site-blocker,
 .tc-detail-blocker {
   margin-top: 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(251, 191, 36, 0.22);
-  background: rgba(120, 53, 15, 0.18);
+  border-radius: 6px;
+  border: 1px solid rgba(196, 137, 63, 0.38);
+  background:
+    linear-gradient(180deg, rgba(120, 53, 15, 0.22), rgba(10, 12, 14, 0.18)),
+    rgba(28, 22, 17, 0.42);
   padding: 8px 10px;
-  color: rgba(254, 243, 199, 0.92);
+  color: #f6d19c;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
   line-height: 1.35;
 }
 
 .tc-detail-blocker {
   margin-top: 12px;
+  border-radius: 6px;
+  border-color: rgba(196, 137, 63, 0.38);
+  background:
+    linear-gradient(180deg, rgba(120, 53, 15, 0.22), rgba(10, 12, 14, 0.18)),
+    rgba(28, 22, 17, 0.42);
+  color: #f6d19c;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .tc-job-site-status-ok {
@@ -2633,23 +2736,41 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.tc-detail-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 0.58fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.tc-detail-main-column,
+.tc-detail-side-column {
+  min-width: 0;
+}
+
+.tc-detail-section-sticky {
+  position: sticky;
+  top: 0.25rem;
+}
+
 .tc-job-site-condition-label,
 .tc-job-site-condition-value,
 .tc-maintenance-site-name,
 .tc-maintenance-site-state {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
   line-height: 1.3;
 }
 
 .tc-job-site-condition-label,
 .tc-maintenance-site-name {
-  color: rgba(191, 219, 254, 0.7);
+  color: #a99b82;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .tc-job-site-condition-value {
-  color: rgba(226, 232, 240, 0.84);
+  color: #d7c8a7;
 }
 
 .tc-maintenance-chip-row {
@@ -2665,31 +2786,38 @@ onUnmounted(() => {
 
 .tc-maintenance-site {
   padding: 10px 12px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.44);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.22);
 }
 
 .tc-maintenance-site-state {
-  color: rgba(226, 232, 240, 0.84);
+  color: #d7c8a7;
 }
 
 .tc-maintenance-bar-track {
-  height: 8px;
+  height: 0.55rem;
   margin-top: 8px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.66);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(7, 10, 12, 0.72);
+  border: 1px solid rgba(130, 88, 43, 0.34);
   overflow: hidden;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.58);
 }
 
 .tc-maintenance-bar-track-compact {
-  height: 6px;
+  height: 0.46rem;
 }
 
 .tc-maintenance-bar-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 2px;
   transition: width 0.35s ease;
 }
 
@@ -2731,83 +2859,116 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  background: rgba(2, 6, 23, 0.56);
-  backdrop-filter: blur(4px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 38%, rgba(50, 66, 47, 0.22), transparent 23rem),
+    radial-gradient(circle at 55% 115%, rgba(57, 80, 57, 0.14), transparent 28rem),
+    rgba(1, 5, 12, 0.76);
+  backdrop-filter: blur(4px) saturate(0.82) brightness(0.78);
 }
 
 .tc-detail-backdrop-standalone {
-  background: rgba(2, 6, 23, 0.68);
-  backdrop-filter: blur(4px);
+  background:
+    radial-gradient(circle at 20% 38%, rgba(50, 66, 47, 0.22), transparent 23rem),
+    radial-gradient(circle at 55% 115%, rgba(57, 80, 57, 0.14), transparent 28rem),
+    rgba(1, 5, 12, 0.84);
+  backdrop-filter: blur(4px) saturate(0.82) brightness(0.78);
 }
 
 .tc-detail-modal {
-  width: min(520px, calc(100vw - 32px));
-  max-height: min(82vh, calc(100vh - 32px));
-  overflow-y: auto;
-  border-radius: 28px;
-  padding: 20px;
+  position: relative;
+  box-sizing: border-box;
+  width: min(58rem, calc(100vw - 32px));
+  max-height: min(75vh, calc(100vh - 48px));
+  overflow: hidden;
+  padding: 1.55rem 1.65rem 1.35rem;
+  border: 20px solid transparent;
+  border-image: url('../assets/ui/settler-modal/panel-frame.png') 72 / 36px stretch;
   background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 34%),
-    radial-gradient(circle at 78% 12%, rgba(251, 191, 36, 0.1), transparent 24%),
-    linear-gradient(180deg, rgba(5, 10, 19, 0.995), rgba(12, 18, 33, 0.99));
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: 0 34px 80px rgba(2, 6, 23, 0.48);
+    radial-gradient(circle at 66% 0%, rgba(83, 57, 32, 0.2), transparent 24rem),
+    radial-gradient(circle at 15% 100%, rgba(47, 31, 20, 0.22), transparent 18rem),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #121619 0%, #0a0d10 100%);
+  color: #f3e4c9;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.66),
+    0 0 0 1px rgba(209, 145, 58, 0.34),
+    inset 0 0 70px rgba(0, 0, 0, 0.86);
+}
+
+
+.tc-detail-scroll {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.1rem 0.55rem 0 0;
+  scrollbar-color: rgba(198, 149, 73, 0.78) rgba(7, 10, 12, 0.48);
+  scrollbar-width: thin;
+}
+
+.tc-detail-scroll::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.tc-detail-scroll::-webkit-scrollbar-track {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 5px),
+    rgba(7, 10, 12, 0.58);
+  border-left: 1px solid rgba(130, 88, 43, 0.2);
+}
+
+.tc-detail-scroll::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(29, 18, 10, 0.9);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(223, 165, 70, 0.92), rgba(102, 65, 31, 0.9));
 }
 
 .tc-detail-header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 16px;
+  padding: 0.05rem 3.15rem 0.75rem 0;
 }
 
 .tc-detail-kicker {
   margin: 0;
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(125, 211, 252, 0.82);
+  color: #c69549;
 }
 
 .tc-detail-title {
-  margin: 8px 0 0;
-  font-size: 1.35rem;
+  margin: 0.34rem 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.55rem, 3vw, 2rem);
   font-weight: 700;
-  color: #f8fafc;
+  line-height: 1.1;
+  color: #fff1d4;
+  text-shadow: 0 2px 0 #090807, 0 0 10px rgba(216, 170, 83, 0.18);
 }
 
 .tc-detail-summary {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: rgba(226, 232, 240, 0.72);
-}
-
-.tc-detail-close {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.42);
-  color: rgba(248, 250, 252, 0.9);
-  font-size: 14px;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-
-.tc-detail-close:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(15, 23, 42, 0.62);
+  margin: 0.38rem 0 0;
+  max-width: 43rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: #d7c8a7;
 }
 
 .tc-detail-pill-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 0.75rem;
 }
 
 .tc-detail-action-row {
@@ -2822,10 +2983,13 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(248, 250, 252, 0.16);
-  background: rgba(37, 99, 235, 0.2);
-  color: #eff6ff;
+  border-radius: 6px;
+  border: 1px solid rgba(198, 149, 73, 0.38);
+  background:
+    linear-gradient(180deg, rgba(118, 78, 34, 0.78), rgba(65, 39, 19, 0.82)),
+    rgba(18, 15, 12, 0.82);
+  color: #fff0d2;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
@@ -2834,18 +2998,23 @@ onUnmounted(() => {
 
 .tc-detail-toggle:hover {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.36);
-  background: rgba(37, 99, 235, 0.28);
+  border-color: rgba(223, 165, 70, 0.62);
+  background:
+    linear-gradient(180deg, rgba(151, 99, 39, 0.86), rgba(77, 45, 20, 0.88)),
+    rgba(18, 15, 12, 0.82);
 }
 
 .tc-detail-toggle-off {
-  background: rgba(245, 158, 11, 0.16);
+  background:
+    linear-gradient(180deg, rgba(120, 53, 15, 0.44), rgba(10, 12, 14, 0.34)),
+    rgba(28, 22, 17, 0.52);
   color: #fef3c7;
 }
 
 .tc-detail-action-copy {
   margin: 0;
-  color: rgba(226, 232, 240, 0.78);
+  color: #cdbb98;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 0.82rem;
 }
 
@@ -2853,13 +3022,17 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.52);
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.36);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 226, 161, 0.052), transparent 7rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 8px),
+    rgba(10, 12, 14, 0.46);
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(226, 232, 240, 0.78);
+  color: #d7c8a7;
 }
 
 .tc-detail-pill-ok {
@@ -2884,26 +3057,36 @@ onUnmounted(() => {
 .tc-detail-card,
 .tc-detail-flow-card {
   padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 226, 161, 0.052), transparent 7rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 8px),
+    linear-gradient(180deg, rgba(23, 25, 26, 0.62), rgba(9, 11, 13, 0.46));
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.28),
+    0 1px 0 rgba(255, 226, 161, 0.035);
 }
 
 .tc-detail-card-label,
 .tc-detail-flow-title,
 .tc-detail-section-title {
   margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
-  letter-spacing: 0.16em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(191, 219, 254, 0.62);
+  color: #c69549;
 }
 
 .tc-detail-card-value {
   margin-top: 8px;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 1rem;
   font-weight: 700;
-  color: #f8fafc;
+  color: #fff0d2;
+  text-shadow: 0 1px 0 #070707;
 }
 
 .tc-detail-card-copy,
@@ -2916,15 +3099,18 @@ onUnmounted(() => {
 
 .tc-detail-card-copy,
 .tc-detail-flow-copy {
-  color: rgba(226, 232, 240, 0.8);
+  color: #d7c8a7;
 }
 
 .tc-detail-flow-note {
-  color: rgba(148, 163, 184, 0.72);
+  color: #a99b82;
 }
 
 .tc-detail-section {
-  margin-top: 16px;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(130, 88, 43, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 226, 161, 0.035);
 }
 
 .tc-detail-flow-grid {
@@ -2932,6 +3118,72 @@ onUnmounted(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
+}
+
+.tc-house-lists {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tc-house-good-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tc-house-good-row {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.05), transparent 8rem),
+    rgba(10, 12, 14, 0.36);
+}
+
+.tc-house-good-row-empty {
+  opacity: 0.62;
+}
+
+.tc-house-good-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(198, 149, 73, 0.26);
+  font-size: 17px;
+}
+
+.tc-house-good-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.tc-house-good-title {
+  color: #fff0d2;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tc-house-good-effect {
+  color: #d7c8a7;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tc-house-good-note {
+  color: #a99b82;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .tc-study-picker {
@@ -2943,9 +3195,12 @@ onUnmounted(() => {
 .tc-study-option {
   width: 100%;
   padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.46);
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
   text-align: left;
   cursor: pointer;
   transition: transform .15s ease, border-color .15s ease, background .15s ease;
@@ -2953,8 +3208,11 @@ onUnmounted(() => {
 
 .tc-study-option:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.34);
-  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(223, 165, 70, 0.44);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.065), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 7px),
+    rgba(28, 22, 17, 0.48);
 }
 
 .tc-study-option:disabled {
@@ -2962,8 +3220,10 @@ onUnmounted(() => {
 }
 
 .tc-study-option-active {
-  border-color: rgba(134, 239, 172, 0.24);
-  background: rgba(22, 101, 52, 0.18);
+  border-color: rgba(158, 230, 168, 0.34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(158, 230, 168, 0.08), transparent 8rem),
+    rgba(22, 101, 52, 0.18);
 }
 
 .tc-study-option-complete {
@@ -2985,10 +3245,14 @@ onUnmounted(() => {
 
 .tc-detail-condition-card {
   padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
+  border: 1px solid rgba(130, 88, 43, 0.3);
   margin-top: 10px;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.22);
 }
 
 .tc-detail-order-list {
@@ -3000,9 +3264,13 @@ onUnmounted(() => {
 
 .tc-detail-order-card {
   padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.22);
 }
 
 .tc-detail-order-top {
@@ -3014,16 +3282,17 @@ onUnmounted(() => {
 
 .tc-detail-order-title {
   margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 13px;
   font-weight: 700;
-  color: #f8fafc;
+  color: #fff0d2;
 }
 
 .tc-detail-order-copy {
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.45;
-  color: rgba(226, 232, 240, 0.78);
+  color: #d7c8a7;
 }
 
 .tc-detail-order-note {
@@ -3035,32 +3304,7 @@ onUnmounted(() => {
 
 .tc-detail-order-button {
   flex-shrink: 0;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(125, 211, 252, 0.28);
-  background: rgba(37, 99, 235, 0.22);
-  color: #eff6ff;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform .15s ease, border-color .15s ease, background .15s ease;
-}
-
-.tc-detail-order-button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.4);
-  background: rgba(37, 99, 235, 0.3);
-}
-
-.tc-detail-order-button-disabled,
-.tc-detail-order-button:disabled {
-  cursor: default;
-  opacity: 0.7;
-  transform: none;
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(51, 65, 85, 0.4);
-  color: rgba(226, 232, 240, 0.72);
+  min-width: 6.6rem;
 }
 
 .tc-detail-chip-row {
@@ -3072,11 +3316,14 @@ onUnmounted(() => {
 
 .tc-detail-chip {
   padding: 7px 10px;
-  border-radius: 999px;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.46);
+  border: 1px solid rgba(130, 88, 43, 0.32);
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
-  color: rgba(226, 232, 240, 0.84);
+  color: #d7c8a7;
 }
 
 .tc-detail-chip-alert {
@@ -3113,9 +3360,12 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.3);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.045), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.34);
   cursor: pointer;
   text-align: left;
   transition: transform .15s ease, border-color .15s ease, background .15s ease;
@@ -3124,8 +3374,11 @@ onUnmounted(() => {
 .tc-worker-row:hover,
 .tc-worker-row:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.32);
-  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(223, 165, 70, 0.44);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 226, 161, 0.065), transparent 8rem),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 7px),
+    rgba(28, 22, 17, 0.48);
   outline: none;
 }
 
@@ -3136,14 +3389,16 @@ onUnmounted(() => {
 }
 
 .tc-worker-name {
-  color: #f8fafc;
+  color: #fff0d2;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 13px;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .tc-worker-meta {
-  color: rgba(148, 163, 184, 0.78);
+  color: #a99b82;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -3153,10 +3408,13 @@ onUnmounted(() => {
   flex-shrink: 0;
   min-width: 44px;
   padding: 6px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  background: rgba(56, 189, 248, 0.12);
-  color: rgba(186, 230, 253, 0.92);
+  border-radius: 6px;
+  border: 1px solid rgba(130, 88, 43, 0.32);
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    rgba(10, 12, 14, 0.46);
+  color: #d7c8a7;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 10px;
   font-weight: 700;
   text-align: center;
@@ -3167,6 +3425,11 @@ onUnmounted(() => {
 }
 
 @media (max-width: 760px) {
+  .tc-overlay,
+  .tc-detail-backdrop {
+    padding: 0;
+  }
+
   .tc-tab-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3180,10 +3443,8 @@ onUnmounted(() => {
   }
 
   .tc-header-emblem {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    font-size: 23px;
+    width: 2.85rem;
+    height: 4.6rem;
   }
 
   .tc-tab-button {
@@ -3198,26 +3459,39 @@ onUnmounted(() => {
   .tc-stat-grid-4,
   .tc-detail-grid,
   .tc-detail-flow-grid,
+  .tc-detail-dashboard,
+  .tc-house-lists,
   .tc-job-list {
     grid-template-columns: 1fr;
   }
 
+  .tc-detail-section-sticky {
+    position: static;
+  }
+
   .tc-panel {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
-    padding: 18px;
-    display: block;
+    --tc-panel-padding-top: 1.55rem;
+    --tc-panel-padding-x: 1rem;
+    --tc-panel-padding-bottom: 1rem;
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
+    display: grid;
   }
 
   .tc-section {
-    margin-top: 16px;
+    margin-top: 0;
   }
 
   .tc-detail-modal {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
-    padding: 18px;
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 1.55rem 1rem 1rem;
   }
+
 }
 
 /* Pulse animation for danger state */

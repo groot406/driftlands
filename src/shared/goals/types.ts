@@ -48,7 +48,7 @@ export interface DialogueSpeakerSnapshot {
 export interface DialogueEntrySnapshot {
   id: string;
   chapterNumber: number;
-  kind: 'chapter_intro' | 'chapter_complete' | 'unlock' | 'advice' | 'chapter_catchup';
+  kind: 'chapter_intro' | 'chapter_complete' | 'unlock' | 'advice' | 'chapter_catchup' | 'side_quest';
   speaker: DialogueSpeakerSnapshot;
   text: string;
   createdAt: number;

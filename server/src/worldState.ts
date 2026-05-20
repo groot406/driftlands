@@ -53,10 +53,18 @@ import {
 import { playerSettlementState } from './state/playerSettlementState';
 import { marketState } from './state/marketState';
 import type { MarketOverviewSnapshot } from '../../src/shared/game/market';
+import { shipOrderState } from './state/shipOrderState';
+import type { ShipOrderOverviewSnapshot } from '../../src/shared/game/shipOrders';
 
-const STARTING_FOOD = 12;
+const STARTING_BREAD = 4;
+const STARTING_FISH = 4;
+const STARTING_MEAT = 4;
 const SETTLEMENT_START_REVEAL_RADIUS = 3;
-const SETTLEMENT_STARTER_RESOURCES: ResourceAmount[] = [{ type: 'food', amount: STARTING_FOOD }];
+const SETTLEMENT_STARTER_RESOURCES: ResourceAmount[] = [
+  { type: 'bread', amount: STARTING_BREAD },
+  { type: 'fish', amount: STARTING_FISH },
+  { type: 'meat', amount: STARTING_MEAT },
+];
 const SETTLEMENT_STARTER_HERO_TEMPLATES: StoryHeroId[] = ['h2', 'h5', 'h3', 'h4', 'h1'];
 const MAX_UINT32 = 0xffffffff;
 const SETTLEMENT_STARTER_HERO_COUNT = 2;
@@ -120,10 +128,9 @@ function serializeTile(tile: Tile): Tile {
     conditionState: tile.conditionState ?? null,
     lastConditionUpdateMs: tile.lastConditionUpdateMs ?? null,
     modifier: tile.modifier ?? null,
-    modifierRevealed: tile.modifierRevealed ?? false,
-    surveyed: tile.surveyed ?? false,
+    modifierRevealed: !!tile.modifier,
     special: tile.special ?? null,
-    specialRevealed: tile.specialRevealed ?? false,
+    specialRevealed: !!tile.special,
     specialActivated: tile.specialActivated ?? false,
     conditionStabilizedUntilMs: tile.conditionStabilizedUntilMs ?? null,
     nextProductionBoostMultiplier: tile.nextProductionBoostMultiplier ?? null,
@@ -147,6 +154,8 @@ function serializeTile(tile: Tile): Tile {
     towerDefenderCasualtyProgress: tile.towerDefenderCasualtyProgress ?? null,
     barracksTrainingQueue: tile.barracksTrainingQueue ?? null,
     barracksTrainingProgressMs: tile.barracksTrainingProgressMs ?? null,
+    houseGoods: tile.houseGoods ? { ...tile.houseGoods } : undefined,
+    houseGoodsConsumedAtMs: tile.houseGoodsConsumedAtMs ?? null,
   };
 }
 
@@ -219,6 +228,7 @@ function serializeSettler(settler: Settler): Settler {
   return {
     id: settler.id,
     nameSeed: settler.nameSeed,
+    gender: settler.gender,
     q: settler.q,
     r: settler.r,
     facing: settler.facing,
@@ -277,6 +287,7 @@ class WorldState {
     resetMineReserveState();
     resetCalamitySystem();
     marketState.reset();
+    shipOrderState.reset();
     loadTasks([]);
     loadHeroes([]);
     loadSettlers([]);
@@ -454,7 +465,7 @@ class WorldState {
     return result;
   }
 
-  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, settlementResources: ReturnType<typeof listSettlementResourceSnapshots>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot, market: MarketOverviewSnapshot } {
+  getSnapshot(): { tiles: Tile[], heroes: Hero[], settlers: Settler[], tasks: TaskInstance[], resources: Partial<Record<ResourceType, number>>, settlementResources: ReturnType<typeof listSettlementResourceSnapshots>, storages: StorageSnapshot[], population: PopulationSnapshot, jobs: WorkforceSnapshot, studies: StudyStateSnapshot, market: MarketOverviewSnapshot, shipOrders: ShipOrderOverviewSnapshot } {
     const resources: Partial<Record<ResourceType, number>> = {};
     for (const [k, v] of Object.entries(resourceInventory)) {
       (resources as any)[k] = v as number;
@@ -467,6 +478,7 @@ class WorldState {
     const studies = getStudySnapshot();
     const settlers = getSettlerSnapshot();
     const market = marketState.getOverview();
+    const shipOrders = shipOrderState.getOverview();
 
     for (const tile of tiles) {
       ensureTownCenterMilitaryState(tile);
@@ -486,6 +498,7 @@ class WorldState {
       jobs,
       studies,
       market,
+      shipOrders,
     };
   }
 }

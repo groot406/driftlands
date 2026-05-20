@@ -32,9 +32,9 @@ export interface HeroScoutResourceIntent {
     resourceType: ScoutTargetType;
     playerId?: string;
     playerName?: string;
-    surveyTileId?: string;
-    surveyStartedAt?: number;
-    surveyDurationMs?: number;
+    scanTileId?: string;
+    scanStartedAt?: number;
+    scanDurationMs?: number;
 }
 
 export interface Hero {

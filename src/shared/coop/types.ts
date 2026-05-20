@@ -5,7 +5,6 @@ export interface CoopPlayerSnapshot {
   name: string;
   color?: string;
   settlementId?: string | null;
-  ready: boolean;
   connectedAt: number;
   claimedHeroIds: string[];
 }
@@ -13,7 +12,6 @@ export interface CoopPlayerSnapshot {
 export interface CoopStateSnapshot {
   players: CoopPlayerSnapshot[];
   onlineCount: number;
-  readyCount: number;
 }
 
 export interface CoopPingSnapshot {

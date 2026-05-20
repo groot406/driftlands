@@ -35,8 +35,10 @@ import type {ResourceType} from "./types/Resource.ts";
 import type {TaskInstance} from "./types/Task.ts";
 import {getDecorativeSelectionForTile} from './tileVisuals';
 import {
+    getEffectiveCanvasDpr,
     getEffectiveParticleBudget,
     graphicsStore,
+    shouldUseDesynchronizedCanvas,
     shouldUseParticleGlowPass,
 } from '../store/graphicsStore';
 import { updateRenderDebugState } from '../store/renderDebugStore';
@@ -47,7 +49,7 @@ import { canUseWarehouseAtTile, getStorageKindForTile } from '../shared/building
 import { formatStorageAmount, getStorageCapacity } from '../shared/game/storage';
 import { getDistanceToNearestTowncenter } from '../shared/game/worldQueries';
 import { isRenderableExplorationTile } from '../shared/game/explorationFrontier';
-import { getScoutSurveyProgress, isHeroSurveyingScoutResource } from '../shared/game/scoutResources';
+import { getScoutScanProgress, isHeroScanningScoutResource } from '../shared/game/scoutResources';
 import {
     consumePendingCameraNudges,
     consumePendingTerrainBursts,
@@ -365,6 +367,8 @@ interface RoadBranch {
 interface RenderStressState {
     tier: 0 | 1 | 2;
     smoothedFrameMs: number;
+    smoothedDrawIntervalMs: number;
+    lastDrawPerfMs: number;
 }
 
 const DEFAULT_CAMERA_COMPOSITE_STATE: CameraCompositeState = {
@@ -499,6 +503,8 @@ export class HexMapService {
     private _renderStress: RenderStressState = {
         tier: 0,
         smoothedFrameMs: 5.5,
+        smoothedDrawIntervalMs: 1000 / 60,
+        lastDrawPerfMs: 0,
     };
     private _storageIndicatorAlphaByTileId = new Map<string, number>();
     private _tileColorVariantCache = new Map<string, HTMLCanvasElement>();
@@ -602,6 +608,8 @@ export class HexMapService {
         this._renderStress = {
             tier: 0,
             smoothedFrameMs: 5.5,
+            smoothedDrawIntervalMs: 1000 / 60,
+            lastDrawPerfMs: 0,
         };
         this.resetCameraCompositeState();
         this._currentRenderQuality = { ...DEFAULT_RENDER_QUALITY };
@@ -648,7 +656,7 @@ export class HexMapService {
 
     resize() {
         if (!this._canvas || !this._container) return;
-        this._mapViewport.syncFromContainer(this._container, 1);
+        this._mapViewport.syncFromContainer(this._container, getEffectiveCanvasDpr());
         this._dpr = this._mapViewport.dpr;
         this._mapViewport.applyToCanvas(this._canvas);
         this._ctx = this.get2dContext(this._canvas);
@@ -725,7 +733,7 @@ export class HexMapService {
             strength: number;
         } | null;
         const renderCostMs = performance.now() - renderStartMs;
-        this.recordRenderStress(renderCostMs);
+        this.recordRenderStress(renderCostMs, frame.perfNowMs);
         this.publishRenderDebugInfo(frame, passContext, motionBlur);
     }
 
@@ -911,7 +919,7 @@ export class HexMapService {
     private get2dContext(canvas: HTMLCanvasElement) {
         return canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true,
+            desynchronized: shouldUseDesynchronizedCanvas(),
         }) ?? canvas.getContext('2d');
     }
 
@@ -1301,11 +1309,25 @@ export class HexMapService {
         const particlesEnabled = frame.quality.enableParticles;
         const birdAmbientEnabled = particlesEnabled && this.areBirdAmbientParticlesEnabled();
         const particleCounts = this.getParticleDebugCounts();
+        const canvasBackingWidth = this._canvas?.width ?? 0;
+        const canvasBackingHeight = this._canvas?.height ?? 0;
+        const canvasCssWidth = canvasBackingWidth > 0 ? Math.round(canvasBackingWidth / this._dpr) : frame.viewport.width;
+        const canvasCssHeight = canvasBackingHeight > 0 ? Math.round(canvasBackingHeight / this._dpr) : frame.viewport.height;
         updateRenderDebugState({
             stressTier: frame.stressTier,
             qualityLabel: getRenderDebugLabelForQuality(frame.quality.name),
             qualityProfileName: frame.quality.name,
             smoothedFrameMs: Number(this._renderStress.smoothedFrameMs.toFixed(1)),
+            smoothedDrawIntervalMs: Number(this._renderStress.smoothedDrawIntervalMs.toFixed(1)),
+            viewportWidth: Math.round(frame.viewport.width),
+            viewportHeight: Math.round(frame.viewport.height),
+            viewportDpr: Number(frame.viewport.dpr.toFixed(2)),
+            windowDpr: typeof window !== 'undefined' ? Number(window.devicePixelRatio.toFixed(2)) : 1,
+            canvasBackingWidth,
+            canvasBackingHeight,
+            canvasCssWidth,
+            canvasCssHeight,
+            canvasMegapixels: Number(((canvasBackingWidth * canvasBackingHeight) / 1_000_000).toFixed(2)),
             visibleTileCount: frame.visibleTiles.length,
             discoveredVisibleCount: frame.visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0),
             worldRenderVersion: getWorldRenderVersion(),
@@ -1482,25 +1504,36 @@ export class HexMapService {
         return this.computeFade(dist, camera.innerRadius, camera.radius);
     }
 
-    private recordRenderStress(renderCostMs: number) {
+    private recordRenderStress(renderCostMs: number, drawPerfMs: number) {
         const bounded = Math.max(0.5, Math.min(40, renderCostMs));
         this._renderStress.smoothedFrameMs += (bounded - this._renderStress.smoothedFrameMs) * 0.18;
+
+        if (this._renderStress.lastDrawPerfMs > 0) {
+            const interval = Math.max(1, Math.min(250, drawPerfMs - this._renderStress.lastDrawPerfMs));
+            this._renderStress.smoothedDrawIntervalMs += (interval - this._renderStress.smoothedDrawIntervalMs) * 0.22;
+        }
+        this._renderStress.lastDrawPerfMs = drawPerfMs;
     }
 
     private updateRenderStress(visibleTileCount: number, discoveredVisibleCount: number) {
         const smoothedFrameMs = this._renderStress.smoothedFrameMs;
+        const smoothedDrawIntervalMs = this._renderStress.smoothedDrawIntervalMs;
         const mediumDensity = discoveredVisibleCount >= 420 || visibleTileCount >= 1400;
         const highDensity = discoveredVisibleCount >= 620 || visibleTileCount >= 1850;
         const extremeDensity = discoveredVisibleCount >= 820 || visibleTileCount >= 2350;
 
         if (this._renderStress.tier === 0) {
             if (
-                smoothedFrameMs >= 13
+                smoothedDrawIntervalMs >= 80
+                || (smoothedDrawIntervalMs >= 58 && highDensity)
+                || smoothedFrameMs >= 13
                 || (smoothedFrameMs >= 10.5 && extremeDensity)
             ) {
                 this._renderStress.tier = 2;
             } else if (
-                smoothedFrameMs >= 8
+                smoothedDrawIntervalMs >= 42
+                || (smoothedDrawIntervalMs >= 34 && mediumDensity)
+                || smoothedFrameMs >= 8
                 || (smoothedFrameMs >= 6 && highDensity)
                 || (smoothedFrameMs >= 5.5 && extremeDensity)
             ) {
@@ -1508,20 +1541,25 @@ export class HexMapService {
             }
         } else if (this._renderStress.tier === 1) {
             if (
-                smoothedFrameMs >= 14
+                smoothedDrawIntervalMs >= 90
+                || (smoothedDrawIntervalMs >= 62 && highDensity)
+                || smoothedFrameMs >= 14
                 || (smoothedFrameMs >= 11.5 && highDensity)
             ) {
                 this._renderStress.tier = 2;
             } else if (
-                smoothedFrameMs <= 5
-                || (smoothedFrameMs <= 5.4 && !mediumDensity)
+                smoothedDrawIntervalMs <= 24
+                && (
+                    smoothedFrameMs <= 5
+                    || (smoothedFrameMs <= 5.4 && !mediumDensity)
+                )
             ) {
                 this._renderStress.tier = 0;
             }
         } else {
-            if (!highDensity && smoothedFrameMs <= 9.5) {
+            if (smoothedDrawIntervalMs <= 30 && !highDensity && smoothedFrameMs <= 9.5) {
                 this._renderStress.tier = mediumDensity ? 1 : 0;
-            } else if (smoothedFrameMs <= 7.5) {
+            } else if (smoothedDrawIntervalMs <= 24 && smoothedFrameMs <= 7.5) {
                 this._renderStress.tier = mediumDensity ? 1 : 0;
             }
         }
@@ -2804,7 +2842,7 @@ export class HexMapService {
 
             // active task highlight overlay (after drawing base tile)
             const activeTasksForTile = suppressWorldUi ? null : taskStore.tasksByTile[t.id];
-            const scoutSurveyProgress = suppressWorldUi ? null : this.getScoutSurveyProgressForTile(t, now);
+            const scoutScanProgress = suppressWorldUi ? null : this.getScoutScanProgressForTile(t, now);
             if (activeTasksForTile) {
                 // If any active task instances are still incomplete, draw a subtle pulsating border
                 let chosenTask: TaskInstance | null = null; // for progress bar
@@ -2843,21 +2881,21 @@ export class HexMapService {
                     }
                 }
             }
-            if (!activeTasksForTile && scoutSurveyProgress !== null) {
+            if (!activeTasksForTile && scoutScanProgress !== null) {
                 const pulse = (Math.sin(now / 400) + 1) / 2;
                 this.drawHexHighlight(ctx, t.q, t.r, null, 'rgba(148, 163, 184, 0.86)', opacity * (0.42 + 0.28 * pulse));
                 if (opacity > 0.05) {
-                    this.drawProgressBar(ctx, t, scoutSurveyProgress, 'rgba(148,163,184,0.86)', opacity);
+                    this.drawProgressBar(ctx, t, scoutScanProgress, 'rgba(148,163,184,0.86)', opacity);
                 }
             }
         }
     }
 
-    private getScoutSurveyProgressForTile(tile: Tile, now: number) {
+    private getScoutScanProgressForTile(tile: Tile, now: number) {
         let bestProgress: number | null = null;
 
         for (const hero of heroes) {
-            const progress = getScoutSurveyProgress(hero, tile.id, now);
+            const progress = getScoutScanProgress(hero, tile.id, now);
             if (progress === null) {
                 continue;
             }
@@ -5910,7 +5948,7 @@ export class HexMapService {
             if (!h.movement && h.currentTaskId) {
                 const inst = taskStore.taskIndex[h.currentTaskId];
                 if (isHeroWorkingTask(h, inst)) activity = 'attack';
-            } else if (!h.movement && isHeroSurveyingScoutResource(h, now)) {
+            } else if (!h.movement && isHeroScanningScoutResource(h, now)) {
                 activity = 'attack';
             }
             const animName = heroAnimName(activity, h.facing);
@@ -6050,7 +6088,7 @@ export class HexMapService {
         stone: '🪨',
         tools: '🛠️',
         weapons: '🗡️',
-        food: '🥣',
+        food: '🍽️',
         fish: '🐟',
         bread: '🍞',
         meat: '🍖',
@@ -6369,7 +6407,7 @@ export class HexMapService {
             const inst = taskStore.taskIndex[hero.currentTaskId];
             if (isHeroWorkingTask(hero, inst)) return false;
         }
-        if (isHeroSurveyingScoutResource(hero, now)) return false;
+        if (isHeroScanningScoutResource(hero, now)) return false;
         return true;
     }
 

@@ -7,6 +7,7 @@ import { canStartTaskDefinition } from './taskAvailability.ts';
 import type { Hero } from '../../core/types/Hero.ts';
 import type { Tile } from '../../core/types/Tile.ts';
 import { getBuildingDefinitionByKey, resolveBuildingJobResources } from '../buildings/registry.ts';
+import { getHouseComfortHappinessForTile, getHouseGoodCapacityForTile } from '../buildings/state.ts';
 import { getUpgradeDefinitionByKey } from '../buildings/upgrades.ts';
 import { resetStudyState } from '../../store/studyStore.ts';
 import {
@@ -14,6 +15,8 @@ import {
   getTileProductionBoostInputReduction,
   getTileProductionBoostMultiplier,
 } from '../game/tileFeatures.ts';
+import { hasLargeWaterBodyAdjacent } from '../game/harbor.ts';
+import { resolveWorldTile } from '../../core/worldGeneration.ts';
 
 const hero: Hero = {
   id: 'h-test',
@@ -69,6 +72,12 @@ test('clearRocks clears dirt and snow rock variants back to base terrain', () =>
   assert.equal(canStartTaskDefinition(def, dirtRocks, hero), true);
   assert.equal(canStartTaskDefinition(def, snowRocks, hero), true);
   assert.equal(canStartTaskDefinition(def, bareSnow, hero), false);
+  assert.deepEqual(def.getSoundOnStart?.(snowRocks, [hero]), {
+    soundPath: 'mining.mp3',
+    baseVolume: 0.8,
+    maxDistance: 12,
+    loop: true,
+  });
 
   def.onComplete?.(snowRocks, {
     id: 'clear-snow-rocks',
@@ -85,37 +94,6 @@ test('clearRocks clears dirt and snow rock variants back to base terrain', () =>
   assert.equal(snowRocks.terrain, 'snow');
   assert.equal(snowRocks.variant, null);
   assert.equal(snowRocks.isBaseTile, true);
-});
-
-test('surveyTile reveals hidden modifiers and special markers once', () => {
-  const def = getTaskDefinition('surveyTile');
-  assert.ok(def);
-
-  const target = tile({
-    modifier: 'rich_soil',
-    modifierRevealed: false,
-    special: 'fertile_basin',
-    specialRevealed: false,
-    surveyed: false,
-  });
-
-  assert.equal(canStartTaskDefinition(def, target, hero), true);
-  def.onComplete?.(target, {
-    id: 'survey',
-    type: 'surveyTile',
-    tileId: target.id,
-    progressXp: 0,
-    requiredXp: 1,
-    createdMs: 0,
-    lastUpdateMs: 0,
-    participants: {},
-    active: true,
-  }, [hero]);
-
-  assert.equal(target.surveyed, true);
-  assert.equal(target.modifierRevealed, true);
-  assert.equal(target.specialRevealed, true);
-  assert.equal(canStartTaskDefinition(def, target, hero), false);
 });
 
 test('activateRuins is one-time and requires revealed ancient ruins', () => {
@@ -199,7 +177,7 @@ test('apiary builds beside active forage and scales with nearby forest or grain'
   assert.equal(canStartTaskDefinition(buildApiary, inactiveForage, hero), false);
 
   const resources = resolveBuildingJobResources(apiary, apiaryTile, 1);
-  assert.deepEqual(resources.produces, [{ type: 'food', amount: 2 }]);
+  assert.deepEqual(resources.produces, [{ type: 'bread', amount: 2 }]);
 
   buildApiary.onComplete?.(apiaryTile, {
     id: 'apiary',
@@ -215,12 +193,66 @@ test('apiary builds beside active forage and scales with nearby forest or grain'
   assert.equal(apiaryTile.variant, 'plains_apiary');
 });
 
+test('harbor requires a large generated water body beside controlled shore', () => {
+  const buildHarbor = getTaskDefinition('buildHarbor');
+  assert.ok(buildHarbor);
+
+  let shore: Tile | null = null;
+  for (let q = -40; q <= 40 && !shore; q++) {
+    for (let r = -40; r <= 40; r++) {
+      const generated = resolveWorldTile(q, r);
+      if ((generated.terrain === 'plains' || generated.terrain === 'dirt') && hasLargeWaterBodyAdjacent({ q, r })) {
+        shore = tile({
+          id: `${q},${r}`,
+          q,
+          r,
+          terrain: generated.terrain,
+          controlledBySettlementId: '0,0',
+          ownerSettlementId: '0,0',
+        });
+        break;
+      }
+    }
+  }
+
+  assert.ok(shore, 'expected deterministic world generation to include a large-water shore');
+  assert.equal(canStartTaskDefinition(buildHarbor, shore, hero), true);
+  assert.equal(canStartTaskDefinition(buildHarbor, tile({
+    terrain: 'plains',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+  }), hero), false);
+
+  buildHarbor.onComplete?.(shore, {
+    id: 'harbor',
+    type: 'buildHarbor',
+    tileId: shore.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+  assert.match(shore.variant ?? '', /_harbor$/);
+});
+
 test('glass house upgrade raises house beds to six', () => {
   const upgrade = getUpgradeDefinitionByKey('glass_house_upgrade');
   assert.ok(upgrade);
 
   assert.equal(upgrade.resolveToVariant(tile({ variant: 'plains_stone_house' })), 'plains_glass_house');
-  assert.deepEqual(upgrade.effects, [{ kind: 'house_beds_total', value: 6 }]);
+  assert.deepEqual(upgrade.effects, [
+    { kind: 'house_beds_total', value: 6 },
+    { kind: 'house_goods_capacity', value: 4 },
+    { kind: 'house_comfort_happiness', value: 4 },
+  ]);
+  assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_house' })), 1);
+  assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_house' })), 0);
+  assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_stone_house' })), 2);
+  assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_stone_house' })), 2);
+  assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_glass_house' })), 4);
+  assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_glass_house' })), 4);
 });
 
 test('production boosts can last multiple cycles and reduce boosted inputs', () => {

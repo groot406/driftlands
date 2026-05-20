@@ -15,6 +15,10 @@
       <strong>{{ renderDebugState.smoothedFrameMs }}ms</strong>
     </div>
     <div class="fps-row">
+      <span>Cadence</span>
+      <strong>{{ renderDebugState.smoothedDrawIntervalMs }}ms</strong>
+    </div>
+    <div class="fps-row">
       <span>Tiles</span>
       <strong>{{ renderDebugState.discoveredVisibleCount }}/{{ renderDebugState.visibleTileCount }}</strong>
     </div>
@@ -50,6 +54,50 @@
       <span>Passes</span>
       <strong>{{ passTimingSummary }}</strong>
     </div>
+    <div class="debug-section">
+      <div class="debug-section-title">Surface</div>
+      <div class="fps-row">
+        <span>Canvas</span>
+        <strong :title="surfaceTitle">{{ surfaceSummary }}</strong>
+      </div>
+      <div class="fps-row">
+        <span>DPR</span>
+        <strong>{{ renderDebugState.viewportDpr }} / win {{ renderDebugState.windowDpr }}</strong>
+      </div>
+      <div class="fps-row">
+        <span>Modes</span>
+        <strong :title="modeTitle">{{ modeSummary }}</strong>
+      </div>
+      <div class="technique-grid">
+        <button
+          v-for="technique in techniques"
+          :key="technique.key"
+          type="button"
+          class="feature-pill technique-pill"
+          :class="{ on: technique.active, off: !technique.active, manual: technique.mode !== 'auto' }"
+          :title="technique.title"
+          @click="toggleTechnique(technique.key)"
+        >
+          <span>{{ technique.label }}</span>
+          <span class="feature-mode">{{ technique.mode }}</span>
+        </button>
+      </div>
+    </div>
+    <div class="debug-section">
+      <div class="debug-section-title">Browser/GPU</div>
+      <div class="fps-row">
+        <span>Platform</span>
+        <strong :title="runtimeInfo.userAgent">{{ runtimeInfo.platformSummary }}</strong>
+      </div>
+      <div class="fps-row">
+        <span>GPU</span>
+        <strong :title="runtimeInfo.webglRenderer">{{ runtimeInfo.gpuSummary }}</strong>
+      </div>
+      <div class="fps-row">
+        <span>WebGL</span>
+        <strong :title="runtimeInfo.webglVersion">{{ runtimeInfo.webglSummary }}</strong>
+      </div>
+    </div>
     <div class="feature-grid">
       <button
         v-for="feature in features"
@@ -75,11 +123,108 @@ import {
   renderFeatureOverrideStore,
   type RenderFeatureKey,
 } from '../store/renderFeatureStore';
+import {
+  cycleGraphicsDiagnosticOverride,
+  graphicsDiagnosticOverrideStore,
+  type GraphicsDiagnosticTechniqueKey,
+  shouldUseBrowserLightRendering,
+  shouldUseDesynchronizedCanvas,
+  shouldUseWindowsRescueTimer,
+  shouldUseWindowsPresentationSafeMode,
+} from '../store/graphicsStore';
 
 const fps = ref(0);
 const frameCount = ref(0);
 let lastTime = performance.now();
 let animationId: number | null = null;
+
+function shorten(value: string, maxLength = 38) {
+  if (!value) return 'unknown';
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function getBrowserName(userAgent: string) {
+  if (/Firefox|FxiOS/i.test(userAgent)) return 'Firefox';
+  if (/Edg\//i.test(userAgent)) return 'Edge';
+  if (/OPR\//i.test(userAgent)) return 'Opera';
+  if (/Chrome|Chromium|CriOS/i.test(userAgent)) return 'Chrome';
+  if (/Safari/i.test(userAgent)) return 'Safari';
+  return 'Browser';
+}
+
+function getPlatformName() {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const uaDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform;
+  return uaDataPlatform ?? navigator.platform ?? 'unknown';
+}
+
+function probeWebGLInfo() {
+  if (typeof document === 'undefined') {
+    return {
+      api: 'none',
+      vendor: 'unknown',
+      renderer: 'unavailable',
+      version: 'unknown',
+      maxTextureSize: 0,
+      hardwareAccelerated: null as boolean | null,
+    };
+  }
+
+  const canvas = document.createElement('canvas');
+  const gl = (
+    canvas.getContext('webgl2', { powerPreference: 'high-performance' })
+    ?? canvas.getContext('webgl', { powerPreference: 'high-performance' })
+    ?? canvas.getContext('experimental-webgl', { powerPreference: 'high-performance' })
+  ) as WebGLRenderingContext | WebGL2RenderingContext | null;
+
+  if (!gl) {
+    return {
+      api: 'none',
+      vendor: 'unknown',
+      renderer: 'unavailable',
+      version: 'unknown',
+      maxTextureSize: 0,
+      hardwareAccelerated: null as boolean | null,
+    };
+  }
+
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info') as WEBGL_debug_renderer_info | null;
+  const vendor = String(debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR));
+  const renderer = String(debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  const version = String(gl.getParameter(gl.VERSION));
+  const softwareRenderer = /swiftshader|software|llvmpipe|microsoft basic|mesa offscreen/i.test(renderer);
+
+  return {
+    api: typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext ? 'WebGL2' : 'WebGL1',
+    vendor,
+    renderer,
+    version,
+    maxTextureSize: Number(gl.getParameter(gl.MAX_TEXTURE_SIZE) ?? 0),
+    hardwareAccelerated: renderer ? !softwareRenderer : null,
+  };
+}
+
+function collectRuntimeInfo() {
+  const userAgent = typeof navigator === 'undefined' ? 'unknown' : navigator.userAgent;
+  const platform = getPlatformName();
+  const webgl = probeWebGLInfo();
+  const deviceMemory = typeof navigator === 'undefined'
+    ? undefined
+    : (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  const hardwareConcurrency = typeof navigator === 'undefined' ? undefined : navigator.hardwareConcurrency;
+
+  return {
+    userAgent,
+    webglVendor: webgl.vendor,
+    webglRenderer: webgl.renderer,
+    webglVersion: webgl.version,
+    platformSummary: `${getBrowserName(userAgent)} ${platform}${hardwareConcurrency ? ` ${hardwareConcurrency}c` : ''}${deviceMemory ? ` ${deviceMemory}GB` : ''}`,
+    gpuSummary: `${webgl.hardwareAccelerated === false ? 'software ' : webgl.hardwareAccelerated === true ? 'hw ' : ''}${shorten(webgl.renderer)}`,
+    webglSummary: `${webgl.api} tex ${webgl.maxTextureSize || 'n/a'}`,
+  };
+}
+
+const runtimeInfo = ref(collectRuntimeInfo());
 
 const terrainBufferStatus = computed(() => {
   if (renderDebugState.visibleChunkCount > 0) {
@@ -121,8 +266,66 @@ const passTimingSummary = computed(() => {
   return entries.length ? entries.join(' ') : 'n/a';
 });
 
+const surfaceSummary = computed(() => (
+  `${renderDebugState.canvasBackingWidth}x${renderDebugState.canvasBackingHeight} ${renderDebugState.canvasMegapixels}MP`
+));
+
+const surfaceTitle = computed(() => (
+  `CSS ${renderDebugState.canvasCssWidth}x${renderDebugState.canvasCssHeight}, viewport ${renderDebugState.viewportWidth}x${renderDebugState.viewportHeight}, backing ${renderDebugState.canvasBackingWidth}x${renderDebugState.canvasBackingHeight}`
+));
+
+const modeSummary = computed(() => (
+  `safe:${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'} light:${shouldUseBrowserLightRendering() ? 'on' : 'off'} desync:${shouldUseDesynchronizedCanvas() ? 'on' : 'off'} rescue:${shouldUseWindowsRescueTimer() ? 'on' : 'off'}`
+));
+
+const modeTitle = computed(() => (
+  `Windows presentation safe mode: ${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'}; browser-light effects: ${shouldUseBrowserLightRendering() ? 'on' : 'off'}; desynchronized canvas: ${shouldUseDesynchronizedCanvas() ? 'on' : 'off'}; rescue timer: ${shouldUseWindowsRescueTimer() ? 'on' : 'off'}`
+));
+
+const techniques = computed(() => [
+  {
+    key: 'windowsPresentationSafeMode' as GraphicsDiagnosticTechniqueKey,
+    label: 'safe',
+    mode: graphicsDiagnosticOverrideStore.windowsPresentationSafeMode,
+    active: shouldUseWindowsPresentationSafeMode(),
+    title: 'Cycle Windows presentation-safe mode override. Auto enables this on Windows Chrome/Firefox.',
+  },
+  {
+    key: 'browserLightRendering' as GraphicsDiagnosticTechniqueKey,
+    label: 'light',
+    mode: graphicsDiagnosticOverrideStore.browserLightRendering,
+    active: shouldUseBrowserLightRendering(),
+    title: 'Cycle browser-light rendering override. Disables filter-heavy effects when active.',
+  },
+  {
+    key: 'desynchronizedCanvas' as GraphicsDiagnosticTechniqueKey,
+    label: 'desync',
+    mode: graphicsDiagnosticOverrideStore.desynchronizedCanvas,
+    active: shouldUseDesynchronizedCanvas(),
+    title: 'Cycle 2D canvas desynchronized context override. Resize/rebuilds canvas contexts.',
+  },
+  {
+    key: 'rescueTimer' as GraphicsDiagnosticTechniqueKey,
+    label: 'rescue',
+    mode: graphicsDiagnosticOverrideStore.rescueTimer,
+    active: shouldUseWindowsRescueTimer(),
+    title: 'Cycle timer-backed map render pump override. Useful when requestAnimationFrame is throttled.',
+  },
+  {
+    key: 'canvasDpr' as GraphicsDiagnosticTechniqueKey,
+    label: 'dpr',
+    mode: graphicsDiagnosticOverrideStore.canvasDpr,
+    active: graphicsDiagnosticOverrideStore.canvasDpr !== 'auto',
+    title: 'Cycle canvas backing-store DPR: auto, low, 1x, native. Low reduces pixels sent to the compositor.',
+  },
+]);
+
 function toggleFeature(feature: RenderFeatureKey) {
   cycleRenderFeatureOverride(feature);
+}
+
+function toggleTechnique(technique: GraphicsDiagnosticTechniqueKey) {
+  cycleGraphicsDiagnosticOverride(technique);
 }
 
 const updateFPS = () => {
@@ -140,6 +343,7 @@ const updateFPS = () => {
 };
 
 onMounted(() => {
+  runtimeInfo.value = collectRuntimeInfo();
   lastTime = performance.now();
   frameCount.value = 0;
   updateFPS();
@@ -156,6 +360,7 @@ onUnmounted(() => {
 <style scoped>
 .fps-counter {
   position: relative;
+  left: -60px;
   background: rgba(2, 6, 23, 0.82);
   color: #fff;
   padding: 8px 10px;
@@ -181,6 +386,30 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.fps-row strong {
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+  margin-top: 3px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.debug-section-title {
+  color: rgb(148, 163, 184);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
 .quality-badge {
   padding: 1px 6px;
   border-radius: 999px;
@@ -203,12 +432,17 @@ onUnmounted(() => {
   color: rgb(254, 202, 202);
 }
 
-.feature-grid {
+.feature-grid,
+.technique-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
   pointer-events: auto;
+}
+
+.technique-grid {
+  margin-top: 2px;
 }
 
 .feature-pill {

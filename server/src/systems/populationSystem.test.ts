@@ -180,7 +180,7 @@ test('passive growth creates the settler in the settlement that grew', () => {
       },
     ],
   });
-  depositResourceToStorage('20,0', 'food', 1);
+  depositResourceToStorage('20,0', 'meat', 1);
   settlerSystem.init();
 
   tickAt(Date.now() + 61_000, 1_000);
@@ -237,7 +237,7 @@ test('passive growth emits a settlement-scoped population change event', () => {
       },
     ],
   });
-  depositResourceToStorage('20,0', 'food', 1);
+  depositResourceToStorage('20,0', 'meat', 1);
   const events: Array<{ type: string; settlementId?: string | null }> = [];
   const unsubscribe = onGameplayEvent((event) => events.push(event));
 
@@ -296,7 +296,7 @@ test('fast population growth test mode reduces the passive growth interval to 6 
       },
     ],
   });
-  depositResourceToStorage('20,0', 'food', 1);
+  depositResourceToStorage('20,0', 'meat', 1);
   loadTestModeSettings({
     enabled: true,
     instantBuild: false,
@@ -693,16 +693,16 @@ test('settlers only consume food after they arrive at storage', () => {
       carryingKind: null,
     },
   ]);
-  depositResourceToStorage('0,0', 'food', 2);
+  depositResourceToStorage('0,0', 'bread', 2);
   settlerSystem.init();
 
   tickAt(1_000, 1_000);
-  assert.equal(resourceInventory.food, 2);
+  assert.equal(resourceInventory.bread, 2);
   assert.equal(settlers[0]?.movement?.target.q, 0);
   assert.equal(settlers[0]?.movement?.target.r, 0);
 
   tickAt(6_000, 5_000);
-  assert.equal(resourceInventory.food, 1);
+  assert.equal(resourceInventory.bread, 1);
   assert.equal(settlers[0]?.hungerMs, 0);
   assert.equal(settlers[0]?.q, 0);
   assert.equal(settlers[0]?.r, 0);
@@ -821,7 +821,7 @@ test('settlers keep partial job progress while taking a meal break', () => {
       carryingKind: null,
     },
   ]);
-  depositResourceToStorage('0,0', 'food', 1);
+  depositResourceToStorage('0,0', 'meat', 1);
   settlerSystem.init();
 
   tickAt(1_000, 1_000);
@@ -831,7 +831,7 @@ test('settlers keep partial job progress while taking a meal break', () => {
   assert.equal(settlers[0]?.workProgressMs, 50_000);
 
   tickAt(6_000, 5_000);
-  assert.equal(resourceInventory.food, 0);
+  assert.equal(resourceInventory.meat, 0);
   assert.equal(settlers[0]?.movement?.target.q, 1);
   assert.equal(settlers[0]?.movement?.target.r, 0);
   assert.equal(settlers[0]?.workProgressMs, 50_000);

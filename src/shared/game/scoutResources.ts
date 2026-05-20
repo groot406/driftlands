@@ -17,7 +17,7 @@ import { getHeroTaskSpecialtyMultiplier } from '../heroes/heroSkills';
 
 export const SCOUT_RESOURCE_TASK_TYPE = 'scoutResource';
 export const SCOUT_PING_DURATION_MS = 30000;
-export const SCOUT_TILE_SURVEY_MS = 1200;
+export const SCOUT_TILE_SCAN_MS = 1200;
 
 interface ScoutTargetDefinition {
     type: ScoutTargetType;
@@ -241,7 +241,7 @@ export function startScoutResourceSearch(hero: Hero) {
         hero.delayedMovementTimer = undefined;
     }
     hero.pendingExploreTarget = undefined;
-    const hadSurveyTiming = clearScoutSurveyTiming(intent);
+    const hadScanTiming = clearScoutScanTiming(intent);
 
     const nextTile = pickNextScoutTile(hero, intent.resourceType);
     if (!nextTile) {
@@ -249,7 +249,7 @@ export function startScoutResourceSearch(hero: Hero) {
         return false;
     }
 
-    if (hadSurveyTiming) {
+    if (hadScanTiming) {
         broadcastHeroScoutResourceUpdate(hero);
     }
 
@@ -284,30 +284,30 @@ export function handleScoutResourceArrival(hero: Hero, tile: Tile) {
         tileId: tile.id,
         taskType: SCOUT_RESOURCE_TASK_TYPE,
     };
-    intent.surveyTileId = tile.id;
-    intent.surveyStartedAt = Date.now();
-    intent.surveyDurationMs = getScoutSurveyMs(hero);
+    intent.scanTileId = tile.id;
+    intent.scanStartedAt = Date.now();
+    intent.scanDurationMs = getScoutScanMs(hero);
     broadcastHeroScoutResourceUpdate(hero);
 
     hero.delayedMovementTimer = setTimeout(() => {
         hero.delayedMovementTimer = undefined;
         completeScoutResourceArrival(hero, tile, intent.resourceType);
-    }, intent.surveyDurationMs);
+    }, intent.scanDurationMs);
 }
 
-export function getScoutSurveyMs(hero: Pick<Hero, 'stats' | 'skills'>) {
-    const baseDuration = SCOUT_TILE_SURVEY_MS - (Math.max(0, hero.stats.spd - 1) * 75);
+export function getScoutScanMs(hero: Pick<Hero, 'stats' | 'skills'>) {
+    const baseDuration = SCOUT_TILE_SCAN_MS - (Math.max(0, hero.stats.spd - 1) * 75);
     return Math.max(650, Math.round(baseDuration / getHeroTaskSpecialtyMultiplier(hero, SCOUT_RESOURCE_TASK_TYPE)));
 }
 
-export function getScoutSurveyProgress(hero: Pick<Hero, 'movement' | 'scoutResourceIntent'>, tileId: string, now: number = Date.now()) {
+export function getScoutScanProgress(hero: Pick<Hero, 'movement' | 'scoutResourceIntent'>, tileId: string, now: number = Date.now()) {
     const intent = hero.scoutResourceIntent;
-    if (!intent?.surveyTileId || intent.surveyTileId !== tileId || hero.movement) {
+    if (!intent?.scanTileId || intent.scanTileId !== tileId || hero.movement) {
         return null;
     }
 
-    const startedAt = intent.surveyStartedAt;
-    const durationMs = intent.surveyDurationMs;
+    const startedAt = intent.scanStartedAt;
+    const durationMs = intent.scanDurationMs;
     if (typeof startedAt !== 'number' || typeof durationMs !== 'number' || durationMs <= 0) {
         return null;
     }
@@ -315,13 +315,13 @@ export function getScoutSurveyProgress(hero: Pick<Hero, 'movement' | 'scoutResou
     return Math.min(1, Math.max(0, (now - startedAt) / durationMs));
 }
 
-export function isHeroSurveyingScoutResource(hero: Pick<Hero, 'movement' | 'scoutResourceIntent'>, now: number = Date.now()) {
+export function isHeroScanningScoutResource(hero: Pick<Hero, 'movement' | 'scoutResourceIntent'>, now: number = Date.now()) {
     const intent = hero.scoutResourceIntent;
-    if (!intent?.surveyTileId) {
+    if (!intent?.scanTileId) {
         return false;
     }
 
-    const progress = getScoutSurveyProgress(hero, intent.surveyTileId, now);
+    const progress = getScoutScanProgress(hero, intent.scanTileId, now);
     return progress !== null && progress < 1;
 }
 
@@ -569,11 +569,11 @@ function markTileScouted(tile: Tile, resourceType: ScoutTargetType, found: boole
     return ensureScoutingNeighbors(tile);
 }
 
-function clearScoutSurveyTiming(intent: NonNullable<Hero['scoutResourceIntent']>) {
-    const changed = !!(intent.surveyTileId || intent.surveyStartedAt || intent.surveyDurationMs);
-    delete intent.surveyTileId;
-    delete intent.surveyStartedAt;
-    delete intent.surveyDurationMs;
+function clearScoutScanTiming(intent: NonNullable<Hero['scoutResourceIntent']>) {
+    const changed = !!(intent.scanTileId || intent.scanStartedAt || intent.scanDurationMs);
+    delete intent.scanTileId;
+    delete intent.scanStartedAt;
+    delete intent.scanDurationMs;
     return changed;
 }
 

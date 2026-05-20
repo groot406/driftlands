@@ -31,6 +31,7 @@ import { addHeroAbilityProgress } from '../shared/heroes/heroAbilities.ts';
 import { applyHeroTaskRateMultiplier } from '../shared/heroes/heroSkills.ts';
 import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
 import { isInstantBuildEnabled, isUnlimitedResourcesEnabled, testModeSettings } from '../shared/game/testMode.ts';
+import { FOOD_SOURCE_TYPES, isFoodSourceResource } from '../shared/game/resourceDefinitions.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -123,13 +124,33 @@ function getRemainingResources(task: TaskInstance): ResourceAmount[] {
 
     const remaining: ResourceAmount[] = [];
     for (const required of task.requiredResources) {
-        const collected = task.collectedResources?.find((collected) => collected.type === required.type)?.amount || 0;
+        const collected = getCollectedAmountForRequirement(task, required.type);
         const stillNeeded = required.amount - collected;
         if (stillNeeded > 0) {
             remaining.push({type: required.type, amount: stillNeeded});
         }
     }
     return remaining;
+}
+
+function resourceFulfillsRequirement(requiredType: ResourceType, providedType: ResourceType) {
+    return requiredType === providedType || (requiredType === 'food' && isFoodSourceResource(providedType));
+}
+
+function getCollectedAmountForRequirement(task: TaskInstance, requiredType: ResourceType) {
+    if (!task.collectedResources?.length) {
+        return 0;
+    }
+
+    if (requiredType !== 'food') {
+        return task.collectedResources.find((collected) => collected.type === requiredType)?.amount || 0;
+    }
+
+    return task.collectedResources.reduce((sum, collected) => (
+        resourceFulfillsRequirement('food', collected.type)
+            ? sum + collected.amount
+            : sum
+    ), 0);
 }
 
 export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount): number {
@@ -143,13 +164,15 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     }
 
     const resourceType = carrying.type;
-    const required = task.requiredResources.find(r => r.type === resourceType);
+    const required = task.requiredResources.find(r => r.type === resourceType)
+        ?? task.requiredResources.find(r => resourceFulfillsRequirement(r.type, resourceType));
     if (!required) {
         return 0; // this resource not required
     }
+    const collectedType = required.type;
 
     // Determine how much is still needed for this resource
-    const currentAmount = task.collectedResources.find(collected => collected.type === resourceType)?.amount || 0;
+    const currentAmount = getCollectedAmountForRequirement(task, collectedType);
     const stillNeeded = Math.max(0, required.amount - currentAmount);
     if (stillNeeded <= 0) {
         return 0; // already fulfilled this resource
@@ -161,11 +184,11 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     }
 
     // Update or add the collected resource amount
-    const existingResource = task.collectedResources.find(collected => collected.type === resourceType);
+    const existingResource = task.collectedResources.find(collected => collected.type === collectedType);
     if (existingResource) {
         existingResource.amount = currentAmount + amountToAdd;
     } else {
-        task.collectedResources.push({ type: resourceType, amount: amountToAdd });
+        task.collectedResources.push({ type: collectedType, amount: amountToAdd });
     }
 
     // After deposit, check if all requirements are met and (re)activate task
@@ -181,6 +204,37 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     return amountToAdd;
 }
 
+function resolveFetchResourceSource(hero: Hero, resource: ResourceAmount) {
+    if (resource.type !== 'food') {
+        const found = findNearestWarehouseWithResource(
+            hero.q,
+            hero.r,
+            hero.settlementId ?? null,
+            resource.type,
+            resource.amount,
+        );
+        return found ? { tile: found, resource } : null;
+    }
+
+    for (const foodSourceType of FOOD_SOURCE_TYPES) {
+        const found = findNearestWarehouseWithResource(
+            hero.q,
+            hero.r,
+            hero.settlementId ?? null,
+            foodSourceType,
+            resource.amount,
+        );
+        if (found) {
+            return {
+                tile: found,
+                resource: { type: foodSourceType, amount: resource.amount },
+            };
+        }
+    }
+
+    return null;
+}
+
 // Check if hero needs to fetch resources and initiate the fetch if needed
 function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: ResourceAmount[], hero: Hero, taskType: TaskType, inst?: TaskInstance): boolean {
     // If hero is already fetching resources for this task, don't initiate another fetch
@@ -193,7 +247,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
     if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
         const carrying = hero.carryingPayload;
         const hasRequired = requiredResources.some(
-            req => req.type === carrying.type && carrying.amount >= req.amount
+            req => resourceFulfillsRequirement(req.type, carrying.type) && carrying.amount >= req.amount
         );
         if (hasRequired) {
             return false; // Hero has resource, can start task
@@ -201,7 +255,8 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
     }
 
     // Find the first required resource and fetch location
-    for (const resource of requiredResources) {
+    for (const requiredResource of requiredResources) {
+        let resource = requiredResource;
         let fetchLocation: { q: number; r: number } | null = null;
 
         if (resource.type === 'water') {
@@ -214,8 +269,11 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             }
         } else {
             // For other resources, find nearest warehouse with the resource
-            const found = findNearestWarehouseWithResource(hero.q, hero.r, hero.settlementId ?? null, resource.type, resource.amount);
-            if (found) fetchLocation = { q: found.q, r: found.r };
+            const source = resolveFetchResourceSource(hero, resource);
+            if (source) {
+                fetchLocation = { q: source.tile.q, r: source.tile.r };
+                resource = source.resource;
+            }
         }
 
         if (fetchLocation) {
@@ -316,7 +374,7 @@ export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, _tile
     const required = def.requiredResources?.(getTaskEconomyDistance());
 
     if (required && required.length > 0) {
-        return required.some(r => r.type === hero.carryingPayload!.type);
+        return required.some(r => resourceFulfillsRequirement(r.type, hero.carryingPayload!.type));
     }
 
     if (def.totalRewardedResources) return false;
@@ -465,10 +523,10 @@ export function resumeWaitingTasksForResource(resourceType: ResourceType, storag
 
     for (const inst of taskStore.tasks) {
         if (inst.completedMs) continue;
-        if (!inst.requiredResources?.some((resource) => resource.type === resourceType)) continue;
+        if (!inst.requiredResources?.some((resource) => resourceFulfillsRequirement(resource.type, resourceType))) continue;
 
         const remaining = getRemainingResources(inst);
-        if (!remaining.some((resource) => resource.type === resourceType)) continue;
+        if (!remaining.some((resource) => resourceFulfillsRequirement(resource.type, resourceType))) continue;
 
         const def = getTaskDefinition(inst.type);
         const taskTile = tileIndex[inst.tileId];

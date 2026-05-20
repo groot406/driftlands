@@ -277,7 +277,7 @@ test('go here cancels scouting and can route back through scouted fog', () => {
   assert.deepEqual(movedHero.movement?.target, { q: 0, r: 0 });
 });
 
-test('go here on current tile cancels scout surveying without needing a path', () => {
+test('go here on current tile cancels resource scouting without needing a path', () => {
   setIo({ emit() {} });
 
   loadWorld([

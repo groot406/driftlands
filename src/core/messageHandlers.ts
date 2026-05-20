@@ -9,6 +9,7 @@ import { runHandler } from './handlers/runHandler';
 import { coopHandler } from './handlers/coopHandler';
 import { settlementStartHandler } from './handlers/settlementStartHandler';
 import { marketHandler } from './handlers/marketHandler';
+import { shipOrderHandler } from './handlers/shipOrderHandler';
 import { clientMessageRouter } from './messageRouter';
 
 // Initialize all handlers
@@ -26,4 +27,5 @@ export function initializeClientHandlers(): void {
   coopHandler.init();
   settlementStartHandler.init();
   marketHandler.init();
+  shipOrderHandler.init();
 }

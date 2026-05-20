@@ -29,6 +29,7 @@ import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
 import { isWatchtowerTile } from '../../shared/game/military.ts';
 import { setWorldGenerationSpawnSafetyEnabled } from '../worldGeneration';
 import { replaceMarketOverview } from '../../store/marketStore.ts';
+import { replaceShipOrderOverview } from '../../store/shipOrderStore.ts';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -45,6 +46,7 @@ interface PendingWorldSnapshot {
     jobs: WorldSnapshotMessage['jobs'];
     studies: WorldSnapshotMessage['studies'];
     market: WorldSnapshotMessage['market'];
+    shipOrders: WorldSnapshotMessage['shipOrders'];
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
     timestamp?: number;
@@ -79,7 +81,7 @@ class WorldHandler {
         clientMessageRouter.on('calamity:event', this.handleCalamityEvent.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
         setServerDebugModeEnabled((message as WorldSnapshotMessage).debugModeEnabled);
         setWorldGenerationSpawnSafetyEnabled((message as WorldSnapshotMessage).spawnSafetyEnabled === true);
         loadWorld(message.tiles);
@@ -103,6 +105,7 @@ class WorldHandler {
         if (message.market) {
             replaceMarketOverview(message.market);
         }
+        replaceShipOrderOverview(message.shipOrders);
     }
 
     private handleWorldSnapshot(message: WorldSnapshotMessage): void {
@@ -126,6 +129,7 @@ class WorldHandler {
             jobs: message.jobs,
             studies: message.studies,
             market: message.market,
+            shipOrders: message.shipOrders,
             debugModeEnabled: message.debugModeEnabled,
             spawnSafetyEnabled: message.spawnSafetyEnabled,
             timestamp: message.timestamp,

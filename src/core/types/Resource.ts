@@ -16,5 +16,9 @@ export type ResourceType =
     | 'grapes'
     | 'water_lily'
     | 'sand'
-    | 'glass';
+    | 'glass'
+    | 'tea'
+    | 'pottery'
+    | 'spices'
+    | 'silk';
 export type ResourceAmount = { type: ResourceType; amount: number };

@@ -1,0 +1,153 @@
+- generic [ref=e60]:
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e66]:
+          - button "Open settler overview (4/15)" [ref=e67] [cursor=pointer]:
+            - generic [ref=e68]: 👥
+            - generic [ref=e69]:
+              - generic [ref=e70]: Settlers
+              - generic [ref=e71]: 4/15
+          - 'button "Food: 12" [ref=e72] [cursor=pointer]':
+            - generic [ref=e74]: 🍞
+            - generic [ref=e75]:
+              - generic [ref=e76]: Food
+              - generic [ref=e78]: "12"
+            - tooltip "Food 🍞 Bread 4 🐟 Fish 4 🍖 Meat 4":
+              - paragraph: Food
+              - generic:
+                - generic: 🍞 Bread
+                - generic: "4"
+              - generic:
+                - generic: 🐟 Fish
+                - generic: "4"
+              - generic:
+                - generic: 🍖 Meat
+                - generic: "4"
+          - 'button "Crops: 0" [ref=e79] [cursor=pointer]':
+            - generic [ref=e81]: 🌿
+            - generic [ref=e82]:
+              - generic [ref=e83]: Crops
+              - generic [ref=e85]: "0"
+            - tooltip "Crops 🌾 Grain 0 🪷 Water Lilies 0":
+              - paragraph: Crops
+              - generic:
+                - generic: 🌾 Grain
+                - generic: "0"
+              - generic:
+                - generic: 🪷 Water Lilies
+                - generic: "0"
+          - 'button "Materials: 0" [ref=e86] [cursor=pointer]':
+            - generic [ref=e88]: 🧱
+            - generic [ref=e89]:
+              - generic [ref=e90]: Materials
+              - generic [ref=e92]: "0"
+            - tooltip "Materials 🌲 Wood 0 🪨 Stone 0":
+              - paragraph: Materials
+              - generic:
+                - generic: 🌲 Wood
+                - generic: "0"
+              - generic:
+                - generic: 🪨 Stone
+                - generic: "0"
+          - 'button "Crafted: 0" [ref=e93] [cursor=pointer]':
+            - generic [ref=e95]: 🛠️
+            - generic [ref=e96]:
+              - generic [ref=e97]: Crafted
+              - generic [ref=e99]: "0"
+        - button "Menu" [ref=e101] [cursor=pointer]:
+          - generic [ref=e102]:
+            - generic: Menu
+    - generic [ref=e103]:
+      - button "2" [ref=e105] [cursor=pointer]:
+        - img [ref=e106]
+        - generic [ref=e109]: "2"
+      - button "Open system market" [disabled] [ref=e110]:
+        - img [ref=e111]
+      - button "DBG" [ref=e114] [cursor=pointer]
+      - button "? 1" [ref=e115] [cursor=pointer]:
+        - generic [ref=e116]: "?"
+        - generic [ref=e117]: "1"
+      - button "3" [ref=e118] [cursor=pointer]:
+        - img [ref=e119]
+        - generic [ref=e121]: "3"
+      - button "Re-read conversation (C)" [ref=e122] [cursor=pointer]:
+        - img [ref=e123]
+      - button "Open music player" [ref=e127] [cursor=pointer]:
+        - img [ref=e128]
+      - button "3" [ref=e134] [cursor=pointer]:
+        - img [ref=e135]
+        - generic [ref=e137]: "3"
+    - generic [ref=e139] [cursor=pointer]:
+      - generic [ref=e140]:
+        - generic [ref=e141]: World Map
+        - button "Open" [ref=e142]
+      - generic "In-game minimap" [ref=e144]:
+        - button "Andre2's settlement" [ref=e146]
+    - complementary [ref=e148]:
+      - generic [ref=e149]:
+        - generic [ref=e150]:
+          - paragraph [ref=e151]: Field Guide
+          - heading "Pick a hero" [level=2] [ref=e152]
+        - button "x" [ref=e153] [cursor=pointer]
+      - generic [ref=e154]:
+        - generic [ref=e155]: Current
+        - generic [ref=e156]: 1/18
+        - generic [ref=e157]: 4 done
+      - generic [ref=e160]:
+        - paragraph [ref=e161]: Select one available hero so orders have someone to carry them out.
+        - paragraph [ref=e162]: Heroes shape the map directly; settlers take over once buildings and job sites exist.
+        - generic [ref=e163]:
+          - generic [ref=e164]: Next
+          - generic [ref=e165]: Choose a hero from the hero bar.
+      - generic [ref=e166]: No hero selected
+      - generic [ref=e168]:
+        - button "Back" [disabled] [ref=e169]
+        - button "Next" [ref=e170] [cursor=pointer]
+    - generic [ref=e173] [cursor=pointer]:
+      - generic [ref=e174]:
+        - generic [ref=e175]:
+          - generic [ref=e176]: Jess
+          - generic [ref=e177]: Story
+        - generic [ref=e178]: 1 / 3
+      - generic [ref=e179]:
+        - generic "Jess" [ref=e180]:
+          - generic "Jess" [ref=e182]
+        - generic [ref=e184]:
+          - paragraph [ref=e185]: Jess
+          - paragraph [ref=e186]: The convoy has broken apart on the mudflats, and only your charter reached the center stone intact. Before night closes over the shoals, you need a working camp, a mapped perimeter, and proof that Driftlands can be settled. Scout the frontier, clear the first stands, and lay a road so the next crew has something to follow.
+      - generic [ref=e187]:
+        - button "Continue" [ref=e189]
+        - generic [ref=e190]: 2 more
+        - button "Skip all" [ref=e191]
+    - region "Choose settlement start" [ref=e193]:
+      - generic [ref=e194]:
+        - generic [ref=e195]:
+          - paragraph [ref=e196]: New Settlement
+          - heading "Choose Your Landing" [level=2] [ref=e197]
+        - button "Refresh" [ref=e198] [cursor=pointer]
+      - generic [ref=e199]:
+        - generic "Settlement start minimap" [ref=e202]:
+          - button "Andre2's settlement" [disabled] [ref=e204] [cursor=pointer]
+        - button "No Site Selected Click the minimap to choose a founding tile. select" [disabled] [ref=e207]:
+          - generic [ref=e208]:
+            - strong [ref=e209]: No Site Selected
+            - generic [ref=e210]: Click the minimap to choose a founding tile.
+          - generic [ref=e211]: select
+      - generic [ref=e212]:
+        - paragraph [ref=e213]: Click a tile on the minimap to choose your settlement site.
+        - button "Found Settlement" [disabled] [ref=e214]
+    - generic:
+      - generic:
+        - generic [ref=e216]:
+          - generic [ref=e219]:
+            - paragraph [ref=e220]: Player joined
+            - paragraph [ref=e221]: Andre2 joined the game
+          - button [ref=e222] [cursor=pointer]:
+            - img [ref=e223]
+        - generic [ref=e226]:
+          - generic [ref=e229]:
+            - paragraph [ref=e230]: Player joined
+            - paragraph [ref=e231]: Pioneer RO37 joined the game
+          - button [ref=e232] [cursor=pointer]:
+            - img [ref=e233]

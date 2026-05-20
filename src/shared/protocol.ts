@@ -23,6 +23,7 @@ import type { SettlementBorderMode } from '../core/types/Tile.ts';
 import type { LooperlandsJoinAuth } from './looperlands.ts';
 import type { StoryHeroId } from './story/heroRoster.ts';
 import type { MarketOverviewSnapshot } from './game/market.ts';
+import type { ShipOrderOverviewSnapshot, ShipOrderResourceType } from './game/shipOrders.ts';
 
 export interface BaseMessage {
     type: string;
@@ -94,11 +95,6 @@ export interface ChatMessage extends BaseMessage {
 export interface CoopSnapshotMessage extends BaseMessage {
     type: 'coop:snapshot';
     state: CoopStateSnapshot;
-}
-
-export interface CoopSetReadyMessage extends BaseMessage {
-    type: 'coop:set_ready';
-    ready: boolean;
 }
 
 export interface CoopHeroClaimMessage extends BaseMessage {
@@ -219,6 +215,12 @@ export interface MilitarySetRaidTargetMessage extends BaseMessage {
     targetTileId: string | null;
 }
 
+export interface ShipOrderContributeMessage extends BaseMessage {
+    type: 'ship_order:contribute';
+    settlementId: string;
+    resources: Partial<Record<ShipOrderResourceType, number>>;
+}
+
 export interface TestSetSettingsMessage extends BaseMessage {
     type: 'test:set_settings';
     enabled?: boolean;
@@ -258,6 +260,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
     market?: MarketOverviewSnapshot;
+    shipOrders?: ShipOrderOverviewSnapshot;
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
 }
@@ -277,6 +280,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     jobs: WorkforceSnapshot;
     studies: StudyStateSnapshot;
     market?: MarketOverviewSnapshot;
+    shipOrders?: ShipOrderOverviewSnapshot;
     debugModeEnabled?: boolean;
     spawnSafetyEnabled?: boolean;
 }
@@ -284,6 +288,11 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
 export interface MarketUpdateMessage extends BaseMessage {
     type: 'market:update';
     market: MarketOverviewSnapshot;
+}
+
+export interface ShipOrderUpdateMessage extends BaseMessage {
+    type: 'ship_order:update';
+    overview: ShipOrderOverviewSnapshot;
 }
 
 export interface WorldSnapshotChunkMessage extends BaseMessage {
@@ -504,7 +513,6 @@ export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
     | ChatMessage
-    | CoopSetReadyMessage
     | CoopHeroClaimMessage
     | CoopHeroReleaseMessage
     | CoopPingRequestMessage
@@ -519,6 +527,7 @@ export type ClientMessage =
     | MilitaryAssignGuardsMessage
     | MilitaryBuildPalisadeMessage
     | MilitarySetRaidTargetMessage
+    | ShipOrderContributeMessage
     | TestSetSettingsMessage
     | TestRunActionMessage
     | MoveRequestMessage
@@ -555,6 +564,7 @@ export type ServerMessage =
     | ResourceDepositMessage
     | ResourceWithdrawMessage
     | MarketUpdateMessage
+    | ShipOrderUpdateMessage
     | HeroPayloadUpdateMessage
     | HeroScoutResourceUpdateMessage
     | HeroAbilityUpdateMessage

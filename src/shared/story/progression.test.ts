@@ -31,15 +31,29 @@ test('landfall starts unlocked with the first crew, shelter, and frontier basics
 
   assert.deepEqual(progression.unlockedNodeKeys, ['landfall']);
   assert.deepEqual(progression.unlocked.heroes, ['h1', 'h2', 'h5']);
-  assert.ok(progression.unlocked.buildings.includes('campfire'));
   assert.ok(progression.unlocked.buildings.includes('house'));
+  assert.ok(progression.unlocked.buildings.includes('huntersHut'));
   assert.deepEqual(progression.unlocked.terrains, ['plains', 'forest', 'dirt', 'water']);
   assert.ok(taskKeys.includes('explore'));
   assert.ok(taskKeys.includes('buildHouse'));
+  assert.ok(taskKeys.includes('buildHuntersHut'));
   assert.ok(taskKeys.includes('dig'));
   assert.ok(taskKeys.includes('hunt'));
-  assert.ok(taskKeys.includes('campfireRations'));
   assert.ok(!taskKeys.includes('buildDock'));
+});
+
+test('security accepts any edible food source', () => {
+  const previous = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    population: 4,
+    resourceStock: {
+      meat: 4,
+      fish: 4,
+    },
+  }), previous.unlockedNodeKeys);
+
+  assert.ok(progression.unlockedNodeKeys.includes('security'));
+  assert.ok(progression.unlocked.buildings.includes('watchtower'));
 });
 
 test('shoreline and farming unlock from discovered water, housing, and population growth', () => {
@@ -128,7 +142,7 @@ test('frontier and logistics milestones unlock mining, depots, and the fourth he
     population: 5,
     beds: 5,
     resourceStock: {
-      food: 8,
+      bread: 8,
       wood: 12,
     },
     buildingCounts: {
@@ -223,18 +237,6 @@ test('desert industry unlocks sand, ovens, and glass housing after harsh frontie
   assert.ok(taskKeys.includes('gatherSand'));
   assert.ok(taskKeys.includes('buildOven'));
   assert.ok(taskKeys.includes('upgradeHouseToGlass'));
-});
-
-test('surveying unlocks from a library or watchtower and enough population', () => {
-  const progression = evaluateProgression(metrics({
-    population: 5,
-    buildingCounts: {
-      library: 1,
-    },
-  }));
-
-  assert.ok(progression.unlockedNodeKeys.includes('frontier_surveying'));
-  assert.ok(getAvailableStoryTaskKeys(progression).includes('surveyTile'));
 });
 
 test('hero methods require a completed study and an earned hero charge', () => {

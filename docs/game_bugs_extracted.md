@@ -182,22 +182,6 @@ Skills should have clear names, descriptions, effects, and predictable usage dur
 
 ---
 
-## 11. Surveying system is underdeveloped and unclear
-
-**Description:**  
-The player asked what surveying a tile does and whether they should wait before using it. The explanation was that surveying searches for hidden tile specifications, such as discovering that a forest is actually a dense forest, but the mechanic was described as not strong yet and needing work.
-
-**Where it occurs:**  
-Tile surveying action.
-
-**Observed behaviour:**  
-The mechanic is not self-explanatory and may not yet provide strong feedback or value.
-
-**Expected behaviour:**  
-Surveying should clearly communicate cost, duration, result, and gameplay impact, such as revealing hidden resource modifiers.
-
-**Severity:** Low
-
 ---
 
 ## 12. Place lily pads may appear broken when the required resource is missing
@@ -287,4 +271,3 @@ The player can miss or misinterpret required steps, move ahead prematurely, and 
 The tutorial should guide the player through core actions in sequence: exploring, chopping wood, building houses, finding water, building a dock, hunting, farming, storage, and maintenance.
 
 **Severity:** Medium
-

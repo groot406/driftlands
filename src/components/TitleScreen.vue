@@ -231,7 +231,7 @@ const openingStory = {
 const openingProgression = createStoryProgression(1);
 const introStoryParagraphs = [
   'They crossed the old sea because the old maps had run out of room. Behind them were crowded ports, tired fields, and promises too small for the people asked to keep them. Ahead lay the Driftlands, a chain of green islands rising from the morning haze, bright with timber, stone, clean water, and questions no council had managed to answer.',
-  'The heroes were not sent as conquerors. They came as the first steady hands: builders, scouts, harvesters, and keepers of the campfire when the wind turned cold. Each carried a reason for leaving, but they shared one charge. Find a place where a frontier could become a home, and make it last long enough for others to follow.',
+  'The heroes were not sent as conquerors. They came as the first steady hands: builders, scouts, harvesters, and shelter-raisers when the wind turned cold. Each carried a reason for leaving, but they shared one charge. Find a place where a frontier could become a home, and make it last long enough for others to follow.',
   'Frontier into New World became more than a banner on a ship. It was a wager that courage could be practical. Raise shelter before the first storm. Cut roads through wild ground. Turn scattered supplies into workshops, granaries, wells, and stories worth telling by lantern light.',
   'What is expected is simple to say and difficult to do: grow. Feed the landing. House the crew. Learn the land without breaking it. Build each new chain of work so the next one can begin. The Driftlands will not hand over a future, but with patience, brave choices, and enough stubborn hope, the heroes can carve one out tile by tile.',
 ];

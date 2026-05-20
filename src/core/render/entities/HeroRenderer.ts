@@ -5,7 +5,7 @@ import { selectedHeroId } from '../../../store/uiStore';
 import { heroAnimationSet, heroAnimName, resolveActivity, shouldFlip } from '../../heroSprite';
 import { taskStore } from '../../../store/taskStore';
 import { isHeroWorkingTask } from '../../../shared/game/heroTaskState';
-import { isHeroSurveyingScoutResource } from '../../../shared/game/scoutResources';
+import { isHeroScanningScoutResource } from '../../../shared/game/scoutResources';
 import { camera, hexDistance } from '../../camera';
 import { SETTLER_FRAME_SIZE, getSettlerSpriteKey, settlerAnimationSet, settlerAnimName } from '../../settlerSprite';
 import type { Hero } from '../../types/Hero';
@@ -72,6 +72,7 @@ function isSettlerWalking(settler: Settler) {
         || settler.activity === 'commuting_home'
         || settler.activity === 'commuting_work'
         || settler.activity === 'commuting_social'
+        || settler.activity === 'commuting_shop'
         || settler.activity === 'fetching_food'
         || settler.activity === 'fetching_input'
         || settler.activity === 'delivering';
@@ -251,7 +252,7 @@ export class HeroRenderer {
                         workTool = AXE_WORK_TASKS.has(inst.type) ? 'axe' : null;
                     }
                 }
-            } else if (!hero.movement && isHeroSurveyingScoutResource(hero, now)) {
+            } else if (!hero.movement && isHeroScanningScoutResource(hero, now)) {
                 activity = 'attack';
             }
 
@@ -509,7 +510,7 @@ export class HeroRenderer {
                         ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
                         ctx.stroke();
 
-                        const label = getSettlerDisplayName(settler.id, settler.nameSeed);
+                        const label = getSettlerDisplayName(settler.id, settler.nameSeed, settler.gender);
                         ctx.font = '600 9px system-ui, sans-serif';
                         const textWidth = ctx.measureText(label).width;
                         const labelWidth = Math.ceil(textWidth) + 10;
@@ -576,7 +577,7 @@ export class HeroRenderer {
                     ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
                     ctx.stroke();
 
-                    const label = getSettlerDisplayName(settler.id, settler.nameSeed);
+                    const label = getSettlerDisplayName(settler.id, settler.nameSeed, settler.gender);
                     ctx.font = '600 9px system-ui, sans-serif';
                     const textWidth = ctx.measureText(label).width;
                     const labelWidth = Math.ceil(textWidth) + 10;

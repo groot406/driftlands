@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Tile } from '../../../src/shared/game/types/Tile';
+import type { Settler } from '../../../src/shared/game/types/Settler';
 import { loadWorld, tileIndex } from '../../../src/shared/game/world';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
@@ -9,8 +10,8 @@ import { resetResourceState } from '../../../src/shared/game/state/resourceStore
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { resetStudyState } from '../../../src/store/studyStore';
-import { resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
-import { settlerSystem } from './settlerSystem';
+import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
+import { settlerSystem, syncSettlerPopulation } from './settlerSystem';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -41,6 +42,39 @@ function tickAt(now: number, dt: number) {
   });
 }
 
+function createSettler(overrides: Partial<Settler> & Pick<Settler, 'id'>): Settler {
+  return {
+    id: overrides.id,
+    nameSeed: overrides.nameSeed ?? 1000,
+    gender: overrides.gender ?? 'male',
+    q: overrides.q ?? 0,
+    r: overrides.r ?? 0,
+    facing: overrides.facing ?? 'down',
+    appearanceSeed: overrides.appearanceSeed ?? 1,
+    homeTileId: overrides.homeTileId ?? '0,0',
+    homeAccessTileId: overrides.homeAccessTileId ?? '0,0',
+    settlementId: overrides.settlementId ?? null,
+    assignedWorkTileId: overrides.assignedWorkTileId ?? null,
+    assignedRole: overrides.assignedRole ?? null,
+    guardTowerTileId: overrides.guardTowerTileId ?? null,
+    workTileId: overrides.workTileId ?? null,
+    hiddenWhileWorking: overrides.hiddenWhileWorking ?? null,
+    activity: overrides.activity ?? 'idle',
+    blockerReason: overrides.blockerReason ?? null,
+    stateSinceMs: overrides.stateSinceMs ?? 0,
+    hungerMs: overrides.hungerMs ?? 0,
+    fatigueMs: overrides.fatigueMs ?? 0,
+    happiness: overrides.happiness ?? 100,
+    traits: overrides.traits,
+    drinkPreference: overrides.drinkPreference,
+    workProgressMs: overrides.workProgressMs ?? 0,
+    carryingKind: overrides.carryingKind ?? null,
+    socialTileId: overrides.socialTileId ?? null,
+    movement: overrides.movement,
+    carryingPayload: overrides.carryingPayload,
+  };
+}
+
 test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
@@ -50,6 +84,309 @@ test.afterEach(() => {
   resetWorkforceState();
   resetStudyState();
   resetTestModeSettings();
+});
+
+test('population sync preserves unassigned settler identities before creating replacements', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 6,
+    max: 15,
+    beds: 6,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 6,
+      max: 15,
+      beds: 6,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({ id: 'settler-1', settlementId: '0,0' }),
+    createSettler({ id: 'settler-2', settlementId: '0,0' }),
+    createSettler({ id: 'settler-3', settlementId: null }),
+    createSettler({ id: 'settler-4', settlementId: null }),
+    createSettler({ id: 'settler-5', settlementId: null }),
+    createSettler({ id: 'settler-6', settlementId: null }),
+  ]);
+
+  syncSettlerPopulation(1_000);
+
+  assert.deepEqual(settlers.map((settler) => settler.id), [
+    'settler-1',
+    'settler-2',
+    'settler-3',
+    'settler-4',
+    'settler-5',
+    'settler-6',
+  ]);
+  assert.deepEqual(settlers.map((settler) => settler.settlementId), [
+    '0,0',
+    '0,0',
+    '0,0',
+    '0,0',
+    '0,0',
+    '0,0',
+  ]);
+});
+
+test('house trade goods are slowly consumed by residents for happiness', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      houseGoods: { silk: 1 },
+      houseGoodsConsumedAtMs: 0,
+    }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '0,0',
+      happiness: 40,
+    }),
+  ]);
+
+  tickAt(180_001, 1);
+
+  assert.equal(tileIndex['1,0']?.houseGoods?.silk, 0);
+  assert.ok((settlers[0]?.happiness ?? 0) > 40);
+});
+
+test('fast settler cycles speed up house trade-good happiness recovery', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      houseGoods: { silk: 1 },
+      houseGoodsConsumedAtMs: 0,
+    }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '0,0',
+      happiness: 40,
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: true,
+    bypassHunger: true,
+    bypassMorale: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: true,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  tickAt(36_001, 1_000);
+
+  assert.equal(tileIndex['1,0']?.houseGoods?.silk, 0);
+  assert.ok((settlers[0]?.happiness ?? 0) > 50);
+});
+
+test('upgraded houses slowly restore resident happiness from comfort', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_glass_house',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      houseGoodsConsumedAtMs: 0,
+    }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 6,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 6,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '0,0',
+      happiness: 40,
+    }),
+  ]);
+
+  tickAt(180_001, 1);
+
+  assert.ok((settlers[0]?.happiness ?? 0) > 43.9);
+});
+
+test('population sync rebalances overfilled settlement buckets before creating replacements', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '20,0', q: 20, r: 0, terrain: 'towncenter', controlledBySettlementId: '20,0', ownerSettlementId: '20,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 6,
+    max: 30,
+    beds: 6,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 4,
+        max: 15,
+        beds: 4,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 2,
+        max: 15,
+        beds: 2,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  loadSettlers([
+    createSettler({ id: 'settler-1', settlementId: '0,0' }),
+    createSettler({ id: 'settler-2', settlementId: '0,0' }),
+    createSettler({ id: 'settler-3', settlementId: '20,0' }),
+    createSettler({ id: 'settler-4', settlementId: '20,0' }),
+    createSettler({ id: 'settler-5', settlementId: '20,0' }),
+    createSettler({ id: 'settler-6', settlementId: '20,0' }),
+  ]);
+
+  syncSettlerPopulation(1_000);
+
+  assert.deepEqual(settlers.map((settler) => settler.id), [
+    'settler-1',
+    'settler-2',
+    'settler-3',
+    'settler-4',
+    'settler-5',
+    'settler-6',
+  ]);
+  assert.equal(settlers.filter((settler) => settler.settlementId === '0,0').length, 4);
+  assert.equal(settlers.filter((settler) => settler.settlementId === '20,0').length, 2);
 });
 
 test('assigned tower guards spawn visible garrison settlers and scale back when removed', () => {

@@ -14,9 +14,46 @@
     </div>
     <HeroesBar />
   </div>
+  <Transition name="calamity-countdown">
+    <button
+      v-if="calamityCountdown"
+      class="calamity-countdown-hud"
+      type="button"
+      :style="{ '--calamity-progress': `${calamityCountdown.progress}%` }"
+      :aria-label="`Open ${calamityCountdown.name} warning. Impact in ${calamityCountdown.time}.`"
+      @click="reopenActiveCalamityWarning"
+    >
+      <span class="calamity-countdown-icon" aria-hidden="true">!</span>
+      <span class="calamity-countdown-copy">
+        <span class="calamity-countdown-kicker">Disaster warning</span>
+        <span class="calamity-countdown-name">Incoming {{ calamityCountdown.name }}</span>
+      </span>
+      <strong>{{ calamityCountdown.time }}</strong>
+      <span class="calamity-countdown-track" aria-hidden="true">
+        <span></span>
+      </span>
+    </button>
+  </Transition>
   <!-- Bottom-right toolbar -->
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
+    <button
+      v-if="activeShipOrder"
+      class="ship-order-toggle-btn"
+      :class="{ 'ship-order-toggle-btn--active': shipOrderPanelOpen }"
+      type="button"
+      @click="openShipOrderPanel"
+      :title="shipOrderTitle"
+      aria-label="Open ship order"
+    >
+      <svg class="ship-order-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 17h18" />
+        <path d="M5 17 8 7h8l3 10" />
+        <path d="M8 7l4-3 4 3" />
+        <path d="M7 20h10" />
+      </svg>
+      <span class="ship-order-toggle-badge">{{ shipOrderProgress }}%</span>
+    </button>
     <button
       class="market-toggle-btn"
       :class="{ 'market-toggle-btn--active': marketplaceOpen, 'market-toggle-btn--locked': !marketAccessUnlocked }"
@@ -90,8 +127,11 @@
   <PopulationOverviewModal />
   <ResourceDetailModal />
   <MarketplaceModal />
+  <ShipArrivalPopup />
+  <ShipOrderModal />
   <SettlerModal />
   <CalamityEventModal />
+  <UnlockAnnouncementModal />
   <NotificationOverlay />
 </template>
 
@@ -113,8 +153,11 @@ import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
 import MarketplaceModal from './MarketplaceModal.vue';
+import ShipArrivalPopup from './ShipArrivalPopup.vue';
+import ShipOrderModal from './ShipOrderModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import CalamityEventModal from './CalamityEventModal.vue';
+import UnlockAnnouncementModal from './UnlockAnnouncementModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
@@ -129,13 +172,17 @@ import {
   visibleTutorialStepNumber,
 } from '../store/tutorialStore';
 import { marketplaceOpen, marketWallet, openMarketplace } from '../store/marketStore.ts';
+import { activeShipOrder, openShipOrderPanel, shipOrderPanelOpen } from '../store/shipOrderStore.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+import { activeCalamityWarning, getCalamityDisplayName, reopenActiveCalamityWarning } from '../store/calamityEventStore.ts';
 import { worldVersion } from '../core/world.ts';
 import { hasSettlementMarketAccess } from '../shared/game/marketAccess.ts';
 
 const showHelpers = ref(false);
+const countdownNow = ref(Date.now());
 const globalKeyListenerOptions = { capture: true };
 const DEBUG_HELPER_SHORTCUTS = new Set(['Tab', 'F2', 'F9', 'Backquote']);
+let countdownTimer: number | null = null;
 
 
 const hasGoals = computed(() => {
@@ -170,6 +217,38 @@ const marketButtonTitle = computed(() => {
     ? `Open system market · ${formatGold(marketGold.value)} Gold`
     : 'Open system market';
 });
+const shipOrderProgress = computed(() => {
+  const order = activeShipOrder.value;
+  if (!order || order.totalRequestedValue <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.round((order.totalFulfilledValue / order.totalRequestedValue) * 100));
+});
+const shipOrderTitle = computed(() => {
+  const order = activeShipOrder.value;
+  return order ? `${order.name} loading cargo · ${shipOrderProgress.value}% filled` : 'Open ship order';
+});
+const calamityCountdown = computed(() => {
+  const warning = activeCalamityWarning.value;
+  if (!warning?.event.impactAt) {
+    return null;
+  }
+
+  const event = warning.event;
+  const serverNowAtReceipt = event.timestamp ?? warning.receivedAt;
+  const warningDurationMs = Math.max(1, event.impactAt - serverNowAtReceipt);
+  const remainingMs = Math.max(0, warningDurationMs - (countdownNow.value - warning.receivedAt));
+  if (remainingMs <= 0) {
+    return null;
+  }
+
+  return {
+    name: getCalamityDisplayName(event.kind),
+    time: formatCountdown(remainingMs),
+    progress: Math.max(0, Math.min(100, ((warningDurationMs - remainingMs) / warningDurationMs) * 100)),
+  };
+});
 
 function formatGold(value: number) {
   if (value >= 1000) {
@@ -177,6 +256,13 @@ function formatGold(value: number) {
   }
 
   return `${Math.floor(value)}`;
+}
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function recallConversation() {
@@ -216,10 +302,16 @@ function handleKeyDown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown, globalKeyListenerOptions);
+  countdownTimer = window.setInterval(() => {
+    countdownNow.value = Date.now();
+  }, 250);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown, globalKeyListenerOptions);
+  if (countdownTimer != null) {
+    window.clearInterval(countdownTimer);
+  }
 });
 
 watch(serverDebugModeEnabled, (enabled) => {
@@ -250,6 +342,129 @@ watch(serverDebugModeEnabled, (enabled) => {
   filter: brightness(1.06);
 }
 
+.calamity-countdown-hud {
+  position: fixed;
+  top: 0.85rem;
+  left: 50%;
+  z-index: 34;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  width: min(28rem, calc(100vw - 1.5rem));
+  min-height: 3.35rem;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid rgba(250, 204, 21, 0.58);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(78, 42, 20, 0.94), rgba(31, 18, 12, 0.96)),
+    rgba(30, 18, 12, 0.94);
+  box-shadow: 0 12px 28px rgba(20, 12, 8, 0.34), inset 0 1px 0 rgba(255, 247, 207, 0.12);
+  color: rgb(255 244 207);
+  padding: 0.55rem 0.75rem 0.72rem;
+  appearance: none;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.calamity-countdown-hud:hover,
+.calamity-countdown-hud:focus-visible {
+  border-color: rgba(253, 230, 138, 0.88);
+  box-shadow: 0 14px 32px rgba(20, 12, 8, 0.42), 0 0 0 2px rgba(250, 204, 21, 0.16), inset 0 1px 0 rgba(255, 247, 207, 0.16);
+  transform: translate(-50%, -1px);
+}
+
+.calamity-countdown-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(253, 230, 138, 0.58);
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.6);
+  color: rgb(254 243 199);
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.72rem;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
+}
+
+.calamity-countdown-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.calamity-countdown-kicker {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 244, 207, 0.62);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.calamity-countdown-name {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(255 244 207);
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calamity-countdown-hud strong {
+  min-width: 3.7rem;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.48);
+  border: 1px solid rgba(253, 230, 138, 0.28);
+  padding: 0.32rem 0.48rem;
+  color: rgb(254 243 199);
+  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.calamity-countdown-track {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.42rem;
+  height: 0.18rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 244, 207, 0.16);
+}
+
+.calamity-countdown-track span {
+  display: block;
+  width: var(--calamity-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #facc15, #fb923c);
+}
+
+.calamity-countdown-enter-active,
+.calamity-countdown-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.calamity-countdown-enter-from,
+.calamity-countdown-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -0.45rem);
+}
+
 @media (max-width: 640px) {
   .game-gui-shell {
     padding: 0.35rem;
@@ -278,6 +493,32 @@ watch(serverDebugModeEnabled, (enabled) => {
     min-height: 2.35rem;
     padding-inline: 0.55rem;
     font-size: 8px;
+  }
+
+  .calamity-countdown-hud {
+    top: 4.15rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    min-height: 3.2rem;
+    padding-inline: 0.58rem;
+  }
+
+  .calamity-countdown-kicker {
+    font-size: 0.52rem;
+  }
+
+  .calamity-countdown-name {
+    font-size: 0.72rem;
+  }
+
+  .calamity-countdown-icon {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .calamity-countdown-hud strong {
+    min-width: 3.2rem;
+    font-size: 0.62rem;
   }
 }
 
@@ -317,6 +558,54 @@ watch(serverDebugModeEnabled, (enabled) => {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.ship-order-toggle-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(103, 232, 249, 0.45);
+  background:
+    linear-gradient(180deg, rgba(14, 116, 144, 0.92), rgba(8, 47, 73, 0.9));
+  color: rgb(224 242 254);
+  box-shadow: 0 8px 18px rgba(8, 47, 73, 0.24);
+  backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.ship-order-toggle-btn:hover,
+.ship-order-toggle-btn--active {
+  transform: translateY(-1px);
+  border-color: rgba(165, 243, 252, 0.78);
+}
+
+.ship-order-toggle-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ship-order-toggle-badge {
+  position: absolute;
+  top: -0.38rem;
+  right: -0.45rem;
+  min-width: 1.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(165, 243, 252, 0.62);
+  background: rgba(8, 47, 73, 0.96);
+  padding: 0.08rem 0.3rem;
+  font-size: 0.58rem;
+  font-weight: 800;
+  color: rgb(236 254 255);
+  line-height: 1.1;
 }
 
 .market-toggle-btn:hover,

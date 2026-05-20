@@ -30,7 +30,7 @@ export class MapViewport {
     resize(width: number, height: number, dpr: number = 1) {
         this._width = Math.max(0, Math.round(width));
         this._height = Math.max(0, Math.round(height));
-        this._dpr = Math.max(1, dpr);
+        this._dpr = Math.max(0.5, dpr);
     }
 
     syncFromContainer(container: { clientWidth: number; clientHeight: number }, dpr: number = 1) {

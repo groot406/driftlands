@@ -81,14 +81,14 @@ test('fast guard training test mode completes barracks training in one tenth the
 
   barracks!.barracksTrainingQueue = 1;
   barracks!.barracksTrainingProgressMs = 0;
-  depositResourceToStorage('0,0', 'food', 2);
+  depositResourceToStorage('0,0', 'meat', 2);
   depositResourceToStorage('0,0', 'weapons', 1);
 
   tickAt(8_999, 8_999);
 
   assert.equal(barracks!.barracksTrainingQueue, 1);
   assert.equal(townCenter!.guardReserve ?? 0, 0);
-  assert.equal(resourceInventory.food ?? 0, 2);
+  assert.equal(resourceInventory.meat ?? 0, 2);
   assert.equal(resourceInventory.weapons ?? 0, 1);
 
   tickAt(9_000, 1);
@@ -96,7 +96,32 @@ test('fast guard training test mode completes barracks training in one tenth the
   assert.equal(barracks!.barracksTrainingQueue, 0);
   assert.equal(barracks!.barracksTrainingProgressMs ?? 0, 0);
   assert.equal(townCenter!.guardReserve ?? 0, 1);
-  assert.equal(resourceInventory.food ?? 0, 0);
+  assert.equal(resourceInventory.meat ?? 0, 0);
+  assert.equal(resourceInventory.weapons ?? 0, 0);
+});
+
+test('guard training can spend any food source', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_barracks', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+
+  const townCenter = ensureTownCenterMilitaryState(tileIndex['0,0']);
+  const barracks = ensureBarracksMilitaryState(tileIndex['1,0']);
+
+  assert.ok(townCenter);
+  assert.ok(barracks);
+
+  barracks!.barracksTrainingQueue = 1;
+  barracks!.barracksTrainingProgressMs = 90_000;
+  depositResourceToStorage('0,0', 'meat', 2);
+  depositResourceToStorage('0,0', 'weapons', 1);
+
+  tickAt(90_000, 1);
+
+  assert.equal(barracks!.barracksTrainingQueue, 0);
+  assert.equal(townCenter!.guardReserve ?? 0, 1);
+  assert.equal(resourceInventory.meat ?? 0, 0);
   assert.equal(resourceInventory.weapons ?? 0, 0);
 });
 

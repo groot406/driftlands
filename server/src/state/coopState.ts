@@ -12,7 +12,6 @@ interface CoopPlayerState {
   name: string;
   color?: string;
   settlementId?: string | null;
-  ready: boolean;
   connectedAt: number;
   claimedHeroIds: Set<string>;
 }
@@ -41,7 +40,6 @@ class CoopState {
       name,
       color,
       settlementId: settlementId ?? null,
-      ready: existing?.ready ?? false,
       connectedAt: existing?.connectedAt ?? Date.now(),
       claimedHeroIds: existing?.claimedHeroIds ?? new Set<string>(),
     });
@@ -65,16 +63,6 @@ class CoopState {
 
   getPlayer(socketId: string): CoopPlayerState | null {
     return this.playersBySocket.get(socketId) ?? null;
-  }
-
-  setReady(socketId: string, ready: boolean) {
-    const player = this.playersBySocket.get(socketId);
-    if (!player) {
-      return false;
-    }
-
-    player.ready = ready;
-    return true;
   }
 
   updatePlayerSettlement(playerId: string, settlementId: string | null) {
@@ -192,7 +180,6 @@ class CoopState {
         name: player.name,
         color: player.color,
         settlementId: player.settlementId ?? null,
-        ready: player.ready,
         connectedAt: player.connectedAt,
         claimedHeroIds: Array.from(player.claimedHeroIds).filter((heroId) => this.heroClaims.get(heroId) === player.id),
       }));
@@ -200,7 +187,6 @@ class CoopState {
     return {
       players,
       onlineCount: players.length,
-      readyCount: players.filter((player) => player.ready).length,
     };
   }
 }

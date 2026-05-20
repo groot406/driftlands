@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import type { RunSnapshot } from '../shared/goals/types.ts';
+import type { DialogueEntrySnapshot, RunSnapshot } from '../shared/goals/types.ts';
 import { cloneStoryProgression, type ProgressionSnapshot } from '../shared/story/progression.ts';
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
 import { setWorldGenerationSeed } from '../core/worldVariation.ts';
@@ -78,6 +78,26 @@ export function loadRunState(run: RunSnapshot) {
 
   missionOverlay.value = null;
   runVersion.value++;
+}
+
+export function appendRunDialogueEntries(entries: DialogueEntrySnapshot[]) {
+  if (!runSnapshot.value || entries.length === 0) {
+    return false;
+  }
+
+  const existingIds = new Set(runSnapshot.value.dialogue.entries.map((entry) => entry.id));
+  const nextEntries = entries.filter((entry) => !existingIds.has(entry.id));
+  if (nextEntries.length === 0) {
+    return false;
+  }
+
+  runSnapshot.value.dialogue.entries.push(...nextEntries.map((entry) => ({
+    ...entry,
+    speaker: { ...entry.speaker },
+  })));
+  runSnapshot.value.dialogue.activeEntryId = nextEntries[0]?.id ?? runSnapshot.value.dialogue.activeEntryId;
+  runVersion.value++;
+  return true;
 }
 
 export function dismissMissionOverlay() {

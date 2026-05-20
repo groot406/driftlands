@@ -17,14 +17,6 @@ export function requestHeroRelease(heroId: string) {
   });
 }
 
-export function setReadyState(ready: boolean) {
-  sendMessage({
-    type: 'coop:set_ready',
-    ready,
-    timestamp: Date.now(),
-  });
-}
-
 export function sendCoopPing(kind: CoopPingKind, position: { q: number; r: number }, heroId?: string) {
   sendMessage({
     type: 'coop:request_ping',

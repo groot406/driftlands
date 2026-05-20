@@ -38,9 +38,6 @@ There is a maximum number of active tiles based on population. When the player d
 ### Disabled Tiles
 When the active tile limit is exceeded, some discovered tiles can become disabled. Disabled tiles cannot be used normally until they are reactivated. This mechanic encourages players to manage expansion rather than revealing too much territory too quickly.
 
-### Campfire
-The campfire has two functions. First, it can temporarily activate disabled tiles by burning wood. Second, it can be used to cook rations for food. It is not crucial early in the game, but it becomes useful once the player has discovered more tiles than they can actively maintain. It can also support early food stability if tuned well.
-
 ### Town Center
 The town center is the settlement’s central structure. It stores resources, acts as the main supply depot, controls local reach, and provides population capacity. Later, additional town centers can be built using tools. A new town center increases reach, acts as another supply point, and increases maximum population significantly.
 
@@ -51,13 +48,13 @@ Resources gathered by heroes and settlers are stored centrally, initially at the
 Resources such as wood, food, grain, stone, ore, sand, tools, and other materials are stored and consumed by construction, production, maintenance, and population growth. Storage location matters because workers travel between houses, jobsites, and depots.
 
 ### Wood
-Wood is one of the first critical resources. It is gathered from forest tiles by chopping wood and is required for houses, docks, campfires, roads or other early structures, and repairs. Early gameplay teaches the player to explore near forests to find more wood.
+Wood is one of the first critical resources. It is gathered from forest tiles by chopping wood and is required for houses, docks, roads or other early structures, and repairs. Early gameplay teaches the player to explore near forests to find more wood.
 
 ### Chopping Wood
 Chopping wood is a hero task performed on forest tiles. It produces wood for the settlement. Multiple heroes can chop together to increase speed. If wood is missing for a building task, players should chop nearby forest tiles before retrying the build.
 
 ### Forest Tiles
-Forest tiles provide wood and hunting opportunities. They can also hide special properties revealed by surveying, such as dense forest, which may improve lumber production. Forests are key to early survival and later automated wood production through lumber camps.
+Forest tiles provide wood and hunting opportunities. Some forests may have stronger production traits, but those traits are now part of the tile itself rather than a separate reveal step. Forests are key to early survival and later automated wood production through lumber camps.
 
 ### Hunting
 Hunting is an early food source performed on forest tiles. Sending more heroes to hunt can increase production because each hero can receive food from the task. Hunting is essential in early stages before reliable food systems such as docks, hunter huts, farms, granaries, bakeries, or bread production are established.
@@ -160,12 +157,6 @@ The timber camp, described similarly to the lumber camp, provides a durable sour
 
 ### Saplings
 Saplings can be planted and eventually grow into trees. In the current build, planting saplings on grass is bugged and does not work properly. Long term, saplings support forestry, sustainability, and timber camp/lumber camp systems.
-
-### Surveying
-Surveying searches for hidden tile specifications. A normal forest tile might turn out to be a dense forest, producing more wood for lumber camps. Surveying is not yet a strong mechanic but has potential as a way to add discovery, optimization, and tile specialization.
-
-### Hidden Tile Specs
-Tiles can have hidden qualities that are revealed through surveying. Examples include dense forest or other resource modifiers. These specs can affect production output or building value.
 
 ### Skills
 Skills are an unfinished mechanic. They may later be applied while executing tasks, possibly to skip wait time once or provide stat buffs. The current design is unclear and needs rework. Skills could support hero progression without making combat or economy balance unfair.
@@ -408,10 +399,10 @@ Fish could become consumable food items. Different fish types could provide diff
 Fish could be used to make sushi or other dishes. Recipes create deeper food systems, better consumables, and stronger links between fishing, farming, and cooking.
 
 ### Better Food
-Better food could improve population growth, work efficiency, happiness, military readiness, or survival. Bread, sushi, cooked rations, and future recipes all fit this category.
+Better food could improve population growth, work efficiency, happiness, military readiness, or survival. Bread, sushi, and future recipes all fit this category.
 
 ### Cooking
-Cooking can convert raw food into better consumables. Campfires, bakeries, ovens, pubs, and other buildings may support cooking or food processing.
+Cooking can convert raw food into better consumables. Bakeries, ovens, pubs, and other buildings may support cooking or food processing.
 
 ### Entertainment
 Settlers may eventually need entertainment. This adds another need beyond food and housing, creating more mid-game depth.
@@ -479,7 +470,7 @@ The tutorial should teach the player how to:
 14. Produce tools and unlock upgrades.
 15. Understand maintenance and idle settlers.
 16. Reach a self-sustaining settlement.
-17. Learn optional advanced systems such as surveying, campfires, saplings, lily pads, and multiplayer.
+17. Learn optional advanced systems such as saplings, lily pads, and multiplayer.
 
 ## Tutorial Format
 
@@ -623,8 +614,6 @@ Player learns:
 Purpose: Introduce mechanics that are useful but not core to the first survival loop.
 
 Player learns:
-- Surveying reveals hidden tile traits.
-- Campfires temporarily activate disabled tiles and cook rations.
 - Saplings can create future forests.
 - Lily pads can make water walkways.
 - Skills and XP improve hero utility.
@@ -1126,25 +1115,7 @@ Each message has:
 
 # Phase 11 — Optional Advanced Lessons
 
-## 11.1 Surveying
-
-**Title:** Survey Hidden Qualities  
-**Short Text:** Surveying can reveal hidden tile traits, like a dense forest.  
-**Objective:** Survey one tile.  
-**Button Label:** Survey Tile  
-**Completion Text:** Tile details revealed.  
-**More Info:** Hidden traits can make some tiles better for production buildings.
-
-## 11.2 Campfire
-
-**Title:** Campfire Utility  
-**Short Text:** Campfires can cook rations and temporarily activate disabled tiles.  
-**Objective:** Build a campfire if you have spare wood.  
-**Button Label:** Build Campfire  
-**Completion Text:** Campfire ready.  
-**More Info:** Campfires are optional early, but useful when your discovered land exceeds your active tile limit.
-
-## 11.3 Saplings
+## 11.1 Saplings
 
 **Title:** Plant Future Forests  
 **Short Text:** Saplings grow into trees over time and can support future wood production.  
@@ -1153,7 +1124,7 @@ Each message has:
 **Completion Text:** Sapling planted.  
 **More Info:** Do not show this task until planting works reliably on the selected terrain.
 
-## 11.4 Lily Pads
+## 11.2 Lily Pads
 
 **Title:** Move Across Water  
 **Short Text:** Harvest lily pads first, then place them to make a walkway over water.  
@@ -1162,7 +1133,7 @@ Each message has:
 **Completion Text:** Water path extended.  
 **More Info:** Lily pads let players reshape movement across water.
 
-## 11.5 Skills
+## 11.3 Skills
 
 **Title:** Hero Skills  
 **Short Text:** Skills can improve how heroes perform tasks. This system is still evolving.  
@@ -1457,7 +1428,6 @@ Do not include yet:
 - NFT rental tutorial.
 - Battle mode tutorial.
 - Skills tutorial.
-- Surveying tutorial.
 - Saplings tutorial.
 - Lily pads tutorial.
 

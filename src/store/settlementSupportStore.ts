@@ -16,7 +16,6 @@ export const ACTIVE_TILE_COST = 1;
 export const FRAGILE_TILE_COUNT = 3;
 export const TOWN_CENTER_REACH_RADIUS = 9;
 export const WATCHTOWER_REACH_RADIUS = 6;
-export const CAMPFIRE_SUPPORT_RADIUS = 2;
 
 export type PressureState = 'stable' | 'strained' | 'collapsing';
 
@@ -56,7 +55,6 @@ interface SupportSelectionResult {
 export type SettlementPopulationInput = number | Partial<Record<string, number>>;
 
 const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower'] as const;
-const CAMPFIRE_VARIANT_KEYS = ['plains_campfire', 'dirt_campfire'] as const;
 const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'] as const;
 const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
     'road',
@@ -79,9 +77,7 @@ const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
 
 const BUILDING_VARIANT_KEYS = new Set<string>([
     'plains_well',
-    'plains_campfire',
     'dirt_well',
-    'dirt_campfire',
     'plains_depot',
     'plains_warehouse',
     'plains_food_storehouse',
@@ -198,23 +194,6 @@ function buildTownCentersBySettlementId(townCenters: Tile[]) {
     }
 
     return townCentersBySettlementId;
-}
-
-function getCampfireTiles(): Tile[] {
-    const campfireTiles: Tile[] = [];
-    for (const variantKey of CAMPFIRE_VARIANT_KEYS) {
-        const positions = variantPositions[variantKey];
-        if (!positions) continue;
-        for (const tileId of positions) {
-            const tile = tileIndex[tileId];
-            if (tile?.discovered) {
-                campfireTiles.push(tile);
-            }
-        }
-    }
-
-    campfireTiles.sort((a, b) => a.id.localeCompare(b.id));
-    return campfireTiles;
 }
 
 function computeReachTileIdsFromTownCenters(
@@ -412,40 +391,6 @@ function setsEqual(a: Set<string>, b: Set<string>) {
         if (!b.has(value)) return false;
     }
     return true;
-}
-
-function computeCampfireSupportedTileIds(
-    activeCampfireIds: Set<string>,
-    controlledByTileId: Map<string, string | null>,
-) {
-    const supportedTileIds = new Set<string>();
-
-    for (const campfireId of activeCampfireIds) {
-        const campfire = tileIndex[campfireId];
-        const settlementId = controlledByTileId.get(campfireId);
-        if (!campfire || !settlementId) continue;
-
-        for (let dq = -CAMPFIRE_SUPPORT_RADIUS; dq <= CAMPFIRE_SUPPORT_RADIUS; dq++) {
-            for (
-                let dr = Math.max(-CAMPFIRE_SUPPORT_RADIUS, -dq - CAMPFIRE_SUPPORT_RADIUS);
-                dr <= Math.min(CAMPFIRE_SUPPORT_RADIUS, -dq + CAMPFIRE_SUPPORT_RADIUS);
-                dr++
-            ) {
-                const candidate = tileIndex[`${campfire.q + dq},${campfire.r + dr}`];
-                if (!candidate?.discovered || candidate.terrain === 'towncenter') {
-                    continue;
-                }
-
-                if (controlledByTileId.get(candidate.id) !== settlementId) {
-                    continue;
-                }
-
-                supportedTileIds.add(candidate.id);
-            }
-        }
-    }
-
-    return supportedTileIds;
 }
 
 function computeInfrastructureSupportedTileAssignments(
@@ -880,21 +825,7 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
         activeWatchtowerIds = baseSelection.activeWatchtowerIds;
     }
 
-    const activeCampfireIds = new Set(
-        getCampfireTiles()
-            .map((tile) => tile.id)
-            .filter((tileId) => baseSelection.activeNonTowncenterIds.has(tileId)),
-    );
-    const campfireSupportedTileIds = computeCampfireSupportedTileIds(activeCampfireIds, controlledByTileId);
     const activeNonTowncenterIds = new Set(baseSelection.activeNonTowncenterIds);
-    const extraCampfireActiveTileIds = new Set<string>();
-
-    for (const tileId of campfireSupportedTileIds) {
-        if (!activeNonTowncenterIds.has(tileId) && isSupportCountedTile(tileIndex[tileId])) {
-            extraCampfireActiveTileIds.add(tileId);
-        }
-        activeNonTowncenterIds.add(tileId);
-    }
 
     const infrastructureSupportedTileAssignments = computeInfrastructureSupportedTileAssignments(
         activeNonTowncenterIds,
@@ -919,14 +850,6 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
     }
 
     const finalSupportCapacityBySettlementId = new Map(baseSelection.supportCapacityBySettlementId);
-    for (const tileId of extraCampfireActiveTileIds) {
-        const settlementId = controlledByTileId.get(tileId) ?? ownerByTileId.get(tileId) ?? null;
-        if (!settlementId) continue;
-        finalSupportCapacityBySettlementId.set(
-            settlementId,
-            (finalSupportCapacityBySettlementId.get(settlementId) ?? 0) + 1,
-        );
-    }
     for (const tileId of extraInfrastructureActiveTileIds) {
         const settlementId = controlledByTileId.get(tileId) ?? ownerByTileId.get(tileId) ?? null;
         if (!settlementId) continue;
@@ -1016,7 +939,7 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
     }
 
     lastSnapshot = buildSupportSnapshot(
-        baseSelection.supportCapacity + extraCampfireActiveTileIds.size + extraInfrastructureActiveTileIds.size,
+        baseSelection.supportCapacity + extraInfrastructureActiveTileIds.size,
         activeNonTowncenterIds,
         finalSupportCapacityBySettlementId,
         ownerByTileId,

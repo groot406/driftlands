@@ -2,9 +2,15 @@
   <Teleport to="body">
     <Transition name="calamity-modal">
       <div v-if="report" class="calamity-backdrop" @click.self="closeCalamityReport">
-        <section class="calamity-modal" :class="`calamity-modal--${report.event.kind}`" role="dialog" aria-modal="true">
-          <button class="calamity-close" type="button" title="Close report" @click="closeCalamityReport">x</button>
-
+        <PanelModalShell
+          class="calamity-modal"
+          :class="`calamity-modal--${report.event.kind}`"
+          role="dialog"
+          aria-modal="true"
+          close-title="Close report"
+          close-aria-label="Close disaster report"
+          @close="closeCalamityReport"
+        >
           <div class="calamity-art" :style="artStyle" aria-hidden="true"></div>
 
           <div class="calamity-content">
@@ -12,32 +18,36 @@
               <p class="calamity-eyebrow">{{ phaseLabel }}</p>
               <h2>{{ report.event.title || displayName }}</h2>
               <p class="calamity-story">{{ storyText }}</p>
+              <div v-if="warningCountdownText" class="calamity-countdown">
+                <span>Impact in</span>
+                <strong>{{ warningCountdownText }}</strong>
+              </div>
             </header>
 
             <div class="calamity-grid">
               <section class="calamity-card calamity-card--effects">
-                <h3>Effects</h3>
+                <h3><span class="calamity-card-icon" :style="calamityIconStyle('effects')" aria-hidden="true"></span>Effects</h3>
                 <ul>
                   <li v-for="effect in effects" :key="effect">{{ effect }}</li>
                 </ul>
               </section>
 
               <section class="calamity-card calamity-card--good">
-                <h3>Good Side</h3>
+                <h3><span class="calamity-card-icon" :style="calamityIconStyle('good')" aria-hidden="true"></span>Good Side</h3>
                 <ul>
                   <li v-for="item in goodSide" :key="item">{{ item }}</li>
                 </ul>
               </section>
 
               <section class="calamity-card calamity-card--bad">
-                <h3>Bad Side</h3>
+                <h3><span class="calamity-card-icon" :style="calamityIconStyle('bad')" aria-hidden="true"></span>Bad Side</h3>
                 <ul>
                   <li v-for="item in badSide" :key="item">{{ item }}</li>
                 </ul>
               </section>
 
               <section class="calamity-card calamity-card--next">
-                <h3>What To Do</h3>
+                <h3><span class="calamity-card-icon" :style="calamityIconStyle('next')" aria-hidden="true"></span>What To Do</h3>
                 <ul>
                   <li v-for="item in nextSteps" :key="item">{{ item }}</li>
                 </ul>
@@ -45,18 +55,21 @@
             </div>
 
             <footer class="calamity-footer">
-              <span>{{ severityLabel }}</span>
+              <span class="calamity-major-bar">
+                <span class="calamity-card-icon" :style="calamityIconStyle('bad')" aria-hidden="true"></span>
+                {{ severityLabel }}
+              </span>
               <button type="button" @click="closeCalamityReport">Back to Colony</button>
             </footer>
           </div>
-        </section>
+        </PanelModalShell>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   activeCalamityReport,
   closeCalamityReport,
@@ -65,8 +78,12 @@ import {
 } from '../store/calamityEventStore.ts';
 import type { CalamityKind } from '../shared/protocol.ts';
 import calamityAtlasUrl from '../assets/ui/calamity-event-atlas.png';
+import settlerIconAtlasUrl from '../assets/ui/settler-modal/icon-atlas.png';
+import PanelModalShell from './ui/PanelModalShell.vue';
 
 const report = activeCalamityReport;
+const now = ref(Date.now());
+let countdownTimer: number | null = null;
 
 const CALAMITY_ART_POSITIONS: Record<CalamityKind, string> = {
   volcano_eruption: '0% 0%',
@@ -83,6 +100,22 @@ const artStyle = computed(() => ({
   backgroundImage: `url(${calamityAtlasUrl})`,
   backgroundPosition: report.value ? CALAMITY_ART_POSITIONS[report.value.event.kind] : '50% 50%',
 }));
+
+type CalamityIcon = 'effects' | 'good' | 'bad' | 'next';
+
+const calamityIconPositions: Record<CalamityIcon, string> = {
+  effects: '0% 100%',
+  good: '0% 50%',
+  bad: '100% 100%',
+  next: '100% 0%',
+};
+
+function calamityIconStyle(icon: CalamityIcon) {
+  return {
+    backgroundImage: `url(${settlerIconAtlasUrl})`,
+    backgroundPosition: calamityIconPositions[icon],
+  };
+}
 
 const phaseLabel = computed(() => {
   const phase = report.value?.event.phase ?? 'impact';
@@ -111,13 +144,24 @@ const storyText = computed(() => {
   return event.message;
 });
 
+const warningCountdownText = computed(() => {
+  const event = report.value?.event;
+  const openedAt = report.value?.openedAt;
+  if (event?.phase !== 'warning' || !event.impactAt || !openedAt) {
+    return '';
+  }
+
+  return formatCountdown(getReportRemainingMs(event.impactAt, event.timestamp, openedAt));
+});
+
 const effects = computed(() => {
   const event = report.value?.event;
   if (!event) return [];
 
   const lines: string[] = [];
   if (event.phase === 'warning' && event.impactAt) {
-    lines.push(`Expected impact around ${new Date(event.impactAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+    const openedAt = report.value?.openedAt ?? now.value;
+    lines.push(`Expected impact in ${formatCountdown(getReportRemainingMs(event.impactAt, event.timestamp, openedAt))}.`);
   }
   if (event.affectedTileIds.length > 0) {
     lines.push(`${event.affectedTileIds.length} tile${event.affectedTileIds.length === 1 ? '' : 's'} affected or at risk.`);
@@ -169,7 +213,7 @@ const badSide = computed(() => {
     case 'forest_fire':
       return ['Forest production and nearby structures can suffer.', 'Uncontrolled fire can remove useful work sites.'];
     case 'outbreak':
-      return ['Settlers can die without medicine and strong rations.', 'Labor capacity may drop immediately.'];
+      return ['Settlers can die without medicine and strong food stores.', 'Labor capacity may drop immediately.'];
     default:
       return ['Some colony systems may be weaker than they looked.'];
   }
@@ -194,6 +238,30 @@ const nextSteps = computed(() => {
       return ['Inspect the affected area.', 'Repair critical buildings.', 'Adjust the next build priority.'];
   }
 });
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function getReportRemainingMs(impactAt: number, serverTimestamp: number | undefined, openedAt: number) {
+  const serverNowAtOpen = serverTimestamp ?? openedAt;
+  return Math.max(0, impactAt - serverNowAtOpen - (now.value - openedAt));
+}
+
+onMounted(() => {
+  countdownTimer = window.setInterval(() => {
+    now.value = Date.now();
+  }, 250);
+});
+
+onUnmounted(() => {
+  if (countdownTimer != null) {
+    window.clearInterval(countdownTimer);
+  }
+});
 </script>
 
 <style scoped>
@@ -204,44 +272,37 @@ const nextSteps = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
-  background: rgba(5, 13, 16, 0.72);
-  backdrop-filter: blur(6px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 22% 45%, rgba(90, 51, 126, 0.2), transparent 23rem),
+    rgba(1, 5, 12, 0.82);
+  backdrop-filter: blur(5px) saturate(0.82) brightness(0.78);
   pointer-events: auto;
 }
 
 .calamity-modal {
   position: relative;
-  width: min(58rem, 100%);
-  max-height: min(44rem, calc(100vh - 2rem));
+  box-sizing: border-box;
+  width: min(58rem, calc(100vw - 32px));
+  max-height: min(86vh, 39rem);
   display: grid;
-  grid-template-columns: minmax(15rem, 0.75fr) minmax(0, 1fr);
+  grid-template-columns: minmax(15rem, 0.78fr) minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid rgba(250, 230, 170, 0.28);
-  border-radius: 8px;
-  background: rgba(15, 23, 22, 0.98);
-  color: #fff4cf;
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
-}
-
-.calamity-close {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 2;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 8px;
-  border: 1px solid rgba(250, 230, 170, 0.22);
-  background: rgba(5, 13, 16, 0.62);
-  color: #fff4cf;
-  font-weight: 800;
+  border: 16px solid transparent;
+  border-image: url('../assets/ui/settler-modal/panel-frame.png') 72 / 28px stretch;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #121619 0%, #0a0d10 100%);
+  color: #f3e4c9;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.64), inset 0 0 64px rgba(0, 0, 0, 0.82);
 }
 
 .calamity-art {
   position: relative;
   min-height: 100%;
   overflow: hidden;
+  border-right: 1px solid rgba(170, 113, 52, 0.58);
   background-color: #101816;
   background-repeat: no-repeat;
   background-size: 300% 200%;
@@ -261,76 +322,124 @@ const nextSteps = computed(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.82rem;
   overflow-y: auto;
-  padding: 1.25rem;
+  padding: 1.1rem 1.2rem 1.05rem;
 }
 
 .calamity-header {
-  padding-right: 2.25rem;
+  padding-right: 2.65rem;
 }
 
 .calamity-eyebrow {
-  font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0;
-  color: rgb(252 211 77);
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #d0a050;
   text-transform: uppercase;
+  text-shadow: 0 1px 0 #070706;
 }
 
 .calamity-header h2 {
-  margin-top: 0.45rem;
-  font-size: clamp(1.35rem, 3vw, 2.15rem);
+  margin: 0.35rem 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
   line-height: 1.05;
-  font-weight: 900;
+  color: #fff1d4;
+  text-shadow: 0 2px 0 #090807;
 }
 
 .calamity-story {
-  margin-top: 0.7rem;
-  color: rgba(255, 244, 207, 0.82);
-  line-height: 1.55;
+  margin: 0.45rem 0 0;
+  color: #d7c8a7;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.calamity-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.72rem;
+  border: 7px solid transparent;
+  border-image: url('../assets/ui/settler-modal/stat-badge.png') 46 fill / 7px stretch;
+  padding: 0.28rem 0.6rem;
+}
+
+.calamity-countdown span,
+.calamity-countdown strong {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #f3dfb9;
+  font-size: 0.8rem;
 }
 
 .calamity-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.45rem;
 }
 
 .calamity-card {
-  border: 1px solid rgba(250, 230, 170, 0.16);
-  border-radius: 8px;
-  background: rgba(6, 18, 20, 0.46);
-  padding: 0.85rem;
+  min-height: 8.1rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid rgba(159, 105, 47, 0.36);
+  background:
+    radial-gradient(circle at 18% 8%, rgba(255, 226, 161, 0.032), transparent 8rem),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 8px),
+    rgba(12, 14, 15, 0.58);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.56);
 }
 
 .calamity-card h3 {
-  margin-bottom: 0.5rem;
-  color: rgb(253 230 138);
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  margin: 0 0 0.5rem;
+  color: #d0a050;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
+}
+
+.calamity-card-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+  display: inline-block;
+  flex: 0 0 auto;
+  background-repeat: no-repeat;
+  background-size: 400% 300%;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.68));
 }
 
 .calamity-card ul {
   display: grid;
-  gap: 0.45rem;
-  color: rgba(255, 244, 207, 0.82);
-  font-size: 0.9rem;
-  line-height: 1.35;
+  gap: 0.42rem;
+  margin: 0;
+  padding: 0;
+  color: #d7c8a7;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.86rem;
+  line-height: 1.3;
 }
 
 .calamity-card li {
-  list-style: disc;
-  margin-left: 1rem;
+  margin-left: 1.1rem;
 }
 
 .calamity-card--good {
-  border-color: rgba(74, 222, 128, 0.24);
+  border-color: rgba(108, 157, 48, 0.54);
 }
 
 .calamity-card--bad {
-  border-color: rgba(248, 113, 113, 0.26);
+  border-color: rgba(181, 67, 51, 0.58);
+}
+
+.calamity-card--next {
+  border-color: rgba(201, 141, 39, 0.58);
 }
 
 .calamity-footer {
@@ -338,24 +447,37 @@ const nextSteps = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-top: 1px solid rgba(250, 230, 170, 0.14);
-  padding-top: 0.75rem;
+  margin-top: auto;
 }
 
-.calamity-footer span {
-  color: rgba(255, 244, 207, 0.58);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0;
+.calamity-major-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.45rem;
+  flex: 1;
+  padding: 0.35rem 0.72rem;
+  border: 7px solid transparent;
+  border-image: url('../assets/ui/settler-modal/stat-badge.png') 46 fill / 7px stretch;
+  color: #c9b894;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .calamity-footer button {
-  border-radius: 8px;
-  border: 1px solid rgba(252, 211, 77, 0.42);
-  background: rgba(146, 64, 14, 0.86);
-  color: #fff4cf;
-  padding: 0.65rem 1rem;
-  font-weight: 800;
+  min-height: 2.45rem;
+  border: 7px solid transparent;
+  border-image: url('../assets/ui/settler-modal/stat-badge.png') 46 fill / 7px stretch;
+  background: transparent;
+  color: #fff0d2;
+  padding: 0.25rem 0.95rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .calamity-modal-enter-active,
@@ -369,12 +491,32 @@ const nextSteps = computed(() => {
 }
 
 @media (max-width: 760px) {
+  .calamity-backdrop {
+    padding: 0;
+  }
+
   .calamity-modal {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .calamity-art {
     min-height: 11rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(170, 113, 52, 0.58);
+  }
+
+  .calamity-content {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
   }
 
   .calamity-grid {

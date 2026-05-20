@@ -319,25 +319,6 @@ Materials/textures: heavy timber, door planks, stone base, crate stacks
 Constraints: no text, no logo, no watermark, no UI frame, no photorealism, no blur, no smooth gradients, no antialiasing, no square border
 Avoid: massive barn, modern warehouse, busy roof pattern""",
     ),
-    "plains_campfire": BuildingAsset(
-        key="plains_campfire",
-        label="Campfire",
-        kind="tile",
-        size=(64, 64),
-        tile_base="src/assets/tiles/plains.png",
-        prompt="""Use case: stylized-concept
-Asset type: 64x64 game building tile for Driftlands
-Primary request: create a small frontier campfire on a grassy clipped-corner hex tile
-Scene/backdrop: low grassy plains hex tile, no horizon
-Subject: stone fire ring with orange flames, ember center, two log seats, and a compact trampled patch
-Style/medium: true pixel art, hard-edged sprite clusters, limited palette
-Composition/framing: top-down slight three-quarter hex game tile, centered campfire, readable at native 64x64 size
-Lighting/mood: warm survival outpost feel
-Color palette: muted grass green, charred brown, stone gray, amber orange flame
-Materials/textures: stone ring, split logs, small flame clusters, scorched ground
-Constraints: no text, no logo, no watermark, no UI frame, no photorealism, no blur, no smooth gradients, no antialiasing, no square border
-Avoid: huge bonfire, tents, tall smoke column, fantasy magic flame""",
-    ),
     "plains_house": BuildingAsset(
         key="plains_house",
         label="House",

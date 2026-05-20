@@ -177,6 +177,7 @@ function canDeliverFood(progression: ProgressionSnapshot) {
   return (
     hasUnlockedTask(progression, 'buildBakery')
     || hasUnlockedTask(progression, 'buildDock')
+    || hasUnlockedTask(progression, 'buildHuntersHut')
   );
 }
 
@@ -527,7 +528,7 @@ function tutorialMission5(): ObjectiveBlueprint[] {
       1,
       75,
     ),
-    deliverObjective('food-stores', 'Fill the food stores', 'food', 10, 60, false),
+    deliverObjective('bread-stores', 'Fill the food stores', 'bread', 10, 60, false),
   ];
 }
 
@@ -582,7 +583,7 @@ function tutorialMission8(currentFrontierDistance: number): ObjectiveBlueprint[]
     surveyObjective(200, 45),
     reachObjective(Math.max(8, currentFrontierDistance + 2), 75),
     deliverObjective('harsh-timber', 'Stockpile for the cold', 'wood', 24, 60),
-    deliverObjective('harsh-rations', 'Provision against the elements', 'food', 14, 60, false),
+    deliverObjective('harsh-meat', 'Provision against the elements', 'meat', 14, 60, false),
   ];
 }
 
@@ -611,7 +612,7 @@ function tutorialMission10(currentFrontierDistance: number): ObjectiveBlueprint[
     surveyObjective(250, 45),
     reachObjective(Math.max(10, currentFrontierDistance + 3), 90),
     deliverObjective('expedition-ore', 'Ore for the final push', 'ore', 18, 75),
-    deliverObjective('expedition-food', 'Provision the expedition', 'food', 16, 60, false),
+    deliverObjective('expedition-bread', 'Provision the expedition', 'bread', 16, 60, false),
   ];
 }
 
@@ -677,7 +678,7 @@ function generateProceduralMission(
         deliverObjective('timber-stockpile', 'Raise building stock', 'wood', woodTarget + 4, 60),
         createTimberTaskObjective(progression),
         (canDeliverFood(progression)
-          ? deliverObjective('mess-hall', 'Secure supplies', 'food', foodTarget, 45)
+          ? deliverObjective('mess-hall', 'Secure supplies', 'meat', foodTarget, 45)
           : taskObjective(
               'trail-break',
               'Open the inland routes',
@@ -712,7 +713,7 @@ function generateProceduralMission(
     case 'foragers_feast':
       objectives = [
         surveyObjective(surveyTarget - 1, 45),
-        deliverObjective('field-rations', 'Fill the stores', 'food', foodTarget + 2, 60),
+        deliverObjective('field-meat', 'Fill the stores', 'meat', foodTarget + 2, 60),
         createFoodTaskObjective(progression),
         deliverObjective('camp-frames', 'Frame the camp', 'wood', woodTarget, 45),
         reachObjective(Math.max(frontierRingTarget, 8), 45, false),
@@ -735,7 +736,7 @@ function generateProceduralMission(
         taskObjective(
           'waystation',
           'Raise a waystation',
-          'Build 1 supply depot so crews can stage timber and rations along the route.',
+          'Build 1 supply depot so crews can stage timber and meals along the route.',
           'buildSupplyDepot',
           1,
           75,
@@ -782,7 +783,7 @@ function generateProceduralMission(
             )
           : deliverObjective('wagon-stock', 'Load the wagons', 'wood', woodTarget, 45, false)),
         (canDeliverFood(progression)
-          ? deliverObjective('settlers-rations', 'Provision the new hearth', 'food', Math.max(8, foodTarget - 1), 45, false)
+          ? deliverObjective('settlers-bread', 'Provision the new hearth', 'bread', Math.max(8, foodTarget - 1), 45, false)
           : reachObjective(Math.max(frontierRingTarget, 8), 45, false)),
       ];
       break;

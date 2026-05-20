@@ -8,6 +8,35 @@
     }"
   >
     <canvas ref="canvas" class="absolute inset-0 pixel-art"/>
+    <Transition name="quick-action-pop">
+      <div
+        v-if="quickActionMenu.visible && quickActionMenu.tile"
+        class="quick-action-menu"
+        :style="quickActionMenuStyle"
+        @contextmenu.stop.prevent
+        @pointerdown.stop.prevent
+        @pointerup.stop
+      >
+        <div class="quick-action-menu__header">
+          <span class="quick-action-menu__kicker">Quick Actions</span>
+          <span class="quick-action-menu__tile">{{ getTileActionLabel(quickActionMenu.tile) }}</span>
+        </div>
+        <div class="quick-action-menu__list">
+          <button
+            v-for="task in quickActionMenu.tasks"
+            :key="task.key"
+            type="button"
+            class="quick-action-menu__item"
+            @click.stop="handleQuickActionClick(task)"
+            @pointerenter="handleQuickActionHover(task)"
+            @pointerleave="handleQuickActionHover(null)"
+        >
+            <span class="quick-action-menu__glyph">{{ getQuickActionGlyph(task) }}</span>
+            <span class="quick-action-menu__label">{{ task.label }}</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
     <transition name="fade-menu" mode="out-in" v-show="showTaskMenu">
       <TaskMenu :containerSize="containerSize" :tile="taskMenuTile" :availableTasks="availableTasks"
                 :visible="showTaskMenu"
@@ -104,7 +133,8 @@ import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
 import {updateRenderDebugState} from '../store/renderDebugStore';
-import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
+import { getBuildingDefinitionByTaskKey, getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
+import { getUpgradeDefinitionByTaskKey } from '../shared/buildings/upgrades.ts';
 import { isBridgeTile, isTunnelTile } from '../shared/game/bridges.ts';
 import { isRoadTile } from '../shared/game/roads.ts';
 import {
@@ -124,8 +154,8 @@ import {getSelectedHero, isPaused, openSettlerModal, selectedHeroId, selectHero,
 import {isHeroWorkingTask} from '../shared/game/heroTaskState';
 import {taskStore} from '../store/taskStore';
 import {HexMapService} from '../core/HexMapService';
-import {closeWindow, openWindow, WINDOW_IDS} from '../core/windowManager';
-import {requestHeroClaim, sendCoopPing} from '../core/coopService';
+import {closeWindow, isKeyboardBlocked, openWindow, WINDOW_IDS} from '../core/windowManager';
+import {requestHeroClaim} from '../core/coopService';
 import {currentPlayerId} from '../core/socket';
 import {getAvailableTasks} from "../shared/tasks/tasks";
 import { getTaskDefinition, listTaskDefinitions } from '../shared/tasks/taskRegistry.ts';
@@ -138,7 +168,11 @@ import type { TaskInstance } from '../core/types/Task.ts';
 import type {TaskDefinition} from "../core/types/Task.ts";
 import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/gameFeel';
 import {addNotification} from '../store/notificationStore';
-import {shouldUseCanvasDropShadow} from '../store/graphicsStore';
+import {
+  graphicsDiagnosticOverrideStore,
+  shouldUseCanvasDropShadow,
+  shouldUseWindowsRescueTimer,
+} from '../store/graphicsStore';
 import {canControlHero, getActiveCoopPings, getHeroOwnerName, getPlayerEntities, isHeroClaimedByOtherPlayer} from '../store/playerStore';
 import {populationVersion} from '../store/clientPopulationStore';
 import {runSnapshot, runVersion} from '../store/runStore';
@@ -165,7 +199,7 @@ import {
   getSettlementTownCenterTile,
   getTileSettlementId as getSettlementIdForTile,
 } from '../shared/game/settlement';
-import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess';
+import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
 import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
 import {
   getAvailableGuardReserve,
@@ -175,6 +209,7 @@ import {
 } from '../shared/game/military.ts';
 import { isWallTile } from '../shared/game/walls.ts';
 import { isStudyCompleted } from '../store/studyStore.ts';
+import { isTileWalkable } from '../shared/game/navigation.ts';
 
 import { detachHeroFromCurrentTask } from '../store/taskStore';
 import { canStartTaskWhileCarrying } from '../store/taskStore';
@@ -201,6 +236,19 @@ const pathPreviewState = shallowRef<{ heroId: string; targetKey: string; sourceK
 const availableTasks = ref<TaskDefinition[]>([]);
 const showTaskMenu = ref(false);
 const taskMenuTile = ref<Tile | null>(null);
+const quickActionMenu = ref<{
+  visible: boolean;
+  tile: Tile | null;
+  tasks: TaskDefinition[];
+  x: number;
+  y: number;
+}>({
+  visible: false,
+  tile: null,
+  tasks: [],
+  x: 0,
+  y: 0,
+});
 const showTownCenterPanel = ref(false);
 const selectedTownCenterTileId = ref<string | null>(null);
 const selectedBuildingDetailTileId = ref<string | null>(null);
@@ -221,6 +269,9 @@ const settlementReachOutlines = ref<Array<{
 const showSupportOverlay = ref(false);
 const showMilitaryHudPopup = ref(false);
 let lastGlobalReachComputeMs = 0;
+const QUICK_ACTION_MENU_WIDTH = 224;
+const QUICK_ACTION_MENU_MAX_HEIGHT = 300;
+const QUICK_ACTION_MENU_MARGIN = 10;
 
 // Service instance
 const service = new HexMapService();
@@ -231,7 +282,7 @@ const WATER_DISCOVERY_HINT_ID = 'story:water-nearby';
 
 type RenderedTileHint = {
   id: string;
-  source: 'story' | 'tutorial';
+  source: 'story' | 'tutorial' | 'side_quest';
   action: TutorialMapHintAction;
   q: number;
   r: number;
@@ -268,6 +319,11 @@ const renderedPings = computed(() => {
     };
   });
 });
+
+const quickActionMenuStyle = computed(() => ({
+  left: `${quickActionMenu.value.x}px`,
+  top: `${quickActionMenu.value.y}px`,
+}));
 
 const militaryHud = computed(() => {
   void worldVersion.value;
@@ -344,7 +400,7 @@ const renderedMapHints = computed<RenderedTileHint[]>(() => {
   const hints = [
     ...getActiveStoryTileHints.value.map((hint) => ({
       id: hint.id,
-      source: 'story' as const,
+      source: hint.kind === 'side_quest' ? 'side_quest' as const : 'story' as const,
       action: 'explore' as const,
       q: hint.q,
       r: hint.r,
@@ -441,12 +497,14 @@ function onOrientationChange() {
 }
 
 let rafId: number | null = null;
+let rescueTimerId: ReturnType<typeof setTimeout> | null = null;
 let lastClickTime = 0;
 let lastMenuOpenTime = 0; // cooldown to avoid immediate close after open on mobile short taps
 let lastPointerClient: { x: number; y: number } | null = null;
 let pendingPathPreviewUpdate = false;
 let lastPathPreviewComputeMs = 0;
 let pendingMenuTimer: ReturnType<typeof setTimeout> | null = null;
+let quickActionIgnoreCloseUntil = 0;
 
 function cancelPendingMenu() {
   if (pendingMenuTimer !== null) {
@@ -460,6 +518,8 @@ let lastDrawTime = 0;
 const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 const FRAME_INTERVAL_TOLERANCE_MS = 0.5;
+const RESCUE_TIMER_INTERVAL_MS = 8;
+const HIDDEN_RESCUE_TIMER_INTERVAL_MS = 250;
 
 function clearPathPreview() {
   pathCoords.value = [];
@@ -642,12 +702,129 @@ function handleStoryHintPointerDown() {
 }
 
 function openTaskMenuForTile(tile: Tile, tasks: TaskDefinition[]) {
+  closeQuickActionMenu();
   cancelPendingMenu();
   taskMenuTile.value = tile;
   availableTasks.value = tasks;
   showTaskMenu.value = true;
   openWindow(WINDOW_IDS.TASK_MENU);
   lastMenuOpenTime = Date.now();
+}
+
+function closeQuickActionMenu() {
+  if (!quickActionMenu.value.visible && !quickActionMenu.value.tile) {
+    return;
+  }
+
+  quickActionMenu.value = {
+    visible: false,
+    tile: null,
+    tasks: [],
+    x: 0,
+    y: 0,
+  };
+  if (!showTaskMenu.value) {
+    hoveredTask.value = null;
+  }
+  computeTerrainCluster(null);
+}
+
+function getQuickActionPosition(clientX: number, clientY: number) {
+  const el = container.value;
+  const rect = el?.getBoundingClientRect();
+  if (!rect) {
+    return { x: clientX, y: clientY };
+  }
+
+  const maxX = Math.max(QUICK_ACTION_MENU_MARGIN, rect.width - QUICK_ACTION_MENU_WIDTH - QUICK_ACTION_MENU_MARGIN);
+  const maxY = Math.max(QUICK_ACTION_MENU_MARGIN, rect.height - QUICK_ACTION_MENU_MAX_HEIGHT - QUICK_ACTION_MENU_MARGIN);
+  return {
+    x: Math.min(Math.max(clientX - rect.left, QUICK_ACTION_MENU_MARGIN), maxX),
+    y: Math.min(Math.max(clientY - rect.top, QUICK_ACTION_MENU_MARGIN), maxY),
+  };
+}
+
+function openQuickActionMenu(tile: Tile, tasks: TaskDefinition[], clientX: number, clientY: number) {
+  cancelPendingMenu();
+  if (showTaskMenu.value) {
+    showTaskMenu.value = false;
+    taskMenuTile.value = null;
+    closeWindow(WINDOW_IDS.TASK_MENU);
+  }
+
+  const position = getQuickActionPosition(clientX, clientY);
+  quickActionMenu.value = {
+    visible: true,
+    tile,
+    tasks,
+    x: position.x,
+    y: position.y,
+  };
+  quickActionIgnoreCloseUntil = Date.now() + 300;
+  hoveredTile.value = tile;
+  hoveredHero.value = null;
+  hoveredSettler.value = null;
+}
+
+function getQuickActionTasks(tile: Tile, hero: Hero) {
+  const tasks = getAvailableTasks(tile, hero);
+  const withWalk = !tasks.some((task) => task.key === 'walk') && isTileWalkable(tile)
+    ? [
+      ...tasks,
+      {
+        key: 'walk',
+        label: 'Go here',
+        canStart: (_tile: Tile, _hero: Hero) => true,
+        requiredXp: (_distance: number) => 0,
+        heroRate: (_hero: Hero, _tile: Tile) => 1,
+      },
+    ]
+    : tasks;
+
+  return withWalk
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => getQuickActionGroup(a.task) - getQuickActionGroup(b.task) || a.index - b.index)
+    .map((entry) => entry.task);
+}
+
+function getQuickActionGroup(task: TaskDefinition) {
+  if (task.key === 'walk') {
+    return 2;
+  }
+
+  if (getBuildingDefinitionByTaskKey(task.key) || getUpgradeDefinitionByTaskKey(task.key)) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function getTileActionLabel(tile: Tile) {
+  const building = getBuildingDefinitionForTile(tile);
+  if (building) {
+    return building.label;
+  }
+
+  if (tile.terrain === 'towncenter') {
+    return 'Town Center';
+  }
+
+  const terrain = (tile.terrain ?? 'tile').replace(/_/g, ' ');
+  return terrain.charAt(0).toUpperCase() + terrain.slice(1);
+}
+
+function getQuickActionGlyph(task: TaskDefinition) {
+  if (task.key === 'walk') return '→';
+  if (task.key === 'chopWood' || task.key === 'gatherTimber') return '⌓';
+  if (task.key === 'fishAtDock') return '≈';
+  if (task.key === 'explore') return '?';
+  if (task.key.startsWith('build')) return '+';
+  if (task.key.startsWith('upgrade')) return '↑';
+  return '•';
+}
+
+function handleQuickActionHover(task: TaskDefinition | null) {
+  hoveredTask.value = task;
 }
 
 function requestSelectedHeroOpenTutorialTaskHint(hint: RenderedTileHint, target: Tile) {
@@ -756,7 +933,7 @@ function shouldDrawFrame(frameNowMs: number) {
   return true;
 }
 
-function animationLoop(frameNowMs = performance.now()) {
+function drawAnimationFrame(frameNowMs = performance.now()) {
   const movementNowMs = Date.now();
   const effectNowMs = sampleGameFeelTime(movementNowMs);
   const hitStopActive = isHitStopActive(movementNowMs);
@@ -801,8 +978,51 @@ function animationLoop(frameNowMs = performance.now()) {
       perfNowMs: performance.now(),
     });
   }
+}
 
+function animationLoop(frameNowMs = performance.now()) {
+  drawAnimationFrame(frameNowMs);
   rafId = requestAnimationFrame(animationLoop);
+}
+
+function rescueTimerLoop() {
+  if (document.visibilityState === 'visible') {
+    drawAnimationFrame(performance.now());
+  }
+
+  rescueTimerId = window.setTimeout(
+    rescueTimerLoop,
+    document.visibilityState === 'visible'
+      ? RESCUE_TIMER_INTERVAL_MS
+      : HIDDEN_RESCUE_TIMER_INTERVAL_MS,
+  );
+}
+
+function startAnimationLoops() {
+  if (rafId) cancelAnimationFrame(rafId);
+  if (rescueTimerId !== null) {
+    clearTimeout(rescueTimerId);
+    rescueTimerId = null;
+  }
+
+  lastDrawTime = 0;
+  animationLoop();
+
+  if (shouldUseWindowsRescueTimer()) {
+    rescueTimerId = window.setTimeout(rescueTimerLoop, RESCUE_TIMER_INTERVAL_MS);
+  }
+}
+
+function stopAnimationLoops() {
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  if (rescueTimerId !== null) {
+    clearTimeout(rescueTimerId);
+    rescueTimerId = null;
+  }
 }
 
 function getPathPreviewThrottleMs(hero: Hero, tile: Tile) {
@@ -1042,6 +1262,14 @@ function handleClick(e: PointerEvent) {
     // No reachable goal — fall through to normal handling
   }
 
+  if (quickActionMenu.value.visible) {
+    if (nowTs < quickActionIgnoreCloseUntil) {
+      return;
+    }
+    closeQuickActionMenu();
+    return;
+  }
+
   // If menu just opened, ignore further taps briefly to avoid flicker-close
   if (showTaskMenu.value && (nowTs - lastMenuOpenTime) < 250) {
     return;
@@ -1263,24 +1491,149 @@ function handleClick(e: PointerEvent) {
   updatePath(true);
 }
 
+function handleQuickActionClick(def: TaskDefinition) {
+  const tile = quickActionMenu.value.tile;
+  if (!tile) {
+    closeQuickActionMenu();
+    return;
+  }
+
+  const hero = getSelectedHero();
+  if (!hero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Choose a hero before issuing a quick order.',
+      duration: 2800,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  if (!canControlHero(hero.id, currentPlayerId.value)) {
+    addNotification({
+      type: 'coop_state',
+      title: `${hero.name} is occupied`,
+      message: `${getHeroOwnerName(hero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  if (!isTileInCurrentPlayerTerritory(tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Closed border',
+      message: 'This tile belongs outside your settlement reach.',
+      duration: 2500,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  const accessMode = getTaskAccessMode(def.key, tile);
+  const accessTile = findNearestTaskAccessTile(def.key, tile, hero.q, hero.r, hero.settlementId ?? null);
+  if (!accessTile) {
+    addNotification({
+      type: 'run_state',
+      title: 'No route',
+      message: 'No reachable approach tile was found for that quick order.',
+      duration: 3000,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  closeTownCenterPanel();
+
+  if (hero.q === accessTile.q && hero.r === accessTile.r) {
+    if (def.key !== 'walk') {
+      startTaskRequest(hero.id, def.key, { q: tile.q, r: tile.r });
+      emit('tile-click', tile);
+    }
+    closeQuickActionMenu();
+    clearPathPreview();
+    return;
+  }
+
+  const movementTaskType = def.key === 'walk' ? undefined : def.key;
+  const path = findMovementPathForHero(hero, accessTile, movementTaskType);
+  if (!path.length) {
+    addNotification({
+      type: 'run_state',
+      title: 'No route',
+      message: 'Your selected hero cannot reach that quick order yet.',
+      duration: 3000,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  detachHeroFromCurrentTask(hero);
+  requestHeroMovement(
+    hero.id,
+    path,
+    accessTile,
+    movementTaskType,
+    movementTaskType && accessMode !== 'tile' ? tile : undefined,
+  );
+  hoveredTile.value = tile;
+  emit('tile-click', tile);
+  closeQuickActionMenu();
+  clearPathPreview();
+}
+
 function handleContextMenu(e: MouseEvent) {
   e.preventDefault();
-  if (isPaused()) return;
+  if (isPaused() || isKeyboardBlocked.value) {
+    closeQuickActionMenu();
+    return;
+  }
 
   const tile = service.pickTile(e.clientX, e.clientY);
-  if (!tile) return;
+  if (!tile) {
+    closeQuickActionMenu();
+    return;
+  }
 
   const selectedHero = getSelectedHero();
-  const heroId = selectedHero && canControlHero(selectedHero.id, currentPlayerId.value)
-    ? selectedHero.id
-    : undefined;
-  const kind = e.shiftKey ? 'scout' : e.altKey ? 'gather' : 'assist';
+  if (!selectedHero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Choose a hero before opening quick actions.',
+      duration: 2800,
+    });
+    closeQuickActionMenu();
+    return;
+  }
 
-  sendCoopPing(kind, { q: tile.q, r: tile.r }, heroId);
+  if (!tile.discovered || !isTileInCurrentPlayerTerritory(tile)) {
+    closeQuickActionMenu();
+    return;
+  }
+
+  const tasks = getQuickActionTasks(tile, selectedHero);
+  if (!tasks.length) {
+    closeQuickActionMenu();
+    return;
+  }
+
+  openQuickActionMenu(tile, tasks, e.clientX, e.clientY);
+}
+
+function handleQuickActionKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !quickActionMenu.value.visible) {
+    return;
+  }
+
+  e.preventDefault();
+  closeQuickActionMenu();
 }
 
 function updateHoverAt(clientX: number, clientY: number) {
-  if (isPaused() || showTaskMenu.value) {
+  if (isPaused() || showTaskMenu.value || quickActionMenu.value.visible) {
     hoveredTile.value = null;
     hoveredHero.value = null;
     hoveredSettler.value = null;
@@ -1394,9 +1747,15 @@ function computeTerrainCluster(base: Tile | null) {
   }
 }
 
-watch([taskMenuTile, hoveredTask], () => {
+watch([taskMenuTile, () => quickActionMenu.value.tile, hoveredTask], () => {
   // Recompute cluster when task menu tile changes
-  computeTerrainCluster(taskMenuTile.value);
+  computeTerrainCluster(taskMenuTile.value ?? quickActionMenu.value.tile);
+});
+
+watch(isKeyboardBlocked, (blocked) => {
+  if (blocked) {
+    closeQuickActionMenu();
+  }
 });
 
 watch([runVersion, worldVersion], () => {
@@ -1533,6 +1892,21 @@ watch(settlementStartMarkers, () => {
   recomputeGlobalReach(true);
 }, { deep: true });
 
+watch(() => [
+  graphicsDiagnosticOverrideStore.canvasDpr,
+  graphicsDiagnosticOverrideStore.desynchronizedCanvas,
+], () => {
+  service.resize();
+  updateContainerSize();
+});
+
+watch(() => [
+  graphicsDiagnosticOverrideStore.rescueTimer,
+  graphicsDiagnosticOverrideStore.windowsPresentationSafeMode,
+], () => {
+  startAnimationLoops();
+});
+
 onMounted(async () => {
   if (!canvas.value || !container.value) return;
 
@@ -1548,6 +1922,7 @@ onMounted(async () => {
   window.addEventListener('orientationchange', onOrientationChange);
   window.addEventListener('resize', onWindowResize);
   window.addEventListener('keydown', keyDown);
+  window.addEventListener('keydown', handleQuickActionKeydown);
   window.addEventListener('keydown', handleSupportOverlayShortcut);
   window.addEventListener('keyup', keyUp);
   const el = container.value;
@@ -1560,16 +1935,16 @@ onMounted(async () => {
     el.addEventListener('pointerleave', handlePointerLeaveEvent, {passive: false});
     el.addEventListener('contextmenu', handleContextMenu, {passive: false});
   }
-  if (rafId) cancelAnimationFrame(rafId);
-  animationLoop();
+  startAnimationLoops();
 });
 
 onBeforeUnmount(() => {
-  if (rafId) cancelAnimationFrame(rafId);
+  stopAnimationLoops();
   cancelPendingMenu();
   window.removeEventListener('resize', onWindowResize);
   window.removeEventListener('orientationchange', onOrientationChange);
   window.removeEventListener('keydown', keyDown);
+  window.removeEventListener('keydown', handleQuickActionKeydown);
   window.removeEventListener('keydown', handleSupportOverlayShortcut);
   window.removeEventListener('keyup', keyUp);
   const el = container.value;
@@ -1598,6 +1973,133 @@ onBeforeUnmount(() => {
 
 .map-container canvas {
   filter: drop-shadow(0px 2px 5px rgba(0, 0, 0, 0.8)) drop-shadow(15px 35px 25px rgba(0, 0, 0, 0.4));
+}
+
+.quick-action-pop-enter-active {
+  transition:
+    opacity 90ms ease-out,
+    transform 90ms cubic-bezier(0.2, 0.9, 0.28, 1.08);
+}
+
+.quick-action-pop-leave-active {
+  transition:
+    opacity 70ms ease-in,
+    transform 70ms ease-in;
+}
+
+.quick-action-pop-enter-from,
+.quick-action-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+}
+
+.quick-action-pop-enter-to,
+.quick-action-pop-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.quick-action-menu {
+  position: absolute;
+  z-index: 45;
+  width: 224px;
+  max-height: 300px;
+  overflow: hidden;
+  border: 1px solid rgba(236, 201, 128, 0.74);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(48, 35, 20, 0.96), rgba(28, 21, 15, 0.97)),
+    radial-gradient(circle at top left, rgba(247, 195, 92, 0.2), transparent 62%);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 237, 196, 0.18);
+  color: #f9e7bd;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.quick-action-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.52rem 0.62rem 0.45rem;
+  border-bottom: 1px solid rgba(236, 201, 128, 0.26);
+}
+
+.quick-action-menu__kicker {
+  color: #facc6b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.quick-action-menu__tile {
+  min-width: 0;
+  color: rgba(255, 242, 214, 0.82);
+  font-size: 0.72rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-action-menu__list {
+  display: grid;
+  gap: 0.18rem;
+  max-height: 246px;
+  overflow-y: auto;
+  padding: 0.38rem;
+}
+
+.quick-action-menu__item {
+  display: grid;
+  grid-template-columns: 1.55rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.48rem;
+  min-height: 2rem;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.3rem 0.44rem;
+  background: rgba(93, 65, 32, 0.32);
+  color: #fff3cf;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-action-menu__item:hover,
+.quick-action-menu__item:focus-visible {
+  border-color: rgba(250, 204, 107, 0.72);
+  background: rgba(143, 98, 43, 0.62);
+  outline: none;
+}
+
+.quick-action-menu__glyph {
+  display: grid;
+  place-items: center;
+  width: 1.42rem;
+  height: 1.42rem;
+  border-radius: 6px;
+  border: 1px solid rgba(250, 204, 107, 0.36);
+  background: rgba(20, 13, 8, 0.38);
+  color: #ffe3a0;
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.quick-action-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-container-lite canvas {
@@ -1833,6 +2335,19 @@ onBeforeUnmount(() => {
   color: rgb(254, 243, 199);
 }
 
+.story-tile-hint--side_quest .story-tile-hint-ring {
+  border-color: rgba(251, 146, 60, 0.98);
+  background: rgba(124, 45, 18, 0.58);
+  box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.58);
+  animation-name: side-quest-hint-pulse;
+}
+
+.story-tile-hint--side_quest .story-tile-hint-label {
+  background: rgba(67, 20, 7, 0.92);
+  border-color: rgba(251, 146, 60, 0.44);
+  color: rgb(255, 237, 213);
+}
+
 @keyframes coop-ping-pulse {
   0% {
     transform: scale(0.9);
@@ -1875,6 +2390,21 @@ onBeforeUnmount(() => {
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(252, 211, 77, 0);
+  }
+}
+
+@keyframes side-quest-hint-pulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.56);
+  }
+  70% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 18px rgba(251, 146, 60, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0);
   }
 }
 </style>

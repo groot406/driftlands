@@ -3,7 +3,7 @@ import type { HeroAbilityUpdateMessage } from '../protocol.ts';
 import { broadcastGameMessage as broadcast } from '../game/runtime.ts';
 import { cloneHeroSkills, getHeroSkillPoints, getHeroSkillPointsEarned, grantHeroSkillPoint } from './heroSkills.ts';
 
-export type HeroAbilityKey = 'boostProduction' | 'instantTask' | 'stabilizeTile' | 'surveyBoost';
+export type HeroAbilityKey = 'boostProduction' | 'instantTask' | 'stabilizeTile';
 
 export const HERO_ABILITY_MAX_CHARGES = 3;
 export const HERO_ABILITY_CHARGE_PROGRESS_REQUIRED = 100;

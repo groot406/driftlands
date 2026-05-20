@@ -146,7 +146,7 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
         || building.key === 'dock'
         || building.key === 'huntersHut'
         || building.key === 'apiary'
-        || (building.produces ?? []).some((resource) => resource.type === 'food');
+        || (building.produces ?? []).some((resource) => resource.type === 'fish' || resource.type === 'meat' || resource.type === 'bread');
     const buildingProducesStone = building.key === 'quarry'
         || (building.produces ?? []).some((resource) => resource.type === 'stone');
     const buildingProducesTools = building.key === 'workshop'

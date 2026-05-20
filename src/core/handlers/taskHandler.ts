@@ -17,6 +17,7 @@ import { findNearestWarehouseAccessTile, findNearestWarehouseWithCapacityForReso
 import type { Hero } from "../types/Hero.ts";
 import { currentPlayerId } from "../socket.ts";
 import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
+import { emitGameplayEvent } from "../../shared/gameplay/events.ts";
 
 const rewardDeliveryPathService = new PathService();
 
@@ -30,7 +31,6 @@ interface CompletionFeedback {
 const TASK_COMPLETION_FEEDBACK: Record<string, CompletionFeedback> = {
     explore: { text: 'Discovered', color: '#bfdbfe', soundPath: 'success.mp3', baseVolume: 0.24 },
     activateRuins: { text: 'Study notes', color: '#c4b5fd', soundPath: 'success.mp3', baseVolume: 0.42 },
-    surveyTile: { text: 'Surveyed', color: '#bae6fd', soundPath: 'success.mp3', baseVolume: 0.32 },
 
     plantTrees: { text: 'Saplings planted', color: '#86efac', soundPath: 'success.mp3', baseVolume: 0.34 },
     tillLand: { text: 'Soil ready', color: '#facc15', soundPath: 'drop.mp3', baseVolume: 0.28 },
@@ -43,12 +43,11 @@ const TASK_COMPLETION_FEEDBACK: Record<string, CompletionFeedback> = {
     buildBridge: { text: 'Bridge built', color: '#bfdbfe', soundPath: 'splash.mp3', baseVolume: 0.36 },
     buildTunnel: { text: 'Tunnel opened', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.3 },
 
-    campfireRations: { text: 'Rations cooked', color: '#fed7aa', soundPath: 'success.mp3', baseVolume: 0.28 },
     fishAtDock: { text: 'Fresh catch', color: '#bfdbfe', soundPath: 'splash.mp3', baseVolume: 0.28 },
     harvestGrain: { text: 'Grain harvested', color: '#fde68a', soundPath: 'take.mp3', baseVolume: 0.26 },
     harvestWaterLilies: { text: 'Lilies gathered', color: '#a7f3d0', soundPath: 'splash.mp3', baseVolume: 0.24 },
     gatherSand: { text: 'Sand gathered', color: '#fef3c7', soundPath: 'take.mp3', baseVolume: 0.24 },
-    clearRocks: { text: 'Rocks cleared', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.24 },
+    clearRocks: { text: 'Rocks cleared', color: '#d1d5db' },
     breakDirtRock: { text: 'Rock cracked', color: '#d1d5db', soundPath: 'mining.mp3', baseVolume: 0.28 },
     dig: { text: 'Dug out', color: '#d6d3d1', soundPath: 'mining.mp3', baseVolume: 0.24 },
     removeTrunks: { text: 'Cleared', color: '#bbf7d0', soundPath: 'chopping.wav', baseVolume: 0.24 },
@@ -215,6 +214,12 @@ class ClientTaskHandler {
             const participantHeroes = message.rewards
                 .map((reward) => getHero(reward.heroId))
                 .filter((hero): hero is Hero => !!hero);
+            emitGameplayEvent({
+                type: 'task:completed',
+                taskType: task.type,
+                tileId: task.tileId,
+                participantIds: message.rewards.map((reward) => reward.heroId),
+            });
             const isLocalCompletion = participantHeroes.some((hero) => isLocalHero(hero));
             this.lastWorkImpactMsByTaskId.delete(task.id);
 

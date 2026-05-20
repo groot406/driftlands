@@ -1,35 +1,21 @@
 <template>
   <Transition name="smooth-modal" appear>
     <div v-if="isOpen" class="population-modal-backdrop smooth-modal-backdrop" @click.self="close">
-      <NineSlicePanel type="small" class="population-modal-panel smooth-modal-surface" @click.stop>
+      <PanelModalShell
+        class="population-modal-panel"
+        close-aria-label="Close settler overview"
+        header-label="Population"
+        header-title="Settler Overview"
+        header-icon="⌂"
+        @close="close"
+      >
         <div class="population-modal-content">
-          <header class="population-modal-header">
-            <div>
-              <p class="population-modal-kicker">Population</p>
-              <h2 class="population-modal-title">Settler Overview</h2>
-              <p class="population-modal-subtitle">See every settler, what they are doing, and where colony labor is going.</p>
-            </div>
-            <button class="population-modal-close" type="button" title="Close" @click="close">✕</button>
-          </header>
-
           <section class="population-section">
             <div class="population-stat-grid">
-              <div class="population-stat-card">
-                <p class="population-stat-label">Population</p>
-                <p class="population-stat-value">{{ playerPopulation.current }}/{{ playerPopulation.max }}</p>
-              </div>
-              <div class="population-stat-card">
-                <p class="population-stat-label">Beds</p>
-                <p class="population-stat-value">{{ playerPopulation.beds }}</p>
-              </div>
-              <div class="population-stat-card">
-                <p class="population-stat-label">Workers</p>
-                <p class="population-stat-value">{{ workforceState.assignedWorkers }}/{{ workforceState.availableWorkers }}</p>
-              </div>
-              <div class="population-stat-card">
-                <p class="population-stat-label">Food Use</p>
-                <p class="population-stat-value">{{ foodUseLabel }}</p>
-              </div>
+              <PanelStatCard label="Population" :value="`${playerPopulation.current}/${playerPopulation.max}`" :icon-style="settlerIconStyle('status')" />
+              <PanelStatCard label="Beds" :value="playerPopulation.beds" :icon-style="settlerIconStyle('home')" />
+              <PanelStatCard label="Workers" :value="`${workforceState.assignedWorkers}/${workforceState.availableWorkers}`" :icon-style="settlerIconStyle('work')" />
+              <PanelStatCard label="Food Use" :value="foodUseLabel" :icon-style="settlerIconStyle('food')" />
             </div>
           </section>
 
@@ -47,17 +33,22 @@
                 type="button"
                 @click="inspectSettler(settler)"
               >
-                <div>
+                <PanelPortraitFrame class="population-portrait" :image-style="portraitStyle(settler)" glow="none" />
+                <div class="population-settler-copy">
                   <p class="population-settler-name">{{ getSettlerName(settler) }}</p>
                   <p class="population-settler-meta">{{ formatActivity(settler.activity) }} · {{ getSettlerLocation(settler) }}</p>
                 </div>
-                <span class="population-chip">{{ getCargoLabel(settler) }}</span>
+                <span class="population-status" :class="`population-status--${getStatusTone(settler)}`">
+                  <span aria-hidden="true"></span>
+                  {{ getStatusLabel(settler) }}
+                </span>
+                <span class="population-chip">{{ getIssueLabel(settler) }}</span>
               </button>
             </div>
             <p v-else class="population-empty">No settlers available.</p>
           </section>
         </div>
-      </NineSlicePanel>
+      </PanelModalShell>
     </div>
   </Transition>
 </template>
@@ -68,6 +59,9 @@ import type { Settler } from '../core/types/Settler.ts';
 import { tileIndex } from '../core/world.ts';
 import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
 import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
+import PanelModalShell from './ui/PanelModalShell.vue';
+import PanelStatCard from './ui/PanelStatCard.vue';
+import PanelPortraitFrame from './ui/PanelPortraitFrame.vue';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
@@ -75,8 +69,10 @@ import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
 import { settlers as settlerState } from '../store/settlerStore';
 import { closePopulationModal, openSettlerModal } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
-import NineSlicePanel from "./ui/NineSlicePanel.vue";
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
+import { getSettlerSpriteKey, type SettlerSpriteKey } from '../core/settlerSprite.ts';
+import settlerPortraitAtlasUrl from '../assets/ui/settlers/settler-portraits-atlas.png';
+import settlerIconAtlasUrl from '../assets/ui/settler-modal/icon-atlas.png';
 
 const isOpen = computed(() => isWindowOpen(WINDOW_IDS.POPULATION_MODAL));
 const playerPopulation = computed(() => {
@@ -93,12 +89,43 @@ const settlers = computed(() => {
 });
 const foodUseLabel = computed(() => `${playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE}/min`);
 
+type SettlerOverviewIcon = 'home' | 'work' | 'status' | 'food';
+
+const iconPositions: Record<SettlerOverviewIcon, string> = {
+  home: '0% 0%',
+  work: '33.333% 0%',
+  status: '0% 100%',
+  food: '33.333% 100%',
+};
+
+const portraitAtlasPositions: Record<SettlerSpriteKey, string> = {
+  default: '0% 50%',
+  female_braid: '25% 50%',
+  female_bright: '50% 50%',
+  copper_jacket: '75% 50%',
+  headband_worker: '100% 50%',
+};
+
+function settlerIconStyle(icon: SettlerOverviewIcon) {
+  return {
+    backgroundImage: `url(${settlerIconAtlasUrl})`,
+    backgroundPosition: iconPositions[icon],
+  };
+}
+
+function portraitStyle(settler: Settler) {
+  return {
+    backgroundImage: `url(${settlerPortraitAtlasUrl})`,
+    backgroundPosition: portraitAtlasPositions[getSettlerSpriteKey(settler)],
+  };
+}
+
 function formatActivity(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function getSettlerName(settler: Settler) {
-  return getSettlerDisplayName(settler.id, settler.nameSeed);
+  return getSettlerDisplayName(settler.id, settler.nameSeed, settler.gender);
 }
 
 function getTileLabel(tileId: string | null | undefined) {
@@ -129,6 +156,30 @@ function getSettlerLocation(settler: Settler) {
 function getCargoLabel(settler: Settler) {
   if (!settler.carryingPayload) return 'Empty';
   return `${Math.floor(settler.carryingPayload.amount)} ${settler.carryingPayload.type.replace(/_/g, ' ')}`;
+}
+
+function getStatusLabel(settler: Settler) {
+  if (settler.blockerReason) return 'Blocked';
+  if (settler.activity === 'working' || settler.activity === 'repairing') return 'Working';
+  if (settler.activity === 'commuting_home' || settler.activity === 'commuting_work' || settler.activity === 'commuting_social' || settler.activity === 'commuting_shop') return 'Commuting';
+  if (settler.activity === 'shopping') return 'Shopping';
+  if (settler.activity === 'waiting' || settler.activity === 'idle') return 'Waiting';
+  return formatActivity(settler.activity);
+}
+
+function getStatusTone(settler: Settler) {
+  if (settler.blockerReason) return 'danger';
+  if (settler.activity === 'working' || settler.activity === 'repairing') return 'good';
+  if (settler.activity === 'commuting_home' || settler.activity === 'commuting_work' || settler.activity === 'commuting_social' || settler.activity === 'commuting_shop') return 'travel';
+  if (settler.activity === 'shopping') return 'good';
+  if (settler.activity === 'waiting' || settler.activity === 'idle') return 'warn';
+  return 'muted';
+}
+
+function getIssueLabel(settler: Settler) {
+  const blocker = formatSettlerBlocker(settler.blockerReason);
+  if (blocker) return blocker;
+  return getCargoLabel(settler) === 'Empty' ? 'No issues' : getCargoLabel(settler);
 }
 
 function inspectSettler(settler: Settler) {
@@ -174,60 +225,80 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background: rgba(2, 6, 23, 0.76);
-  backdrop-filter: blur(4px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 22% 45%, rgb(80 80 80 / 0.22), transparent 23rem),
+    rgba(1, 5, 12, 0.78);
+  backdrop-filter: blur(4px) saturate(0.86) brightness(0.8);
 }
 
 .population-modal-panel {
-  width: min(44rem, 100%);
-  max-height: min(86vh, 48rem);
-  color: #f8fafc;
+  position: relative;
+  box-sizing: border-box;
+  width: min(49rem, calc(100vw - 32px));
+  max-height: min(86vh, 36rem);
   display: flex;
-  flex-direction: column;
   overflow: hidden;
+  padding: 1.25rem 1.35rem 1.1rem;
+  flex-direction: column;
+  --panel-header-margin: -1.25rem -1.35rem 0;
+  --panel-header-padding: 1.05rem 3.7rem 0.8rem 5.1rem;
+  --panel-header-banner-top: 0.2rem;
+  --panel-header-banner-left: 1rem;
+  --panel-header-banner-width: 3.35rem;
+  --panel-header-banner-height: 5.25rem;
+  --panel-header-title-size: clamp(1.72rem, 3vw, 2.1rem);
+  border: 16px solid transparent;
+  border-image: url('../assets/ui/settler-modal/panel-frame.png') 72 / 30px stretch;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #121619 0%, #0a0d10 100%);
+  color: #f3e4c9;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.66), inset 0 0 64px rgba(0, 0, 0, 0.82);
 }
 
-.population-modal-panel :deep(> div) {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+.population-banner-tab {
+  position: absolute;
+  top: 0.2rem;
+  left: 1rem;
+  z-index: 3;
+  width: 3.35rem;
+  height: 5.25rem;
 }
 
 .population-modal-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-}
-
-.population-modal-header,
-.population-section {
-  padding: 16px 18px;
 }
 
 .population-modal-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   flex-shrink: 0;
+  padding: 0.2rem 3.25rem 0.9rem 3.55rem;
+  border-bottom: 1px solid rgba(170, 113, 52, 0.48);
 }
 
-.population-modal-kicker,
-.population-stat-label {
-  margin: 0 0 6px;
-  font-size: 10px;
+.population-modal-kicker {
+  margin: 0 0 0.26rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.63rem;
+  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(125, 211, 252, 0.76);
+  color: #c99a4b;
+  text-shadow: 0 1px 0 #070706;
 }
 
 .population-modal-title,
 .population-modal-subtitle,
-.population-stat-value,
 .population-section-title,
 .population-settler-name,
 .population-settler-meta,
@@ -235,31 +306,39 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.population-modal-close,
-.population-settler-row {
-  appearance: none;
+.population-modal-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.55rem, 3vw, 1.95rem);
+  line-height: 1.08;
+  color: #fff1d4;
+  text-shadow: 0 2px 0 #090807;
 }
 
-.population-modal-close {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.7);
-  color: #f8fafc;
+.population-modal-subtitle {
+  margin-top: 0.28rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #d6aa48;
+  font-size: 0.92rem;
+}
+
+.population-section {
+  margin-top: 0.72rem;
 }
 
 .population-stat-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.45rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.population-stat-card {
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.52);
-  padding: 10px 12px;
+.population-section-title,
+.population-empty {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.population-section-title {
+  font-size: 0.95rem;
+  color: #f3dfb9;
 }
 
 .population-section-head {
@@ -267,8 +346,9 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 0.42rem;
   flex-shrink: 0;
+  padding: 0 0.1rem;
 }
 
 .population-section--settlers {
@@ -280,73 +360,196 @@ onUnmounted(() => {
 }
 
 .population-chip {
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.56);
-  padding: 4px 8px;
-  font-size: 11px;
-  color: rgba(241, 245, 249, 0.9);
+  min-width: 6.8rem;
+  border: 1px solid rgba(130, 88, 43, 0.34);
+  background: rgba(8, 9, 10, 0.34);
+  padding: 0.35rem 0.55rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.76rem;
+  color: #d9c69d;
+  text-align: center;
 }
 
 .population-settler-list {
   display: grid;
-  gap: 8px;
+  align-content: start;
+  grid-auto-rows: max-content;
+  gap: 0.38rem;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-right: 4px;
+
   overscroll-behavior: contain;
+
 }
 
 .population-settler-row {
-  display: flex;
-  justify-content: space-between;
+  appearance: none;
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) 7rem 8.4rem;
   align-items: center;
-  gap: 10px;
+  gap: 0.7rem;
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.48);
+  min-height: 3.65rem;
+  padding: 0.34rem 0.55rem;
+  border: 1px solid rgba(130, 88, 43, 0.28);
+  background:
+    linear-gradient(90deg, rgba(65, 45, 26, 0.18), rgba(15, 17, 18, 0.34)),
+    rgba(13, 15, 16, 0.54);
+  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.38);
   text-align: left;
   color: inherit;
-  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.population-settler-row:last-child {
+  border-bottom: 1px solid rgba(130, 88, 43, 0.28);
+}
+
+.population-portrait {
+  width: 2.35rem;
+  height: 2.8rem;
+  margin: 0;
+  border-width: 5px;
+  border-image-width: 5px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.58));
+}
+
+.population-settler-copy {
+  min-width: 0;
 }
 
 .population-settler-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.93rem;
+  color: #fff0d2;
   line-height: 1.2;
 }
 
 .population-settler-meta {
-  margin-top: 2px;
-  font-size: 11px;
+  margin-top: 0.15rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.77rem;
   line-height: 1.35;
-  color: rgba(226, 232, 240, 0.76);
+  color: #c9b894;
+}
+
+.population-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.82rem;
+  color: #d9c69d;
+}
+
+.population-status span {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9a8b70;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.55);
+}
+
+.population-status--good span {
+  background: #5fb940;
+}
+
+.population-status--warn span {
+  background: #c8922f;
+}
+
+.population-status--travel span {
+  background: #5b9fbd;
+}
+
+.population-status--danger span {
+  background: #bd463c;
 }
 
 .population-settler-row:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.34);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgba(170, 113, 52, 0.36);
+  background:
+    linear-gradient(90deg, rgba(86, 59, 33, 0.22), rgba(18, 20, 20, 0.38)),
+    rgba(16, 18, 18, 0.62);
 }
 
 @media (max-width: 720px) {
+  .population-modal-backdrop {
+    padding: 0;
+  }
+
   .population-modal-panel {
-    width: 100%;
-    max-height: 92vh;
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
   }
 
-  .population-modal-header,
-  .population-section {
-    padding: 16px;
+  .population-modal-header {
+    padding-left: 3rem;
   }
 
-  .population-settler-row,
-  .population-section-head {
-    flex-direction: column;
-    align-items: flex-start;
+  .population-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .population-settler-row {
+    grid-template-columns: 2.25rem minmax(0, 1fr) minmax(4.3rem, auto);
+    grid-template-areas:
+      "portrait copy issue"
+      "portrait status issue";
+    align-items: center;
+    min-height: 3.2rem;
+    max-height: 4rem;
+    gap: 0.25rem 0.45rem;
+    padding: 0.28rem 0.42rem;
+  }
+
+  .population-portrait {
+    grid-area: portrait;
+    width: 2.05rem;
+    height: 2.45rem;
+    border-width: 4px;
+    border-image-width: 4px;
+  }
+
+  .population-settler-copy {
+    grid-area: copy;
+  }
+
+  .population-settler-name {
+    font-size: 0.84rem;
+  }
+
+  .population-settler-meta {
+    margin-top: 0.08rem;
+    font-size: 0.68rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .population-status {
+    grid-area: status;
+    font-size: 0.68rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .population-chip {
+    grid-area: issue;
+    justify-self: end;
+    min-width: 0;
+    padding: 0.22rem 0.38rem;
+    font-size: 0.66rem;
+    line-height: 1.05;
+    white-space: nowrap;
   }
 }
 </style>

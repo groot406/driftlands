@@ -54,17 +54,17 @@ test('withdrawResourceAcrossStorages drains multiple storages in a stable priori
     createTowncenterTile('2,0', 2, 0),
   ]);
 
-  depositResourceToStorage('0,0', 'food', 4);
-  depositResourceToStorage('2,0', 'food', 6);
+  depositResourceToStorage('0,0', 'meat', 4);
+  depositResourceToStorage('2,0', 'meat', 6);
 
-  const transfers = withdrawResourceAcrossStorages('food', 7);
+  const transfers = withdrawResourceAcrossStorages('meat', 7);
 
   assert.deepEqual(transfers, [
     { storageTileId: '0,0', amount: 4 },
     { storageTileId: '2,0', amount: 3 },
   ]);
-  assert.equal(getStorageResourceAmount('0,0', 'food'), 0);
-  assert.equal(getStorageResourceAmount('2,0', 'food'), 3);
+  assert.equal(getStorageResourceAmount('0,0', 'meat'), 0);
+  assert.equal(getStorageResourceAmount('2,0', 'meat'), 3);
 });
 
 test('settlement resource withdrawals stay inside the requested settlement', () => {
@@ -73,16 +73,16 @@ test('settlement resource withdrawals stay inside the requested settlement', () 
     createTowncenterTile('20,0', 20, 0),
   ]);
 
-  depositResourceToStorage('0,0', 'food', 4);
-  depositResourceToStorage('20,0', 'food', 6);
+  depositResourceToStorage('0,0', 'meat', 4);
+  depositResourceToStorage('20,0', 'meat', 6);
 
-  const transfers = withdrawResourceAcrossStoragesForSettlement('20,0', 'food', 3);
+  const transfers = withdrawResourceAcrossStoragesForSettlement('20,0', 'meat', 3);
 
   assert.deepEqual(transfers, [{ storageTileId: '20,0', amount: 3 }]);
-  assert.equal(getStorageResourceAmount('0,0', 'food'), 4);
-  assert.equal(getStorageResourceAmount('20,0', 'food'), 3);
-  assert.equal(getSettlementResourceInventory('0,0').food, 4);
-  assert.equal(getSettlementResourceInventory('20,0').food, 3);
+  assert.equal(getStorageResourceAmount('0,0', 'meat'), 4);
+  assert.equal(getStorageResourceAmount('20,0', 'meat'), 3);
+  assert.equal(getSettlementResourceInventory('0,0').meat, 4);
+  assert.equal(getSettlementResourceInventory('20,0').meat, 3);
 });
 
 test('resource-group storage only accepts matching resources', () => {

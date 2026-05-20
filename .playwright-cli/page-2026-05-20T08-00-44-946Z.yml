@@ -1,0 +1,24 @@
+- dialog [ref=e4]:
+  - button "Close unlock details" [ref=e5] [cursor=pointer]: Close
+  - banner [ref=e6]:
+    - generic [ref=e8]: "*"
+    - generic [ref=e9]:
+      - paragraph [ref=e10]: Unlocked
+      - heading "New Unlocks" [level=2] [ref=e11]
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - paragraph [ref=e14]: Your colony reached a new milestone. Here is exactly what changed.
+      - generic [ref=e15]: 1 / 4
+    - article [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: task
+        - heading "Fish At Dock" [level=3] [ref=e19]
+      - paragraph [ref=e20]: Turn shoreline works into steady food hauling.
+      - list [ref=e21]:
+        - listitem [ref=e22]: Select a matching tile and choose this task from the task menu.
+    - contentinfo [ref=e23]:
+      - generic [ref=e25]:
+        - button "Previous" [disabled] [ref=e26]:
+          - generic: Previous
+        - button "Next" [ref=e27] [cursor=pointer]:
+          - generic: Next

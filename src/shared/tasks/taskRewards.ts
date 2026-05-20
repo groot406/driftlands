@@ -4,15 +4,12 @@ import type { TaskDefinition, TaskType } from '../../core/types/Task.ts';
 export const TASK_COMPLETION_XP_REWARDS: Partial<Record<TaskType, number>> = {
     explore: 3,
     activateRuins: 14,
-    surveyTile: 8,
 
     chopWood: 0,
     gatherTimber: 0,
-    collectRations: 0,
     dismantle: 0,
 
     breakDirtRock: 1,
-    campfireRations: 1,
     clearRocks: 2,
     dig: 3,
     fishAtDock: 1,
@@ -31,7 +28,6 @@ export const TASK_COMPLETION_XP_REWARDS: Partial<Record<TaskType, number>> = {
     tillLand: 5,
 
     buildBridge: 12,
-    buildCampfire: 5,
     buildWell: 10,
     buildWatchtower: 10,
     buildTownCenter: 20,

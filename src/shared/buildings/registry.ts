@@ -21,6 +21,7 @@ import {
     ensureTownCenterMilitaryState,
     ensureWatchtowerMilitaryState,
 } from '../game/military.ts';
+import { hasLargeWaterBodyAdjacent } from '../game/harbor.ts';
 import {
     countActiveAdjacentRevealedModifier,
     countActiveAdjacentRevealedSpecial,
@@ -332,39 +333,6 @@ export function promoteTileToTowncenter(tile: Tile, settlementId: string | null 
 
 const buildings: BuildingDefinition[] = [
     {
-        key: 'campfire',
-        label: 'Campfire',
-        summary: 'Lights a temporary frontier hearth that keeps nearby controlled tiles online for a few minutes.',
-        categoryLabel: 'Frontier',
-        buildTaskKey: 'buildCampfire',
-        buildTaskLabel: 'Build Campfire',
-        sortOrder: 12,
-        variantKeys: ['plains_campfire', 'dirt_campfire'],
-        overlayAssetKey: 'building_campfire',
-        canPlace(tile, _hero) {
-            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
-        },
-        requiredXp(_distance: number) {
-            return 1200;
-        },
-        heroRate(hero: Hero) {
-            return 18 * Math.max(1, hero.stats.atk);
-        },
-        requiredResources(_distance: number) {
-            return [{ type: 'wood', amount: 3 }];
-        },
-        onComplete(tile) {
-            if (tile.terrain === 'plains') {
-                applyVariant(tile, 'plains_campfire', { stagger: false, respectBiome: false });
-                return;
-            }
-
-            if (tile.terrain === 'dirt') {
-                applyVariant(tile, 'dirt_campfire', { stagger: false, respectBiome: false });
-            }
-        },
-    },
-    {
         key: 'well',
         label: 'Well',
         summary: 'Brings water inland and hydrates nearby farm plots.',
@@ -587,7 +555,7 @@ const buildings: BuildingDefinition[] = [
     createStorehouseBuildingDefinition({
         key: 'foodStorehouse',
         label: 'Food Storehouse',
-        summary: 'Stores rations, fish, meat, bread, and drinks away from the general depot.',
+        summary: 'Stores fish, meat, bread, and drinks away from the general depot.',
         buildTaskKey: 'buildFoodStorehouse',
         buildTaskLabel: 'Build Food Storehouse',
         sortOrder: 21,
@@ -705,6 +673,47 @@ const buildings: BuildingDefinition[] = [
                 stagger: false,
                 respectBiome: false,
             });
+        },
+    },
+    {
+        key: 'harbor',
+        label: 'Harbor',
+        summary: 'Builds a trade harbor on large open water so the settlement can load cargo for arriving ships.',
+        categoryLabel: 'Harbor',
+        buildTaskKey: 'buildHarbor',
+        buildTaskLabel: 'Build Harbor',
+        sortOrder: 26,
+        requiredPopulation: 5,
+        variantKeys: ['plains_harbor', 'dirt_harbor'],
+        overlayAssetKey: 'building_harbor',
+        maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.8,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt')
+                && tile.isBaseTile
+                && isTileControlled(tile)
+                && hasLargeWaterBodyAdjacent(tile);
+        },
+        requiredXp(_distance: number) {
+            return 5200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 18 },
+                { type: 'stone', amount: 6 },
+                { type: 'tools', amount: 2 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_harbor', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_harbor', { stagger: false, respectBiome: false });
+            }
         },
     },
     {
@@ -1022,6 +1031,56 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'shop',
+        label: 'Shop',
+        summary: 'A staffed counter where settlers buy imported luxuries from trade ships.',
+        categoryLabel: 'Hospitality',
+        buildTaskKey: 'buildShop',
+        buildTaskLabel: 'Build Shop',
+        sortOrder: 36.35,
+        requiredPopulation: 6,
+        variantKeys: ['plains_shop', 'dirt_shop'],
+        overlayAssetKey: 'building_shop',
+        maxIncomingRoads: 1,
+        jobSlots: 1,
+        cycleMs: 20_000,
+        jobKind: 'service',
+        serviceConsumes: [
+            { type: 'tea', amount: 1 },
+            { type: 'pottery', amount: 1 },
+            { type: 'spices', amount: 1 },
+            { type: 'silk', amount: 1 },
+        ],
+        serviceConsumeMode: 'any',
+        serviceCapacity: 3,
+        jobLabel: 'Shopkeeper',
+        jobPresentation: 'indoor',
+        repairResources: [{ type: 'wood', amount: 1 }],
+        maintenanceDecayPerMinute: 1.3,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3300;
+        },
+        heroRate(hero: Hero) {
+            return 16 * Math.max(1, hero.stats.spd);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 8 },
+                { type: 'stone', amount: 3 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_shop', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_shop', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
         key: 'apiary',
         label: 'Apiary',
         summary: 'Keeps hives beside forests or grain fields and turns nearby forage into steady food.',
@@ -1045,7 +1104,7 @@ const buildings: BuildingDefinition[] = [
             const foodPerWorker = Math.max(1, Math.min(4, forageTiles + richSoilBonus));
 
             return {
-                produces: [{ type: 'food', amount: foodPerWorker * assignedWorkers }],
+                produces: [{ type: 'bread', amount: foodPerWorker * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -1262,7 +1321,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'barracks',
         label: 'Barracks',
-        summary: 'Turns stored food into trained guard reserves that can garrison towers or pressure hostile border towers.',
+        summary: 'Turns stored meals into trained guard reserves that can garrison towers or pressure hostile border towers.',
         categoryLabel: 'Military',
         buildTaskKey: 'buildBarracks',
         buildTaskLabel: 'Build Barracks',

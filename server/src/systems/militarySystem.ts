@@ -21,12 +21,14 @@ import {
 import type { Tile } from '../../../src/core/types/Tile.ts';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import type { ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol.ts';
+import type { ResourceType } from '../../../src/core/types/Resource.ts';
 import { broadcastPopulationState, getPopulationBySettlementInput, getPopulationSnapshot, getPopulationState, recalculatePopulationLimits, setSupportMetrics } from '../../../src/store/populationStore.ts';
 import { recalculateSettlementSupport } from '../../../src/store/settlementSupportStore.ts';
 import { getSettlementResourceInventory, withdrawResourceAcrossStoragesForSettlement } from '../../../src/store/resourceStore.ts';
 import { getGuardTrainingSpeedMultiplier, testModeSettings } from '../../../src/shared/game/testMode.ts';
 import { settlers } from '../../../src/shared/game/state/settlerStore.ts';
 import { axialDistanceCoords } from '../../../src/shared/game/hex';
+import { FOOD_SOURCE_TYPES, getResourceRequirementStock } from '../../../src/shared/game/resourceDefinitions.ts';
 
 function getTownCenters() {
   return Object.values(tileIndex).filter((tile) => isTownCenterTile(tile)).map((tile) => ensureTownCenterMilitaryState(tile)!);
@@ -76,6 +78,26 @@ function broadcastWithdrawals(
       },
     } satisfies ResourceWithdrawMessage);
   }
+}
+
+function withdrawFoodSourcesForSettlement(settlementId: string, amount: number) {
+  const withdrawals: Array<{ resourceType: ResourceType; transfers: ReturnType<typeof withdrawResourceAcrossStoragesForSettlement> }> = [];
+  let remaining = amount;
+
+  for (const resourceType of FOOD_SOURCE_TYPES) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const transfers = withdrawResourceAcrossStoragesForSettlement(settlementId, resourceType, remaining);
+    const withdrawn = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+    if (withdrawn > 0) {
+      withdrawals.push({ resourceType, transfers });
+      remaining -= withdrawn;
+    }
+  }
+
+  return withdrawals;
 }
 
 function syncTerritory() {
@@ -184,12 +206,12 @@ function processBarracksTraining(ctx: TickContext) {
     let completed = false;
     while ((barracks.barracksTrainingQueue ?? 0) > 0 && (barracks.barracksTrainingProgressMs ?? 0) >= GUARD_TRAINING_DURATION_MS) {
       const inventory = getSettlementResourceInventory(settlementId);
-      if ((inventory.food ?? 0) < GUARD_TRAINING_FOOD_COST || (inventory.weapons ?? 0) < GUARD_TRAINING_WEAPON_COST) {
+      if (getResourceRequirementStock(inventory, 'food') < GUARD_TRAINING_FOOD_COST || (inventory.weapons ?? 0) < GUARD_TRAINING_WEAPON_COST) {
         barracks.barracksTrainingProgressMs = GUARD_TRAINING_DURATION_MS;
         break;
       }
 
-      const foodWithdrawals = withdrawResourceAcrossStoragesForSettlement(settlementId, 'food', GUARD_TRAINING_FOOD_COST);
+      const foodWithdrawals = withdrawFoodSourcesForSettlement(settlementId, GUARD_TRAINING_FOOD_COST);
       const weaponWithdrawals = withdrawResourceAcrossStoragesForSettlement(settlementId, 'weapons', GUARD_TRAINING_WEAPON_COST);
 
       barracks.barracksTrainingQueue = Math.max(0, (barracks.barracksTrainingQueue ?? 0) - 1);
@@ -197,7 +219,9 @@ function processBarracksTraining(ctx: TickContext) {
       townCenter.guardReserve = getAvailableGuardReserve(townCenter) + 1;
       townCenter.borderLockedUntilMs = Math.max(townCenter.borderLockedUntilMs ?? 0, ctx.now + BORDER_LOCKOUT_MS);
       completed = true;
-      broadcastWithdrawals('food', foodWithdrawals);
+      for (const withdrawal of foodWithdrawals) {
+        broadcastWithdrawals(withdrawal.resourceType, withdrawal.transfers);
+      }
       broadcastWithdrawals('weapons', weaponWithdrawals);
     }
 

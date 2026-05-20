@@ -10,6 +10,8 @@ export interface BuildingStateSnapshot {
   upgrade: UpgradeDefinition | null;
   level: number;
   houseBeds: number | null;
+  houseGoodsCapacity: number | null;
+  houseComfortHappiness: number | null;
   storageKind: StorageKind | null;
   jobOutputMultiplier: number;
 }
@@ -44,6 +46,12 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
   const houseBeds = building.key === 'house'
     ? (upgrade?.effects.find((effect) => effect.kind === 'house_beds_total')?.value ?? 2)
     : null;
+  const houseGoodsCapacity = building.key === 'house'
+    ? (upgrade?.effects.find((effect) => effect.kind === 'house_goods_capacity')?.value ?? 1)
+    : null;
+  const houseComfortHappiness = building.key === 'house'
+    ? (upgrade?.effects.find((effect) => effect.kind === 'house_comfort_happiness')?.value ?? 0)
+    : null;
   const storageKind = building.providesWarehouse
     ? ((upgrade?.effects.find((effect) => effect.kind === 'storage_kind_override')?.value
       ?? building.storageKind
@@ -57,6 +65,8 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
     upgrade,
     level: upgrade ? 2 : 1,
     houseBeds,
+    houseGoodsCapacity,
+    houseComfortHappiness,
     storageKind,
     jobOutputMultiplier,
   };
@@ -64,6 +74,14 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
 
 export function getHouseBedCapacityForTile(tile: Tile | null | undefined) {
   return resolveBuildingStateForTile(tile)?.houseBeds ?? 0;
+}
+
+export function getHouseGoodCapacityForTile(tile: Tile | null | undefined) {
+  return resolveBuildingStateForTile(tile)?.houseGoodsCapacity ?? 0;
+}
+
+export function getHouseComfortHappinessForTile(tile: Tile | null | undefined) {
+  return resolveBuildingStateForTile(tile)?.houseComfortHappiness ?? 0;
 }
 
 export function getStorageKindForBuildingTile(tile: Tile | null | undefined) {

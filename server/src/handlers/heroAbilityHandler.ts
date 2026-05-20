@@ -13,7 +13,6 @@ import {
 } from '../../../src/shared/heroes/heroAbilities.ts';
 import { boostTaskProgress, getTaskById, getTasksAtTile } from '../../../src/shared/game/state/taskStore.ts';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime.ts';
-import { revealTileFeatures } from '../../../src/shared/game/tileFeatures.ts';
 import { getBuildingDefinitionForTile } from '../../../src/shared/buildings/registry.ts';
 import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import {
@@ -90,8 +89,6 @@ export class ServerHeroAbilityHandler {
                 return this.instantTask(hero, message.taskId, message.tileId);
             case 'stabilizeTile':
                 return this.stabilizeTile(hero, message.tileId);
-            case 'surveyBoost':
-                return this.surveyBoost(hero, message.taskId, message.tileId);
             default:
                 return { applied: false };
         }
@@ -138,23 +135,6 @@ export class ServerHeroAbilityHandler {
         return { applied: true };
     }
 
-    private surveyBoost(_hero: Hero, taskId: string | undefined, tileId: string | undefined): AbilityResult {
-        const task = taskId ? getTaskById(taskId) : undefined;
-        if (task?.type === 'surveyTile') {
-            return { applied: boostTaskProgress(task.id, HERO_ABILITY_TASK_PROGRESS_BURST) };
-        }
-
-        const tile = tileId ? tileIndex[tileId] : null;
-        if (!tile) {
-            return { applied: false };
-        }
-
-        const changed = revealTileFeatures(tile);
-        if (changed) {
-            broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
-        }
-        return { applied: changed };
-    }
 }
 
 function canSettlementManageTile(tile: Tile | null | undefined, settlementId: string | null | undefined) {

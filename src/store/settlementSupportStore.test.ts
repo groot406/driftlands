@@ -275,59 +275,6 @@ test('foreign watchtowers inside my base reach do not extend my settlement reach
   assert.equal(settlementBReach.has('14,0'), true);
 });
 
-test('campfires temporarily keep nearby controlled frontier tiles online beyond base support capacity', () => {
-  const reserved = new Set(['8,0', '8,-1']);
-  const frontier: Tile[] = [];
-  const coords = createSortedFrontierCoords(reserved);
-
-  for (const coord of coords.slice(0, 83)) {
-    frontier.push({
-      id: `${coord.q},${coord.r}`,
-      q: coord.q,
-      r: coord.r,
-      biome: 'plains',
-      terrain: 'plains',
-      discovered: true,
-      isBaseTile: true,
-      activationState: 'active',
-      variant: null,
-    });
-  }
-
-  loadWorld([
-    createTowncenterTile(),
-    ...frontier,
-    {
-      id: '8,0',
-      q: 8,
-      r: 0,
-      biome: 'plains',
-      terrain: 'plains',
-      discovered: true,
-      isBaseTile: false,
-      activationState: 'active',
-      variant: 'plains_campfire',
-    } satisfies Tile,
-    {
-      id: '8,-1',
-      q: 8,
-      r: -1,
-      biome: 'lake',
-      terrain: 'water',
-      discovered: true,
-      isBaseTile: true,
-      activationState: 'active',
-      variant: null,
-    } satisfies Tile,
-  ]);
-
-  const result = recalculateSettlementSupport(0, 0);
-
-  assert.equal(result.snapshot.supportCapacity, 84);
-  assert.equal(result.snapshot.activeTileCount, 84);
-  assert.equal(tileIndex['8,-1']?.activationState, 'active');
-});
-
 test('water tiles stay active without consuming online tile capacity', () => {
   const reserved = new Set(['1,-1']);
   const frontier: Tile[] = [];

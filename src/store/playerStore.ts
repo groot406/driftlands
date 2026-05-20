@@ -40,7 +40,6 @@ function removeCoopPing(pingId: string) {
 export const getOnlinePlayersCount = computed(() => onlinePlayersCount.value);
 export const getConnectedPlayers = computed(() => connectedPlayers.value);
 export const getPlayerEntities = computed(() => playerEntities.value);
-export const getReadyPlayersCount = computed(() => connectedPlayers.value.filter((player) => player.ready).length);
 export const getHeroClaimMap = computed(() => heroClaims.value);
 export const getActiveCoopPings = computed(() => activeCoopPings.value);
 
@@ -67,7 +66,6 @@ export function addPlayer(player: { id: string, name: string, color?: string, se
       name: player.name,
       color: player.color,
       settlementId: player.settlementId ?? null,
-      ready: false,
       connectedAt: Date.now(),
       claimedHeroIds: [],
     });

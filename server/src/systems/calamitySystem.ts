@@ -74,12 +74,12 @@ interface PendingCalamity {
   impactAt: number;
 }
 
-const INITIAL_CALAMITY_DELAY_MS = 6 * 60_000;
-const CALAMITY_ROLL_INTERVAL_MS = 5 * 60_000;
-const CALAMITY_ROLL_CHANCE = 0.42;
-const CALAMITY_WARNING_LEAD_MS = 90_000;
+const INITIAL_CALAMITY_DELAY_MS = 12 * 60_000;
+const CALAMITY_ROLL_INTERVAL_MS = 9 * 60_000;
+const CALAMITY_ROLL_CHANCE = 0.28;
+const CALAMITY_WARNING_LEAD_MS = 3 * 60_000;
 const CROP_TERRAINS = new Set<TerrainKey>(['grain', 'hops', 'grapes']);
-const FOOD_RESOURCE_TYPES: ResourceType[] = ['food', 'fish', 'meat', 'bread', 'grain'];
+const FOOD_RESOURCE_TYPES: ResourceType[] = ['fish', 'meat', 'bread', 'grain'];
 const ROAD_VARIANTS = new Set([
   'road',
   'road_ad',
@@ -679,8 +679,8 @@ function triggerOutbreak(options: ResolvedCalamityOptions) {
     } satisfies CalamityOutcome;
   }
 
-  const hasGoodRations = (getSettlementResourceInventory(options.settlementId).bread ?? 0) >= Math.max(2, Math.ceil(current / 2));
-  const deaths = hasGoodRations
+  const hasStrongFood = (getSettlementResourceInventory(options.settlementId).bread ?? 0) >= Math.max(2, Math.ceil(current / 2));
+  const deaths = hasStrongFood
     ? 1
     : Math.min(3, Math.max(1, Math.ceil(current * 0.2)));
   let killed = 0;
@@ -701,7 +701,7 @@ function triggerOutbreak(options: ResolvedCalamityOptions) {
     kind: 'outbreak',
     severity: killed >= 3 ? 'severe' : 'major',
     title: 'Fever outbreak',
-    message: `${killed} settler${killed === 1 ? '' : 's'} died before the fever broke.${hasGoodRations ? ' Strong food stores reduced the losses.' : ''}`,
+    message: `${killed} settler${killed === 1 ? '' : 's'} died before the fever broke.${hasStrongFood ? ' Strong food stores reduced the losses.' : ''}`,
     settlementId: options.settlementId,
     affectedTileIds: [],
     populationLoss: killed,
@@ -836,22 +836,27 @@ function processPendingCalamities(ctx: TickContext) {
 }
 
 function triggerRandomCalamity(ctx: TickContext) {
-  const settlementId = chooseOne(ctx.rng, getDiscoveredSettlementIds());
-  if (!settlementId) {
-    return null;
+  const pending: PendingCalamity[] = [];
+  const previousAutomaticKind = lastAutomaticKind;
+  let latestKind: CalamityKind | null = null;
+
+  for (const settlementId of getDiscoveredSettlementIds()) {
+    const settlementAvailable = getAvailableCalamities(settlementId);
+    const available = settlementAvailable.filter((kind) => kind !== previousAutomaticKind);
+    const fallbackAvailable = available.length > 0 ? available : settlementAvailable;
+    const kind = chooseOne(ctx.rng, fallbackAvailable);
+    if (!kind) {
+      continue;
+    }
+
+    pending.push(warnCalamity(kind, { now: ctx.now, settlementId, rng: ctx.rng }));
+    latestKind = kind;
   }
 
-  const available = getAvailableCalamities(settlementId).filter((kind) => kind !== lastAutomaticKind);
-  const fallbackAvailable = available.length > 0 ? available : getAvailableCalamities(settlementId);
-  const kind = chooseOne(ctx.rng, fallbackAvailable);
-  if (!kind) {
-    return null;
+  if (latestKind) {
+    lastAutomaticKind = latestKind;
   }
 
-  const pending = warnCalamity(kind, { now: ctx.now, settlementId, rng: ctx.rng });
-  if (pending) {
-    lastAutomaticKind = kind;
-  }
   return pending;
 }
 

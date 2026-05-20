@@ -97,6 +97,17 @@ class ResourceMarketState {
     };
   }
 
+  grantGold(actorId: string, amount: number, actorType: MarketActorType = 'PLAYER'): WalletSnapshot {
+    const normalizedAmount = Math.max(0, Math.floor(amount));
+    const wallet = this.ensureWallet(actorId, actorType);
+    if (normalizedAmount > 0) {
+      wallet.gold += normalizedAmount;
+      wallet.updatedAt = Date.now();
+    }
+
+    return this.toWalletSnapshot(wallet);
+  }
+
   buyResource(request: MarketTradeRequest): MarketTradeResult {
     const normalized = this.normalizeTradeRequest(request);
     const resource = this.getResource(normalized.resourceType);

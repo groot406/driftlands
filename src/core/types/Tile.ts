@@ -1,5 +1,6 @@
 import type {TerrainKey} from '../terrainDefs';
 import type { ScoutTargetType } from './Scout';
+import type { ResourceType } from './Resource';
 export interface TileNeighborMap { a: Tile; b: Tile; c: Tile; d: Tile; e: Tile; f: Tile; }
 export type Terrain = TerrainKey;
 export type TileActivationState = 'active' | 'inactive';
@@ -47,7 +48,6 @@ export interface Tile {
     lastConditionUpdateMs?: number | null;
     modifier?: TileModifierKey | null;
     modifierRevealed?: boolean;
-    surveyed?: boolean;
     special?: TileSpecialKey | null;
     specialRevealed?: boolean;
     specialActivated?: boolean;
@@ -74,4 +74,6 @@ export interface Tile {
     towerDefenderCasualtyProgress?: number | null;
     barracksTrainingQueue?: number | null;
     barracksTrainingProgressMs?: number | null;
+    houseGoods?: Partial<Record<ResourceType, number>>;
+    houseGoodsConsumedAtMs?: number | null;
 }

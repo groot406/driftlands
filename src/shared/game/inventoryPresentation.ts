@@ -61,13 +61,6 @@ export interface InventoryVisibilityContext {
 
 export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = [
   {
-    key: 'food',
-    kind: 'stock',
-    sortOrder: 10,
-    topBarGroup: 'food',
-    alwaysVisible: true,
-  },
-  {
     key: 'bread',
     kind: 'stock',
     sortOrder: 11,
@@ -213,6 +206,30 @@ export const INVENTORY_ENTRY_DEFINITIONS: readonly InventoryEntryDefinition[] = 
       tasks: ['harvestWaterLilies', 'placeWaterLilies', 'buildBridge'],
     },
   },
+  {
+    key: 'tea',
+    kind: 'item',
+    sortOrder: 60,
+    topBarGroup: 'trade_goods',
+  },
+  {
+    key: 'pottery',
+    kind: 'item',
+    sortOrder: 61,
+    topBarGroup: 'trade_goods',
+  },
+  {
+    key: 'spices',
+    kind: 'item',
+    sortOrder: 62,
+    topBarGroup: 'trade_goods',
+  },
+  {
+    key: 'silk',
+    kind: 'item',
+    sortOrder: 63,
+    topBarGroup: 'trade_goods',
+  },
 ] as const;
 
 const INVENTORY_ENTRY_BY_KEY = new Map<ResourceType, InventoryEntryDefinition>(
@@ -318,6 +335,7 @@ export function getVisibleInventoryGroups(context: InventoryVisibilityContext): 
       ...group,
       value: group.entries.reduce((sum, entry) => sum + entry.value, 0),
     }))
+    .filter((group) => group.key !== 'trade_goods' || group.entries.length > 0)
     .sort((a, b) => {
       const left = getResourceGroupDefinition(a.key).sortOrder;
       const right = getResourceGroupDefinition(b.key).sortOrder;

@@ -50,7 +50,7 @@ function withUnlocked(
 
 test('new runs show only the starting stock entries', () => {
   assert.deepEqual(visibleKeysByGroup(), {
-    stocks: ['food', 'grain', 'wood', 'stone'],
+    stocks: ['grain', 'wood', 'stone'],
     items: [],
   });
 });
@@ -83,7 +83,7 @@ test('special items are hidden until relevant or stocked', () => {
 
 test('positive stock reveals entries even without progression relevance', () => {
   assert.deepEqual(visibleKeysByGroup({ ore: 2, sand: 2, water_lily: 2, tools: 2, glass: 2 }), {
-    stocks: ['food', 'grain', 'wood', 'stone', 'ore', 'sand', 'glass'],
+    stocks: ['grain', 'wood', 'stone', 'ore', 'sand', 'glass'],
     items: ['tools', 'water_lily'],
   });
 });

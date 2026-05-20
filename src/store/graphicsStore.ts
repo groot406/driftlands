@@ -43,6 +43,60 @@ function loadGraphicsSettings(): GraphicsSettingsData {
 
 export const graphicsStore = reactive<GraphicsSettingsData>(loadGraphicsSettings());
 
+export type GraphicsDiagnosticOverrideMode = 'auto' | 'off' | 'on';
+export type CanvasDprOverrideMode = 'auto' | 'low' | '1x' | 'native';
+export type GraphicsDiagnosticTechniqueKey =
+    | 'windowsPresentationSafeMode'
+    | 'browserLightRendering'
+    | 'desynchronizedCanvas'
+    | 'rescueTimer'
+    | 'canvasDpr';
+
+export const graphicsDiagnosticOverrideStore = reactive<{
+    windowsPresentationSafeMode: GraphicsDiagnosticOverrideMode;
+    browserLightRendering: GraphicsDiagnosticOverrideMode;
+    desynchronizedCanvas: GraphicsDiagnosticOverrideMode;
+    rescueTimer: GraphicsDiagnosticOverrideMode;
+    canvasDpr: CanvasDprOverrideMode;
+}>({
+    windowsPresentationSafeMode: 'auto',
+    browserLightRendering: 'auto',
+    desynchronizedCanvas: 'auto',
+    rescueTimer: 'auto',
+    canvasDpr: 'auto',
+});
+
+function resolveDiagnosticBooleanOverride(
+    key: Exclude<GraphicsDiagnosticTechniqueKey, 'canvasDpr'>,
+    autoValue: boolean,
+) {
+    const mode = graphicsDiagnosticOverrideStore[key];
+    if (mode === 'on') return true;
+    if (mode === 'off') return false;
+    return autoValue;
+}
+
+export function cycleGraphicsDiagnosticOverride(key: GraphicsDiagnosticTechniqueKey) {
+    if (key === 'canvasDpr') {
+        const current = graphicsDiagnosticOverrideStore.canvasDpr;
+        graphicsDiagnosticOverrideStore.canvasDpr = current === 'auto'
+            ? 'low'
+            : current === 'low'
+                ? '1x'
+                : current === '1x'
+                    ? 'native'
+                    : 'auto';
+        return;
+    }
+
+    const current = graphicsDiagnosticOverrideStore[key];
+    graphicsDiagnosticOverrideStore[key] = current === 'auto'
+        ? 'off'
+        : current === 'off'
+            ? 'on'
+            : 'auto';
+}
+
 export function isSafariBrowser() {
     if (typeof navigator === 'undefined') {
         return false;
@@ -61,8 +115,38 @@ export function isFirefoxBrowser() {
     return /Firefox|FxiOS/i.test(navigator.userAgent);
 }
 
+export function isChromiumBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    return /Chrome|Chromium|CriOS|Edg|OPR/i.test(navigator.userAgent)
+        && !/Firefox|FxiOS/i.test(navigator.userAgent);
+}
+
+export function isWindowsBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+
+    const uaDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform;
+    const platform = uaDataPlatform ?? navigator.platform ?? '';
+    return /Windows/i.test(platform) || /Windows NT/i.test(navigator.userAgent);
+}
+
+function getAutoWindowsPresentationSafeMode() {
+    return isWindowsBrowser() && (isChromiumBrowser() || isFirefoxBrowser());
+}
+
+export function shouldUseWindowsPresentationSafeMode() {
+    return resolveDiagnosticBooleanOverride('windowsPresentationSafeMode', getAutoWindowsPresentationSafeMode());
+}
+
 export function shouldUseBrowserLightRendering() {
-    return isSafariBrowser() || isFirefoxBrowser();
+    return resolveDiagnosticBooleanOverride(
+        'browserLightRendering',
+        isSafariBrowser() || isFirefoxBrowser() || shouldUseWindowsPresentationSafeMode(),
+    );
 }
 
 export function shouldUseSafariLightRendering() {
@@ -91,6 +175,24 @@ export function shouldUseEdgeVignette() {
 
 export function shouldUseParticleGlowPass() {
     return !shouldUseSafariLightRendering();
+}
+
+export function shouldUseDesynchronizedCanvas() {
+    return resolveDiagnosticBooleanOverride('desynchronizedCanvas', !shouldUseWindowsPresentationSafeMode());
+}
+
+export function shouldUseWindowsRescueTimer() {
+    return resolveDiagnosticBooleanOverride('rescueTimer', shouldUseWindowsPresentationSafeMode());
+}
+
+export function getEffectiveCanvasDpr() {
+    const mode = graphicsDiagnosticOverrideStore.canvasDpr;
+    const windowDpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+
+    if (mode === 'low') return 0.75;
+    if (mode === '1x') return 1;
+    if (mode === 'native') return Math.max(0.5, Math.min(2, windowDpr));
+    return 1;
 }
 
 export function getEffectiveParticleBudget() {

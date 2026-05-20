@@ -49,30 +49,12 @@ export function resolveGeneratedTileSpecial(q: number, r: number, terrain: Terra
   }
 }
 
-export function revealTileFeatures(tile: Tile | null | undefined) {
-  if (!tile) {
-    return false;
-  }
-
-  const hadHiddenModifier = !!tile.modifier && !tile.modifierRevealed;
-  const hadHiddenSpecial = !!tile.special && !tile.specialRevealed;
-  const wasUnsurveyed = tile.surveyed !== true;
-  tile.surveyed = true;
-  if (tile.modifier) {
-    tile.modifierRevealed = true;
-  }
-  if (tile.special) {
-    tile.specialRevealed = true;
-  }
-  return wasUnsurveyed || hadHiddenModifier || hadHiddenSpecial;
-}
-
 export function hasRevealedModifier(tile: Tile | null | undefined, modifier: TileModifierKey) {
-  return tile?.modifier === modifier && tile.modifierRevealed === true;
+  return tile?.modifier === modifier;
 }
 
 export function hasRevealedSpecial(tile: Tile | null | undefined, special: TileSpecialKey) {
-  return tile?.special === special && tile.specialRevealed === true;
+  return tile?.special === special;
 }
 
 export function hasActivatedSpecial(tile: Tile | null | undefined, special: TileSpecialKey) {

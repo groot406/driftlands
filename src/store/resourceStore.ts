@@ -30,6 +30,10 @@ const RESOURCE_TYPES: ResourceType[] = [
     'water_lily',
     'sand',
     'glass',
+    'tea',
+    'pottery',
+    'spices',
+    'silk',
 ];
 
 function createEmptyInventory(): Partial<Record<ResourceType, number>> {
@@ -52,6 +56,10 @@ function createEmptyInventory(): Partial<Record<ResourceType, number>> {
         water_lily: 0,
         sand: 0,
         glass: 0,
+        tea: 0,
+        pottery: 0,
+        spices: 0,
+        silk: 0,
     };
 }
 

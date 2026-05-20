@@ -42,7 +42,7 @@ export const HERO_SKILL_DEFINITIONS: readonly HeroSkillDefinition[] = [
   {
     key: 'scouting',
     label: 'Scouting',
-    summary: 'Explores, surveys, and resource-scouts faster.',
+    summary: 'Explores and resource-scouts faster.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
@@ -79,12 +79,9 @@ const SCOUTING_TASKS = new Set<string>([
   'activateRuins',
   'explore',
   'scoutResource',
-  'surveyTile',
 ]);
 
 const SURVIVAL_TASKS = new Set<string>([
-  'campfireRations',
-  'collectRations',
   'convertToGrass',
   'fishAtDock',
   'harvestGrain',

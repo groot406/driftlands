@@ -8,7 +8,7 @@ import { terrainPositions } from '../../core/terrainRegistry.ts';
 import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
-import { loadTasks, startTask } from '../../store/taskStore.ts';
+import { addResourcesToTask, loadTasks, startTask } from '../../store/taskStore.ts';
 import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
 import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
@@ -51,6 +51,30 @@ test.afterEach(() => {
   resetTestModeSettings();
   loadStoryProgression(null);
   loadHeroes(originalHeroes.map(cloneHero));
+});
+
+test('shared food requirements accept fish, meat, and bread sources', () => {
+  const task: TaskInstance = {
+    id: 'task-food',
+    type: 'buildTownCenter',
+    tileId: '0,0',
+    progressXp: 0,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: false,
+    requiredResources: [{ type: 'food', amount: 3 }],
+    collectedResources: [],
+  };
+
+  assert.equal(addResourcesToTask(task, { type: 'meat', amount: 2 }), 2);
+  assert.deepEqual(task.collectedResources, [{ type: 'food', amount: 2 }]);
+  assert.equal(task.active, false);
+
+  assert.equal(addResourcesToTask(task, { type: 'fish', amount: 2 }), 1);
+  assert.deepEqual(task.collectedResources, [{ type: 'food', amount: 3 }]);
+  assert.equal(task.active, true);
 });
 
 test('inactive controlled tiles no longer offer a manual restore action', () => {
@@ -184,37 +208,6 @@ test('mission 1 offers hunt on forest but not on plains', () => {
 
   assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'hunt'), true);
   assert.equal(getAvailableTasks(tileIndex['1,0']!, hero).some((task) => task.key === 'hunt'), false);
-});
-
-test('mission 1 campfires offer ration cooking', () => {
-  setStoryProgressionForMission(1);
-  loadWorld([
-    {
-      id: '0,0',
-      q: 0,
-      r: 0,
-      biome: 'plains',
-      terrain: 'plains',
-      discovered: true,
-      isBaseTile: true,
-      activationState: 'active',
-      controlledBySettlementId: '0,0',
-      ownerSettlementId: '0,0',
-      variant: 'plains_campfire',
-    } satisfies Tile,
-  ]);
-
-  const hero: Hero = {
-    id: 'h1',
-    name: 'Santa',
-    avatar: 'santa',
-    q: 0,
-    r: 0,
-    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
-    facing: 'down',
-  };
-
-  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'campfireRations'), true);
 });
 
 test('manual dock fishing follows the roadmap when settlers are available', () => {
@@ -1437,7 +1430,7 @@ test('heroes clear carried rewards at full warehouses when unlimited resources t
     stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
     facing: 'down',
     settlementId: '0,0',
-    carryingPayload: { type: 'food', amount: 3 },
+    carryingPayload: { type: 'meat', amount: 3 },
   } satisfies Hero]);
 
   loadTestModeSettings({
@@ -1457,5 +1450,5 @@ test('heroes clear carried rewards at full warehouses when unlimited resources t
   handleHeroArrival(heroes[0]!, tileIndex['0,0']!);
 
   assert.equal(heroes[0]?.carryingPayload, undefined);
-  assert.equal(getStorageResourceAmount('0,0', 'food'), 0);
+  assert.equal(getStorageResourceAmount('0,0', 'meat'), 0);
 });

@@ -1,5 +1,6 @@
 import { SpriteAnimationSet } from './SpriteAnimation';
 import type { Settler } from './types/Settler';
+import { normalizeSettlerGender } from '../shared/game/settlerNames';
 
 export const SETTLER_FRAME_SIZE = 32;
 
@@ -13,10 +14,16 @@ export const SETTLER_SPRITE_KEYS = [
 
 export type SettlerSpriteKey = typeof SETTLER_SPRITE_KEYS[number];
 
-export function getSettlerSpriteKey(settler: Pick<Settler, 'appearanceSeed'>): SettlerSpriteKey {
+const MALE_SETTLER_SPRITE_KEYS: readonly SettlerSpriteKey[] = ['default', 'copper_jacket', 'headband_worker'];
+const FEMALE_SETTLER_SPRITE_KEYS: readonly SettlerSpriteKey[] = ['female_braid', 'female_bright'];
+
+export function getSettlerSpriteKey(settler: Pick<Settler, 'id' | 'appearanceSeed' | 'nameSeed' | 'gender'>): SettlerSpriteKey {
     const seed = Number.isFinite(settler.appearanceSeed) ? settler.appearanceSeed : 0;
-    const index = Math.abs(Math.trunc(seed)) % SETTLER_SPRITE_KEYS.length;
-    return SETTLER_SPRITE_KEYS[index] ?? 'default';
+    const spriteKeys = normalizeSettlerGender(settler) === 'female'
+        ? FEMALE_SETTLER_SPRITE_KEYS
+        : MALE_SETTLER_SPRITE_KEYS;
+    const index = Math.abs(Math.trunc(seed)) % spriteKeys.length;
+    return spriteKeys[index] ?? 'default';
 }
 
 export const settlerAnimationSet = new SpriteAnimationSet({

@@ -31,6 +31,8 @@ const TRAIT_DEFINITIONS: readonly TraitDefinition[] = [
   { key: 'hard_to_please', label: 'Hard To Please' },
   { key: 'big_eater', label: 'Big Eater' },
   { key: 'small_eater', label: 'Small Eater' },
+  { key: 'shopper', label: 'Shopper' },
+  { key: 'frugal', label: 'Frugal' },
 ] as const;
 
 const PREFERENCE_DEFINITIONS: readonly PreferenceDefinition[] = [
@@ -41,6 +43,7 @@ const PREFERENCE_DEFINITIONS: readonly PreferenceDefinition[] = [
 
 export const SETTLER_TRAITS = TRAIT_DEFINITIONS.map((trait) => trait.key);
 export const DRINK_PREFERENCES = PREFERENCE_DEFINITIONS.map((preference) => preference.key);
+const DEFAULT_SETTLER_TRAITS = SETTLER_TRAITS.filter((trait) => trait !== 'shopper' && trait !== 'frugal');
 
 function hashString(value: string) {
   let hash = 2166136261;
@@ -70,7 +73,7 @@ export function normalizeSettlerTraits(profile: SettlerProfileLike): SettlerTrai
     return Array.from(new Set(normalized)).slice(0, 2);
   }
 
-  return [SETTLER_TRAITS[getProfileSeed(profile, 'trait') % SETTLER_TRAITS.length] ?? 'long_worker'];
+  return [DEFAULT_SETTLER_TRAITS[getProfileSeed(profile, 'trait') % DEFAULT_SETTLER_TRAITS.length] ?? 'long_worker'];
 }
 
 export function normalizeDrinkPreference(profile: SettlerProfileLike): DrinkPreference {
@@ -159,6 +162,20 @@ export function getSettlerSocialThreshold(profile: SettlerProfileLike) {
   return 75;
 }
 
+export function getSettlerShopThreshold(profile: SettlerProfileLike) {
+  if (hasSettlerTrait(profile, 'shopper')) {
+    return 88;
+  }
+  if (hasSettlerTrait(profile, 'frugal')) {
+    return 48;
+  }
+  if (hasSettlerTrait(profile, 'independent')) {
+    return 58;
+  }
+
+  return 66;
+}
+
 export function getSettlerDrinkPriority(profile: SettlerProfileLike): readonly SocialDrinkType[] {
   const preference = normalizeDrinkPreference(profile);
   switch (preference) {
@@ -194,4 +211,21 @@ export function getSettlerDrinkHappinessGain(profile: SettlerProfileLike, drinkT
   }
 
   return Math.max(5, gain);
+}
+
+export function getSettlerTradeGoodHappinessGain(profile: SettlerProfileLike, baseGain: number) {
+  let gain = baseGain;
+  if (hasSettlerTrait(profile, 'shopper')) {
+    gain += 6;
+  } else if (hasSettlerTrait(profile, 'frugal')) {
+    gain -= 4;
+  }
+
+  if (hasSettlerTrait(profile, 'easy_to_please')) {
+    gain += 4;
+  } else if (hasSettlerTrait(profile, 'hard_to_please')) {
+    gain -= 4;
+  }
+
+  return Math.max(4, gain);
 }

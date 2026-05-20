@@ -59,7 +59,8 @@
 import { computed, ref, watch } from 'vue';
 import { tileIndex, worldVersion } from '../core/world';
 import { settlers } from '../store/settlerStore';
-import { resourceInventory, resourceVersion } from '../store/resourceStore';
+import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
+import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
 import { formatResourceType } from '../shared/buildings/jobSiteDetails.ts';
 
@@ -72,7 +73,17 @@ function formatAmount(value: number) {
 const summary = computed(() => {
   void resourceVersion.value;
   void worldVersion.value;
-  return getMaintenanceOverview(Object.values(tileIndex), settlers, resourceInventory);
+  const settlementId = currentPlayerSettlementId.value;
+  const playerTiles = Object.values(tileIndex)
+    .filter((tile) => !settlementId || tile.ownerSettlementId === settlementId || tile.controlledBySettlementId === settlementId);
+  const playerSettlers = settlementId
+    ? settlers.filter((settler) => settler.settlementId === settlementId)
+    : settlers;
+  const playerInventory = settlementId
+    ? getSettlementResourceInventory(settlementId)
+    : resourceInventory;
+
+  return getMaintenanceOverview(playerTiles, playerSettlers, playerInventory);
 });
 
 const showAlert = computed(() => summary.value.needsRepairCount > 0);

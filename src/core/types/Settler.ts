@@ -1,5 +1,6 @@
 import type { HeroMovementState } from './Hero';
 import type { ResourceAmount, ResourceType } from './Resource';
+import type { SettlerGender } from '../../shared/game/settlerNames';
 
 export type SettlerActivity =
     | 'idle'
@@ -7,10 +8,12 @@ export type SettlerActivity =
     | 'commuting_home'
     | 'commuting_work'
     | 'commuting_social'
+    | 'commuting_shop'
     | 'defending'
     | 'raiding'
     | 'working'
     | 'socializing'
+    | 'shopping'
     | 'repairing'
     | 'fetching_food'
     | 'fetching_input'
@@ -29,7 +32,9 @@ export type SettlerTrait =
     | 'easy_to_please'
     | 'hard_to_please'
     | 'big_eater'
-    | 'small_eater';
+    | 'small_eater'
+    | 'shopper'
+    | 'frugal';
 
 export type SettlerBlockerCode =
     | 'missing_input'
@@ -51,6 +56,7 @@ export interface SettlerBlockerReason {
 export interface Settler {
     id: string;
     nameSeed?: number;
+    gender?: SettlerGender;
     q: number;
     r: number;
     facing: 'up' | 'down' | 'left' | 'right';

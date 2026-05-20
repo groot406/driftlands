@@ -1,5 +1,11 @@
 export type SettlerGender = 'male' | 'female';
 
+type SettlerIdentityLike = {
+    id: string;
+    nameSeed?: number;
+    gender?: SettlerGender | null;
+};
+
 export const MALE_FIRST_NAMES = [
     'James', 'Liam', 'Noah', 'Mason', 'Lucas', 'Ethan', 'Logan', 'Jacob', 'Aiden', 'Owen',
     'Jack', 'Henry', 'Levi', 'Wyatt', 'Samuel', 'Caleb', 'Ryan', 'Nathan', 'Luke', 'Daniel',
@@ -44,21 +50,33 @@ function hashString(value: string) {
     return hash >>> 0;
 }
 
-export function getSettlerIdentity(id: string, nameSeed?: number) {
+function getSeedGender(seed: string | number): SettlerGender {
+    return (hashString(`${seed}:gender`) % 2) === 0 ? 'male' : 'female';
+}
+
+export function normalizeSettlerGender(settler: SettlerIdentityLike): SettlerGender {
+    if (settler.gender === 'male' || settler.gender === 'female') {
+        return settler.gender;
+    }
+
+    return getSeedGender(settler.nameSeed ?? settler.id);
+}
+
+export function getSettlerIdentity(id: string, nameSeed?: number, gender?: SettlerGender | null) {
     const seed = nameSeed ?? id;
-    const gender: SettlerGender = (hashString(`${seed}:gender`) % 2) === 0 ? 'male' : 'female';
-    const firstNames = gender === 'male' ? MALE_FIRST_NAMES : FEMALE_FIRST_NAMES;
+    const resolvedGender = normalizeSettlerGender({ id, nameSeed, gender });
+    const firstNames = resolvedGender === 'male' ? MALE_FIRST_NAMES : FEMALE_FIRST_NAMES;
     const firstName = firstNames[hashString(`${seed}:first`) % firstNames.length]!;
     const familyName = FAMILY_NAMES[hashString(`${seed}:family`) % FAMILY_NAMES.length]!;
 
     return {
-        gender,
+        gender: resolvedGender,
         firstName,
         familyName,
         fullName: `${firstName} ${familyName}`,
     };
 }
 
-export function getSettlerDisplayName(id: string, nameSeed?: number) {
-    return getSettlerIdentity(id, nameSeed).fullName;
+export function getSettlerDisplayName(id: string, nameSeed?: number, gender?: SettlerGender | null) {
+    return getSettlerIdentity(id, nameSeed, gender).fullName;
 }

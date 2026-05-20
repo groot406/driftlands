@@ -1,11 +1,11 @@
 import type { TerrainKey } from '../../core/terrainDefs.ts';
 import type { ResourceType } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
+import { getResourceRequirementStock } from '../game/resourceDefinitions.ts';
 import type { StoryHeroId } from './heroRoster.ts';
 import { getStoryHeroTemplate } from './heroRoster.ts';
 
 export type BuildingKey =
-  | 'campfire'
   | 'well'
   | 'watchtower'
   | 'wall'
@@ -16,6 +16,7 @@ export type BuildingKey =
   | 'cropSilo'
   | 'craftedGoodsStorehouse'
   | 'dock'
+  | 'harbor'
   | 'lumberCamp'
   | 'huntersHut'
   | 'granary'
@@ -23,6 +24,7 @@ export type BuildingKey =
   | 'brewery'
   | 'winery'
   | 'pub'
+  | 'shop'
   | 'apiary'
   | 'workshop'
   | 'weaponSmith'
@@ -59,7 +61,6 @@ export type ProgressionNodeKey =
   | 'masonry'
   | 'harsh_frontier'
   | 'desert_industry'
-  | 'frontier_surveying'
   | 'hero_methods'
   | 'toolmaking'
   | 'expansion'
@@ -92,6 +93,7 @@ export type RequirementDefinition =
   | { kind: 'beds_at_least'; amount: number }
   | { kind: 'frontier_distance_at_least'; amount: number }
   | { kind: 'resource_stock_at_least'; resourceType: ResourceType; amount: number }
+  | { kind: 'food_source_stock_at_least'; amount: number }
   | { kind: 'building_count_at_least'; buildingKey: BuildingKey; amount: number }
   | { kind: 'building_operational_at_least'; buildingKey: BuildingKey; amount: number }
   | { kind: 'terrain_discovered'; terrainKey: TerrainKey }
@@ -184,11 +186,6 @@ export type StoryProgressionSnapshot = ProgressionSnapshot;
 export type StoryUnlockDescriptor = ProgressionUnlockDescriptor;
 
 const BUILDING_META: Record<BuildingKey, { label: string; description: string; taskKey: TaskType }> = {
-  campfire: {
-    label: 'Campfire',
-    description: 'Lights a temporary frontier hearth that keeps a nearby pocket of controlled land online.',
-    taskKey: 'buildCampfire',
-  },
   well: {
     label: 'Well',
     description: 'Brings water inland and supports the first true farmland.',
@@ -239,6 +236,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Opens the shoreline to fishing and steadier landings from active shore.',
     taskKey: 'buildDock',
   },
+  harbor: {
+    label: 'Harbor',
+    description: 'Connects a large body of water to arriving trade ships and cargo orders.',
+    taskKey: 'buildHarbor',
+  },
   lumberCamp: {
     label: 'Lumber Camp',
     description: 'Turns a forest tile into a permanent timber site.',
@@ -273,6 +275,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Pub',
     description: 'Gives settlers a staffed place to socialize and restore happiness.',
     taskKey: 'buildPub',
+  },
+  shop: {
+    label: 'Shop',
+    description: 'Sells imported trade goods to settlers for a small happiness boost.',
+    taskKey: 'buildShop',
   },
   apiary: {
     label: 'Apiary',
@@ -387,10 +394,6 @@ const TASK_META: Record<string, { label: string; description: string }> = {
     label: 'Convert To Grass',
     description: 'Clear rough dirt into grass-ready ground for the next lane crews.',
   },
-  campfireRations: {
-    label: 'Cook Rations',
-    description: 'Burn spare wood at a campfire to create a little emergency food.',
-  },
   hunt: {
     label: 'Hunt',
     description: 'Gather emergency food from nearby forests when the stores run thin.',
@@ -438,10 +441,6 @@ const TASK_META: Record<string, { label: string; description: string }> = {
   gatherSand: {
     label: 'Gather Sand',
     description: 'Collect usable sand from controlled desert ground.',
-  },
-  surveyTile: {
-    label: 'Survey Tile',
-    description: 'Reveal hidden tile modifiers and special frontier features.',
   },
   activateRuins: {
     label: 'Activate Ruins',
@@ -556,8 +555,8 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'hero', key: 'h1' },
       { kind: 'hero', key: 'h2' },
       { kind: 'hero', key: 'h5' },
-      { kind: 'building', key: 'campfire' },
       { kind: 'building', key: 'house' },
+      { kind: 'building', key: 'huntersHut' },
       { kind: 'task', key: 'explore' },
       { kind: 'task', key: 'gatherDriftwood' },
       { kind: 'task', key: 'chopWood' },
@@ -565,7 +564,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'task', key: 'buildRoad' },
       { kind: 'task', key: 'dig' },
       { kind: 'task', key: 'convertToGrass' },
-      { kind: 'task', key: 'campfireRations' },
       { kind: 'task', key: 'hunt' },
       { kind: 'task', key: 'breakDirtRock' },
       { kind: 'task', key: 'plantTrees' },
@@ -646,7 +644,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 50,
     unlocks: [
       { kind: 'building', key: 'granary' },
-      { kind: 'building', key: 'huntersHut' },
       { kind: 'building', key: 'apiary' },
     ],
   },
@@ -685,6 +682,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'building', key: 'brewery' },
       { kind: 'building', key: 'winery' },
       { kind: 'building', key: 'pub' },
+      { kind: 'building', key: 'shop' },
       { kind: 'task', key: 'seedHops' },
       { kind: 'task', key: 'harvestHops' },
       { kind: 'task', key: 'seedGrapes' },
@@ -697,7 +695,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     category: 'Settlement',
     description: 'Once food is stable, the colony can afford real lookout posts.',
     requirements: [
-      { kind: 'resource_stock_at_least', resourceType: 'food', amount: 8 },
+      { kind: 'food_source_stock_at_least', amount: 8 },
       { kind: 'population_at_least', amount: 4 },
     ],
     sortOrder: 70,
@@ -739,28 +737,9 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'building', key: 'materialsYard' },
       { kind: 'building', key: 'cropSilo' },
       { kind: 'building', key: 'craftedGoodsStorehouse' },
+      { kind: 'building', key: 'harbor' },
       { kind: 'building', key: 'library' },
       { kind: 'upgrade', key: 'market_charter' },
-    ],
-  },
-  {
-    key: 'frontier_surveying',
-    label: 'Frontier Surveying',
-    category: 'Frontier',
-    description: 'Organized survey work turns ordinary tiles into informed choices.',
-    requirements: [
-      { kind: 'population_at_least', amount: 5 },
-      {
-        kind: 'any_of',
-        requirements: [
-          { kind: 'building_count_at_least', buildingKey: 'library', amount: 1 },
-          { kind: 'building_count_at_least', buildingKey: 'watchtower', amount: 1 },
-        ],
-      },
-    ],
-    sortOrder: 95,
-    unlocks: [
-      { kind: 'task', key: 'surveyTile' },
     ],
   },
   {
@@ -990,7 +969,9 @@ function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDef
     case 'frontier_distance_at_least':
       return metrics.frontierDistance;
     case 'resource_stock_at_least':
-      return metrics.resourceStock[requirement.resourceType] ?? 0;
+      return getResourceRequirementStock(metrics.resourceStock, requirement.resourceType);
+    case 'food_source_stock_at_least':
+      return getResourceRequirementStock(metrics.resourceStock, 'food');
     case 'building_count_at_least':
       return metrics.buildingCounts[requirement.buildingKey] ?? 0;
     case 'building_operational_at_least':
@@ -1036,7 +1017,11 @@ function getRequirementLabel(requirement: RequirementDefinition): string {
     case 'frontier_distance_at_least':
       return `Frontier ring ${requirement.amount}`;
     case 'resource_stock_at_least':
-      return `${requirement.resourceType} stock ${requirement.amount}`;
+      return requirement.resourceType === 'food'
+        ? `Food source stock ${requirement.amount}`
+        : `${requirement.resourceType} stock ${requirement.amount}`;
+    case 'food_source_stock_at_least':
+      return `Food source stock ${requirement.amount}`;
     case 'building_count_at_least':
       return `${BUILDING_META[requirement.buildingKey].label} x${requirement.amount}`;
     case 'building_operational_at_least':

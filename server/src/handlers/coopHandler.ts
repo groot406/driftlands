@@ -4,7 +4,6 @@ import type {
   CoopHeroReleaseMessage,
   CoopPingMessage,
   CoopPingRequestMessage,
-  CoopSetReadyMessage,
   CoopSnapshotMessage,
 } from '../../../src/shared/protocol';
 import type { CoopPingKind } from '../../../src/shared/coop/types';
@@ -30,7 +29,6 @@ export class ServerCoopHandler {
   constructor(_io: Server) {}
 
   init(): void {
-    serverMessageRouter.on('coop:set_ready', this.handleSetReady.bind(this));
     serverMessageRouter.on('coop:hero_claim', this.handleHeroClaim.bind(this));
     serverMessageRouter.on('coop:hero_release', this.handleHeroRelease.bind(this));
     serverMessageRouter.on('coop:request_ping', this.handlePingRequest.bind(this));
@@ -54,14 +52,6 @@ export class ServerCoopHandler {
     };
 
     socket.emit('message', message);
-  }
-
-  private handleSetReady(socket: Socket, message: CoopSetReadyMessage): void {
-    if (!coopState.setReady(socket.id, message.ready)) {
-      return;
-    }
-
-    this.broadcastSnapshot();
   }
 
   private handleHeroClaim(socket: Socket, message: CoopHeroClaimMessage): void {

@@ -35,7 +35,7 @@
       />
 
       <button
-        v-if="marketAccessUnlocked"
+        v-if="showGoldBubble"
         type="button"
         class="pop-bubble gold-bubble"
         :title="goldTitle"
@@ -102,8 +102,11 @@ const marketAccessUnlocked = computed(() => {
 });
 
 const marketGold = computed(() => marketWallet.value?.gold ?? 0);
+const showGoldBubble = computed(() => marketAccessUnlocked.value || marketGold.value > 0);
 const formattedGold = computed(() => formatGold(marketGold.value));
-const goldTitle = computed(() => `Open market (${formattedGold.value} Gold)`);
+const goldTitle = computed(() => marketAccessUnlocked.value
+  ? `Open market (${formattedGold.value} Gold)`
+  : `Gold wallet (${formattedGold.value} Gold)`);
 
 function formatGold(value: number) {
   const normalized = Math.max(0, Math.floor(value));
@@ -115,7 +118,7 @@ function formatGold(value: number) {
 }
 
 function refreshMarketWallet() {
-  if (!marketAccessUnlocked.value || !currentPlayerId.value) {
+  if (!currentPlayerId.value) {
     return;
   }
 

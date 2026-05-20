@@ -15,13 +15,16 @@ import {
     getSettlerDrinkPriority,
     getSettlerHappinessDecayMultiplier,
     getSettlerHungerRateMultiplier,
+    getSettlerShopThreshold,
     getSettlerSleepDurationMultiplier,
     getSettlerSleepThresholdMultiplier,
     getSettlerSocialThreshold,
+    getSettlerTradeGoodHappinessGain,
     getSettlerWorkFatigueMultiplier,
     normalizeDrinkPreference,
     normalizeSettlerTraits,
 } from '../../../src/shared/game/settlerPreferences.ts';
+import { normalizeSettlerGender } from '../../../src/shared/game/settlerNames.ts';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import {
     depositResourceToStorage,
@@ -34,7 +37,7 @@ import {
     withdrawResourceFromStorage,
 } from '../../../src/shared/game/state/resourceStore';
 import { resumeWaitingTasksForResource } from '../../../src/shared/game/state/taskStore';
-import type { ResourceAmount } from '../../../src/shared/game/types/Resource';
+import type { ResourceAmount, ResourceType } from '../../../src/shared/game/types/Resource';
 import type { Settler, SettlerActivity, SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol';
@@ -54,6 +57,7 @@ import {
     REPAIR_RESTORE_AMOUNT,
     updateTileCondition,
 } from '../../../src/shared/buildings/maintenance';
+import { getHouseComfortHappinessForTile, getHouseGoodCapacityForTile } from '../../../src/shared/buildings/state.ts';
 import { playerSettlementState } from '../state/playerSettlementState';
 import {
     getPopulationGrowthMultiplier,
@@ -64,7 +68,7 @@ import {
     testModeSettings,
 } from '../../../src/shared/game/testMode.ts';
 import { isWatchtowerTile } from '../../../src/shared/game/military.ts';
-import { HUNGER_FOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
+import { HUNGER_FOOD_TYPES, TRADE_GOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, getTradeGoodHappinessGain, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
 
 const pathService = new PathService();
 
@@ -77,6 +81,8 @@ const POPULATION_GROWTH_INTERVAL_MS = 60_000;
 const SETTLER_STEP_BASE_MS = 900;
 const SETTLER_HAPPINESS_DECAY_MS = 10_000;
 const SETTLER_SOCIAL_VISIT_MS = 20_000;
+const SETTLER_SHOP_VISIT_MS = 16_000;
+const HOUSE_GOOD_CONSUME_INTERVAL_MS = 3 * 60_000;
 const SETTLER_MAX_HAPPINESS = 100;
 const SOCIAL_DRINKS = [
     { type: 'wine', happiness: 30 },
@@ -96,6 +102,10 @@ function getEffectiveSettlerCycleProgress(dt: number) {
 
 function getEffectiveSettlerHappinessProgress(dt: number) {
     return dt * getSettlerCycleSpeedMultiplier(testModeSettings);
+}
+
+function getEffectiveSettlerCycleIntervalMs(intervalMs: number) {
+    return Math.max(1, Math.round(intervalMs / getSettlerCycleSpeedMultiplier(testModeSettings)));
 }
 
 function seedFromString(value: string) {
@@ -142,6 +152,7 @@ function createSettler(now: number, settlementId?: string | null): Settler {
     return {
         id,
         nameSeed: baseSettler.nameSeed,
+        gender: normalizeSettlerGender(baseSettler),
         q: fallback?.q ?? 0,
         r: fallback?.r ?? 0,
         facing: 'down',
@@ -253,8 +264,14 @@ function ensureSettlerNameSeeds(now: number) {
 function ensureSettlerProfiles() {
     let changed = false;
     for (const settler of settlers) {
+        const nextGender = normalizeSettlerGender(settler);
         const nextTraits = normalizeSettlerTraits(settler);
         const nextDrinkPreference = normalizeDrinkPreference(settler);
+
+        if (settler.gender !== nextGender) {
+            settler.gender = nextGender;
+            changed = true;
+        }
 
         const traitChanged = (settler.traits ?? []).length !== nextTraits.length
             || nextTraits.some((trait, index) => settler.traits?.[index] !== trait);
@@ -308,7 +325,7 @@ function setActivity(settler: Settler, activity: SettlerActivity, now: number) {
     settler.activity = activity;
     settler.stateSinceMs = now;
     changed = true;
-    if (activity !== 'socializing' && activity !== 'commuting_social') {
+    if (activity !== 'socializing' && activity !== 'commuting_social' && activity !== 'shopping' && activity !== 'commuting_shop') {
         settler.socialTileId = null;
     }
     if (activity !== 'waiting' && settler.blockerReason) {
@@ -754,7 +771,7 @@ function tryEatFromStorage(settler: Settler, storageTile: Tile) {
 
         broadcastWithdrawal(settler, storageTile.id, { type: resourceType, amount: withdrawn });
         const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_MEAL_INTERVAL_MS;
-        settler.hungerMs = Math.min(0, settler.hungerMs - reliefMs);
+        settler.hungerMs = Math.max(0, settler.hungerMs - reliefMs);
         return true;
     }
 
@@ -951,12 +968,43 @@ export function syncSettlerPopulation(now: number) {
         const targetBySettlementId = new Map(
             population.settlements.map((settlement) => [settlement.settlementId, Math.max(0, settlement.current)]),
         );
+        const countBySettlementId = new Map<string, number>();
+        for (const [settlementId] of targetBySettlementId.entries()) {
+            countBySettlementId.set(settlementId, countCivilianSettlers(settlementId));
+        }
+        const isOverTarget = (settlementId: string | null | undefined) => {
+            if (!settlementId || !targetBySettlementId.has(settlementId)) {
+                return true;
+            }
+            return (countBySettlementId.get(settlementId) ?? 0) > (targetBySettlementId.get(settlementId) ?? 0);
+        };
+        const adoptableSettlers = () => settlers.filter((settler) => !isGuardSettler(settler) && isOverTarget(settler.settlementId));
 
         for (const [settlementId, settlementTarget] of targetBySettlementId.entries()) {
-            let settlementSettlers = countCivilianSettlers(settlementId);
+            let settlementSettlers = countBySettlementId.get(settlementId) ?? 0;
+            for (const settler of adoptableSettlers()) {
+                if (settlementSettlers >= settlementTarget) {
+                    break;
+                }
+                if (settler.settlementId === settlementId) {
+                    continue;
+                }
+                if (settler.settlementId && targetBySettlementId.has(settler.settlementId)) {
+                    countBySettlementId.set(
+                        settler.settlementId,
+                        Math.max(0, (countBySettlementId.get(settler.settlementId) ?? 0) - 1),
+                    );
+                }
+                settler.settlementId = settlementId;
+                settlementSettlers++;
+                countBySettlementId.set(settlementId, settlementSettlers);
+                changedBySettlement = true;
+            }
+
             while (settlementSettlers < settlementTarget) {
                 settlers.push(createSettler(now, settlementId));
                 settlementSettlers++;
+                countBySettlementId.set(settlementId, settlementSettlers);
                 changedBySettlement = true;
             }
         }
@@ -1008,6 +1056,8 @@ function buildHomeSlots() {
         dirt_house: 2,
         plains_stone_house: 4,
         dirt_stone_house: 4,
+        plains_glass_house: 6,
+        dirt_glass_house: 6,
     };
 
     const houses = Object.values(tileIndex)
@@ -1070,7 +1120,8 @@ function reconcileHomes() {
     }
 
     for (const settler of remaining) {
-        const nextSlot = homeSlots.find((slot) => !usedSlotKeys.has(slot.key));
+        const nextSlot = homeSlots.find((slot) => !usedSlotKeys.has(slot.key) && slot.settlementId === settler.settlementId)
+            ?? homeSlots.find((slot) => !usedSlotKeys.has(slot.key));
         if (nextSlot) {
             usedSlotKeys.add(nextSlot.key);
             if (settler.homeTileId !== nextSlot.homeTileId) {
@@ -1476,7 +1527,7 @@ function maybeFetchFood(settler: Settler, now: number) {
         if (blockedStorage) {
             return setWaiting(settler, now, {
                 code: 'path_blocked',
-                resourceType: resourceType ?? 'food',
+                resourceType: resourceType ?? 'meat',
                 amount: FOOD_PER_SETTLER_PER_MINUTE,
                 tileId: blockedStorage.id,
             }, {
@@ -1596,6 +1647,241 @@ function maybeVisitPub(settler: Settler, now: number) {
         return setWaiting(settler, now, { code: 'path_blocked', tileId: venue.accessTile.id }, {
             action: 'commute_social',
             pubTileId: venue.site.tile.id,
+        });
+    }
+
+    return true;
+}
+
+function getTradeGoodAmount(settlementId: string | null | undefined, resourceType: typeof TRADE_GOOD_TYPES[number]) {
+    const inventory = settlementId ? getSettlementResourceInventory(settlementId) : getEffectiveResourceInventory();
+    return Math.max(0, inventory[resourceType] ?? 0);
+}
+
+function isHouseTile(tile: Tile | null | undefined) {
+    return !!tile?.variant && (HOUSE_VARIANT_KEYS as readonly string[]).includes(tile.variant);
+}
+
+function getSettlerHomeHouse(settler: Settler) {
+    const homeTile = tileIndex[settler.homeTileId] ?? null;
+    return isHouseTile(homeTile) ? homeTile : null;
+}
+
+function getHouseTradeGoodAmount(homeTileId: string | null | undefined, resourceType: ResourceType) {
+    const homeTile = homeTileId ? tileIndex[homeTileId] ?? null : null;
+    if (!isHouseTile(homeTile)) {
+        return 0;
+    }
+
+    return Math.max(0, homeTile.houseGoods?.[resourceType] ?? 0);
+}
+
+function hasTradeGoodAtHome(settler: Settler, resourceType: ResourceType) {
+    return getHouseTradeGoodAmount(settler.homeTileId, resourceType) > 0;
+}
+
+function getHouseGoodTotal(tile: Tile | null | undefined) {
+    if (!isHouseTile(tile)) {
+        return 0;
+    }
+
+    return TRADE_GOOD_TYPES.reduce((sum, resourceType) => (
+        sum + Math.max(0, tile.houseGoods?.[resourceType] ?? 0)
+    ), 0);
+}
+
+function getHouseGoodSpace(tile: Tile | null | undefined) {
+    return Math.max(0, getHouseGoodCapacityForTile(tile) - getHouseGoodTotal(tile));
+}
+
+function getShoppingGoodsForSettler(settler: Settler, settlementId: string | null | undefined) {
+    const homeTile = getSettlerHomeHouse(settler);
+    if (!homeTile || getHouseGoodSpace(homeTile) <= 0) {
+        return [];
+    }
+
+    return [...TRADE_GOOD_TYPES]
+        .filter((resourceType) => getTradeGoodHappinessGain(resourceType) > 0)
+        .filter((resourceType) => !hasTradeGoodAtHome(settler, resourceType))
+        .filter((resourceType) => isUnlimitedResourcesEnabled(testModeSettings) || getTradeGoodAmount(settlementId, resourceType) > 0)
+        .sort((left, right) => getTradeGoodHappinessGain(right) - getTradeGoodHappinessGain(left));
+}
+
+function stockHouseGood(settler: Settler, resourceType: ResourceType, amount: number, now: number) {
+    if (amount <= 0) {
+        return false;
+    }
+
+    const homeTile = getSettlerHomeHouse(settler);
+    if (!homeTile) {
+        return false;
+    }
+
+    const stockAmount = Math.min(amount, getHouseGoodSpace(homeTile));
+    if (stockAmount <= 0) {
+        return false;
+    }
+
+    homeTile.houseGoods = {
+        ...(homeTile.houseGoods ?? {}),
+        [resourceType]: Math.max(0, homeTile.houseGoods?.[resourceType] ?? 0) + stockAmount,
+    };
+    homeTile.houseGoodsConsumedAtMs ??= now;
+    broadcast({ type: 'tile:updated', tile: homeTile } satisfies TileUpdatedMessage);
+    return true;
+}
+
+function chooseHouseGoodToConsume(tile: Tile) {
+    return [...TRADE_GOOD_TYPES]
+        .filter((resourceType) => Math.max(0, tile.houseGoods?.[resourceType] ?? 0) > 0)
+        .sort((left, right) => getTradeGoodHappinessGain(right) - getTradeGoodHappinessGain(left))[0] ?? null;
+}
+
+function consumeHouseGoods(now: number) {
+    let changed = false;
+
+    for (const tile of Object.values(tileIndex)) {
+        if (!isHouseTile(tile)) {
+            continue;
+        }
+
+        const residents = settlers
+            .filter((settler) => !isGuardSettler(settler) && settler.homeTileId === tile.id)
+            .sort((left, right) => left.happiness - right.happiness || left.id.localeCompare(right.id));
+        const resident = residents.find((candidate) => candidate.happiness < SETTLER_MAX_HAPPINESS);
+        const lastConsumedAt = tile.houseGoodsConsumedAtMs ?? now;
+        if (now - lastConsumedAt < getEffectiveSettlerCycleIntervalMs(HOUSE_GOOD_CONSUME_INTERVAL_MS)) {
+            continue;
+        }
+
+        const stockedGood = chooseHouseGoodToConsume(tile);
+        const comfortHappiness = getHouseComfortHappinessForTile(tile);
+        if (!resident || (!stockedGood && comfortHappiness <= 0)) {
+            tile.houseGoodsConsumedAtMs = now;
+            continue;
+        }
+
+        if (stockedGood) {
+            tile.houseGoods = {
+                ...(tile.houseGoods ?? {}),
+                [stockedGood]: Math.max(0, (tile.houseGoods?.[stockedGood] ?? 0) - 1),
+            };
+        }
+        tile.houseGoodsConsumedAtMs = now;
+        resident.happiness = Math.min(
+            SETTLER_MAX_HAPPINESS,
+            resident.happiness
+                + (stockedGood ? getSettlerTradeGoodHappinessGain(resident, getTradeGoodHappinessGain(stockedGood)) : 0)
+                + comfortHappiness,
+        );
+        if (stockedGood) {
+            broadcast({ type: 'tile:updated', tile } satisfies TileUpdatedMessage);
+        }
+        changed = true;
+    }
+
+    return changed;
+}
+
+function getShopWorkerCount(tileId: string, excludeSettlerId?: string | null) {
+    return settlers.filter((candidate) => (
+        candidate.id !== excludeSettlerId
+        && candidate.activity !== 'shopping'
+        && candidate.activity !== 'commuting_shop'
+        && candidate.activity !== 'sleeping'
+        && candidate.assignedRole === 'job'
+        && candidate.assignedWorkTileId === tileId
+    )).length;
+}
+
+function getShopVisitorCount(tileId: string) {
+    return settlers.filter((candidate) => (
+        candidate.socialTileId === tileId
+        && (candidate.activity === 'shopping' || candidate.activity === 'commuting_shop')
+    )).length;
+}
+
+function chooseShopVenue(settler: Settler) {
+    const shops = listResolvedJobSites()
+        .filter((site) => site.building.key === 'shop' && site.tile.discovered)
+        .sort(compareResolvedSites);
+
+    for (const site of shops) {
+        if (getShopWorkerCount(site.tile.id, settler.id) <= 0) {
+            continue;
+        }
+        if (getShopVisitorCount(site.tile.id) >= Math.max(1, site.building.serviceCapacity ?? 3)) {
+            continue;
+        }
+        const settlementId = getJobSiteSettlementId(site.tile);
+        const shoppingGoods = getShoppingGoodsForSettler(settler, settlementId);
+        if (shoppingGoods.length === 0) {
+            continue;
+        }
+
+        const accessTile = getWorkAccessTile(settler, site.tile);
+        if (!accessTile || !canSettlerReachTile(settler, accessTile)) {
+            continue;
+        }
+
+        return {
+            site,
+            accessTile,
+        };
+    }
+
+    return null;
+}
+
+function tryStartShopping(settler: Settler, shopTileId: string, now: number) {
+    const shopTile = tileIndex[shopTileId] ?? null;
+    const settlementId = shopTile ? getJobSiteSettlementId(shopTile) : settler.settlementId;
+    const goods = getShoppingGoodsForSettler(settler, settlementId);
+    if (!goods.length) {
+        return false;
+    }
+
+    if (isUnlimitedResourcesEnabled(testModeSettings)) {
+        const chosenGood = goods[0]!;
+        stockHouseGood(settler, chosenGood, 1, now);
+        settler.socialTileId = shopTileId;
+        return setActivity(settler, 'shopping', now) || true;
+    }
+
+    for (const resourceType of goods) {
+        const transfers = withdrawResourceAcrossStoragesForSettlement(settler.settlementId, resourceType, 1);
+        const amount = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+        if (amount < 1) {
+            continue;
+        }
+
+        for (const transfer of transfers) {
+            broadcastWithdrawal(settler, transfer.storageTileId, { type: resourceType, amount: transfer.amount });
+        }
+
+        stockHouseGood(settler, resourceType, 1, now);
+        settler.socialTileId = shopTileId;
+        return setActivity(settler, 'shopping', now) || true;
+    }
+
+    return false;
+}
+
+function maybeVisitShop(settler: Settler, now: number) {
+    const venue = chooseShopVenue(settler);
+    if (!venue) {
+        return false;
+    }
+
+    settler.socialTileId = venue.site.tile.id;
+    if (settler.q === venue.accessTile.q && settler.r === venue.accessTile.r) {
+        return tryStartShopping(settler, venue.site.tile.id, now);
+    }
+
+    if (!startMovement(settler, venue.accessTile, 'commuting_shop', now)) {
+        return setWaiting(settler, now, { code: 'path_blocked', tileId: venue.accessTile.id }, {
+            action: 'commute_shop',
+            shopTileId: venue.site.tile.id,
         });
     }
 
@@ -1924,6 +2210,9 @@ function handleArrival(settler: Settler, now: number) {
     }
 
     if (settler.socialTileId && tile.id === settler.socialTileId) {
+        if (settler.activity === 'commuting_shop' || settler.activity === 'shopping') {
+            return tryStartShopping(settler, tile.id, now);
+        }
         return tryStartSocializing(settler, tile.id, now);
     }
 
@@ -1973,6 +2262,10 @@ function planSettler(settler: Settler, now: number, dt: number) {
     }
 
     if (settler.happiness <= getSettlerSocialThreshold(settler) && maybeVisitPub(settler, now)) {
+        return true;
+    }
+
+    if (settler.happiness <= getSettlerShopThreshold(settler) && maybeVisitShop(settler, now)) {
         return true;
     }
 
@@ -2040,7 +2333,21 @@ function updateSocializing(settler: Settler, now: number) {
         return false;
     }
 
-    if (now - settler.stateSinceMs < SETTLER_SOCIAL_VISIT_MS) {
+    if (now - settler.stateSinceMs < getEffectiveSettlerCycleIntervalMs(SETTLER_SOCIAL_VISIT_MS)) {
+        return true;
+    }
+
+    settler.socialTileId = null;
+    setActivity(settler, 'idle', now);
+    return false;
+}
+
+function updateShopping(settler: Settler, now: number) {
+    if (settler.activity !== 'shopping') {
+        return false;
+    }
+
+    if (now - settler.stateSinceMs < getEffectiveSettlerCycleIntervalMs(SETTLER_SHOP_VISIT_MS)) {
         return true;
     }
 
@@ -2128,6 +2435,7 @@ export const settlerSystem = {
     tick: (ctx: TickContext) => {
         refreshSettlerIdCounter();
         let changed = false;
+        changed = ensureSettlerNameSeeds(ctx.now) || changed;
         changed = ensureSettlerProfiles() || changed;
 
         changed = tryGrowPopulation(ctx.now) || changed;
@@ -2168,6 +2476,10 @@ export const settlerSystem = {
                 continue;
             }
 
+            if (updateShopping(settler, ctx.now)) {
+                continue;
+            }
+
             changed = planSettler(settler, ctx.now, ctx.dt) || changed;
         }
 
@@ -2179,6 +2491,8 @@ export const settlerSystem = {
         }
 
         changed = syncSettlerPopulation(ctx.now) || changed;
+
+        changed = consumeHouseGoods(ctx.now) || changed;
 
         const nextHunger = computeColonyHungerMs();
         if (getPopulationState().hungerMs !== nextHunger) {

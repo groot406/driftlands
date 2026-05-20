@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime';
 import type { Settler } from '../core/types/Settler';
+import { normalizeSettlerGender } from '../shared/game/settlerNames.ts';
 import { normalizeDrinkPreference, normalizeSettlerTraits } from '../shared/game/settlerPreferences.ts';
 
 function cloneMovement(
@@ -39,6 +40,7 @@ function cloneSettler(
     return {
         ...previous,
         ...settler,
+        gender: normalizeSettlerGender(settler),
         movement: cloneMovement(settler.movement, serverTimestamp),
         assignedRole: settler.assignedRole ?? null,
         guardTowerTileId: settler.guardTowerTileId ?? null,

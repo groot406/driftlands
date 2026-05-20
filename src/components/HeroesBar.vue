@@ -300,7 +300,7 @@ const skillMenuHelp: Record<HeroSkillKey, SkillMenuHelp> = {
     perLevelText: '+5% craft work speed per level',
   },
   scouting: {
-    menuSummary: 'Speeds up exploring, surveying, and resource scouting.',
+    menuSummary: 'Speeds up exploring and resource scouting.',
     perLevelText: '+5% scout work speed per level',
   },
   survival: {

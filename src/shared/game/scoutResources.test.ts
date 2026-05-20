@@ -12,7 +12,7 @@ import { PathService } from './PathService';
 import {
   doesScoutResourceMatchTerrain,
   doesScoutResourceMatchTileForSettlement,
-  getScoutSurveyMs,
+  getScoutScanMs,
   handleScoutResourceArrival,
   pickNextScoutTile,
   SCOUT_RESOURCE_TASK_TYPE,
@@ -165,7 +165,7 @@ test('scouting a non-matching hidden tile marks it scouted without revealing ter
   assert.equal(tile.scouted, undefined);
   assert.equal(moves.length, 0);
 
-  await wait(getScoutSurveyMs(hero) + 20);
+  await wait(getScoutScanMs(hero) + 20);
 
   assert.equal(tile.discovered, false);
   assert.equal(tile.terrain, null);
@@ -320,7 +320,7 @@ test('scouting a matching hidden tile pings the find, stops the scout intent, an
 
   assert.equal(tile.scouted, undefined);
 
-  await wait(getScoutSurveyMs(hero) + 20);
+  await wait(getScoutScanMs(hero) + 20);
 
   assert.equal(tile.discovered, false);
   assert.equal(tile.terrain, null);
@@ -347,7 +347,7 @@ test('scouting for rocks matches generated dirt rocks instead of mountains', asy
   markScoutedReturnCorridorToOrigin(tile);
   handleScoutResourceArrival(hero, tile);
 
-  await wait(getScoutSurveyMs(hero) + 20);
+  await wait(getScoutScanMs(hero) + 20);
 
   assert.equal(tile.discovered, false);
   assert.equal(tile.terrain, null);

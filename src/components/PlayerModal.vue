@@ -1,17 +1,15 @@
 <template>
   <Transition name="smooth-modal" appear>
     <div v-if="isOpen" class="player-modal-backdrop smooth-modal-backdrop" @click.self="close">
-      <div class="player-modal-panel smooth-modal-surface" @click.stop>
-        <div class="player-modal-header">
-          <div>
-            <p class="player-modal-eyebrow">Party</p>
-            <h2 class="player-modal-title">Connected Players</h2>
-          </div>
-          <button class="player-modal-close" @click="close" title="Close">
-            ✕
-          </button>
-        </div>
-
+      <PanelModalShell
+        as="div"
+        class="player-modal-panel"
+        close-aria-label="Close player chat"
+        header-label="Party"
+        header-title="Connected Players"
+        header-icon="⌂"
+        @close="close"
+      >
         <div class="player-modal-body">
           <!-- Left: Player List -->
           <div class="player-section">
@@ -21,9 +19,6 @@
                   <span class="player-name">
                     {{ player.name }}
                     <span v-if="isCurrentPlayer(player.id)" class="player-you">(you)</span>
-                  </span>
-                  <span class="player-status" :class="{ 'player-status-ready': player.ready }">
-                    {{ player.ready ? 'Ready' : 'Preparing' }}
                   </span>
                 </div>
                 <div class="player-meta">
@@ -35,15 +30,6 @@
                 Waiting for the first traveler to join.
               </div>
             </div>
-
-            <!-- Ready Toggle -->
-            <button
-              class="ready-toggle"
-              :class="{ 'ready-toggle-active': isReady }"
-              @click="toggleReady"
-            >
-              {{ isReady ? 'Unready' : 'Ready Up' }}
-            </button>
           </div>
 
           <!-- Right: Chat -->
@@ -74,17 +60,18 @@
                 maxlength="200"
                 autocomplete="off"
               />
-              <button
+              <PanelActionButton
                 class="chat-send"
                 type="submit"
+                size="small"
                 :disabled="!newMessage.trim()"
               >
                 Send
-              </button>
+              </PanelActionButton>
             </form>
           </div>
         </div>
-      </div>
+      </PanelModalShell>
     </div>
   </Transition>
 </template>
@@ -95,7 +82,8 @@ import { getConnectedPlayers } from '../store/playerStore';
 import { getChatMessages, getIsPlayerModalOpen, setPlayerModalOpen } from '../store/chatStore';
 import { closeWindow, isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import { currentPlayerId, sendMessage } from '../core/socket';
-import { setReadyState } from '../core/coopService';
+import PanelActionButton from './ui/PanelActionButton.vue';
+import PanelModalShell from './ui/PanelModalShell.vue';
 
 const isOpen = computed(() => getIsPlayerModalOpen.value);
 const players = computed(() => getConnectedPlayers.value);
@@ -105,23 +93,12 @@ const newMessage = ref('');
 const chatMessagesEl = ref<HTMLElement | null>(null);
 const chatInputEl = ref<HTMLInputElement | null>(null);
 
-const isReady = computed(() => {
-  const myId = currentPlayerId.value;
-  if (!myId) return false;
-  const me = players.value.find((p) => p.id === myId);
-  return me?.ready ?? false;
-});
-
 function isCurrentPlayer(playerId: string) {
   return playerId === currentPlayerId.value;
 }
 
 function isOwnMessage(playerId: string) {
   return playerId === currentPlayerId.value;
-}
-
-function toggleReady() {
-  setReadyState(!isReady.value);
 }
 
 function formatTime(timestamp: number) {
@@ -211,89 +188,62 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(4px);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 24% 42%, rgba(50, 66, 47, 0.22), transparent 23rem),
+    radial-gradient(circle at 54% 112%, rgba(57, 80, 57, 0.14), transparent 28rem),
+    rgba(1, 5, 12, 0.78);
+  backdrop-filter: blur(4px) saturate(0.82) brightness(0.78);
 }
 
 .player-modal-panel {
-  width: min(760px, 100%);
-  max-height: 80vh;
-  border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.995), rgba(15, 23, 42, 0.99)),
-    radial-gradient(circle at top, rgba(14, 165, 233, 0.1), transparent 58%);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
-  color: #f8fafc;
+  box-sizing: border-box;
+  width: min(64rem, calc(100vw - 32px));
+  height: min(43rem, calc(100vh - 48px));
   display: flex;
   flex-direction: column;
-}
-
-.player-modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 20px 14px 20px;
-  flex-shrink: 0;
-}
-
-.player-modal-eyebrow {
-  margin: 0 0 4px 0;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(125, 211, 252, 0.72);
-}
-
-.player-modal-title {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.1;
-}
-
-.player-modal-close {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.78);
-  color: inherit;
-  cursor: pointer;
+  border-radius: 0;
+  --panel-modal-border-width: 20px;
+  --panel-header-title-size: clamp(1.95rem, 3vw, 2.35rem);
 }
 
 /* --- Body: two-column layout --- */
 .player-modal-body {
-  display: flex;
-  gap: 16px;
-  padding: 0 20px 20px 20px;
+  display: grid;
+  grid-template-columns: minmax(16rem, 18rem) minmax(0, 1fr);
+  gap: 0.95rem;
+  padding: 0.95rem 1.1rem 1.1rem;
   min-height: 0;
   flex: 1;
 }
 
 /* --- Left column: players + ready button --- */
 .player-section {
-  width: 250px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 0;
 }
 
 .player-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.55rem;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
+  padding-right: 0.35rem;
 }
 
 .player-row {
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.58);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 0.82rem 0.9rem;
+  border: 1px solid rgba(132, 94, 44, 0.26);
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, rgba(65, 45, 26, 0.13), rgba(15, 17, 18, 0.3)),
+    rgba(13, 15, 16, 0.5);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.28);
 }
 
 .player-main {
@@ -304,132 +254,90 @@ onUnmounted(() => {
 }
 
 .player-name {
+  color: #fff0d2;
+  font-family: Georgia, 'Times New Roman', serif;
   font-weight: 600;
 }
 
 .player-you {
   font-weight: 400;
   font-size: 12px;
-  color: rgba(125, 211, 252, 0.72);
-}
-
-.player-status {
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(71, 85, 105, 0.44);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(226, 232, 240, 0.8);
-  flex-shrink: 0;
-}
-
-.player-status-ready {
-  background: rgba(34, 197, 94, 0.18);
-  color: rgba(187, 247, 208, 0.96);
+  color: rgba(201, 154, 75, 0.78);
 }
 
 .player-meta {
   margin-top: 8px;
   font-size: 13px;
-  color: rgba(203, 213, 225, 0.76);
+  color: rgba(215, 200, 167, 0.72);
 }
 
 .player-empty {
   padding: 18px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.42);
-  color: rgba(203, 213, 225, 0.76);
+  border: 1px solid rgba(132, 94, 44, 0.24);
+  border-radius: 0;
+  background: rgba(12, 13, 14, 0.42);
+  color: #d7c8a7;
   text-align: center;
-}
-
-/* Ready toggle button */
-.ready-toggle {
-  padding: 10px 0;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.72);
-  color: rgba(226, 232, 240, 0.9);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  flex-shrink: 0;
-}
-
-.ready-toggle:hover {
-  background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(34, 197, 94, 0.36);
-  color: rgba(187, 247, 208, 0.96);
-}
-
-.ready-toggle-active {
-  background: rgba(34, 197, 94, 0.22);
-  border-color: rgba(34, 197, 94, 0.44);
-  color: rgba(187, 247, 208, 0.96);
-}
-
-.ready-toggle-active:hover {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: rgba(239, 68, 68, 0.36);
-  color: rgba(252, 165, 165, 0.96);
 }
 
 /* --- Right column: chat --- */
 .chat-section {
-  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(132, 94, 44, 0.26);
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 24% 0%, rgba(102, 71, 37, 0.08), transparent 18rem),
+    rgba(9, 10, 11, 0.42);
   overflow: hidden;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
+  padding: 0.9rem;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 200px;
-  max-height: 340px;
+  gap: 0.55rem;
+  min-height: 0;
 }
 
 .chat-bubble {
   display: flex;
   flex-direction: column;
   max-width: 80%;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: rgba(56, 89, 138, 0.38);
+  padding: 0.55rem 0.72rem;
+  border: 1px solid rgba(132, 94, 44, 0.25);
+  border-radius: 0;
+  background: rgba(28, 25, 20, 0.72);
+  color: #f3e4c9;
   align-self: flex-start;
   word-break: break-word;
 }
 
 .chat-bubble-own {
   align-self: flex-end;
-  background: rgba(34, 120, 80, 0.38);
+  border-color: rgba(84, 153, 65, 0.36);
+  background: rgba(24, 62, 34, 0.56);
 }
 
 .chat-sender {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(125, 211, 252, 0.8);
+  color: #c99a4b;
   margin-bottom: 2px;
 }
 
 .chat-text {
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 14px;
   line-height: 1.4;
 }
 
 .chat-time {
   font-size: 10px;
-  color: rgba(148, 163, 184, 0.6);
+  color: rgba(215, 200, 167, 0.55);
   margin-top: 2px;
   align-self: flex-end;
 }
@@ -439,7 +347,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(148, 163, 184, 0.5);
+  color: rgba(215, 200, 167, 0.58);
   font-size: 13px;
 }
 
@@ -447,51 +355,57 @@ onUnmounted(() => {
 .chat-input-row {
   display: flex;
   gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 0.68rem 0.8rem;
+  border-top: 1px solid rgba(132, 94, 44, 0.25);
   flex-shrink: 0;
 }
 
 .chat-input {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.7);
-  color: #f8fafc;
+  padding: 0.56rem 0.72rem;
+  border-radius: 0;
+  border: 1px solid rgba(132, 94, 44, 0.32);
+  background: rgba(5, 6, 7, 0.62);
+  color: #fff0d2;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s;
 }
 
 .chat-input::placeholder {
-  color: rgba(148, 163, 184, 0.45);
+  color: rgba(215, 200, 167, 0.48);
 }
 
 .chat-input:focus {
-  border-color: rgba(125, 211, 252, 0.5);
+  border-color: rgba(201, 154, 75, 0.62);
 }
 
 .chat-send {
-  padding: 8px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(125, 211, 252, 0.3);
-  background: rgba(14, 165, 233, 0.18);
-  color: rgba(186, 230, 253, 0.92);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
   flex-shrink: 0;
+  min-width: 5.5rem;
 }
 
-.chat-send:hover:not(:disabled) {
-  background: rgba(14, 165, 233, 0.3);
-  border-color: rgba(125, 211, 252, 0.5);
-}
+@media (max-width: 760px) {
+  .player-modal-backdrop {
+    padding: 0;
+  }
 
-.chat-send:disabled {
-  opacity: 0.4;
-  cursor: default;
+  .player-modal-panel {
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .player-modal-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(9rem, 0.42fr) minmax(0, 1fr);
+    padding: 0.75rem;
+  }
+
+  .player-section {
+    min-height: 0;
+  }
 }
 </style>

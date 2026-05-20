@@ -37,6 +37,18 @@ export function loadHeroes(newHeroes: Hero[]): void {
     }
 }
 
+export function upsertHero(nextHero: Hero): void {
+    const existingIndex = heroes.findIndex((hero) => hero.id === nextHero.id);
+    const previousHero = existingIndex >= 0 ? heroes[existingIndex] : undefined;
+    const mergedHero = mergeHeroState(nextHero, previousHero);
+    if (existingIndex >= 0) {
+        heroes.splice(existingIndex, 1, mergedHero);
+        return;
+    }
+
+    heroes.push(mergedHero);
+}
+
 export function syncHeroRoster(heroIds: string[], spawn: { q: number; r: number } = { q: 0, r: 0 }): void {
     const previousById = new Map(heroes.map((hero) => [hero.id, hero]));
     const preservedCustomHeroes = heroes.filter((hero) => !getStoryHeroTemplate(hero.id));

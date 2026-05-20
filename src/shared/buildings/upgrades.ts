@@ -12,6 +12,8 @@ import type { StorageKind } from '../game/storage.ts';
 
 export type UpgradeEffect =
   | { kind: 'house_beds_total'; value: number }
+  | { kind: 'house_goods_capacity'; value: number }
+  | { kind: 'house_comfort_happiness'; value: number }
   | { kind: 'storage_kind_override'; value: StorageKind }
   | { kind: 'job_output_multiplier'; value: number };
 
@@ -51,7 +53,6 @@ const upgrades: UpgradeDefinition[] = [
     costs: [
       { type: 'wood', amount: 6 },
       { type: 'stone', amount: 4 },
-      { type: 'food', amount: 4 },
     ],
     requiredXp(_distance: number) {
       return 2600;
@@ -95,6 +96,8 @@ const upgrades: UpgradeDefinition[] = [
     },
     effects: [
       { kind: 'house_beds_total', value: 4 },
+      { kind: 'house_goods_capacity', value: 2 },
+      { kind: 'house_comfort_happiness', value: 2 },
     ],
     resolveToVariant(tile: Tile) {
       if (tile.variant === 'plains_house') return 'plains_stone_house';
@@ -129,6 +132,8 @@ const upgrades: UpgradeDefinition[] = [
     },
     effects: [
       { kind: 'house_beds_total', value: 6 },
+      { kind: 'house_goods_capacity', value: 4 },
+      { kind: 'house_comfort_happiness', value: 4 },
     ],
     resolveToVariant(tile: Tile) {
       if (tile.variant === 'plains_stone_house') return 'plains_glass_house';

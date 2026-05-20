@@ -74,7 +74,7 @@ Building tasks draw materials from the town center or supply inventory. If a bui
 ## 5. Resources and Materials
 
 ### Wood
-Wood is one of the earliest and most important resources. It is needed for houses, docks, campfires, watchtowers, lumber-related structures, and repairs.
+Wood is one of the earliest and most important resources. It is needed for houses, docks, watchtowers, lumber-related structures, and repairs.
 
 ### Food
 Food is required to keep settlers alive and to allow the population to grow. Early food sources include hunting and dock-based fishing. Later food systems include farming, grain, bakeries, and bread.
@@ -94,9 +94,6 @@ Sand comes from desert terrain. Sand combined with an oven can produce glass, wh
 ### Glass
 Glass is a later-game material created from sand using an oven. It enables advanced housing upgrades and can support deeper production chains.
 
-### Rations
-Rations can be cooked at a campfire by burning wood. They provide a food source and give campfires an additional survival function beyond tile activation.
-
 ### Lily Pads
 Lily pads can be harvested and then placed to create walkways over water. This gives water terrain a lightweight traversal and path-building mechanic.
 
@@ -108,10 +105,10 @@ Lily pads can be harvested and then placed to create walkways over water. This g
 The game generates biomes procedurally. Players are encouraged to make strategic guesses based on already discovered terrain, such as searching near known forests to find more wood.
 
 ### Forest Tiles
-Forests support wood chopping, hunting, tree planting, lumber camps, hunter huts, and surveying for hidden qualities such as dense forest.
+Forests support wood chopping, hunting, tree planting, lumber camps, hunter huts, and production traits such as dense forest.
 
 ### Dense Forest
-Surveying may reveal that a forest tile is a dense forest. Dense forests can produce more wood, especially when used with lumber camps.
+Dense forests can produce more wood, especially when used with lumber camps.
 
 ### Plains and Grassland
 Plains or grassland can be used for houses, digging, farming preparation, and other settlement structures. Digging grassland converts it into dirt.
@@ -206,9 +203,6 @@ House upgrades are planned but not yet unlocked in the discussed build. Upgrades
 ### Dock
 The dock is a job site for settlers and produces food from nearby water tiles. It is an early automated food structure.
 
-### Campfire
-The campfire temporarily activates disabled tiles when the player has discovered more tiles than their active-tile limit allows. It can also burn wood to cook rations.
-
 ### Lumber Camp
 A lumber camp provides automated wood production and becomes a durable source of wood. It performs best when surrounded by forest tiles.
 
@@ -254,9 +248,6 @@ A weaponsmith was proposed as part of a future military unlock chain, potentiall
 
 ### Max Active Tiles
 The number of active tiles is based on population. If players discover more tiles than they can actively support, some tiles become disabled.
-
-### Temporary Tile Activation
-Campfires can temporarily activate disabled tiles. This gives players a way to reach or use important tiles before their population can permanently support them.
 
 ### Watchtower-Based Reach
 Watchtowers expand the usable area around the settlement and are required to reach farther terrain such as deserts or distant resource clusters.
@@ -335,19 +326,13 @@ Players eventually need to reach deserts to acquire sand for glass production an
 
 ---
 
-## 14. Skills and Surveying
+## 14. Skills
 
 ### Hero Skills
 Hero skills exist but are not yet a strong or finalized mechanic. They were originally intended as stat buffs or task modifiers.
 
 ### Skill-Based Task Effects
 Skills could later be applied while executing a task. One proposed example is skipping a waiting period once, while another is making a scout work faster.
-
-### Surveying Tiles
-Surveying means carefully searching a tile for hidden specifications. A surveyed forest might reveal itself as a dense forest, improving production potential.
-
-### Hidden Tile Specs
-Tiles can have hidden qualities that are not obvious when first discovered. Surveying gives players a reason to inspect and optimize rather than simply expand blindly.
 
 ---
 
@@ -585,9 +570,6 @@ A reusable minigame mechanic could include a moving bar, a target zone, a bullse
 ### Bowling and Golfing Minigames
 Simple timing-based activities inspired by old calculator games were proposed as possible lightweight minigames.
 
-### Health Recharge Near Campfire
-A suggested campfire enhancement is slow health regeneration for heroes or settlers in proximity.
-
 ### Repairing Docks and Buildings
 Repairs are handled by idle settlers using materials from supply depots. Players do not directly repair buildings; instead, they must maintain enough population, resources, and idle labor.
 
@@ -634,4 +616,3 @@ The world should continue, grow, and potentially fail while players are away. Th
 
 ### Community-Scale Expansion
 The end vision is a large shared world where players build, cooperate, defend, trade, compete, and shape territory together.
-

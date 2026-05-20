@@ -6,6 +6,16 @@ export interface RenderDebugState {
     qualityLabel: 'full' | 'reduced' | 'minimal';
     qualityProfileName: RenderQualityName;
     smoothedFrameMs: number;
+    smoothedDrawIntervalMs: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    viewportDpr: number;
+    windowDpr: number;
+    canvasBackingWidth: number;
+    canvasBackingHeight: number;
+    canvasCssWidth: number;
+    canvasCssHeight: number;
+    canvasMegapixels: number;
     visibleTileCount: number;
     discoveredVisibleCount: number;
     worldRenderVersion: number;
@@ -45,6 +55,16 @@ export const renderDebugState = reactive<RenderDebugState>({
     qualityLabel: 'full',
     qualityProfileName: 'high',
     smoothedFrameMs: 0,
+    smoothedDrawIntervalMs: 0,
+    viewportWidth: 0,
+    viewportHeight: 0,
+    viewportDpr: 1,
+    windowDpr: 1,
+    canvasBackingWidth: 0,
+    canvasBackingHeight: 0,
+    canvasCssWidth: 0,
+    canvasCssHeight: 0,
+    canvasMegapixels: 0,
     visibleTileCount: 0,
     discoveredVisibleCount: 0,
     worldRenderVersion: 0,

@@ -159,7 +159,9 @@ test('worldState.foundSettlementAt reveals a landing, creates a town center, and
   assert.deepEqual(founded, { settlementId: '18,-4', q: 18, r: -4 });
   assert.equal(tileIndex['18,-4']?.terrain, 'towncenter');
   assert.equal(tileIndex['18,-4']?.discovered, true);
-  assert.equal(getStorageResourceAmount('18,-4', 'food'), 12);
+  assert.equal(getStorageResourceAmount('18,-4', 'bread'), 4);
+  assert.equal(getStorageResourceAmount('18,-4', 'fish'), 4);
+  assert.equal(getStorageResourceAmount('18,-4', 'meat'), 4);
   assert.equal(getPopulationSnapshot().max, 30);
 
   const revealedLandingTiles = tiles.filter((tile) => (
