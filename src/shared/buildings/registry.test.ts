@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type { Tile } from '../../core/types/Tile.ts';
 import { ensureTileExists, loadWorld, tileIndex } from '../../core/world.ts';
+import { hasSettlementMarketAccess } from '../game/marketAccess.ts';
 import { getBuildingDefinitionByKey, getBuildingOverlayAssetKeyForTile, promoteTileToTowncenter } from './registry.ts';
 
 function createOwnedTile(q: number, r: number, terrain: Tile['terrain'], settlementId: string): Tile {
@@ -77,4 +78,25 @@ test('upgraded building variants resolve distinct overlay artwork', () => {
     getBuildingOverlayAssetKeyForTile({ variant: 'plains_watchtower', towerWallLevel: 1 } as Tile),
     'building_watchtower_palisade_overlay',
   );
+});
+
+test('trade center requires tools and grants market access when built', () => {
+  const settlementId = '0,0';
+  const townCenter = createOwnedTile(0, 0, 'towncenter', settlementId);
+  const tradeCenterSite = createOwnedTile(1, 0, 'plains', settlementId);
+  loadWorld([townCenter, tradeCenterSite]);
+
+  const building = getBuildingDefinitionByKey('tradeCenter');
+  assert.ok(building);
+  assert.deepEqual(building.requiredResources(1), [
+    { type: 'wood', amount: 12 },
+    { type: 'stone', amount: 8 },
+    { type: 'tools', amount: 4 },
+  ]);
+  assert.equal(hasSettlementMarketAccess(settlementId), false);
+
+  building.onComplete?.(tradeCenterSite, {} as never, []);
+
+  assert.equal(tradeCenterSite.variant, 'plains_trade_center');
+  assert.equal(hasSettlementMarketAccess(settlementId), true);
 });

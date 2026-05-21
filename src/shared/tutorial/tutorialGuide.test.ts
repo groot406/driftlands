@@ -53,6 +53,80 @@ test('tutorial advances through scouting, wood, road, and shelter gates', () => 
   assert.equal(tutorial.currentStep?.id, 'build-dock');
 });
 
+test('shoreline tutorial route completes early food by building a dock', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 12,
+    landingArchetype: 'shoreline',
+    terrainCounts: { water: 2 },
+    resourceStock: { wood: 3 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1, dock: 1 },
+    population: {
+      current: 1,
+      beds: 2,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  const earlyFood = tutorial.steps.find((step) => step.id === 'build-dock');
+  assert.equal(earlyFood?.title, 'Open the shoreline');
+  assert.equal(earlyFood?.completed, true);
+  assert.equal(tutorial.currentStep?.id, 'grow-population');
+});
+
+test('woodland tutorial route completes early food by hunting or a hunter hut', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 12,
+    landingArchetype: 'woodland',
+    terrainCounts: { forest: 3 },
+    resourceStock: { wood: 3, meat: 5 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1 },
+    population: {
+      current: 1,
+      beds: 2,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  const earlyFood = tutorial.steps.find((step) => step.id === 'build-dock');
+  assert.equal(earlyFood?.title, 'Secure forest food');
+  assert.match(earlyFood?.action ?? '', /Hunt|Hunter Hut/);
+  assert.equal(earlyFood?.completed, true);
+  assert.equal(tutorial.currentStep?.id, 'grow-population');
+});
+
+test('open-field tutorial route points players to planting trees before forest food', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 12,
+    landingArchetype: 'open_field',
+    terrainCounts: { plains: 6 },
+    resourceStock: { wood: 3 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1 },
+    population: {
+      current: 1,
+      beds: 2,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  const earlyFood = tutorial.currentStep;
+  assert.equal(earlyFood?.id, 'build-dock');
+  assert.equal(earlyFood?.title, 'Grow a food route');
+  assert.match(earlyFood?.action ?? '', /Plant Trees/);
+  assert.equal(earlyFood?.completed, false);
+});
+
 test('tutorial explains perimeter security as watchtower progress', () => {
   const tutorial = evaluateTutorial(metrics({
     selectedHeroCount: 1,

@@ -13,43 +13,54 @@ export const SHIP_ORDER_RESOURCE_TYPES = [
 ] as const satisfies readonly ResourceType[];
 
 export type ShipOrderResourceType = typeof SHIP_ORDER_RESOURCE_TYPES[number];
-export type ShipOrderStatus = 'active' | 'departed';
-
-export interface ShipOrderContributionSnapshot {
-  settlementId: string;
-  playerId: string | null;
-  playerName: string | null;
-  resources: Partial<Record<ShipOrderResourceType, number>>;
-  value: number;
-  rewardGold: number;
-  rewardGoods: ResourceAmount[];
-  topContributor: boolean;
-}
+export type ShipOrderStatus = 'approaching' | 'active' | 'departing' | 'departed';
+export type ShipOrderVisualPhase = 'approaching' | 'docked' | 'departing';
 
 export interface ShipOrderSnapshot {
   id: string;
+  harborTileId: string;
+  settlementId: string;
+  playerId: string | null;
+  playerName: string | null;
   name: string;
   origin: string;
   originDescription?: string;
   status: ShipOrderStatus;
   startedAt: number;
+  arrivesAt?: number | null;
   departsAt: number;
   departedAt?: number | null;
   requested: ResourceAmount[];
   fulfilled: Partial<Record<ShipOrderResourceType, number>>;
-  contributions: ShipOrderContributionSnapshot[];
   totalRequestedValue: number;
   totalFulfilledValue: number;
   rewardPoolGold: number;
+  rewardGoldPaid: number;
   rewardGoods: ResourceAmount[];
+  deliveredRewardGoods: ResourceAmount[];
   completionMultiplier: number;
-  topContributorSettlementId?: string | null;
+}
+
+export interface ShipOrderVisualSnapshot {
+  id: string;
+  orderId: string;
+  harborTileId: string;
+  settlementId: string;
+  name: string;
+  phase: ShipOrderVisualPhase;
+  phaseStartedAt: number;
+  phaseEndsAt: number;
 }
 
 export interface ShipOrderOverviewSnapshot {
   activeOrder: ShipOrderSnapshot | null;
+  activeOrders: ShipOrderSnapshot[];
   lastDepartedOrder: ShipOrderSnapshot | null;
+  lastDepartedOrders: ShipOrderSnapshot[];
   nextArrivalAt: number | null;
+  nextArrivals: Record<string, number>;
+  visibleShip: ShipOrderVisualSnapshot | null;
+  visibleShips: ShipOrderVisualSnapshot[];
 }
 
 export function isShipOrderResourceType(value: unknown): value is ShipOrderResourceType {

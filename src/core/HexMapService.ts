@@ -386,6 +386,21 @@ interface RenderStressState {
     smoothedFrameMs: number;
     smoothedDrawIntervalMs: number;
     lastDrawPerfMs: number;
+    pendingEscalationTier: 0 | 1 | 2 | null;
+    pendingEscalationSinceMs: number | null;
+}
+
+const RENDER_STRESS_ESCALATION_DELAY_MS = 3000;
+
+function createDefaultRenderStressState(): RenderStressState {
+    return {
+        tier: 0,
+        smoothedFrameMs: 5.5,
+        smoothedDrawIntervalMs: 1000 / 60,
+        lastDrawPerfMs: 0,
+        pendingEscalationTier: null,
+        pendingEscalationSinceMs: null,
+    };
 }
 
 const DEFAULT_CAMERA_COMPOSITE_STATE: CameraCompositeState = {
@@ -451,9 +466,6 @@ export class HexMapService {
         getDpr: () => this._dpr,
         getCanvasCenter: () => this.getCanvasCenter(),
         getCameraFx: (context) => this.getLegacyFrameFromPassContext(context).cameraFx,
-        applyWorldTransform: (ctx, translateX, translateY, cameraFx) => {
-            this.applyWorldTransform(ctx, translateX, translateY, cameraFx as CameraCompositeState);
-        },
     });
     private readonly _peacefulAtmosphereEffect = new PeacefulAtmosphereEffect();
     private readonly _auraEffect = new AuraEffect();
@@ -517,12 +529,7 @@ export class HexMapService {
         lastScreenSpeed: 0,
     };
     private _currentCameraFx: CameraCompositeState = {...DEFAULT_CAMERA_COMPOSITE_STATE};
-    private _renderStress: RenderStressState = {
-        tier: 0,
-        smoothedFrameMs: 5.5,
-        smoothedDrawIntervalMs: 1000 / 60,
-        lastDrawPerfMs: 0,
-    };
+    private _renderStress: RenderStressState = createDefaultRenderStressState();
     private _storageIndicatorAlphaByTileId = new Map<string, number>();
     private _tileColorVariantCache = new Map<string, HTMLCanvasElement>();
     private _tileShaderCache = new Map<string, HTMLCanvasElement>();
@@ -622,12 +629,7 @@ export class HexMapService {
         this._tileCompositeScratchCtx = null;
         this._tileDepthShadowCanvas = null;
         this._tileDepthShadowCtx = null;
-        this._renderStress = {
-            tier: 0,
-            smoothedFrameMs: 5.5,
-            smoothedDrawIntervalMs: 1000 / 60,
-            lastDrawPerfMs: 0,
-        };
+        this._renderStress = createDefaultRenderStressState();
         this.resetCameraCompositeState();
         this._currentRenderQuality = { ...DEFAULT_RENDER_QUALITY };
     }
@@ -1559,15 +1561,17 @@ export class HexMapService {
         const mediumDensity = discoveredVisibleCount >= 420 || visibleTileCount >= 1400;
         const highDensity = discoveredVisibleCount >= 620 || visibleTileCount >= 1850;
         const extremeDensity = discoveredVisibleCount >= 820 || visibleTileCount >= 2350;
+        const previousTier = this._renderStress.tier;
+        let targetTier: RenderStressState['tier'] = previousTier;
 
-        if (this._renderStress.tier === 0) {
+        if (previousTier === 0) {
             if (
                 smoothedDrawIntervalMs >= 80
                 || (smoothedDrawIntervalMs >= 58 && highDensity)
                 || smoothedFrameMs >= 13
                 || (smoothedFrameMs >= 10.5 && extremeDensity)
             ) {
-                this._renderStress.tier = 2;
+                targetTier = 2;
             } else if (
                 smoothedDrawIntervalMs >= 42
                 || (smoothedDrawIntervalMs >= 34 && mediumDensity)
@@ -1575,16 +1579,16 @@ export class HexMapService {
                 || (smoothedFrameMs >= 6 && highDensity)
                 || (smoothedFrameMs >= 5.5 && extremeDensity)
             ) {
-                this._renderStress.tier = 1;
+                targetTier = 1;
             }
-        } else if (this._renderStress.tier === 1) {
+        } else if (previousTier === 1) {
             if (
                 smoothedDrawIntervalMs >= 90
                 || (smoothedDrawIntervalMs >= 62 && highDensity)
                 || smoothedFrameMs >= 14
                 || (smoothedFrameMs >= 11.5 && highDensity)
             ) {
-                this._renderStress.tier = 2;
+                targetTier = 2;
             } else if (
                 smoothedDrawIntervalMs <= 24
                 && (
@@ -1592,14 +1596,41 @@ export class HexMapService {
                     || (smoothedFrameMs <= 5.4 && !mediumDensity)
                 )
             ) {
-                this._renderStress.tier = 0;
+                targetTier = 0;
             }
         } else {
             if (smoothedDrawIntervalMs <= 30 && !highDensity && smoothedFrameMs <= 9.5) {
-                this._renderStress.tier = mediumDensity ? 1 : 0;
+                targetTier = mediumDensity ? 1 : 0;
             } else if (smoothedDrawIntervalMs <= 24 && smoothedFrameMs <= 7.5) {
-                this._renderStress.tier = mediumDensity ? 1 : 0;
+                targetTier = mediumDensity ? 1 : 0;
             }
+        }
+
+        if (targetTier <= previousTier) {
+            this._renderStress.tier = targetTier;
+            this._renderStress.pendingEscalationTier = null;
+            this._renderStress.pendingEscalationSinceMs = null;
+            return this._renderStress.tier;
+        }
+
+        const nowMs = this._renderStress.lastDrawPerfMs;
+        if (nowMs <= 0) {
+            return this._renderStress.tier;
+        }
+
+        if (
+            this._renderStress.pendingEscalationTier !== targetTier
+            || this._renderStress.pendingEscalationSinceMs === null
+        ) {
+            this._renderStress.pendingEscalationTier = targetTier;
+            this._renderStress.pendingEscalationSinceMs = nowMs;
+            return this._renderStress.tier;
+        }
+
+        if (nowMs - this._renderStress.pendingEscalationSinceMs >= RENDER_STRESS_ESCALATION_DELAY_MS) {
+            this._renderStress.tier = targetTier;
+            this._renderStress.pendingEscalationTier = null;
+            this._renderStress.pendingEscalationSinceMs = null;
         }
 
         return this._renderStress.tier;

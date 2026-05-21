@@ -13,12 +13,6 @@ interface CloudShadowEffectDependencies {
     getDpr(): number;
     getCanvasCenter(): { cx: number; cy: number };
     getCameraFx(context: RenderPassContext): CameraCompositeStateLike;
-    applyWorldTransform(
-        ctx: CanvasRenderingContext2D,
-        translateX: number,
-        translateY: number,
-        cameraFx: CameraCompositeStateLike,
-    ): void;
 }
 
 const CLOUD_FIELD_TEXTURE_SIZE = 300;
@@ -44,6 +38,7 @@ interface CloudLayerMotion {
     opacity: number;
     scale: number;
     speedX: number;
+    speedY: number;
     phaseX: number;
     phaseY: number;
     blurPx: number;
@@ -78,7 +73,12 @@ export class CloudShadowEffect implements WorldEffect {
             return;
         }
 
-        const bounds = this.getVisibleTileBounds(discoveredTiles, context.config.tileDrawSize);
+        const bounds = this.getVisibleTileBounds(
+            discoveredTiles,
+            context.config.tileDrawSize,
+            context.viewport.cameraX,
+            context.viewport.cameraY,
+        );
         if (!bounds) {
             return;
         }
@@ -92,8 +92,6 @@ export class CloudShadowEffect implements WorldEffect {
 
         const cameraFx = this.deps.getCameraFx(context);
         const { cx, cy } = this.deps.getCanvasCenter();
-        const translateX = cx - context.viewport.cameraX;
-        const translateY = cy - context.viewport.cameraY;
         const blurPx = context.quality.expensiveAtmosphere ? 3.1 : 2.2;
         const detailLayerEnabled = context.quality.expensiveAtmosphere;
         const ctx = context.effectSurface.ctx;
@@ -109,76 +107,118 @@ export class CloudShadowEffect implements WorldEffect {
 
         ctx.save();
         ctx.scale(dpr, dpr);
-        this.deps.applyWorldTransform(ctx, translateX, translateY, cameraFx);
-        this.withDiscoveredClip(ctx, discoveredTiles, context.config.hexSize, context.config.tileDrawSize, () => {
-            ctx.globalCompositeOperation = 'source-over';
-            this.drawCloudShadowLayer(
-                ctx,
-                primaryTexture,
-                bounds,
-                context.scene.frameInfo.effectNowMs,
-                primaryMotion.opacity * (1 - morph.blend),
-                primaryMotion.scale,
-                primaryMotion.speedX,
-                primaryMotion.phaseX,
-                primaryMotion.phaseY,
-                primaryMotion.blurPx,
-            );
-            this.drawCloudShadowLayer(
-                ctx,
-                secondaryTexture,
-                bounds,
-                context.scene.frameInfo.effectNowMs,
-                secondaryMotion.opacity * morph.blend,
-                secondaryMotion.scale,
-                secondaryMotion.speedX,
-                secondaryMotion.phaseX,
-                secondaryMotion.phaseY,
-                secondaryMotion.blurPx,
-            );
-
-            if (primaryDetailMotion && secondaryDetailMotion) {
+        this.applyCameraRelativeWorldTransform(ctx, cx, cy, cameraFx);
+        this.withDiscoveredClip(
+            ctx,
+            discoveredTiles,
+            context.config.hexSize,
+            context.config.tileDrawSize,
+            context.viewport.cameraX,
+            context.viewport.cameraY,
+            () => {
+                ctx.globalCompositeOperation = 'source-over';
                 this.drawCloudShadowLayer(
                     ctx,
                     primaryTexture,
                     bounds,
                     context.scene.frameInfo.effectNowMs,
-                    primaryDetailMotion.opacity * (1 - morph.blend),
-                    primaryDetailMotion.scale,
-                    primaryDetailMotion.speedX,
-                    primaryDetailMotion.phaseX,
-                    primaryDetailMotion.phaseY,
-                    primaryDetailMotion.blurPx,
+                    context.viewport.cameraX,
+                    context.viewport.cameraY,
+                    primaryMotion.opacity * (1 - morph.blend),
+                    primaryMotion.scale,
+                    primaryMotion.speedX,
+                    primaryMotion.speedY,
+                    primaryMotion.phaseX,
+                    primaryMotion.phaseY,
+                    primaryMotion.blurPx,
                 );
                 this.drawCloudShadowLayer(
                     ctx,
                     secondaryTexture,
                     bounds,
                     context.scene.frameInfo.effectNowMs,
-                    secondaryDetailMotion.opacity * morph.blend,
-                    secondaryDetailMotion.scale,
-                    secondaryDetailMotion.speedX,
-                    secondaryDetailMotion.phaseX,
-                    secondaryDetailMotion.phaseY,
-                    secondaryDetailMotion.blurPx,
+                    context.viewport.cameraX,
+                    context.viewport.cameraY,
+                    secondaryMotion.opacity * morph.blend,
+                    secondaryMotion.scale,
+                    secondaryMotion.speedX,
+                    secondaryMotion.speedY,
+                    secondaryMotion.phaseX,
+                    secondaryMotion.phaseY,
+                    secondaryMotion.blurPx,
                 );
-            }
-        });
+
+                if (primaryDetailMotion && secondaryDetailMotion) {
+                    this.drawCloudShadowLayer(
+                        ctx,
+                        primaryTexture,
+                        bounds,
+                        context.scene.frameInfo.effectNowMs,
+                        context.viewport.cameraX,
+                        context.viewport.cameraY,
+                        primaryDetailMotion.opacity * (1 - morph.blend),
+                        primaryDetailMotion.scale,
+                        primaryDetailMotion.speedX,
+                        primaryDetailMotion.speedY,
+                        primaryDetailMotion.phaseX,
+                        primaryDetailMotion.phaseY,
+                        primaryDetailMotion.blurPx,
+                    );
+                    this.drawCloudShadowLayer(
+                        ctx,
+                        secondaryTexture,
+                        bounds,
+                        context.scene.frameInfo.effectNowMs,
+                        context.viewport.cameraX,
+                        context.viewport.cameraY,
+                        secondaryDetailMotion.opacity * morph.blend,
+                        secondaryDetailMotion.scale,
+                        secondaryDetailMotion.speedX,
+                        secondaryDetailMotion.speedY,
+                        secondaryDetailMotion.phaseX,
+                        secondaryDetailMotion.phaseY,
+                        secondaryDetailMotion.blurPx,
+                    );
+                }
+            },
+        );
 
         ctx.restore();
     }
 
-    private getVisibleTileBounds(visibleTiles: readonly TerrainTileRenderItem[], tileDrawSize: number) {
+    private applyCameraRelativeWorldTransform(
+        ctx: CanvasRenderingContext2D,
+        cx: number,
+        cy: number,
+        cameraFx: CameraCompositeStateLike,
+    ) {
+        ctx.translate(cx + cameraFx.offsetX, cy + cameraFx.offsetY);
+        if (cameraFx.roll !== 0) {
+            ctx.rotate(cameraFx.roll);
+        }
+        if (cameraFx.zoom !== 1) {
+            ctx.scale(cameraFx.zoom, cameraFx.zoom);
+        }
+    }
+
+    private getVisibleTileBounds(
+        visibleTiles: readonly TerrainTileRenderItem[],
+        tileDrawSize: number,
+        cameraX: number,
+        cameraY: number,
+    ) {
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
 
         for (const tile of visibleTiles) {
-            if (tile.worldX < minX) minX = tile.worldX;
-            if (tile.worldY < minY) minY = tile.worldY;
-            if (tile.worldX > maxX) maxX = tile.worldX;
-            if (tile.worldY > maxY) maxY = tile.worldY;
+            const relativeX = tile.worldX - cameraX;
+            const relativeY = tile.worldY - cameraY;
+            if (relativeX < minX) minX = relativeX;
+            if (relativeY < minY) minY = relativeY;
+            if (relativeX > maxX) maxX = relativeX;
+            if (relativeY > maxY) maxY = relativeY;
         }
 
         if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
@@ -317,6 +357,10 @@ export class CloudShadowEffect implements WorldEffect {
 
     private getCloudLayerMotion(seed: number, detail: boolean, baseBlurPx: number): CloudLayerMotion {
         const direction = this.seedUnit(seed, 71) > 0.42 ? 1 : -1;
+        const crosswind = (this.seedUnit(seed, 75) - 0.5) * 0.36;
+        const speed = detail
+            ? 2.8 + (this.seedUnit(seed, 83) * 2.2)
+            : 10.5 + (this.seedUnit(seed, 83) * 4.5);
 
         return {
             opacity: detail
@@ -325,11 +369,8 @@ export class CloudShadowEffect implements WorldEffect {
             scale: detail
                 ? 0.9 + (this.seedUnit(seed, 79) * 0.35)
                 : 1.7 + (this.seedUnit(seed, 79) * 0.6),
-            speedX: direction * (
-                detail
-                    ? 2.8 + (this.seedUnit(seed, 83) * 2.2)
-                    : 10.5 + (this.seedUnit(seed, 83) * 4.5)
-            ),
+            speedX: direction * speed,
+            speedY: direction * speed * crosswind,
             phaseX: this.seedUnit(seed, 89),
             phaseY: this.seedUnit(seed, 97),
             blurPx: detail
@@ -343,9 +384,12 @@ export class CloudShadowEffect implements WorldEffect {
         texture: HTMLCanvasElement,
         bounds: { minX: number; minY: number; width: number; height: number },
         now: number,
+        cameraX: number,
+        cameraY: number,
         alpha: number,
         scale: number,
         speedX: number,
+        speedY: number,
         phaseX: number = 0,
         phaseY: number = 0,
         blurPx: number = 0,
@@ -357,8 +401,8 @@ export class CloudShadowEffect implements WorldEffect {
 
         const spanX = texture.width * scale;
         const spanY = texture.height * scale;
-        const offsetX = this.wrapValue(((now * speedX) / 1000) + (phaseX * spanX), spanX);
-        const offsetY = this.wrapValue(phaseY * spanY, spanY);
+        const offsetX = this.wrapValue(((now * speedX) / 1000) + (phaseX * spanX) - cameraX, spanX);
+        const offsetY = this.wrapValue(((now * speedY) / 1000) + (phaseY * spanY) - cameraY, spanY);
         const paddingX = spanX * 1.5;
         const paddingY = spanY * 1.5;
 
@@ -495,6 +539,8 @@ export class CloudShadowEffect implements WorldEffect {
         visibleTiles: readonly TerrainTileRenderItem[],
         hexSize: number,
         tileDrawSize: number,
+        cameraX: number,
+        cameraY: number,
         draw: () => void,
     ) {
         if (!visibleTiles.length) return;
@@ -502,7 +548,13 @@ export class CloudShadowEffect implements WorldEffect {
         ctx.save();
         ctx.beginPath();
         for (const tile of visibleTiles) {
-            this.drawHexPath(ctx, tile.worldX, tile.worldY, hexSize, tileDrawSize);
+            this.drawHexPath(
+                ctx,
+                tile.worldX - cameraX,
+                tile.worldY - cameraY,
+                hexSize,
+                tileDrawSize,
+            );
         }
         ctx.clip();
         draw();

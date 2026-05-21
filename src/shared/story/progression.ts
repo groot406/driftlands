@@ -17,6 +17,7 @@ export type BuildingKey =
   | 'craftedGoodsStorehouse'
   | 'dock'
   | 'harbor'
+  | 'tradeCenter'
   | 'lumberCamp'
   | 'huntersHut'
   | 'granary'
@@ -37,7 +38,6 @@ export type BuildingKey =
   | 'barracks';
 
 export type UpgradeKey =
-  | 'market_charter'
   | 'stone_house_upgrade'
   | 'glass_house_upgrade'
   | 'warehouse_upgrade'
@@ -97,6 +97,7 @@ export type RequirementDefinition =
   | { kind: 'building_count_at_least'; buildingKey: BuildingKey; amount: number }
   | { kind: 'building_operational_at_least'; buildingKey: BuildingKey; amount: number }
   | { kind: 'terrain_discovered'; terrainKey: TerrainKey }
+  | { kind: 'landing_terrain_discovered'; terrainKey: TerrainKey }
   | { kind: 'study_completed'; studyKey: string }
   | { kind: 'any_study_completed' }
   | { kind: 'any_hero_ability_charge_earned' }
@@ -176,6 +177,7 @@ export interface ProgressionMetrics {
   buildingCounts: Partial<Record<BuildingKey, number>>;
   operationalBuildingCounts: Partial<Record<BuildingKey, number>>;
   discoveredTerrains: TerrainKey[];
+  landingTerrains: TerrainKey[];
   unlockedHeroIds: StoryHeroId[];
   completedStudyKeys: string[];
   heroAbilityChargesEarned: number;
@@ -240,6 +242,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     label: 'Harbor',
     description: 'Connects a large body of water to arriving trade ships and cargo orders.',
     taskKey: 'buildHarbor',
+  },
+  tradeCenter: {
+    label: 'Trade Center',
+    description: 'Gives the colony a formal exchange office for resource trading.',
+    taskKey: 'buildTradeCenter',
   },
   lumberCamp: {
     label: 'Lumber Camp',
@@ -515,11 +522,6 @@ const UPGRADE_META: Record<UpgradeKey, { label: string; description: string; tas
     description: 'Turns a frontier depot into a full-capacity warehouse.',
     taskKey: 'upgradeDepotToWarehouse',
   },
-  market_charter: {
-    label: 'Market Charter',
-    description: 'Grants this settlement access to the global resource market.',
-    taskKey: 'grantMarketCharter',
-  },
   sawmill_upgrade: {
     label: 'Sawmill',
     description: 'Mechanizes the lumber camp and boosts timber output.',
@@ -585,7 +587,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
       { kind: 'population_at_least', amount: 2 },
-      { kind: 'terrain_discovered', terrainKey: 'water' },
+      { kind: 'landing_terrain_discovered', terrainKey: 'water' },
     ],
     sortOrder: 20,
     unlocks: [
@@ -739,7 +741,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'building', key: 'craftedGoodsStorehouse' },
       { kind: 'building', key: 'harbor' },
       { kind: 'building', key: 'library' },
-      { kind: 'upgrade', key: 'market_charter' },
     ],
   },
   {
@@ -830,6 +831,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 125,
     unlocks: [
       { kind: 'building', key: 'workshop' },
+      { kind: 'building', key: 'tradeCenter' },
     ],
   },
   {
@@ -978,6 +980,8 @@ function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDef
       return metrics.operationalBuildingCounts[requirement.buildingKey] ?? 0;
     case 'terrain_discovered':
       return metrics.discoveredTerrains.includes(requirement.terrainKey) ? 1 : 0;
+    case 'landing_terrain_discovered':
+      return metrics.landingTerrains.includes(requirement.terrainKey) ? 1 : 0;
     case 'study_completed':
       return metrics.completedStudyKeys.includes(requirement.studyKey) ? 1 : 0;
     case 'any_study_completed':
@@ -994,6 +998,7 @@ function getMetricValue(metrics: ProgressionMetrics, requirement: RequirementDef
 function getRequirementTarget(requirement: RequirementDefinition): number {
   switch (requirement.kind) {
     case 'terrain_discovered':
+    case 'landing_terrain_discovered':
     case 'study_completed':
     case 'any_study_completed':
     case 'any_hero_ability_charge_earned':
@@ -1028,6 +1033,8 @@ function getRequirementLabel(requirement: RequirementDefinition): string {
       return `Operational ${BUILDING_META[requirement.buildingKey].label} x${requirement.amount}`;
     case 'terrain_discovered':
       return `Discover ${TERRAIN_META[requirement.terrainKey]?.label ?? requirement.terrainKey}`;
+    case 'landing_terrain_discovered':
+      return `Find nearby ${TERRAIN_META[requirement.terrainKey]?.label ?? requirement.terrainKey}`;
     case 'study_completed':
       return `Complete ${requirement.studyKey.replace(/_/g, ' ')}`;
     case 'any_study_completed':
@@ -1052,6 +1059,7 @@ function buildRequirementProgress(metrics: ProgressionMetrics, requirement: Requ
     target,
     satisfied: current >= target,
     currentLabel: requirement.kind === 'terrain_discovered'
+      || requirement.kind === 'landing_terrain_discovered'
       ? (current >= 1 ? 'Discovered' : 'Undiscovered')
       : (target === 1 ? (current >= 1 ? 'Done' : 'Missing') : `${current}/${target}`),
   };
@@ -1123,6 +1131,7 @@ export function createEmptyProgressionMetrics(): ProgressionMetrics {
     buildingCounts: {},
     operationalBuildingCounts: {},
     discoveredTerrains: [],
+    landingTerrains: [],
     unlockedHeroIds: [],
     completedStudyKeys: [],
     heroAbilityChargesEarned: 0,
@@ -1270,19 +1279,25 @@ export function getInitialStoryHeroIds() {
   return createInitialProgressionSnapshot().unlocked.heroes.slice();
 }
 
-export function getStoryBuildingTaskKey(buildingKey: BuildingKey) {
-  return BUILDING_META[buildingKey].taskKey;
+export function getStoryBuildingTaskKey(buildingKey: BuildingKey | string) {
+  return BUILDING_META[buildingKey as BuildingKey]?.taskKey ?? null;
 }
 
-export function getStoryUpgradeTaskKey(upgradeKey: UpgradeKey) {
-  return UPGRADE_META[upgradeKey].taskKey;
+export function getStoryUpgradeTaskKey(upgradeKey: UpgradeKey | string) {
+  return UPGRADE_META[upgradeKey as UpgradeKey]?.taskKey ?? null;
 }
 
 export function getAvailableStoryTaskKeys(progression: ProgressionSnapshot) {
   return unique([
     ...progression.unlocked.tasks,
-    ...progression.unlocked.buildings.map((buildingKey) => getStoryBuildingTaskKey(buildingKey)),
-    ...progression.unlocked.upgrades.map((upgradeKey) => getStoryUpgradeTaskKey(upgradeKey)),
+    ...progression.unlocked.buildings.flatMap((buildingKey) => {
+      const taskKey = getStoryBuildingTaskKey(buildingKey);
+      return taskKey ? [taskKey] : [];
+    }),
+    ...progression.unlocked.upgrades.flatMap((upgradeKey) => {
+      const taskKey = getStoryUpgradeTaskKey(upgradeKey);
+      return taskKey ? [taskKey] : [];
+    }),
   ]);
 }
 
@@ -1325,8 +1340,8 @@ export function getStoryBuildingDescriptor(buildingKey: BuildingKey): Progressio
   return {
     kind: 'building',
     key: buildingKey,
-    label: building.label,
-    description: building.description,
+    label: building?.label ?? buildingKey,
+    description: building?.description ?? 'New construction option available.',
   };
 }
 
@@ -1359,8 +1374,8 @@ export function getStoryUpgradeDescriptor(upgradeKey: UpgradeKey): ProgressionUn
   return {
     kind: 'upgrade',
     key: upgradeKey,
-    label: upgrade.label,
-    description: upgrade.description,
+    label: upgrade?.label ?? upgradeKey,
+    description: upgrade?.description ?? 'New upgrade available.',
   };
 }
 

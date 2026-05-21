@@ -161,8 +161,8 @@ import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { currentPlayerId } from '../core/socket.ts';
 
 const mode = ref<'buy' | 'sell'>('buy');
-const quantity = ref(100);
-const quantityPresets = [10, 100, 500];
+const quantity = ref(1);
+const quantityPresets = [1, 5, 10];
 
 const playerInventory = computed(() => {
   resourceVersion.value;

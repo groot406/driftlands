@@ -24,7 +24,7 @@ function createEmptyMarketOverview(): MarketOverviewSnapshot {
       price: config.basePrice,
       buyPrice: config.basePrice,
       sellPrice: Math.max(config.minPrice, Math.floor(config.basePrice * MARKET_SELL_PRICE_MULTIPLIER)),
-      stock: config.targetStock,
+      stock: config.initialStock,
       basePrice: config.basePrice,
       targetStock: config.targetStock,
       minPrice: config.minPrice,

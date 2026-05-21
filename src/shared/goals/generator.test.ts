@@ -85,12 +85,32 @@ test('tutorial mission 1 uses open_frontier mutator and teaches exploration', ()
   assert.ok(blueprint.objectives.some((o) => o.kind === 'reach_distance'));
 });
 
-test('tutorial mission 2 uses timber_rush mutator and teaches dock and house building', () => {
-  const blueprint = generateFoundingExpeditionMission(42, 2, metrics(3));
+test('tutorial mission 2 uses timber_rush mutator and teaches the shoreline food route when water is nearby', () => {
+  const blueprint = generateFoundingExpeditionMission(42, 2, metrics(3), undefined, 'shoreline');
 
   assert.equal(blueprint.mutator.key, 'timber_rush');
   assert.ok(blueprint.objectives.some((o) => o.taskType === 'buildDock'));
   assert.ok(blueprint.objectives.some((o) => o.taskType === 'buildHouse'));
+});
+
+test('tutorial mission 2 teaches woodland food when the landing has forest instead of shoreline', () => {
+  const blueprint = generateFoundingExpeditionMission(42, 2, metrics(3), undefined, 'woodland');
+
+  assert.equal(blueprint.mutator.key, 'timber_rush');
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'hunt' && o.required));
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'buildHuntersHut'));
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'buildHouse'));
+  assert.equal(blueprint.objectives.some((o) => o.taskType === 'buildDock'), false);
+});
+
+test('tutorial mission 2 teaches planted forest food when the landing is open field', () => {
+  const blueprint = generateFoundingExpeditionMission(42, 2, metrics(3), undefined, 'open_field');
+
+  assert.equal(blueprint.mutator.key, 'timber_rush');
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'plantTrees' && o.required));
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'hunt'));
+  assert.ok(blueprint.objectives.some((o) => o.taskType === 'buildHouse'));
+  assert.equal(blueprint.objectives.some((o) => o.taskType === 'buildDock'), false);
 });
 
 test('tutorial mission 3 teaches the full farming cycle', () => {

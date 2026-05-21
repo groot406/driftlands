@@ -27,10 +27,14 @@ import {
 import { loadStoryProgression } from '../../../src/shared/story/progressionState';
 import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { createStoryBeat, evaluateStoryChapterNumber } from '../../../src/shared/story/storyMode';
+import { createLandingProfile, DEFAULT_LANDING_PROFILE_RADIUS } from '../../../src/shared/story/landingProfile';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
 import { getStudySnapshot } from '../../../src/store/studyStore';
 import { getTileSettlementId } from '../../../src/shared/game/settlement';
 import { getProgressionOverrideNodeKeys, testModeSettings } from '../../../src/shared/game/testMode.ts';
+import { listTaskAccessTiles } from '../../../src/shared/tasks/taskAccess';
+import { PathService } from '../../../src/shared/game/PathService';
+import { axialDistanceCoords } from '../../../src/shared/game/hex';
 
 interface RunMetrics {
   discoveredTiles: number;
@@ -50,6 +54,8 @@ const DEFAULT_MUTATOR = {
   name: 'Colony Growth',
   description: 'Population, job sites, and production chains unlock the next layer of buildings.',
 };
+
+const landingPathService = new PathService();
 
 function cloneDialogueSpeaker(speaker: DialogueSpeakerSnapshot): DialogueSpeakerSnapshot {
   return {
@@ -154,8 +160,76 @@ function buildNodeAdvice(node: ProgressionNodeSnapshot | null | undefined) {
   return `${node.label} is the next step. ${primaryBlocker.label} is currently ${primaryBlocker.currentLabel}.`;
 }
 
-function buildStoryBeatForChapter(chapterNumber: number, metrics: RunMetrics): RunStoryBeat {
-  return createStoryBeat(chapterNumber, metrics.frontierDistance, { ...DEFAULT_MUTATOR });
+function buildStoryBeatForChapter(
+  chapterNumber: number,
+  metrics: RunMetrics,
+  progressionMetrics: ProgressionMetrics,
+  settlementId: string | null,
+): RunStoryBeat {
+  const townCenter = settlementId ? tileIndex[settlementId] : null;
+  const settlementTiles = tiles.filter((tile) => (
+    !settlementId
+    || tile.ownerSettlementId === settlementId
+    || tile.controlledBySettlementId === settlementId
+    || tile.id === settlementId
+  ));
+  const landingProfile = createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
+  const storyContextTerrains = progressionMetrics.discoveredTerrains.filter((terrain) => (
+    terrain !== 'water' || progressionMetrics.landingTerrains.includes('water')
+  ));
+
+  return createStoryBeat(chapterNumber, metrics.frontierDistance, { ...DEFAULT_MUTATOR }, {
+    landingArchetype: landingProfile.archetype,
+    discoveredTerrains: storyContextTerrains,
+  });
+}
+
+function hasPathFromTownCenter(
+  townCenter: { q: number; r: number },
+  target: { q: number; r: number },
+  settlementId: string,
+) {
+  return (townCenter.q === target.q && townCenter.r === target.r)
+    || landingPathService.findWalkablePath(
+      townCenter.q,
+      townCenter.r,
+      target.q,
+      target.r,
+      { settlementId },
+    ).length > 0;
+}
+
+function isReachableLandingWater(
+  tile: typeof tiles[number],
+  townCenter: typeof tiles[number] | null | undefined,
+  settlementId: string | null | undefined,
+) {
+  if (!townCenter || !settlementId || !tile.discovered || tile.terrain !== 'water') {
+    return false;
+  }
+
+  if (axialDistanceCoords(townCenter.q, townCenter.r, tile.q, tile.r) > DEFAULT_LANDING_PROFILE_RADIUS) {
+    return false;
+  }
+
+  return listTaskAccessTiles('buildDock', tile, settlementId)
+    .some((accessTile) => hasPathFromTownCenter(townCenter, accessTile, settlementId));
+}
+
+function createSettlementLandingProfile(
+  settlementTiles: readonly (typeof tiles[number])[],
+  townCenter: typeof tiles[number] | null | undefined,
+  settlementId: string | null | undefined,
+) {
+  const origin = townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
+  if (!townCenter || !settlementId) {
+    return createLandingProfile(settlementTiles, origin);
+  }
+
+  return createLandingProfile(
+    settlementTiles.filter((tile) => tile.terrain !== 'water' || isReachableLandingWater(tile, townCenter, settlementId)),
+    origin,
+  );
 }
 
 function buildStoryIntroText(chapter: RunStoryBeat) {
@@ -200,7 +274,7 @@ class RunState {
     const progressionMetrics = this.captureProgressionMetrics(metrics);
     const progression = this.computeProgression(progressionMetrics, settlementId);
     const storyChapterNumber = evaluateStoryChapterNumber(progressionMetrics, 1);
-    const storyChapter = buildStoryBeatForChapter(storyChapterNumber, metrics);
+    const storyChapter = buildStoryBeatForChapter(storyChapterNumber, metrics, progressionMetrics, settlementId);
     const dialogue: DialogueLogSnapshot = {
       activeEntryId: null,
       entries: [],
@@ -372,7 +446,8 @@ class RunState {
   }
 
   private computeProgression(metrics: ProgressionMetrics, settlementId: string) {
-    const previousNaturalNodeKeys = this.naturalUnlockedNodeKeysBySettlementId.get(settlementId) ?? [];
+    const previousNaturalNodeKeys = (this.naturalUnlockedNodeKeysBySettlementId.get(settlementId) ?? [])
+      .filter((nodeKey) => nodeKey !== 'shoreline' || metrics.landingTerrains.includes('water'));
     const naturalProgression = evaluateProgression(metrics, previousNaturalNodeKeys);
     this.naturalUnlockedNodeKeysBySettlementId.set(settlementId, naturalProgression.unlockedNodeKeys.slice());
 
@@ -444,12 +519,16 @@ class RunState {
     const discoveredTerrains = new Set<typeof tiles[number]['terrain']>();
     const buildingCounts: Partial<Record<BuildingKey, number>> = {};
     const operationalBuildingCounts: Partial<Record<BuildingKey, number>> = {};
+    const townCenter = settlementId ? tileIndex[settlementId] : null;
+    const settlementTiles = tiles.filter((tile) => (
+      !settlementId
+      || tile.ownerSettlementId === settlementId
+      || tile.controlledBySettlementId === settlementId
+      || tile.id === settlementId
+    ));
+    const landingProfile = createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
 
-    for (const tile of tiles) {
-      if (settlementId && tile.ownerSettlementId !== settlementId && tile.controlledBySettlementId !== settlementId && tile.id !== settlementId) {
-        continue;
-      }
-
+    for (const tile of settlementTiles) {
       if (tile.discovered && tile.terrain) {
         discoveredTerrains.add(tile.terrain);
       }
@@ -487,6 +566,7 @@ class RunState {
       buildingCounts,
       operationalBuildingCounts,
       discoveredTerrains: Array.from(discoveredTerrains).filter((terrain): terrain is NonNullable<typeof terrain> => !!terrain),
+      landingTerrains: Object.keys(landingProfile.terrainCounts) as NonNullable<typeof tiles[number]['terrain']>[],
       unlockedHeroIds: this.snapshot?.progression.unlocked.heroes.slice() ?? [],
       completedStudyKeys: getStudySnapshot().completedStudyKeys,
       heroAbilityChargesEarned: heroes
@@ -564,7 +644,7 @@ class RunState {
     }
     const nextProgression = this.computeProgression(progressionMetrics, resolvedSettlementId);
     const nextChapterNumber = evaluateStoryChapterNumber(progressionMetrics, previousChapterNumber);
-    const nextChapter = buildStoryBeatForChapter(nextChapterNumber, metrics);
+    const nextChapter = buildStoryBeatForChapter(nextChapterNumber, metrics, progressionMetrics, resolvedSettlementId);
 
     const heroRosterChanged = previousProgression.unlocked.heroes.length !== nextProgression.unlocked.heroes.length
       || previousProgression.unlocked.heroes.some((heroId, index) => nextProgression.unlocked.heroes[index] !== heroId);

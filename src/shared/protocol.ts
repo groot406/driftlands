@@ -215,8 +215,9 @@ export interface MilitarySetRaidTargetMessage extends BaseMessage {
     targetTileId: string | null;
 }
 
-export interface ShipOrderContributeMessage extends BaseMessage {
-    type: 'ship_order:contribute';
+export interface ShipOrderLoadMessage extends BaseMessage {
+    type: 'ship_order:load';
+    orderId: string;
     settlementId: string;
     resources: Partial<Record<ShipOrderResourceType, number>>;
 }
@@ -527,7 +528,7 @@ export type ClientMessage =
     | MilitaryAssignGuardsMessage
     | MilitaryBuildPalisadeMessage
     | MilitarySetRaidTargetMessage
-    | ShipOrderContributeMessage
+    | ShipOrderLoadMessage
     | TestSetSettingsMessage
     | TestRunActionMessage
     | MoveRequestMessage

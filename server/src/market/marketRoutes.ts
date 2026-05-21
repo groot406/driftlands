@@ -43,8 +43,8 @@ function assertMarketAccess(request: ReturnType<typeof resolveTradeRequest>) {
 
   if (!hasSettlementMarketAccess(request.settlementId)) {
     throw new MarketTradeError(
-      'Grant a Market Charter at this settlement town center before trading.',
-      'MARKET_CHARTER_REQUIRED',
+      'Build a Trade Center in this settlement before trading.',
+      'TRADE_CENTER_REQUIRED',
       403,
     );
   }

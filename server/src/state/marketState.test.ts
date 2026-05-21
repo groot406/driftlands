@@ -57,7 +57,16 @@ test('selling records the discounted sell price and creates earned gold', () => 
     quantity: 5,
   });
 
-  assert.equal(result.transaction.pricePerUnit, 1);
-  assert.equal(result.transaction.totalGold, 5);
-  assert.equal(result.wallet.gold, 5);
+  assert.equal(result.transaction.pricePerUnit, 5);
+  assert.equal(result.transaction.totalGold, 25);
+  assert.equal(result.wallet.gold, 25);
+});
+
+test('market stock drifts over time from its low starting amounts', () => {
+  const before = marketState.getOverview().resources.wood.stock;
+
+  assert.equal(marketState.tick(61_000), true);
+
+  const after = marketState.getOverview().resources.wood.stock;
+  assert.notEqual(after, before);
 });

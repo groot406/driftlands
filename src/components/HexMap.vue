@@ -101,6 +101,22 @@
         </div>
       </div>
     </div>
+    <button
+      v-for="renderedShip in renderedShips"
+      :key="renderedShip.id"
+      class="trading-ship-map-sprite"
+      :class="`trading-ship-map-sprite--${renderedShip.phase}`"
+      :style="renderedShip.style"
+      type="button"
+      :aria-label="`Open loading panel for ${renderedShip.name}`"
+      @pointerdown.stop
+      @pointermove.stop
+      @pointerup.stop
+      @pointercancel.stop
+      @click.stop="toggleShipOrderPanel(renderedShip.orderId)"
+    >
+      <span class="trading-ship-map-sprite__frame" :style="renderedShip.frameStyle"></span>
+    </button>
     <div
       v-for="ping in renderedPings"
       :key="ping.id"
@@ -214,6 +230,9 @@ import { isTileWalkable } from '../shared/game/navigation.ts';
 import { detachHeroFromCurrentTask } from '../store/taskStore';
 import { canStartTaskWhileCarrying } from '../store/taskStore';
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
+import { findHarborShipRoute, isHarborTile } from '../shared/game/harbor.ts';
+import { shipOrderOverview, toggleShipOrderPanel } from '../store/shipOrderStore.ts';
+import tradingShipDirectionsUrl from '../assets/tiles/trading_ship_directions.png';
 
 const emit = defineEmits<{
   (e: 'tile-click', tile: Tile): void;
@@ -317,6 +336,161 @@ const renderedPings = computed(() => {
         top: `${tilePx.y - cameraPx.y + (height / 2)}px`,
       },
     };
+  });
+});
+
+const shipVisualNow = ref(Date.now());
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function smoothStep(edge0: number, edge1: number, value: number) {
+  const t = clamp01((value - edge0) / Math.max(0.0001, edge1 - edge0));
+  return t * t * (3 - (2 * t));
+}
+
+function getPrimaryShipHarborTile() {
+  void worldVersion.value;
+  const settlementId = currentPlayerSettlementId.value;
+  const harborTiles = Object.values(tileIndex)
+    .filter((tile) => isHarborTile(tile) && (!settlementId || getSettlementIdForTile(tile) === settlementId))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (harborTiles.length > 0) {
+    return harborTiles[0]!;
+  }
+
+  return Object.values(tileIndex)
+    .filter((tile) => isHarborTile(tile))
+    .sort((a, b) => a.id.localeCompare(b.id))[0] ?? null;
+}
+
+type ShipDirection = 'east' | 'northeast' | 'northwest' | 'west' | 'southwest' | 'southeast';
+
+const SHIP_DIRECTION_FRAME_ORDER: ShipDirection[] = [
+  'southwest',
+  'west',
+  'southeast',
+  'northeast',
+  'east',
+  'northwest',
+];
+
+const SHIP_DIRECTION_BY_STEP = new Map<string, ShipDirection>([
+  ['1,0', 'east'],
+  ['1,-1', 'northeast'],
+  ['0,-1', 'northwest'],
+  ['-1,0', 'west'],
+  ['-1,1', 'southwest'],
+  ['0,1', 'southeast'],
+]);
+
+const SHIP_SPRITE_DISPLAY_WIDTH = 96;
+const SHIP_SPRITE_DISPLAY_HEIGHT = 72;
+
+function getShipDirection(from: { q: number; r: number }, to: { q: number; r: number }): ShipDirection {
+  const dq = Math.sign(to.q - from.q);
+  const dr = Math.sign(to.r - from.r);
+  return SHIP_DIRECTION_BY_STEP.get(`${dq},${dr}`) ?? 'east';
+}
+
+function getShipFrameStyle(direction: ShipDirection) {
+  const frameIndex = Math.max(0, SHIP_DIRECTION_FRAME_ORDER.indexOf(direction));
+  return {
+    backgroundImage: `url(${tradingShipDirectionsUrl})`,
+    backgroundPosition: `-${frameIndex * SHIP_SPRITE_DISPLAY_WIDTH}px 0`,
+    backgroundSize: `${SHIP_DIRECTION_FRAME_ORDER.length * SHIP_SPRITE_DISPLAY_WIDTH}px ${SHIP_SPRITE_DISPLAY_HEIGHT}px`,
+  };
+}
+
+function sampleShipPath(path: Array<{ q: number; r: number }>, progress: number, reverseDirection = false) {
+  if (path.length <= 1) {
+    const only = path[0] ?? { q: 0, r: 0 };
+    return {
+      position: axialToPixel(only.q, only.r),
+      direction: 'east' as ShipDirection,
+      fromCoord: only,
+      toCoord: only,
+    };
+  }
+
+  const scaled = clamp01(progress) * (path.length - 1);
+  const index = Math.min(path.length - 2, Math.floor(scaled));
+  const local = scaled - index;
+  const fromCoord = path[index]!;
+  const toCoord = path[index + 1]!;
+  const from = axialToPixel(fromCoord.q, fromCoord.r);
+  const to = axialToPixel(toCoord.q, toCoord.r);
+
+  return {
+    position: {
+      x: from.x + ((to.x - from.x) * local),
+      y: from.y + ((to.y - from.y) * local),
+    },
+    direction: reverseDirection
+      ? getShipDirection(toCoord, fromCoord)
+      : getShipDirection(fromCoord, toCoord),
+    fromCoord,
+    toCoord,
+  };
+}
+
+function isShipSampleDiscovered(sample: ReturnType<typeof sampleShipPath>) {
+  const fromTile = tileIndex[`${sample.fromCoord.q},${sample.fromCoord.r}`] ?? null;
+  const toTile = tileIndex[`${sample.toCoord.q},${sample.toCoord.r}`] ?? null;
+  return !!fromTile?.discovered && !!toTile?.discovered;
+}
+
+const renderedShips = computed(() => {
+  const visibleShips = shipOrderOverview.value.visibleShips ?? (shipOrderOverview.value.visibleShip ? [shipOrderOverview.value.visibleShip] : []);
+  if (!visibleShips.length) {
+    return [];
+  }
+
+  const cameraPx = axialToPixel(camera.q, camera.r);
+  const { width, height } = containerSize.value;
+
+  return visibleShips.flatMap((visibleShip) => {
+    const harbor = tileIndex[visibleShip.harborTileId] ?? getPrimaryShipHarborTile();
+    const route = findHarborShipRoute(harbor);
+    if (!route) {
+      return [];
+    }
+
+    const duration = Math.max(1, visibleShip.phaseEndsAt - visibleShip.phaseStartedAt);
+    const rawProgress = visibleShip.phase === 'docked'
+      ? 1
+      : clamp01((shipVisualNow.value - visibleShip.phaseStartedAt) / duration);
+    const pathProgress = visibleShip.phase === 'departing'
+      ? 1 - rawProgress
+      : rawProgress;
+    const sample = sampleShipPath(route.path, pathProgress, visibleShip.phase === 'departing');
+    if (!isShipSampleDiscovered(sample)) {
+      return [];
+    }
+
+    const worldPx = sample.position;
+    const opacity = visibleShip.phase === 'approaching'
+      ? smoothStep(0.02, 0.28, rawProgress)
+      : visibleShip.phase === 'departing'
+        ? 1 - smoothStep(0.72, 0.98, rawProgress)
+        : 1;
+    const bob = Math.sin((shipVisualNow.value / 520) + route.dock.q + route.dock.r) * 2;
+
+    return [{
+      id: visibleShip.id,
+      orderId: visibleShip.orderId,
+      name: visibleShip.name,
+      phase: visibleShip.phase,
+      style: {
+        left: `${worldPx.x - cameraPx.x + (width / 2)}px`,
+        top: `${worldPx.y - cameraPx.y + (height / 2) + bob}px`,
+        opacity: `${opacity}`,
+        transform: 'translate(-50%, -62%)',
+      },
+      frameStyle: getShipFrameStyle(sample.direction),
+    }];
   });
 });
 
@@ -944,6 +1118,8 @@ function drawAnimationFrame(frameNowMs = performance.now()) {
 
   // Cap rendering separately from movement updates.
   if (shouldDrawFrame(frameNowMs)) {
+    shipVisualNow.value = movementNowMs;
+
     if (!hitStopActive && lastPointerClient && !showTaskMenu.value && (isKeyboardNavigating() || cameraMoving)) {
       updateHoverAt(lastPointerClient.x, lastPointerClient.y);
     }
@@ -2297,6 +2473,37 @@ onBeforeUnmount(() => {
   color: rgb(207, 250, 254);
   font-size: 0.67rem;
   letter-spacing: 0.04em;
+}
+
+.trading-ship-map-sprite {
+  position: absolute;
+  z-index: 8;
+  width: 92px;
+  height: 72px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  transform-origin: center 62%;
+  transition: opacity 180ms linear;
+  filter: drop-shadow(0 8px 7px rgba(15, 23, 42, 0.24));
+}
+
+.trading-ship-map-sprite__frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+.trading-ship-map-sprite--docked {
+  filter: drop-shadow(0 8px 8px rgba(15, 23, 42, 0.28));
+}
+
+.trading-ship-map-sprite--departing {
+  filter: drop-shadow(0 7px 7px rgba(15, 23, 42, 0.22));
 }
 
 .story-tile-hint-ring {

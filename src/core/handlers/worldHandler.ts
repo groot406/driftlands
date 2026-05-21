@@ -171,15 +171,6 @@ class WorldHandler {
 
         const settlementId = currentPlayerSettlementId.value;
         if (settlementId && message.tile.id === settlementId && message.tile.terrain === 'towncenter') {
-            if (!previousTile?.marketCharterUnlocked && message.tile.marketCharterUnlocked) {
-                addNotification({
-                    type: 'settlement',
-                    title: 'Market charter granted',
-                    message: 'This settlement can now trade through the global resource market.',
-                    duration: 3600,
-                });
-            }
-
             const previousTarget = previousTile?.raidTargetTileId ?? null;
             const nextTarget = message.tile.raidTargetTileId ?? null;
             if (previousTarget !== nextTarget) {

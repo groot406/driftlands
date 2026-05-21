@@ -1,4 +1,8 @@
 import type { ResourceType } from '../../core/types/Resource.ts';
+import {
+  classifyLandingArchetype,
+  type LandingArchetype,
+} from '../story/landingProfile.ts';
 
 export type TutorialStepId =
   | 'select-hero'
@@ -23,6 +27,7 @@ export type TutorialStepId =
 export interface TutorialMetrics {
   selectedHeroCount: number;
   discoveredTiles: number;
+  landingArchetype?: LandingArchetype;
   terrainCounts: Partial<Record<string, number>>;
   variantCounts: Partial<Record<string, number>>;
   buildingCounts: Partial<Record<string, number>>;
@@ -60,10 +65,10 @@ export interface TutorialSnapshot {
 
 interface TutorialStepDefinition {
   id: TutorialStepId;
-  title: string;
-  objective: string;
-  why: string;
-  action: string;
+  title: string | ((metrics: TutorialMetrics) => string);
+  objective: string | ((metrics: TutorialMetrics) => string);
+  why: string | ((metrics: TutorialMetrics) => string);
+  action: string | ((metrics: TutorialMetrics) => string);
   target: number;
   progress(metrics: TutorialMetrics): number;
   complete?(metrics: TutorialMetrics): boolean;
@@ -92,6 +97,14 @@ function terrain(metrics: TutorialMetrics, key: string) {
 
 function anyBuilding(metrics: TutorialMetrics, keys: string[]) {
   return keys.reduce((total, key) => total + building(metrics, key), 0);
+}
+
+function landingArchetype(metrics: TutorialMetrics): LandingArchetype {
+  return metrics.landingArchetype ?? classifyLandingArchetype(metrics.terrainCounts);
+}
+
+function resolveCopy(value: string | ((metrics: TutorialMetrics) => string), metrics: TutorialMetrics) {
+  return typeof value === 'function' ? value(metrics) : value;
 }
 
 function formatCount(progress: number, target: number, noun: string) {
@@ -198,17 +211,105 @@ const tutorialSteps: TutorialStepDefinition[] = [
   },
   {
     id: 'build-dock',
-    title: 'Open the shoreline',
-    objective: 'Build a dock on water from adjacent active shore.',
-    why: 'A dock gives settlers a steady food job and makes the waterline feel usable instead of mysterious.',
-    action: 'Scout until water appears, then build a dock from a neighboring land tile.',
+    title: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return 'Open the shoreline';
+        case 'woodland':
+          return 'Secure forest food';
+        case 'open_field':
+        default:
+          return 'Grow a food route';
+      }
+    },
+    objective: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return 'Build a dock on water from adjacent active shore.';
+        case 'woodland':
+          return 'Hunt in nearby forest, then turn a forest tile into a steady food site.';
+        case 'open_field':
+        default:
+          return 'Plant trees on open plains so the settlement can grow its own forest food route.';
+      }
+    },
+    why: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return 'A dock gives settlers a steady food job and makes the waterline feel usable instead of mysterious.';
+        case 'woodland':
+          return 'Forest starts can feed settlers through hunting and hunter huts without waiting for a shoreline.';
+        case 'open_field':
+        default:
+          return 'Open land can become a resource loop too: planted trees lead to wood, hunting, and later forest job sites.';
+      }
+    },
+    action: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return 'Scout until water appears, then build a dock from a neighboring land tile.';
+        case 'woodland':
+          return 'Choose Hunt on a forest tile, or build a Hunter Hut once wood and workers are ready.';
+        case 'open_field':
+        default:
+          return 'Choose Plant Trees on a plains tile, then use the new forest for hunting or a Hunter Hut.';
+      }
+    },
     target: 1,
-    progress: (metrics) => building(metrics, 'dock'),
-    complete: (metrics) => building(metrics, 'dock') >= 1,
+    progress: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return building(metrics, 'dock');
+        case 'woodland':
+          return Math.max(building(metrics, 'huntersHut'), resource(metrics, 'meat') >= 5 ? 1 : 0);
+        case 'open_field':
+        default:
+          return Math.max(
+            variant(metrics, 'young_forest'),
+            building(metrics, 'huntersHut'),
+            resource(metrics, 'meat') >= 5 ? 1 : 0,
+          );
+      }
+    },
+    complete: (metrics) => {
+      switch (landingArchetype(metrics)) {
+        case 'shoreline':
+          return building(metrics, 'dock') >= 1;
+        case 'woodland':
+          return building(metrics, 'huntersHut') >= 1 || resource(metrics, 'meat') >= 5;
+        case 'open_field':
+        default:
+          return variant(metrics, 'young_forest') >= 1
+            || building(metrics, 'huntersHut') >= 1
+            || resource(metrics, 'meat') >= 5;
+      }
+    },
     label: (metrics, progress) => {
-      if (progress >= 1) return 'Dock built';
-      const waterTiles = terrain(metrics, 'water');
-      return waterTiles > 0 ? `${waterTiles} water tiles found` : 'No shoreline found yet';
+      if (progress >= 1) {
+        switch (landingArchetype(metrics)) {
+          case 'shoreline':
+            return 'Dock built';
+          case 'woodland':
+            return building(metrics, 'huntersHut') >= 1 ? 'Hunter hut built' : 'Meat stocked';
+          case 'open_field':
+          default:
+            return variant(metrics, 'young_forest') >= 1 ? 'Saplings planted' : 'Forest food started';
+        }
+      }
+
+      switch (landingArchetype(metrics)) {
+        case 'shoreline': {
+          const waterTiles = terrain(metrics, 'water');
+          return waterTiles > 0 ? `${waterTiles} water tiles found` : 'No shoreline found yet';
+        }
+        case 'woodland': {
+          const forestTiles = terrain(metrics, 'forest');
+          return forestTiles > 0 ? `${forestTiles} forest tiles found` : 'No forest found yet';
+        }
+        case 'open_field':
+        default:
+          return 'No saplings planted yet';
+      }
     },
   },
   {
@@ -403,10 +504,10 @@ export function evaluateTutorial(metrics: TutorialMetrics): TutorialSnapshot {
     return {
       id: step.id,
       index,
-      title: step.title,
-      objective: step.objective,
-      why: step.why,
-      action: step.action,
+      title: resolveCopy(step.title, metrics),
+      objective: resolveCopy(step.objective, metrics),
+      why: resolveCopy(step.why, metrics),
+      action: resolveCopy(step.action, metrics),
       progress,
       target: step.target,
       progressLabel: step.label?.(metrics, progress) ?? formatCount(progress, step.target, 'done'),

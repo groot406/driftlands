@@ -7,6 +7,7 @@ import {
   type ProgressionSnapshot,
 } from '../story/progression.ts';
 import { createStoryBeat } from '../story/storyMode.ts';
+import type { LandingArchetype } from '../story/landingProfile.ts';
 
 export interface RunGenerationMetrics {
   frontierDistance: number;
@@ -414,25 +415,72 @@ function tutorialMission1(): ObjectiveBlueprint[] {
   ];
 }
 
-function tutorialMission2(): ObjectiveBlueprint[] {
-  // Unlocks: dock, house, harvestWaterLilies, plantTrees, removeTrunks
-  // Terrains: water
-  // Teaches: building structures, shoreline foraging, tree management
-  return [
+function tutorialMission2(archetype: LandingArchetype = 'shoreline'): ObjectiveBlueprint[] {
+  const commonObjectives = [
     surveyObjective(50, 45),
-    taskObjective(
-      'harbor',
-      'Build a dock',
-      'Build 1 dock from adjacent active shore to open the shoreline to fishing and landings.',
-      'buildDock',
-      1,
-      75,
-    ),
     taskObjective(
       'first-shelter',
       'Raise a house',
       'Build 1 house to shelter settlers and raise the population cap.',
       'buildHouse',
+      1,
+      75,
+    ),
+  ];
+
+  if (archetype === 'woodland') {
+    return [
+      ...commonObjectives,
+      taskObjective(
+        'forest-hunt',
+        'Hunt the nearby woods',
+        'Complete 1 hunt in a forest tile so the camp can feed itself without waiting for water.',
+        'hunt',
+        1,
+        75,
+      ),
+      taskObjective(
+        'hunter-hut',
+        'Build a hunter hut',
+        'Build 1 hunter hut on forest to turn the woodland route into steady food.',
+        'buildHuntersHut',
+        1,
+        60,
+        false,
+      ),
+    ];
+  }
+
+  if (archetype === 'open_field') {
+    return [
+      ...commonObjectives,
+      taskObjective(
+        'plant-grove',
+        'Plant the first grove',
+        'Plant trees on open plains so the settlement can grow a local forest route.',
+        'plantTrees',
+        1,
+        75,
+      ),
+      taskObjective(
+        'new-grove-hunt',
+        'Forage the young grove',
+        'Complete 1 hunt once the new forest is ready to support food gathering.',
+        'hunt',
+        1,
+        60,
+        false,
+      ),
+    ];
+  }
+
+  return [
+    ...commonObjectives,
+    taskObjective(
+      'harbor',
+      'Build a dock',
+      'Build 1 dock from adjacent active shore to open the shoreline to fishing and landings.',
+      'buildDock',
       1,
       75,
     ),
@@ -616,10 +664,14 @@ function tutorialMission10(currentFrontierDistance: number): ObjectiveBlueprint[
   ];
 }
 
-function getTutorialMissionObjectives(missionNumber: number, currentFrontierDistance: number): ObjectiveBlueprint[] {
+function getTutorialMissionObjectives(
+  missionNumber: number,
+  currentFrontierDistance: number,
+  landingArchetype: LandingArchetype = 'shoreline',
+): ObjectiveBlueprint[] {
   switch (missionNumber) {
     case 1: return tutorialMission1();
-    case 2: return tutorialMission2();
+    case 2: return tutorialMission2(landingArchetype);
     case 3: return tutorialMission3();
     case 4: return tutorialMission4();
     case 5: return tutorialMission5();
@@ -823,6 +875,7 @@ export function generateFoundingExpeditionMission(
   chapterNumber: number,
   metrics: RunGenerationMetrics,
   progression: ProgressionSnapshot = createInitialProgressionSnapshot(),
+  landingArchetype: LandingArchetype = 'shoreline',
 ): RunBlueprint {
   let selectedMutator: RunMutatorKey;
   let objectives: ObjectiveBlueprint[];
@@ -831,7 +884,7 @@ export function generateFoundingExpeditionMission(
     // Hand-crafted tutorial missions
     selectedMutator = getTutorialMutator(chapterNumber);
     objectives = injectSupportObjectives(
-      getTutorialMissionObjectives(chapterNumber, metrics.frontierDistance),
+      getTutorialMissionObjectives(chapterNumber, metrics.frontierDistance, landingArchetype),
       chapterNumber,
       metrics,
     );
@@ -856,6 +909,7 @@ export function generateFoundingExpeditionMission(
       name: MUTATORS[selectedMutator].name,
       description: MUTATORS[selectedMutator].description,
     },
+    { landingArchetype },
   );
 
   return {

@@ -21,6 +21,7 @@ import {
 
 const INITIAL_WALLET_GOLD = 0;
 const MAX_TRANSACTION_HISTORY = 100;
+const STOCK_CHANGE_INTERVAL_MS = 60_000;
 
 export class MarketTradeError extends Error {
   readonly code: string;
@@ -70,6 +71,10 @@ class ResourceMarketState {
     this.wallets.clear();
     this.transactions = [];
     this.transactionSequence = 0;
+  }
+
+  tick(now: number = Date.now()) {
+    return this.advanceStock(now);
   }
 
   getOverview(actorId?: string | null, actorType: MarketActorType = 'PLAYER'): MarketOverviewSnapshot {
@@ -259,6 +264,42 @@ class ResourceMarketState {
     }
 
     return resource;
+  }
+
+  private advanceStock(now: number): boolean {
+    let changed = false;
+
+    for (let index = 0; index < DEFAULT_MARKET_RESOURCE_CONFIGS.length; index += 1) {
+      const config = DEFAULT_MARKET_RESOURCE_CONFIGS[index]!;
+      const resource = this.resources.get(config.resourceType);
+      if (!resource) {
+        continue;
+      }
+
+      const elapsed = now - resource.updatedAt;
+      if (elapsed < STOCK_CHANGE_INTERVAL_MS) {
+        continue;
+      }
+
+      const cycles = Math.min(12, Math.max(1, Math.floor(elapsed / STOCK_CHANGE_INTERVAL_MS)));
+      let nextStock = resource.currentStock;
+      for (let cycle = 0; cycle < cycles; cycle += 1) {
+        const target = Math.max(1, resource.targetStock);
+        const marketPressure = (target - nextStock) / target;
+        const baseFlow = Math.max(1, Math.round(target * 0.025));
+        const tide = Math.round(Math.sin(((now / STOCK_CHANGE_INTERVAL_MS) + cycle) * 0.73 + index * 1.91) * baseFlow);
+        const drift = Math.round(baseFlow * marketPressure);
+        nextStock = Math.max(0, Math.min(target * 2, nextStock + drift + tide));
+      }
+
+      if (nextStock !== resource.currentStock) {
+        resource.currentStock = nextStock;
+        changed = true;
+      }
+      resource.updatedAt = now;
+    }
+
+    return changed;
   }
 
   private ensureWallet(actorId: string, actorType: MarketActorType): WalletState {

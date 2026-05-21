@@ -725,6 +725,46 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'tradeCenter',
+        label: 'Trade Center',
+        summary: 'Opens direct resource exchange for the settlement.',
+        categoryLabel: 'Logistics',
+        buildTaskKey: 'buildTradeCenter',
+        buildTaskLabel: 'Build Trade Center',
+        sortOrder: 27,
+        requiredPopulation: 4,
+        variantKeys: ['plains_trade_center', 'dirt_trade_center'],
+        overlayAssetKey: 'building_trade_center',
+        maxIncomingRoads: 1,
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+        maintenanceDecayPerMinute: 1.3,
+        canPlace(tile, _hero) {
+            return (tile.terrain === 'plains' || tile.terrain === 'dirt')
+                && tile.isBaseTile
+                && isTileControlled(tile);
+        },
+        requiredXp(_distance: number) {
+            return 4200;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [
+                { type: 'wood', amount: 12 },
+                { type: 'stone', amount: 8 },
+                { type: 'tools', amount: 4 },
+            ];
+        },
+        onComplete(tile) {
+            if (tile.terrain === 'plains') {
+                applyVariant(tile, 'plains_trade_center', { stagger: false, respectBiome: false });
+            } else if (tile.terrain === 'dirt') {
+                applyVariant(tile, 'dirt_trade_center', { stagger: false, respectBiome: false });
+            }
+        },
+    },
+    {
         key: 'lumberCamp',
         label: 'Lumber Camp',
         summary: 'Claims a forest tile as a permanent timber site whose output scales with nearby woods.',

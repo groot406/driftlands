@@ -38,40 +38,6 @@
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
-      v-if="activeShipOrder"
-      class="ship-order-toggle-btn"
-      :class="{ 'ship-order-toggle-btn--active': shipOrderPanelOpen }"
-      type="button"
-      @click="openShipOrderPanel"
-      :title="shipOrderTitle"
-      aria-label="Open ship order"
-    >
-      <svg class="ship-order-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3 17h18" />
-        <path d="M5 17 8 7h8l3 10" />
-        <path d="M8 7l4-3 4 3" />
-        <path d="M7 20h10" />
-      </svg>
-      <span class="ship-order-toggle-badge">{{ shipOrderProgress }}%</span>
-    </button>
-    <button
-      class="market-toggle-btn"
-      :class="{ 'market-toggle-btn--active': marketplaceOpen, 'market-toggle-btn--locked': !marketAccessUnlocked }"
-      type="button"
-      :disabled="!marketAccessUnlocked"
-      @click="openMarketplace()"
-      :title="marketButtonTitle"
-      aria-label="Open system market"
-    >
-      <svg class="market-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 8.5h16" />
-        <path d="M7 8.5l-2.4 5.2a2.8 2.8 0 0 0 5.6 0L7.8 8.5" />
-        <path d="M16.2 8.5l-2.4 5.2a2.8 2.8 0 0 0 5.6 0L17 8.5" />
-        <path d="M12 5v14" />
-        <path d="M8.5 19h7" />
-      </svg>
-    </button>
-    <button
       v-if="serverDebugModeEnabled"
       class="debug-toggle-btn pixel-font"
       :class="{ 'debug-toggle-btn--active': showHelpers }"
@@ -127,7 +93,6 @@
   <PopulationOverviewModal />
   <ResourceDetailModal />
   <MarketplaceModal />
-  <ShipArrivalPopup />
   <ShipOrderModal />
   <SettlerModal />
   <CalamityEventModal />
@@ -153,7 +118,6 @@ import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
 import MarketplaceModal from './MarketplaceModal.vue';
-import ShipArrivalPopup from './ShipArrivalPopup.vue';
 import ShipOrderModal from './ShipOrderModal.vue';
 import SettlerModal from './SettlerModal.vue';
 import CalamityEventModal from './CalamityEventModal.vue';
@@ -171,12 +135,7 @@ import {
   tutorialSnapshot,
   visibleTutorialStepNumber,
 } from '../store/tutorialStore';
-import { marketplaceOpen, marketWallet, openMarketplace } from '../store/marketStore.ts';
-import { activeShipOrder, openShipOrderPanel, shipOrderPanelOpen } from '../store/shipOrderStore.ts';
-import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { activeCalamityWarning, getCalamityDisplayName, reopenActiveCalamityWarning } from '../store/calamityEventStore.ts';
-import { worldVersion } from '../core/world.ts';
-import { hasSettlementMarketAccess } from '../shared/game/marketAccess.ts';
 
 const showHelpers = ref(false);
 const countdownNow = ref(Date.now());
@@ -199,36 +158,6 @@ const openGoalCount = computed(() => {
   return run.progression.nodes.filter((n) => recommended.has(n.key) && !n.unlocked).length;
 });
 
-const marketGold = computed(() => marketWallet.value?.gold ?? 0);
-const marketAccessUnlocked = computed(() => {
-  worldVersion.value;
-  return hasSettlementMarketAccess(currentPlayerSettlementId.value);
-});
-const marketButtonTitle = computed(() => {
-  if (!currentPlayerSettlementId.value) {
-    return 'Start a settlement before opening the market';
-  }
-
-  if (!marketAccessUnlocked.value) {
-    return 'Grant a Market Charter at the town center to unlock trading';
-  }
-
-  return marketWallet.value
-    ? `Open system market · ${formatGold(marketGold.value)} Gold`
-    : 'Open system market';
-});
-const shipOrderProgress = computed(() => {
-  const order = activeShipOrder.value;
-  if (!order || order.totalRequestedValue <= 0) {
-    return 0;
-  }
-
-  return Math.min(100, Math.round((order.totalFulfilledValue / order.totalRequestedValue) * 100));
-});
-const shipOrderTitle = computed(() => {
-  const order = activeShipOrder.value;
-  return order ? `${order.name} loading cargo · ${shipOrderProgress.value}% filled` : 'Open ship order';
-});
 const calamityCountdown = computed(() => {
   const warning = activeCalamityWarning.value;
   if (!warning?.event.impactAt) {
@@ -249,14 +178,6 @@ const calamityCountdown = computed(() => {
     progress: Math.max(0, Math.min(100, ((warningDurationMs - remainingMs) / warningDurationMs) * 100)),
   };
 });
-
-function formatGold(value: number) {
-  if (value >= 1000) {
-    return `${Math.floor(value / 100) / 10}k`;
-  }
-
-  return `${Math.floor(value)}`;
-}
 
 function formatCountdown(ms: number) {
   const totalSeconds = Math.ceil(ms / 1000);
@@ -530,100 +451,6 @@ watch(serverDebugModeEnabled, (enabled) => {
 
 .conversation-recall-btn:hover {
   background-color: rgb(80 103 49 / 0.84);
-}
-
-.market-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  border: 1px solid rgba(245, 197, 95, 0.42);
-  background:
-    linear-gradient(180deg, rgba(73, 50, 23, 0.88), rgba(31, 20, 12, 0.86));
-  color: rgb(255 241 204);
-  box-shadow: 0 8px 18px rgba(25, 18, 12, 0.24);
-  backdrop-filter: blur(8px);
-  font-weight: 900;
-  line-height: 1;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-
-.market-toggle-icon {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ship-order-toggle-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  border: 1px solid rgba(103, 232, 249, 0.45);
-  background:
-    linear-gradient(180deg, rgba(14, 116, 144, 0.92), rgba(8, 47, 73, 0.9));
-  color: rgb(224 242 254);
-  box-shadow: 0 8px 18px rgba(8, 47, 73, 0.24);
-  backdrop-filter: blur(8px);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.ship-order-toggle-btn:hover,
-.ship-order-toggle-btn--active {
-  transform: translateY(-1px);
-  border-color: rgba(165, 243, 252, 0.78);
-}
-
-.ship-order-toggle-icon {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ship-order-toggle-badge {
-  position: absolute;
-  top: -0.38rem;
-  right: -0.45rem;
-  min-width: 1.55rem;
-  border-radius: 999px;
-  border: 1px solid rgba(165, 243, 252, 0.62);
-  background: rgba(8, 47, 73, 0.96);
-  padding: 0.08rem 0.3rem;
-  font-size: 0.58rem;
-  font-weight: 800;
-  color: rgb(236 254 255);
-  line-height: 1.1;
-}
-
-.market-toggle-btn:hover,
-.market-toggle-btn--active {
-  transform: translateY(-1px);
-  border-color: rgba(245, 197, 95, 0.72);
-  background:
-    linear-gradient(180deg, rgba(112, 74, 28, 0.92), rgba(48, 30, 13, 0.9));
-}
-
-.market-toggle-btn--locked,
-.market-toggle-btn:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-  transform: none;
-  border-color: rgba(148, 127, 83, 0.28);
-  background: rgba(28, 22, 16, 0.76);
-  color: rgba(255, 241, 204, 0.58);
 }
 
 .debug-toggle-btn {

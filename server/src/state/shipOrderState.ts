@@ -6,11 +6,11 @@ import { getTileSettlementId } from '../../../src/shared/game/settlement.ts';
 import { isHarborTile } from '../../../src/shared/game/harbor.ts';
 import {
   getShipOrderResourceAmountValue,
-  getShipOrderResourceValue,
   isShipOrderResourceType,
   type ShipOrderOverviewSnapshot,
   type ShipOrderResourceType,
   type ShipOrderSnapshot,
+  type ShipOrderVisualSnapshot,
 } from '../../../src/shared/game/shipOrders.ts';
 import {
   depositResourceAcrossStoragesForSettlement,
@@ -22,13 +22,14 @@ import { playerSettlementState } from './playerSettlementState';
 import { marketState } from './marketState';
 
 const SHIP_DURATION_MS = 12 * 60_000;
+const SHIP_APPROACH_MS = 45_000;
+const SHIP_DEPARTURE_MS = 35_000;
 const FIRST_SHIP_ARRIVAL_MIN_MS = 2 * 60_000;
 const FIRST_SHIP_ARRIVAL_MAX_MS = 5 * 60_000;
 const NEXT_SHIP_ARRIVAL_MIN_MS = 15 * 60_000;
 const NEXT_SHIP_ARRIVAL_MAX_MS = 20 * 60_000;
 const SHIP_REWARD_POOL_GOLD = 120;
 const FULL_ORDER_MULTIPLIER = 1.25;
-const TOP_CONTRIBUTOR_BONUS_GOLD = 25;
 
 const SHIP_NAMES = [
   'The Gullwing',
@@ -106,12 +107,8 @@ function cloneOrder(order: ShipOrderSnapshot): ShipOrderSnapshot {
     ...order,
     requested: order.requested.map((resource) => ({ ...resource })),
     rewardGoods: order.rewardGoods.map((resource) => ({ ...resource })),
+    deliveredRewardGoods: order.deliveredRewardGoods.map((resource) => ({ ...resource })),
     fulfilled: { ...order.fulfilled },
-    contributions: order.contributions.map((contribution) => ({
-      ...contribution,
-      resources: { ...contribution.resources },
-      rewardGoods: contribution.rewardGoods.map((resource) => ({ ...resource })),
-    })),
   };
 }
 
@@ -123,8 +120,10 @@ function hasSettlementHarbor(settlementId: string | null | undefined) {
   return tiles.some((tile) => isHarborTile(tile) && getTileSettlementId(tile) === settlementId);
 }
 
-function hasAnyHarbor() {
-  return tiles.some((tile) => isHarborTile(tile) && !!getTileSettlementId(tile));
+function listHarborTiles() {
+  return tiles
+    .filter((tile) => isHarborTile(tile) && !!getTileSettlementId(tile))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function getRequestedAmount(order: ShipOrderSnapshot, resourceType: ShipOrderResourceType) {
@@ -139,63 +138,137 @@ function randomDelay(minMs: number, maxMs: number) {
   return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
+interface HarborShipState {
+  harborTileId: string;
+  settlementId: string;
+  approachingOrder: ShipOrderSnapshot | null;
+  activeOrder: ShipOrderSnapshot | null;
+  departingShip: ShipOrderVisualSnapshot | null;
+  lastDepartedOrder: ShipOrderSnapshot | null;
+  nextArrivalAt: number | null;
+}
+
 class ShipOrderState {
-  private activeOrder: ShipOrderSnapshot | null = null;
-  private lastDepartedOrder: ShipOrderSnapshot | null = null;
-  private nextArrivalAt: number | null = null;
+  private harborStates = new Map<string, HarborShipState>();
+  private previousShipName: string | null = null;
   private sequence = 0;
 
   reset() {
-    this.activeOrder = null;
-    this.lastDepartedOrder = null;
-    this.nextArrivalAt = null;
+    this.harborStates.clear();
+    this.previousShipName = null;
     this.sequence = 0;
   }
 
   tick(now: number) {
-    if (this.activeOrder && now >= this.activeOrder.departsAt) {
-      this.departActiveOrder(now);
-      this.broadcastUpdate();
+    const harborTiles = listHarborTiles();
+    if (!harborTiles.length) {
       return;
     }
 
-    if (this.activeOrder || !hasAnyHarbor()) {
-      return;
+    let changed = this.syncHarborStates(harborTiles);
+
+    for (const harbor of harborTiles) {
+      const state = this.harborStates.get(harbor.id);
+      if (!state) {
+        continue;
+      }
+
+      if (state.departingShip && now >= state.departingShip.phaseEndsAt) {
+        state.departingShip = null;
+        state.nextArrivalAt = now + randomDelay(NEXT_SHIP_ARRIVAL_MIN_MS, NEXT_SHIP_ARRIVAL_MAX_MS);
+        changed = true;
+      }
+
+      if (state.activeOrder && now >= state.activeOrder.departsAt) {
+        this.departActiveOrder(state, now);
+        changed = true;
+      }
+
+      if (state.approachingOrder && now >= state.approachingOrder.arrivesAt!) {
+        const arrivedAt = state.approachingOrder.arrivesAt!;
+        state.activeOrder = {
+          ...state.approachingOrder,
+          status: 'active',
+          startedAt: arrivedAt,
+          departsAt: arrivedAt + SHIP_DURATION_MS,
+        };
+        state.approachingOrder = null;
+        changed = true;
+      }
+
+      if (state.activeOrder || state.approachingOrder || state.departingShip) {
+        continue;
+      }
+
+      if (state.nextArrivalAt == null) {
+        state.nextArrivalAt = now + randomDelay(FIRST_SHIP_ARRIVAL_MIN_MS, FIRST_SHIP_ARRIVAL_MAX_MS);
+        changed = true;
+        continue;
+      }
+
+      if (now >= state.nextArrivalAt) {
+        state.approachingOrder = this.createOrder(now, state);
+        state.nextArrivalAt = null;
+        changed = true;
+      }
     }
 
-    if (this.nextArrivalAt == null) {
-      this.nextArrivalAt = now + randomDelay(FIRST_SHIP_ARRIVAL_MIN_MS, FIRST_SHIP_ARRIVAL_MAX_MS);
-      this.broadcastUpdate();
-      return;
-    }
-
-    if (now >= this.nextArrivalAt) {
-      this.activeOrder = this.createOrder(now);
-      this.nextArrivalAt = null;
+    if (changed) {
       this.broadcastUpdate();
     }
   }
 
   getOverview(): ShipOrderOverviewSnapshot {
+    const activeOrders = Array.from(this.harborStates.values())
+      .map((state) => state.activeOrder)
+      .filter((order): order is ShipOrderSnapshot => !!order)
+      .sort((a, b) => a.harborTileId.localeCompare(b.harborTileId))
+      .map(cloneOrder);
+    const lastDepartedOrders = Array.from(this.harborStates.values())
+      .map((state) => state.lastDepartedOrder)
+      .filter((order): order is ShipOrderSnapshot => !!order)
+      .sort((a, b) => (b.departedAt ?? 0) - (a.departedAt ?? 0) || a.harborTileId.localeCompare(b.harborTileId))
+      .map(cloneOrder);
+    const nextArrivals = Object.fromEntries(
+      Array.from(this.harborStates.values())
+        .filter((state) => state.nextArrivalAt != null)
+        .map((state) => [state.harborTileId, state.nextArrivalAt!]),
+    );
+    const visibleShips = Array.from(this.harborStates.values())
+      .map((state) => this.getVisibleShip(state))
+      .filter((ship): ship is ShipOrderVisualSnapshot => !!ship)
+      .sort((a, b) => a.harborTileId.localeCompare(b.harborTileId));
+    const nextArrivalAt = Object.values(nextArrivals).sort((a, b) => a - b)[0] ?? null;
+
     return {
-      activeOrder: this.activeOrder ? cloneOrder(this.activeOrder) : null,
-      lastDepartedOrder: this.lastDepartedOrder ? cloneOrder(this.lastDepartedOrder) : null,
-      nextArrivalAt: this.nextArrivalAt,
+      activeOrder: activeOrders[0] ?? null,
+      activeOrders,
+      lastDepartedOrder: lastDepartedOrders[0] ?? null,
+      lastDepartedOrders,
+      nextArrivalAt,
+      nextArrivals,
+      visibleShip: visibleShips[0] ?? null,
+      visibleShips,
     };
   }
 
-  canSettlementContribute(settlementId: string | null | undefined) {
-    return !!this.activeOrder && hasSettlementHarbor(settlementId);
+  canSettlementLoad(settlementId: string | null | undefined) {
+    return !!settlementId
+      && Array.from(this.harborStates.values()).some((state) => (
+        state.settlementId === settlementId && !!state.activeOrder
+      ));
   }
 
-  contribute(input: {
+  loadCargo(input: {
+    orderId: string | null | undefined;
     settlementId: string;
     playerId: string | null;
     playerName: string | null;
     resources: Partial<Record<ShipOrderResourceType, number>>;
   }) {
-    const order = this.activeOrder;
-    if (!order || !hasSettlementHarbor(input.settlementId)) {
+    const state = this.findActiveOrderState(input.orderId, input.settlementId);
+    const order = state?.activeOrder ?? null;
+    if (!state || !order || order.settlementId !== input.settlementId || !hasSettlementHarbor(input.settlementId)) {
       return false;
     }
 
@@ -253,105 +326,148 @@ class ShipOrderState {
       }
     }
 
-    let contribution = order.contributions.find((entry) => entry.settlementId === input.settlementId);
-    if (!contribution) {
-      const owner = playerSettlementState.getSettlementOwner(input.settlementId);
-      contribution = {
-        settlementId: input.settlementId,
-        playerId: input.playerId ?? owner?.playerId ?? null,
-        playerName: input.playerName ?? owner?.playerName ?? null,
-        resources: {},
-        value: 0,
-        rewardGold: 0,
-        rewardGoods: [],
-        topContributor: false,
-      };
-      order.contributions.push(contribution);
-    } else {
-      contribution.playerId ??= input.playerId;
-      contribution.playerName ??= input.playerName;
-    }
+    order.playerId ??= input.playerId;
+    order.playerName ??= input.playerName;
 
     for (const resource of normalized) {
       order.fulfilled[resource.type] = (order.fulfilled[resource.type] ?? 0) + resource.amount;
-      contribution.resources[resource.type] = (contribution.resources[resource.type] ?? 0) + resource.amount;
-      const value = resource.amount * getShipOrderResourceValue(resource.type);
-      contribution.value += value;
+      const value = getShipOrderResourceAmountValue(resource);
       order.totalFulfilledValue += value;
     }
 
-    this.sortContributions(order);
     this.broadcastUpdate();
     return true;
   }
 
-  private createOrder(now: number): ShipOrderSnapshot {
+  contribute(input: {
+    settlementId: string;
+    playerId: string | null;
+    playerName: string | null;
+    resources: Partial<Record<ShipOrderResourceType, number>>;
+  }) {
+    return this.loadCargo({
+      ...input,
+      orderId: null,
+    });
+  }
+
+  private createOrder(now: number, state: HarborShipState): ShipOrderSnapshot {
     const template = ORDER_TEMPLATES[this.sequence % ORDER_TEMPLATES.length]!;
     const id = `ship:${this.sequence + 1}`;
-    const name = SHIP_NAMES[this.sequence % SHIP_NAMES.length]!;
+    const name = this.pickShipName();
     this.sequence += 1;
+    const owner = playerSettlementState.getSettlementOwner(state.settlementId);
 
     const requested = template.requested.map((resource) => ({ ...resource }));
     return {
       id,
+      harborTileId: state.harborTileId,
+      settlementId: state.settlementId,
+      playerId: owner?.playerId ?? null,
+      playerName: owner?.playerName ?? null,
       name,
       origin: template.origin,
       originDescription: template.originDescription,
-      status: 'active',
+      status: 'approaching',
       startedAt: now,
-      departsAt: now + SHIP_DURATION_MS,
+      arrivesAt: now + SHIP_APPROACH_MS,
+      departsAt: now + SHIP_APPROACH_MS + SHIP_DURATION_MS,
       departedAt: null,
       requested,
       fulfilled: {},
-      contributions: [],
       totalRequestedValue: requested.reduce((sum, resource) => sum + getShipOrderResourceAmountValue(resource), 0),
       totalFulfilledValue: 0,
       rewardPoolGold: SHIP_REWARD_POOL_GOLD,
+      rewardGoldPaid: 0,
       rewardGoods: template.rewardGoods.map((resource) => ({ ...resource })),
+      deliveredRewardGoods: [],
       completionMultiplier: 1,
-      topContributorSettlementId: null,
     };
   }
 
-  private departActiveOrder(now: number) {
-    const order = this.activeOrder;
+  private pickShipName() {
+    let name = SHIP_NAMES[Math.floor(Math.random() * SHIP_NAMES.length)] ?? SHIP_NAMES[0]!;
+    if (SHIP_NAMES.length > 1 && name === this.previousShipName) {
+      const nextIndex = (SHIP_NAMES.indexOf(name) + 1) % SHIP_NAMES.length;
+      name = SHIP_NAMES[nextIndex]!;
+    }
+
+    this.previousShipName = name;
+    return name;
+  }
+
+  private departActiveOrder(state: HarborShipState, now: number) {
+    const order = state.activeOrder;
     if (!order) {
       return;
     }
 
-    const topContributor = [...order.contributions].sort((a, b) => b.value - a.value || a.settlementId.localeCompare(b.settlementId))[0] ?? null;
     const fulfilledRatio = order.totalRequestedValue > 0
       ? Math.min(1, order.totalFulfilledValue / order.totalRequestedValue)
       : 0;
-    const completionMultiplier = fulfilledRatio >= 1 ? FULL_ORDER_MULTIPLIER : Math.max(0.25, fulfilledRatio);
+    const completionMultiplier = fulfilledRatio >= 1 ? FULL_ORDER_MULTIPLIER : fulfilledRatio;
     const rewardPool = Math.round(order.rewardPoolGold * completionMultiplier);
+    const owner = playerSettlementState.getSettlementOwner(order.settlementId);
 
-    for (const contribution of order.contributions) {
-      const share = order.totalFulfilledValue > 0 ? contribution.value / order.totalFulfilledValue : 0;
-      const topBonus = topContributor?.settlementId === contribution.settlementId ? TOP_CONTRIBUTOR_BONUS_GOLD : 0;
-      contribution.rewardGold = Math.floor(rewardPool * share) + topBonus;
-      contribution.rewardGoods = this.grantRewardGoods(order, contribution.settlementId, share, topContributor?.settlementId === contribution.settlementId);
-      contribution.topContributor = topBonus > 0;
-      if (contribution.playerId && contribution.rewardGold > 0) {
-        marketState.grantGold(contribution.playerId, contribution.rewardGold);
-      }
+    order.rewardGoldPaid = rewardPool;
+    order.deliveredRewardGoods = this.grantRewardGoods(order, order.settlementId, completionMultiplier);
+    const rewardPlayerId = owner?.playerId ?? order.playerId;
+    if (rewardPlayerId && rewardPool > 0) {
+      marketState.grantGold(rewardPlayerId, rewardPool);
     }
 
     order.status = 'departed';
     order.departedAt = now;
     order.completionMultiplier = completionMultiplier;
-    order.topContributorSettlementId = topContributor?.settlementId ?? null;
-    this.sortContributions(order);
-    this.lastDepartedOrder = cloneOrder(order);
-    this.activeOrder = null;
-    this.nextArrivalAt = now + randomDelay(NEXT_SHIP_ARRIVAL_MIN_MS, NEXT_SHIP_ARRIVAL_MAX_MS);
+    state.lastDepartedOrder = cloneOrder(order);
+    state.departingShip = {
+      id: order.id,
+      orderId: order.id,
+      harborTileId: order.harborTileId,
+      settlementId: order.settlementId,
+      name: order.name,
+      phase: 'departing',
+      phaseStartedAt: now,
+      phaseEndsAt: now + SHIP_DEPARTURE_MS,
+    };
+    state.activeOrder = null;
   }
 
-  private grantRewardGoods(order: ShipOrderSnapshot, settlementId: string, share: number, topContributor: boolean) {
+  private getVisibleShip(state: HarborShipState): ShipOrderVisualSnapshot | null {
+    if (state.approachingOrder?.arrivesAt) {
+      return {
+        id: state.approachingOrder.id,
+        orderId: state.approachingOrder.id,
+        harborTileId: state.harborTileId,
+        settlementId: state.settlementId,
+        name: state.approachingOrder.name,
+        phase: 'approaching',
+        phaseStartedAt: state.approachingOrder.startedAt,
+        phaseEndsAt: state.approachingOrder.arrivesAt,
+      };
+    }
+
+    if (state.activeOrder) {
+      return {
+        id: state.activeOrder.id,
+        orderId: state.activeOrder.id,
+        harborTileId: state.harborTileId,
+        settlementId: state.settlementId,
+        name: state.activeOrder.name,
+        phase: 'docked',
+        phaseStartedAt: state.activeOrder.startedAt,
+        phaseEndsAt: state.activeOrder.departsAt,
+      };
+    }
+
+    return state.departingShip ? { ...state.departingShip } : null;
+  }
+
+  private grantRewardGoods(order: ShipOrderSnapshot, settlementId: string, multiplier: number) {
     const grantedGoods: ResourceAmount[] = [];
     for (let index = 0; index < order.rewardGoods.length; index += 1) {
       const reward = order.rewardGoods[index]!;
-      const amount = Math.floor(reward.amount * share) + (topContributor && index === 0 ? 1 : 0);
+      const amount = Math.floor(reward.amount * multiplier);
       if (amount <= 0) {
         continue;
       }
@@ -381,8 +497,52 @@ class ShipOrderState {
     return grantedGoods;
   }
 
-  private sortContributions(order: ShipOrderSnapshot) {
-    order.contributions.sort((a, b) => b.value - a.value || a.settlementId.localeCompare(b.settlementId));
+  private syncHarborStates(harborTiles: ReturnType<typeof listHarborTiles>) {
+    let changed = false;
+    const liveHarborIds = new Set(harborTiles.map((tile) => tile.id));
+
+    for (const stateHarborId of Array.from(this.harborStates.keys())) {
+      if (!liveHarborIds.has(stateHarborId)) {
+        this.harborStates.delete(stateHarborId);
+        changed = true;
+      }
+    }
+
+    for (const harbor of harborTiles) {
+      const settlementId = getTileSettlementId(harbor);
+      if (!settlementId) {
+        continue;
+      }
+
+      const existing = this.harborStates.get(harbor.id);
+      if (existing && existing.settlementId === settlementId) {
+        continue;
+      }
+
+      this.harborStates.set(harbor.id, {
+        harborTileId: harbor.id,
+        settlementId,
+        approachingOrder: null,
+        activeOrder: null,
+        departingShip: null,
+        lastDepartedOrder: null,
+        nextArrivalAt: null,
+      });
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  private findActiveOrderState(orderId: string | null | undefined, settlementId: string) {
+    const states = Array.from(this.harborStates.values());
+    if (orderId) {
+      return states.find((state) => state.activeOrder?.id === orderId && state.settlementId === settlementId) ?? null;
+    }
+
+    return states
+      .filter((state) => state.settlementId === settlementId && !!state.activeOrder)
+      .sort((a, b) => a.harborTileId.localeCompare(b.harborTileId))[0] ?? null;
   }
 
   private broadcastUpdate() {
@@ -398,7 +558,8 @@ export const shipOrderState = new ShipOrderState();
 export {
   FIRST_SHIP_ARRIVAL_MAX_MS,
   FIRST_SHIP_ARRIVAL_MIN_MS,
+  SHIP_APPROACH_MS,
+  SHIP_DEPARTURE_MS,
   NEXT_SHIP_ARRIVAL_MAX_MS,
   NEXT_SHIP_ARRIVAL_MIN_MS,
-  hasSettlementHarbor,
 };

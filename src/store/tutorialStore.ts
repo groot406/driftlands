@@ -11,6 +11,7 @@ import { runSnapshot, runVersion } from './runStore.ts';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { axialDistanceCoords } from '../shared/game/hex.ts';
 import { listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier.ts';
+import { getSettlementTownCenterTile } from '../shared/game/settlement.ts';
 import { getAvailableTasks } from '../shared/tasks/tasks.ts';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess.ts';
 import {
@@ -18,7 +19,9 @@ import {
   type TutorialMetrics,
   type TutorialStepId,
 } from '../shared/tutorial/tutorialGuide.ts';
+import { createLandingProfile, type LandingArchetype } from '../shared/story/landingProfile.ts';
 import { isPositionControlled } from './settlementSupportStore.ts';
+import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 const TUTORIAL_PANEL_STORAGE_KEY = 'driftlands-tutorial-panel-v1';
 
@@ -67,9 +70,12 @@ export interface TutorialMapHint {
 
 const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   chopWood: 'Chop wood',
+  hunt: 'Hunt',
+  plantTrees: 'Plant trees',
   buildRoad: 'Build road',
   buildHouse: 'Build house',
   buildDock: 'Build dock',
+  buildHuntersHut: 'Build hunter hut',
   dig: 'Dig here',
   tillLand: 'Prepare land',
   seedGrain: 'Plant seeds',
@@ -89,6 +95,11 @@ function getSelectedTutorialHero() {
   return selectedHeroId.value
     ? heroes.find((hero) => hero.id === selectedHeroId.value) ?? null
     : null;
+}
+
+function getCurrentSettlementOrigin() {
+  const townCenter = getSettlementTownCenterTile(tiles, currentPlayerSettlementId.value);
+  return townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
 }
 
 function buildTutorialMetrics(): TutorialMetrics {
@@ -121,10 +132,13 @@ function buildTutorialMetrics(): TutorialMetrics {
   }
 
   const selectedHero = getSelectedTutorialHero();
+  const origin = getCurrentSettlementOrigin();
+  const landingProfile = createLandingProfile(tiles, origin);
 
   return {
     selectedHeroCount: selectedHero ? 1 : 0,
     discoveredTiles: tiles.filter((tile) => tile.discovered).length,
+    landingArchetype: landingProfile.archetype,
     terrainCounts,
     variantCounts,
     buildingCounts,
@@ -238,44 +252,65 @@ function findTutorialScoutHint(hero: Hero, label = 'Scout here'): TutorialMapHin
     : null;
 }
 
+export function getTutorialHintTaskKeysForStep(
+  stepId: TutorialStepId,
+  archetype: LandingArchetype | undefined,
+): { taskKeys: TaskType[]; scoutLabel?: string } | null {
+  switch (stepId) {
+    case 'gather-wood':
+      return { taskKeys: ['chopWood'], scoutLabel: 'Find forest' };
+    case 'lay-road':
+      return { taskKeys: ['buildRoad'] };
+    case 'raise-house':
+      return { taskKeys: ['buildHouse'] };
+    case 'build-dock':
+      if (archetype === 'shoreline') {
+        return { taskKeys: ['buildDock'], scoutLabel: 'Find shore' };
+      }
+      if (archetype === 'woodland') {
+        return { taskKeys: ['hunt', 'buildHuntersHut'], scoutLabel: 'Find forest' };
+      }
+      return { taskKeys: ['plantTrees', 'hunt', 'buildHuntersHut'], scoutLabel: 'Find open land' };
+    case 'start-farming':
+      return { taskKeys: ['seedGrain', 'tillLand', 'dig'] };
+    case 'secure-perimeter':
+      return { taskKeys: ['buildWatchtower'] };
+    case 'build-storage':
+      return { taskKeys: ['buildGranary', 'buildSupplyDepot'] };
+    case 'irrigate-fields':
+      return { taskKeys: ['buildWell', 'irregateDirtTask'] };
+    case 'run-job-sites':
+      return { taskKeys: ['buildGranary', 'buildBakery', 'buildLumberCamp', 'buildHuntersHut', 'buildApiary'] };
+    case 'mine-ridges':
+      return { taskKeys: ['buildMine', 'buildQuarry'], scoutLabel: 'Find mountains' };
+    case 'stage-logistics':
+      return { taskKeys: ['buildSupplyDepot', 'buildRoad'] };
+    case 'study-and-upgrade':
+      return { taskKeys: ['buildLibrary', 'buildWorkshop'] };
+    case 'found-second-hearth':
+      return { taskKeys: ['buildTownCenter', 'buildRoad'] };
+    default:
+      return null;
+  }
+}
+
 function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMapHint | null {
   switch (stepId) {
     case 'scout-frontier':
       return findTutorialScoutHint(hero);
-    case 'gather-wood':
-      return findTutorialTaskHint(['chopWood'], hero)
-        ?? findTutorialScoutHint(hero, 'Find forest');
-    case 'lay-road':
-      return findTutorialTaskHint(['buildRoad'], hero);
-    case 'raise-house':
-      return findTutorialTaskHint(['buildHouse'], hero);
-    case 'build-dock':
-      return findTutorialTaskHint(['buildDock'], hero)
-        ?? findTutorialScoutHint(hero, 'Find shore');
-    case 'start-farming':
-      return findTutorialTaskHint(['seedGrain', 'tillLand', 'dig'], hero);
-    case 'secure-perimeter':
-      return findTutorialTaskHint(['buildWatchtower'], hero);
-    case 'build-storage':
-      return findTutorialTaskHint(['buildGranary', 'buildSupplyDepot'], hero);
-    case 'irrigate-fields':
-      return findTutorialTaskHint(['buildWell', 'irregateDirtTask'], hero);
-    case 'run-job-sites':
-      return findTutorialTaskHint(['buildGranary', 'buildBakery', 'buildLumberCamp', 'buildHuntersHut', 'buildApiary'], hero);
-    case 'mine-ridges':
-      return findTutorialTaskHint(['buildMine', 'buildQuarry'], hero)
-        ?? findTutorialScoutHint(hero, 'Find mountains');
-    case 'stage-logistics':
-      return findTutorialTaskHint(['buildSupplyDepot', 'buildRoad'], hero);
-    case 'study-and-upgrade':
-      return findTutorialTaskHint(['buildLibrary', 'buildWorkshop'], hero);
-    case 'found-second-hearth':
-      return findTutorialTaskHint(['buildTownCenter', 'buildRoad'], hero);
     case 'work-harsh-frontier':
       return findTutorialScoutHint(hero, 'Push outward');
     default:
-      return null;
+      break;
   }
+
+  const route = getTutorialHintTaskKeysForStep(stepId, tutorialMetrics.value.landingArchetype);
+  if (!route) {
+    return null;
+  }
+
+  return findTutorialTaskHint(route.taskKeys, hero)
+    ?? (route.scoutLabel ? findTutorialScoutHint(hero, route.scoutLabel) : null);
 }
 
 export const tutorialMapHints = computed<TutorialMapHint[]>(() => {

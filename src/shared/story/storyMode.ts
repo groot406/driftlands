@@ -2,6 +2,7 @@ import type { RunMutatorKey, RunMutatorSnapshot, RunStoryBeat } from '../goals/t
 import type { TerrainKey } from '../../core/terrainDefs.ts';
 import type { ResourceType } from '../../core/types/Resource.ts';
 import type { BuildingKey } from './progression.ts';
+import type { LandingArchetype } from './landingProfile.ts';
 
 export interface StoryModeFeature {
   label: string;
@@ -40,6 +41,11 @@ export interface StoryChapterProgressMetrics {
 interface StoryChapterCheckpoint {
   chapterNumber: number;
   reached(metrics: StoryChapterProgressMetrics): boolean;
+}
+
+export interface StoryBeatContext {
+  landingArchetype?: LandingArchetype;
+  discoveredTerrains?: readonly TerrainKey[];
 }
 
 export const storyModeFeatures: StoryModeFeature[] = [
@@ -210,7 +216,7 @@ const STORY_CHAPTERS: StoryChapterTemplate[] = [
 
 const MUTATOR_GUIDANCE: Record<RunMutatorKey, string> = {
   open_frontier: 'Scouts have the loudest voice in council today. Claim distance early and let the rest of the colony build behind that momentum.',
-  timber_rush: 'Builders are setting the tempo. Wood, docks, and quick construction matter more than perfect efficiency right now.',
+  timber_rush: 'Builders are setting the tempo. Wood, early food works, and quick construction matter more than perfect efficiency right now.',
   prospectors_call: 'The charter is betting on industry. Establish mining quickly and keep ore moving before the inland routes harden against you.',
   foragers_feast: 'Quartermasters are nervous about lean weeks ahead. Stabilize food first so every later expansion has something to stand on.',
   roadworks_drive: 'Surveyors need reliable lanes now. Clear the rough ground, keep road crews moving, and stage supplies so every new district stays reachable.',
@@ -240,7 +246,11 @@ const STORY_CHAPTER_CHECKPOINTS: StoryChapterCheckpoint[] = [
   },
   {
     chapterNumber: 3,
-    reached: (metrics) => building(metrics, 'dock') >= 1 || (metrics.population >= 2 && discovered(metrics, 'water')),
+    reached: (metrics) => (
+      building(metrics, 'dock') >= 1
+      || building(metrics, 'huntersHut') >= 1
+      || resource(metrics, 'meat') >= 5
+    ),
   },
   {
     chapterNumber: 4,
@@ -325,12 +335,78 @@ function getChapterTemplate(missionNumber: number): StoryChapterTemplate {
   };
 }
 
+function adaptChapterTemplate(
+  template: StoryChapterTemplate,
+  missionNumber: number,
+  context: StoryBeatContext | undefined,
+): StoryChapterTemplate {
+  const chapter = { ...template };
+  const archetype = context?.landingArchetype ?? 'open_field';
+  const hasWater = context?.discoveredTerrains?.includes('water')
+    ?? (context?.landingArchetype ? context.landingArchetype === 'shoreline' : true);
+
+  if (missionNumber === 1 && !hasWater) {
+    chapter.kicker = 'The convoy has broken apart in the drift, and only your charter reached the center stone intact.';
+    chapter.stakes = 'If the first lantern line fails, the fleet turns back through the mist and the colony ends before it begins.';
+    chapter.completionText = 'Lanterns answer from the dark. Other crews can finally pick their way toward the colony without vanishing in the mist.';
+    chapter.failureTitle = 'The landing goes dark';
+    chapter.failureText = 'Without a marked camp and a stable first route, the fleet loses its nerve and the founding charter splinters before it can become a settlement.';
+    chapter.nextHint = archetype === 'woodland'
+      ? 'The nearby woods can feed the first workers. Shelter and a steady forest food route would change everything.'
+      : 'The open ground can be shaped. Shelter, planted trees, and a first food route would change everything.';
+  }
+
+  if (missionNumber === 2 && archetype === 'woodland') {
+    chapter.chapterId = 'embers-under-canopy';
+    chapter.title = 'Embers Under Canopy';
+    chapter.kicker = 'A settlement exists now, tucked against woods that can either feed it or disappear into axes.';
+    chapter.briefing = 'Raise the first shelter, hunt from the forest, and prepare a hunter hut so food can come from the land around your camp instead of a distant shore.';
+    chapter.stakes = 'If your camp cannot shelter its people and work the woods carefully, every new arrival becomes another mouth with nowhere steady to turn.';
+    chapter.completionTitle = 'The woods answer';
+    chapter.completionText = 'Cookfires stay lit under the branches, workers stop sleeping beside empty crates, and the forest begins to feel like part of the settlement.';
+    chapter.failureTitle = 'The camp never roots';
+    chapter.failureText = 'A camp without shelter and a working food route cannot keep its people steady. Restlessness spreads faster than any banner can answer it.';
+    chapter.nextHint = 'The soil here is rich enough to farm. Someone should try tilling the inland plots.';
+  } else if (missionNumber === 2 && archetype === 'open_field') {
+    chapter.chapterId = 'saplings-under-canvas';
+    chapter.title = 'Saplings Under Canvas';
+    chapter.kicker = 'A settlement exists now, but the open ground offers little until someone teaches it what to become.';
+    chapter.briefing = 'Raise the first shelter, plant saplings on workable plains, and turn the new grove into the beginning of a food route through hunting and forest work.';
+    chapter.stakes = 'If your camp cannot shelter its people or shape a local food source, every future landing arrives hungry, cold, and ready to panic.';
+    chapter.completionTitle = 'The camp grows roots';
+    chapter.completionText = 'Cookfires stay lit beside the young grove, workers stop sleeping beside empty crates, and the first planned woodland changes what this place can support.';
+    chapter.failureTitle = 'The camp never takes';
+    chapter.failureText = 'A camp without shelter and a working food route cannot keep its people steady. Restlessness spreads faster than any banner can answer it.';
+    chapter.nextHint = 'The soil here is rich enough to farm. Someone should try tilling the inland plots.';
+  }
+
+  if (missionNumber === 5 && !hasWater) {
+    chapter.briefing = 'Build a granary to secure the harvest, raise a bakery so workers can turn grain into food, and raise a watchtower to secure the perimeter. The colony needs reserves and vigilance before it can afford to grow.';
+  }
+
+  if (missionNumber === 6 && !hasWater) {
+    chapter.kicker = 'Surveyors have marked richer veins inland, but every step away from the first food sites stretches the colony thin.';
+  }
+
+  if (missionNumber === 7 && !hasWater) {
+    chapter.chapterId = 'routes-of-echoes';
+    chapter.title = 'Routes of Echoes';
+    chapter.completionTitle = 'The inland routes begin to speak';
+    chapter.completionText = 'Depots fill, timber crews find their rhythm, and incoming workers finally have a route to follow besides a lonely bonfire.';
+    chapter.failureTitle = 'The routes keep their distance';
+    chapter.failureText = 'Without cleaner approaches and proper works, the frontier stays hostile, and the colony remains cut off from the help it needs.';
+  }
+
+  return chapter;
+}
+
 export function createStoryBeat(
   missionNumber: number,
   frontierDistance: number,
   mutator: RunMutatorSnapshot,
+  context?: StoryBeatContext,
 ): RunStoryBeat {
-  const chapter = getChapterTemplate(missionNumber);
+  const chapter = adaptChapterTemplate(getChapterTemplate(missionNumber), missionNumber, context);
 
   return {
     chapterId: chapter.chapterId,

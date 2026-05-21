@@ -89,13 +89,13 @@
                 <p class="ship-card-label">Load Cargo</p>
                 <span class="ship-chip">{{ selectedCargoTotal }} selected</span>
               </div>
-              <p v-if="!canContribute" class="ship-alert">Build a Harbor on large water before loading this ship.</p>
+              <p v-if="!canLoad" class="ship-alert">Only the settlement that owns this Harbor can load this ship.</p>
               <div v-else class="ship-load-list">
                 <article
                   v-for="resource in activeOrder.requested"
                   :key="`input:${resource.type}`"
                   class="ship-load-row"
-                  :class="{ 'ship-load-row--empty': getContributionLimit(resource.type as ShipOrderResourceType) <= 0 }"
+                  :class="{ 'ship-load-row--empty': getLoadLimit(resource.type as ShipOrderResourceType) <= 0 }"
                 >
                   <div class="ship-load-copy">
                     <p>{{ resourceLabel(resource.type) }}</p>
@@ -107,7 +107,7 @@
                       type="button"
                       :aria-label="`Add 1 ${resourceLabel(resource.type)} to cargo selection`"
                       :disabled="!canAddCargo(resource.type as ShipOrderResourceType, 1)"
-                      @click="addContribution(resource.type as ShipOrderResourceType, 1)"
+                      @click="addCargo(resource.type as ShipOrderResourceType, 1)"
                     >
                       +1
                     </button>
@@ -115,7 +115,7 @@
                       type="button"
                       :aria-label="`Add 5 ${resourceLabel(resource.type)} to cargo selection`"
                       :disabled="!canAddCargo(resource.type as ShipOrderResourceType, 5)"
-                      @click="addContribution(resource.type as ShipOrderResourceType, 5)"
+                      @click="addCargo(resource.type as ShipOrderResourceType, 5)"
                     >
                       +5
                     </button>
@@ -123,15 +123,15 @@
                       type="button"
                       :aria-label="`Add 10 ${resourceLabel(resource.type)} to cargo selection`"
                       :disabled="!canAddCargo(resource.type as ShipOrderResourceType, 10)"
-                      @click="addContribution(resource.type as ShipOrderResourceType, 10)"
+                      @click="addCargo(resource.type as ShipOrderResourceType, 10)"
                     >
                       +10
                     </button>
                     <button
                       type="button"
                       :aria-label="`Select maximum ${resourceLabel(resource.type)} cargo`"
-                      :disabled="getContributionLimit(resource.type as ShipOrderResourceType) <= 0"
-                      @click="setContributionToMax(resource.type as ShipOrderResourceType)"
+                      :disabled="getLoadLimit(resource.type as ShipOrderResourceType) <= 0"
+                      @click="setCargoToMax(resource.type as ShipOrderResourceType)"
                     >
                       Max
                     </button>
@@ -141,33 +141,31 @@
                   class="ship-submit"
                   type="button"
                   :disabled="!canSubmit"
-                  @click="submitContribution"
+                  @click="submitCargo"
                 >
                   Load Cargo
                 </button>
               </div>
             </div>
 
-            <aside class="ship-card ship-card--contributors">
+            <aside class="ship-card ship-card--loaded">
               <div class="ship-section-head">
-                <p class="ship-card-label">Contributors</p>
-                <span class="ship-chip">{{ activeOrder.contributions.length }}</span>
+                <p class="ship-card-label">Loaded Cargo</p>
+                <span class="ship-chip">{{ orderProgress }}%</span>
               </div>
-              <div v-if="activeOrder.contributions.length" class="ship-leader-list">
+              <div class="ship-leader-list">
                 <article
-                  v-for="contribution in activeOrder.contributions"
-                  :key="contribution.settlementId"
+                  v-for="resource in activeOrder.requested"
+                  :key="`loaded:${resource.type}`"
                   class="ship-leader-row"
-                  :class="{ 'ship-leader-row--own': contribution.settlementId === currentPlayerSettlementId }"
                 >
                   <div class="ship-leader-copy">
-                    <p>{{ contribution.playerName ?? contribution.settlementId }}</p>
-                    <span>{{ contributionShare(contribution.value) }} share</span>
+                    <p>{{ resourceLabel(resource.type) }}</p>
+                    <span>{{ fulfilledAmount(resource.type) }} / {{ resource.amount }}</span>
                   </div>
-                  <span class="ship-chip">{{ contribution.value }}</span>
+                  <span class="ship-chip">{{ resourceProgress(resource) }}%</span>
                 </article>
               </div>
-              <p v-else class="ship-empty">No cargo loaded yet.</p>
             </aside>
           </section>
         </div>
@@ -190,31 +188,23 @@
 import { computed, reactive, ref, watch, onMounted, onUnmounted, type CSSProperties } from 'vue';
 import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
 import type { ShipOrderResourceType } from '../shared/game/shipOrders.ts';
-import { activeShipOrder, closeShipOrderPanel, shipOrderPanelOpen, submitShipOrderContribution } from '../store/shipOrderStore.ts';
+import { activeShipOrder, closeShipOrderPanel, shipOrderPanelOpen, submitShipOrderLoad } from '../store/shipOrderStore.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { getSettlementResourceInventory, resourceVersion } from '../store/resourceStore.ts';
 import { getInventoryEntryDefinition } from '../shared/game/inventoryPresentation.ts';
-import { tileIndex, worldVersion } from '../core/world.ts';
-import { isHarborTile } from '../shared/game/harbor.ts';
-import { getTileSettlementId } from '../shared/game/settlement.ts';
 import PanelModalShell from './ui/PanelModalShell.vue';
 import PanelStatCard from './ui/PanelStatCard.vue';
 import shipPortraitAtlasUrl from '../assets/ui/ships/trading-ship-portraits-atlas.png';
 
 const now = ref(Date.now());
-const contributionInputs = reactive<Partial<Record<ShipOrderResourceType, number>>>({});
+const cargoInputs = reactive<Partial<Record<ShipOrderResourceType, number>>>({});
 let timer: number | null = null;
 
 const activeOrder = activeShipOrder;
 
-const canContribute = computed(() => {
+const canLoad = computed(() => {
   const settlementId = currentPlayerSettlementId.value;
-  worldVersion.value;
-  if (!settlementId) {
-    return false;
-  }
-
-  return Object.values(tileIndex).some((tile) => isHarborTile(tile) && getTileSettlementId(tile) === settlementId);
+  return !!settlementId && activeOrder.value?.settlementId === settlementId;
 });
 
 const playerInventory = computed(() => {
@@ -238,7 +228,7 @@ const orderProgress = computed(() => {
 });
 
 const selectedCargoTotal = computed(() => (
-  Object.values(contributionInputs).reduce((sum, amount) => sum + Math.max(0, Math.floor(amount ?? 0)), 0)
+  Object.values(cargoInputs).reduce((sum, amount) => sum + Math.max(0, Math.floor(amount ?? 0)), 0)
 ));
 
 const rewardSummary = computed(() => {
@@ -291,7 +281,7 @@ const shipPortraitStyle = computed<CSSProperties>(() => ({
 }));
 
 const canSubmit = computed(() => {
-  if (!activeOrder.value || !currentPlayerSettlementId.value || !canContribute.value) {
+  if (!activeOrder.value || !currentPlayerSettlementId.value || !canLoad.value) {
     return false;
   }
 
@@ -319,25 +309,25 @@ function remainingAmount(type: ShipOrderResourceType) {
   return Math.max(0, requested - fulfilledAmount(type));
 }
 
-function getContributionLimit(type: ShipOrderResourceType) {
+function getLoadLimit(type: ShipOrderResourceType) {
   return Math.min(getStoredAmount(type), remainingAmount(type));
 }
 
 function getSelectedAmount(type: ShipOrderResourceType) {
-  return Math.max(0, Math.floor(contributionInputs[type] ?? 0));
+  return Math.max(0, Math.floor(cargoInputs[type] ?? 0));
 }
 
 function canAddCargo(type: ShipOrderResourceType, amount: number) {
-  return getSelectedAmount(type) < getContributionLimit(type) && amount > 0;
+  return getSelectedAmount(type) < getLoadLimit(type) && amount > 0;
 }
 
-function addContribution(type: ShipOrderResourceType, amount: number) {
+function addCargo(type: ShipOrderResourceType, amount: number) {
   const current = getSelectedAmount(type);
-  contributionInputs[type] = Math.min(getContributionLimit(type), current + amount);
+  cargoInputs[type] = Math.min(getLoadLimit(type), current + amount);
 }
 
-function setContributionToMax(type: ShipOrderResourceType) {
-  contributionInputs[type] = getContributionLimit(type);
+function setCargoToMax(type: ShipOrderResourceType) {
+  cargoInputs[type] = getLoadLimit(type);
 }
 
 function resourceProgress(resource: ResourceAmount) {
@@ -348,11 +338,6 @@ function resourceProgress(resource: ResourceAmount) {
   return Math.min(100, Math.round((fulfilledAmount(resource.type) / resource.amount) * 100));
 }
 
-function contributionShare(value: number) {
-  const total = Math.max(1, activeOrder.value?.totalFulfilledValue ?? 0);
-  return `${Math.round((value / total) * 100)}%`;
-}
-
 function formatTime(ms: number) {
   const totalSeconds = Math.ceil(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -360,7 +345,7 @@ function formatTime(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function submitContribution() {
+function submitCargo() {
   const settlementId = currentPlayerSettlementId.value;
   const order = activeOrder.value;
   if (!settlementId || !order || !canSubmit.value) {
@@ -377,20 +362,20 @@ function submitContribution() {
     );
     if (amount > 0) {
       resources[type] = amount;
-      contributionInputs[type] = 0;
+      cargoInputs[type] = 0;
     }
   }
 
-  submitShipOrderContribution(settlementId, resources);
+  submitShipOrderLoad(order.id, settlementId, resources);
 }
 
 watch(activeOrder, (order) => {
-  for (const key of Object.keys(contributionInputs)) {
-    delete contributionInputs[key as ShipOrderResourceType];
+  for (const key of Object.keys(cargoInputs)) {
+    delete cargoInputs[key as ShipOrderResourceType];
   }
 
   for (const resource of order?.requested ?? []) {
-    contributionInputs[resource.type as ShipOrderResourceType] = 0;
+    cargoInputs[resource.type as ShipOrderResourceType] = 0;
   }
 }, { immediate: true });
 
@@ -754,7 +739,7 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
-.ship-card--contributors {
+.ship-card--loaded {
   max-height: 11.5rem;
   overflow: hidden;
 }
@@ -835,7 +820,7 @@ onUnmounted(() => {
     padding-right: 0;
   }
 
-  .ship-card--contributors {
+  .ship-card--loaded {
     max-height: none;
   }
 }

@@ -22,6 +22,12 @@ function key(q: number, r: number) {
   return `${q},${r}`;
 }
 
+function axialDistance(a: { q: number; r: number }, b: { q: number; r: number }) {
+  return (Math.abs(a.q - b.q)
+    + Math.abs(a.q + a.r - b.q - b.r)
+    + Math.abs(a.r - b.r)) / 2;
+}
+
 function isGeneratedWater(q: number, r: number) {
   return resolveWorldTile(q, r).terrain === 'water';
 }
@@ -102,4 +108,87 @@ export function hasLargeWaterBodyAdjacent(
   threshold: number = HARBOR_WATER_BODY_THRESHOLD,
 ) {
   return getAdjacentWaterBodySize(tile, threshold) >= threshold;
+}
+
+export interface HarborShipRoute {
+  dock: { q: number; r: number };
+  origin: { q: number; r: number };
+  path: Array<{ q: number; r: number }>;
+}
+
+export function findHarborShipRoute(
+  tile: Pick<Tile, 'q' | 'r'> | null | undefined,
+  maxDistance: number = 18,
+): HarborShipRoute | null {
+  const docks = listAdjacentGeneratedWater(tile);
+  if (!tile || docks.length === 0) {
+    return null;
+  }
+
+  let best: HarborShipRoute | null = null;
+  let bestDistance = -1;
+  let bestPathLength = -1;
+
+  for (const dock of docks) {
+    const visited = new Set<string>();
+    const parent = new Map<string, string | null>();
+    const coords = new Map<string, { q: number; r: number }>();
+    const queue = [dock];
+    const dockKey = key(dock.q, dock.r);
+    visited.add(dockKey);
+    parent.set(dockKey, null);
+    coords.set(dockKey, dock);
+
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index]!;
+      for (const side of SIDE_NAMES) {
+        const [dq, dr] = SIDE_DELTAS[side];
+        const next = { q: current.q + dq, r: current.r + dr };
+        const nextKey = key(next.q, next.r);
+        if (visited.has(nextKey) || !isGeneratedWater(next.q, next.r)) {
+          continue;
+        }
+
+        if (axialDistance(dock, next) > maxDistance) {
+          continue;
+        }
+
+        visited.add(nextKey);
+        parent.set(nextKey, key(current.q, current.r));
+        coords.set(nextKey, next);
+        queue.push(next);
+      }
+    }
+
+    for (const coord of coords.values()) {
+      const distance = axialDistance(tile, coord);
+      const coordKey = key(coord.q, coord.r);
+      const path: Array<{ q: number; r: number }> = [];
+      let cursor: string | null | undefined = coordKey;
+      while (cursor) {
+        const step = coords.get(cursor);
+        if (step) {
+          path.push(step);
+        }
+        cursor = parent.get(cursor);
+      }
+
+      const pathLength = path.length;
+      if (
+        distance > bestDistance
+        || (distance === bestDistance && pathLength > bestPathLength)
+        || (distance === bestDistance && pathLength === bestPathLength && coordKey.localeCompare(key(best?.origin.q ?? 0, best?.origin.r ?? 0)) < 0)
+      ) {
+        bestDistance = distance;
+        bestPathLength = pathLength;
+        best = {
+          dock,
+          origin: coord,
+          path,
+        };
+      }
+    }
+  }
+
+  return best;
 }

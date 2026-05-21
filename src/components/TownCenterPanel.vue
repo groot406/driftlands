@@ -80,42 +80,12 @@
 
         <div class="tc-section tc-section-trade">
           <div class="tc-section-row">
-            <div class="tc-section-title">Trade Charter</div>
+            <div class="tc-section-title">Trade Access</div>
             <div class="tc-section-caption">{{ tradeCharterStatusLabel }}</div>
           </div>
           <div class="tc-status-row" :class="tradeCharterStatusClass">
             <span class="tc-status-dot" :class="tradeCharterStatusClass" />
             <span class="tc-status-text">{{ tradeCharterStatusText }}</span>
-          </div>
-          <div v-if="townCenterOrderActions.length" class="tc-detail-order-list tc-town-center-order-list">
-            <div v-for="action in townCenterOrderActions" :key="action.key" class="tc-detail-order-card">
-              <div class="tc-detail-order-top">
-                <div>
-                  <p class="tc-detail-order-title">{{ action.label }}</p>
-                  <p class="tc-detail-order-copy">{{ action.summary }}</p>
-                  <p v-if="!action.unlocked && action.lockHint" class="tc-detail-order-note">{{ action.lockHint }}</p>
-                </div>
-                <PanelActionButton
-                  class="tc-detail-order-button"
-                  size="small"
-                  variant="secondary"
-                  :disabled="!action.unlocked"
-                  @click.stop="startBuildingAction(action.tileId, action.definition)"
-                >
-                  {{ !action.unlocked ? 'Locked' : (selectedHero ? 'Send Hero' : 'Select Hero') }}
-                </PanelActionButton>
-              </div>
-              <div v-if="action.costs.length" class="tc-detail-chip-row">
-                <span
-                  v-for="resource in action.costs"
-                  :key="`${action.key}:${resource.type}`"
-                  class="tc-detail-chip"
-                  :class="{ 'tc-detail-chip-alert': getRequirementWarehouseAmount(resource.type) < resource.amount }"
-                >
-                  {{ formatNumber(resource.amount) }} {{ formatResourceType(resource.type) }}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
         </div>
@@ -469,6 +439,64 @@
               </div>
             </div>
 
+            <div v-if="selectedJobSiteDetail.harborDetails" class="tc-detail-section">
+              <div class="tc-detail-section-title">Ship Loading</div>
+              <div class="tc-detail-grid">
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Route</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.harborDetails.statusLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.harborDetails.routeLabel }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Cargo</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.harborDetails.timingLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.harborDetails.cargoLabel }}</p>
+                </section>
+              </div>
+              <div v-if="selectedJobSiteDetail.harborDetails.progressPercent !== null" class="tc-detail-condition-card">
+                <div class="tc-detail-flow-main">
+                  <p class="tc-detail-flow-copy">{{ selectedJobSiteDetail.harborDetails.progressLabel }}</p>
+                  <p class="tc-detail-flow-note">{{ selectedJobSiteDetail.harborDetails.rewardLabel }}</p>
+                </div>
+                <span class="tc-detail-pill tc-detail-pill-ok">{{ selectedJobSiteDetail.harborDetails.progressPercent }}%</span>
+                <div class="tc-maintenance-bar-track">
+                  <div class="tc-maintenance-bar-fill tc-maintenance-bar-fill-ok" :style="{ width: `${selectedJobSiteDetail.harborDetails.progressPercent}%` }" />
+                </div>
+              </div>
+              <div class="tc-detail-action-row">
+                <button class="tc-detail-toggle" @click.stop="openShipLoadingPanel">
+                  {{ selectedJobSiteDetail.harborDetails.buttonLabel }}
+                </button>
+                <p class="tc-detail-action-copy">{{ selectedJobSiteDetail.harborDetails.buttonCopy }}</p>
+              </div>
+            </div>
+
+            <div v-if="selectedJobSiteDetail.tradeCenterDetails" class="tc-detail-section">
+              <div class="tc-detail-section-title">Trade Center</div>
+              <div class="tc-detail-grid">
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Access</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.tradeCenterDetails.accessLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.tradeCenterDetails.accessCopy }}</p>
+                </section>
+                <section class="tc-detail-card">
+                  <p class="tc-detail-card-label">Market</p>
+                  <div class="tc-detail-card-value">{{ selectedJobSiteDetail.tradeCenterDetails.marketLabel }}</div>
+                  <p class="tc-detail-card-copy">{{ selectedJobSiteDetail.tradeCenterDetails.stockLabel }}</p>
+                </section>
+              </div>
+              <div class="tc-detail-action-row">
+                <button
+                  class="tc-detail-toggle"
+                  :disabled="!selectedJobSiteDetail.tradeCenterDetails.canOpenMarket"
+                  @click.stop="openTradeCenter"
+                >
+                  Open Trade Center
+                </button>
+                <p class="tc-detail-action-copy">{{ selectedJobSiteDetail.tradeCenterDetails.buttonCopy }}</p>
+              </div>
+            </div>
+
             <div v-if="selectedJobSiteDetail.isJobSite" class="tc-detail-grid">
               <section class="tc-detail-card">
                 <p class="tc-detail-card-label">Current Staffing</p>
@@ -738,6 +766,9 @@ import { currentPlayerId } from '../core/socket';
 import { currentPlayerSettlementId, settlementStartMarkers } from '../store/settlementStartStore.ts';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
 import { getTileSettlementId, isTileInSettlement } from '../shared/game/settlement';
+import { hasSettlementMarketAccess, isTradeCenterTile } from '../shared/game/marketAccess.ts';
+import { marketOverview, openMarketplace } from '../store/marketStore.ts';
+import { openShipOrderPanel, shipOrderOverview } from '../store/shipOrderStore.ts';
 import PanelModalShell from './ui/PanelModalShell.vue';
 import PanelActionButton from './ui/PanelActionButton.vue';
 import PanelIconBanner from './ui/PanelIconBanner.vue';
@@ -839,56 +870,40 @@ const inspectedTownCenterTile = computed(() => {
   return settlementId ? tileIndex[settlementId] ?? null : null;
 });
 
-const marketCharterTask = computed(() => listTaskDefinitions().find((task) => task.key === 'grantMarketCharter') ?? null);
-const marketCharterGranted = computed(() => !!inspectedTownCenterTile.value?.marketCharterUnlocked);
-const townCenterOrderActions = computed(() => {
-  const tile = inspectedTownCenterTile.value;
-  const task = marketCharterTask.value;
-  if (!tile || !task || marketCharterGranted.value) {
-    return [];
-  }
-
-  const inspectorHero = selectedHero.value ?? createInspectorHero(tile);
-  if (!canStartTaskDefinition(task, tile, inspectorHero)) {
-    return [];
-  }
-
-  return [{
-    key: task.key,
-    tileId: tile.id,
-    definition: task,
-    label: task.label,
-    summary: getActionSummary(task),
-    costs: getTaskCosts(task),
-    unlocked: isTaskUnlockedForUse(task.key, inspectedSettlementId.value),
-    lockHint: getTaskLockHint(task),
-  }];
+const tradeCenterTiles = computed(() => {
+  void worldVersion.value;
+  const settlementId = inspectedSettlementId.value;
+  return playerTiles.value.filter((tile) => isTradeCenterTile(tile) && getTileSettlementId(tile) === settlementId);
+});
+const marketAccessReady = computed(() => {
+  void worldVersion.value;
+  const settlementId = inspectedSettlementId.value;
+  return hasSettlementMarketAccess(settlementId);
 });
 const tradeCharterStatusLabel = computed(() => (
-  marketCharterGranted.value
-    ? 'Granted'
-    : townCenterOrderActions.value.some((action) => action.unlocked)
-      ? 'Available'
+  marketAccessReady.value
+    ? 'Open'
+    : tradeCenterTiles.value.length > 0
+      ? 'Ready'
       : 'Locked'
 ));
 const tradeCharterStatusClass = computed(() => (
-  marketCharterGranted.value
+  marketAccessReady.value
     ? 'tc-status-ok'
-    : townCenterOrderActions.value.some((action) => action.unlocked)
+    : tradeCenterTiles.value.length > 0
       ? 'tc-status-warn'
       : 'tc-status-muted'
 ));
 const tradeCharterStatusText = computed(() => {
-  if (marketCharterGranted.value) {
+  if (marketAccessReady.value) {
     return 'This settlement can trade through the global market.';
   }
 
-  const action = townCenterOrderActions.value[0];
-  if (action?.unlocked) {
-    return 'Grant the charter here to unlock settlement trading.';
+  if (tradeCenterTiles.value.length > 0) {
+    return 'Inspect the Trade Center to open settlement trading.';
   }
 
-  return action?.lockHint ?? 'Reach Logistics to authorize market trading.';
+  return 'Build a Trade Center to unlock settlement trading.';
 });
 
 const currentPlayerTownCenterTile = computed(() => {
@@ -1792,6 +1807,117 @@ const selectedJobSiteDetail = computed(() => {
     };
     })()
     : null;
+  const activeShip = (shipOrderOverview.value.activeOrders ?? [])
+    .find((order) => order.harborTileId === tile.id) ?? null;
+  const nextArrivalAt = shipOrderOverview.value.nextArrivals?.[tile.id] ?? null;
+  const visibleShip = (shipOrderOverview.value.visibleShips ?? [])
+    .find((ship) => ship.harborTileId === tile.id) ?? null;
+  const harborDetails = building?.key === 'harbor'
+    ? (() => {
+      if (!activeShip && visibleShip?.phase === 'approaching') {
+        return {
+          statusLabel: visibleShip.name,
+          routeLabel: 'Ship approaching harbor',
+          timingLabel: formatCountdown(visibleShip.phaseEndsAt),
+          cargoLabel: 'Manifest pending until the ship reaches the dock water.',
+          progressPercent: null,
+          progressLabel: '',
+          rewardLabel: '',
+          buttonLabel: 'Open Ship Panel',
+          activeOrderId: visibleShip.orderId,
+          buttonCopy: 'Loading opens once the ship stops beside the harbor.',
+        };
+      }
+
+      if (!activeShip && visibleShip?.phase === 'departing') {
+        return {
+          statusLabel: visibleShip.name,
+          routeLabel: 'Ship departing harbor',
+          timingLabel: formatCountdown(visibleShip.phaseEndsAt),
+          cargoLabel: 'Cargo closed',
+          progressPercent: null,
+          progressLabel: '',
+          rewardLabel: '',
+          buttonLabel: 'Open Ship Panel',
+          activeOrderId: visibleShip.orderId,
+          buttonCopy: 'The ship is leaving; the next order will schedule after it clears the water route.',
+        };
+      }
+
+      if (activeShip) {
+        const progressPercent = activeShip.totalRequestedValue > 0
+          ? Math.min(100, Math.round((activeShip.totalFulfilledValue / activeShip.totalRequestedValue) * 100))
+          : 100;
+        return {
+          statusLabel: activeShip.name,
+          routeLabel: activeShip.originDescription ?? activeShip.origin,
+          timingLabel: formatCountdown(activeShip.departsAt),
+          cargoLabel: formatResourceList(activeShip.requested, 'No cargo requested'),
+          progressPercent,
+          progressLabel: `${formatNumber(activeShip.totalFulfilledValue)} / ${formatNumber(activeShip.totalRequestedValue)} cargo value loaded`,
+          rewardLabel: `${formatNumber(activeShip.rewardPoolGold)} Gold pool · ${formatResourceList(activeShip.rewardGoods, 'No return cargo')}`,
+          buttonLabel: 'Open Ship Loading',
+          activeOrderId: activeShip.id,
+          buttonCopy: 'Load settlement stock onto the current ship before it leaves harbor.',
+        };
+      }
+
+      if (nextArrivalAt) {
+        return {
+          statusLabel: 'Next ship en route',
+          routeLabel: 'A cargo order will be posted when the ship reaches any settlement harbor.',
+          timingLabel: formatCountdown(nextArrivalAt),
+          cargoLabel: 'Manifest pending',
+          progressPercent: null,
+          progressLabel: '',
+          rewardLabel: '',
+          buttonLabel: 'Open Ship Panel',
+          activeOrderId: null,
+          buttonCopy: 'Check the ship loading panel for the next arrival timer.',
+        };
+      }
+
+      return {
+        statusLabel: 'Harbor ready',
+        routeLabel: 'Trade ships begin scheduling once the harbor network is active.',
+        timingLabel: 'Awaiting route',
+        cargoLabel: 'No manifest yet',
+        progressPercent: null,
+        progressLabel: '',
+        rewardLabel: '',
+        buttonLabel: 'Open Ship Panel',
+        activeOrderId: null,
+        buttonCopy: 'The panel will show the next ship once one is scheduled.',
+      };
+    })()
+    : null;
+  const tradeCenterDetails = building?.key === 'tradeCenter'
+    ? (() => {
+      const stockedMarketResources = Object.entries(marketOverview.value.resources)
+        .map(([type, resource]) => ({
+          type: type as ResourceType,
+          stock: Math.floor(resource.stock ?? 0),
+        }))
+        .filter((resource) => resource.stock > 0)
+        .sort((a, b) => b.stock - a.stock);
+      const topStock = stockedMarketResources.slice(0, 3)
+        .map((resource) => `${formatNumber(resource.stock)} ${getResourceDefinition(resource.type).label.toLowerCase()}`)
+        .join(' • ');
+
+      return {
+        accessLabel: marketAccessReady.value ? 'Market open' : 'Trade Center needed',
+        accessCopy: marketAccessReady.value
+          ? 'This Trade Center connects settlement stores to the resource exchange.'
+          : 'Build a Trade Center to authorize settlement trading.',
+        marketLabel: `${stockedMarketResources.length} stocked good${stockedMarketResources.length === 1 ? '' : 's'}`,
+        stockLabel: topStock || 'Market stock is refreshing.',
+        canOpenMarket: marketAccessReady.value,
+        buttonCopy: marketAccessReady.value
+          ? 'Open the exchange to buy or sell any stocked resource.'
+          : 'Build a Trade Center first, then the exchange opens from here.',
+      };
+    })()
+    : null;
   const isInfrastructure = !building && (isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile));
   if (!building && !isInfrastructure) {
     return null;
@@ -1889,6 +2015,8 @@ const selectedJobSiteDetail = computed(() => {
     })),
     watchtowerDetails,
     barracksDetails,
+    harborDetails,
+    tradeCenterDetails,
     advice,
     availableActions: canManage ? availableActions : [],
     actionHint: hero
@@ -1924,6 +2052,18 @@ function closeJobSiteDetail() {
   if (shouldClosePanel) {
     emit('close');
   }
+}
+
+function openShipLoadingPanel() {
+  openShipOrderPanel(selectedJobSiteDetail.value?.harborDetails?.activeOrderId ?? null);
+}
+
+function openTradeCenter() {
+  if (!marketAccessReady.value) {
+    return;
+  }
+
+  openMarketplace();
 }
 
 function inspectAssignedWorker(settler: Settler) {
@@ -2051,8 +2191,8 @@ const jobsStatusText = computed(() => {
 });
 
 const townCenterSubtitle = computed(() => {
-  const charter = marketCharterGranted.value ? 'market charter granted' : 'market charter needed';
-  return `${ownedTiles.value} tiles held · ${jobSites.value.length} job sites · ${charter}`;
+  const trade = marketAccessReady.value ? 'market open' : 'trade center needed';
+  return `${ownedTiles.value} tiles held · ${jobSites.value.length} job sites · ${trade}`;
 });
 
 const townCenterTabs = computed<Array<{

@@ -19,6 +19,7 @@ function metrics(overrides: Partial<ProgressionMetrics> = {}): ProgressionMetric
     population: overrides.population ?? 0,
     beds: overrides.beds ?? 0,
     frontierDistance: overrides.frontierDistance ?? 0,
+    landingTerrains: overrides.landingTerrains ?? [],
     unlockedHeroIds: overrides.unlockedHeroIds ?? [],
     completedStudyKeys: overrides.completedStudyKeys ?? [],
     heroAbilityChargesEarned: overrides.heroAbilityChargesEarned ?? 0,
@@ -60,6 +61,7 @@ test('shoreline and farming unlock from discovered water, housing, and populatio
   const landfall = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
     discoveredTerrains: ['water', 'forest'],
+    landingTerrains: ['water', 'forest'],
     population: 2,
     beds: 2,
     buildingCounts: {
@@ -76,6 +78,24 @@ test('shoreline and farming unlock from discovered water, housing, and populatio
   assert.ok(taskKeys.includes('tillLand'));
   assert.ok(taskKeys.includes('seedGrain'));
   assert.ok(newUnlocks.some((unlock) => unlock.kind === 'building' && unlock.key === 'dock'));
+});
+
+test('shoreline stays locked when water is discovered outside landing reach', () => {
+  const landfall = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest'],
+    landingTerrains: ['forest'],
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+    },
+  }), landfall.unlockedNodeKeys);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.equal(progression.unlockedNodeKeys.includes('shoreline'), false);
+  assert.equal(taskKeys.includes('buildDock'), false);
 });
 
 test('food economy chain unlocks irrigation, stores, and baking from real colony metrics', () => {
@@ -164,11 +184,10 @@ test('frontier and logistics milestones unlock mining, depots, and the fourth he
   assert.ok(progression.unlocked.buildings.includes('quarry'));
   assert.ok(progression.unlocked.buildings.includes('supplyDepot'));
   assert.ok(progression.unlocked.buildings.includes('lumberCamp'));
-  assert.ok(progression.unlocked.upgrades.includes('market_charter'));
   assert.ok(taskKeys.includes('buildMine'));
   assert.ok(taskKeys.includes('buildQuarry'));
   assert.ok(taskKeys.includes('buildSupplyDepot'));
-  assert.ok(taskKeys.includes('grantMarketCharter'));
+  assert.equal(taskKeys.includes('buildTradeCenter'), false);
 });
 
 test('masonry, expansion, and deep frontier unlock upgrades and late terrain bands', () => {
@@ -203,6 +222,7 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.ok(progression.unlockedNodeKeys.includes('expansion'));
   assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
   assert.ok(progression.unlocked.buildings.includes('workshop'));
+  assert.ok(progression.unlocked.buildings.includes('tradeCenter'));
   assert.equal(progression.unlocked.upgrades.includes('stone_house_upgrade'), false);
   assert.equal(progression.unlocked.upgrades.includes('warehouse_upgrade'), false);
   assert.ok(progression.unlocked.upgrades.includes('stone_road_upgrade'));
@@ -214,6 +234,7 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.equal(taskKeys.includes('upgradeHouseToStone'), false);
   assert.equal(taskKeys.includes('upgradeDepotToWarehouse'), false);
   assert.ok(taskKeys.includes('upgradeMineToReinforced'));
+  assert.ok(taskKeys.includes('buildTradeCenter'));
 });
 
 test('desert industry unlocks sand, ovens, and glass housing after harsh frontier discovery', () => {
@@ -290,4 +311,18 @@ test('previously unlocked milestones stay unlocked after metrics dip on reload',
 
   assert.deepEqual(reloaded.unlockedNodeKeys, richProgression.unlockedNodeKeys);
   assert.deepEqual(reloaded.recentlyUnlockedNodeKeys, []);
+});
+
+test('retired upgrade unlocks in saved progression do not crash task lookup', () => {
+  const progression = evaluateProgression(metrics({
+    population: 5,
+    buildingCounts: {
+      house: 2,
+    },
+  }));
+
+  progression.unlocked.upgrades.push('market_charter' as never);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+  assert.equal(taskKeys.includes('grantMarketCharter'), false);
 });
