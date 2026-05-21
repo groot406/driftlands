@@ -350,10 +350,13 @@ function getRadiusOffsets(radius: number): Array<[number, number]> {
 }
 
 export function getTilesInRadius(centerQ: number, centerR: number, radius: number): Tile[] {
-    const offsets = getRadiusOffsets(radius);
+    const q = Math.round(centerQ);
+    const r = Math.round(centerR);
+    const normalizedRadius = Math.max(0, Math.ceil(radius));
+    const offsets = getRadiusOffsets(normalizedRadius);
     const list: Tile[] = [];
     for (const [dq, dr] of offsets) {
-        const t = tileIndex[axialKey(centerQ + dq, centerR + dr)];
+        const t = tileIndex[axialKey(q + dq, r + dr)];
         if (t) list.push(t);
     }
     return list;
