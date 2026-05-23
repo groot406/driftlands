@@ -7,6 +7,7 @@ import type {
   PlayerLeaveMessage,
   PlayerSnapshotMessage, SettlementFoundResultMessage,
   RunSnapshotMessage,
+  StewardshipReportMessage,
 } from '../../../src/shared/protocol';
 import {broadcast, sendToSocket, serverMessageRouter} from '../messages/messageRouter';
 import { coopState } from '../state/coopState';
@@ -16,6 +17,8 @@ import { runState } from '../state/runState';
 import { isLooperlandsAuthRequired, validateLooperlandsJoin } from '../looperlands/looperlandsAuth';
 import { getStoryHeroTemplate, type StoryHeroId } from '../../../src/shared/story/heroRoster';
 import { buildLooperlandsPlayerId } from '../../../src/shared/looperlands';
+import { noteActivePlayerCount, noteFirstActivePlayer } from '../state/attendanceState';
+import { resolveStewardshipAfterAbsence } from '../systems/stewardshipSystem';
 
 export class ServerPlayerHandler {
   private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket }>();
@@ -108,6 +111,7 @@ export class ServerPlayerHandler {
       }
     }
 
+    const wasEmpty = this.connectedPlayers.size === 0;
     const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName);
     const playerId = player.id;
 
@@ -118,6 +122,10 @@ export class ServerPlayerHandler {
       color: player.color,
       socket
     });
+    const absence = wasEmpty ? noteFirstActivePlayer(Date.now()) : null;
+    if (!wasEmpty) {
+      noteActivePlayerCount(this.connectedPlayers.size);
+    }
     coopState.upsertPlayer(socket, player.nickname, player.id, player.color, player.settlementId);
 
     // Broadcast to all other players
@@ -180,6 +188,13 @@ export class ServerPlayerHandler {
           timestamp: Date.now(),
         } satisfies RunSnapshotMessage);
       }
+      if (absence) {
+        for (const report of resolveStewardshipAfterAbsence(absence.offlineMs, absence.endedAtMs)) {
+          if (report.settlementId === existingSettlementId) {
+            sendToSocket(socket, report satisfies StewardshipReportMessage);
+          }
+        }
+      }
       return;
     }
   }
@@ -191,6 +206,7 @@ export class ServerPlayerHandler {
     this.connectedPlayers.delete(socket.id);
     coopState.removePlayer(socket.id);
     playerSettlementState.unregisterSocket(socket.id);
+    noteActivePlayerCount(this.connectedPlayers.size);
 
     // Broadcast to all other players
     socket.broadcast.emit('message', {
@@ -231,6 +247,7 @@ export class ServerPlayerHandler {
       this.connectedPlayers.delete(socket.id);
       coopState.removePlayer(socket.id);
       playerSettlementState.unregisterSocket(socket.id);
+      noteActivePlayerCount(this.connectedPlayers.size);
 
       // Broadcast to all other players
       socket.broadcast.emit('message', {

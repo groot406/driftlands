@@ -3,6 +3,7 @@ import type {
     JobsUpdateMessage,
     PopulationUpdateMessage,
     SettlersUpdateMessage,
+    StewardshipReportMessage,
     StudiesUpdateMessage,
     TestUpdateMessage,
     TileUpdatedMessage,
@@ -30,6 +31,7 @@ import { isWatchtowerTile } from '../../shared/game/military.ts';
 import { setWorldGenerationSpawnSafetyEnabled } from '../worldGeneration';
 import { replaceMarketOverview } from '../../store/marketStore.ts';
 import { replaceShipOrderOverview } from '../../store/shipOrderStore.ts';
+import { finishWorldSyncLoaderAfterPaint, updateWorldSyncLoader } from '../worldSyncLoader.ts';
 
 interface PendingWorldSnapshot {
     snapshotId: string;
@@ -56,6 +58,12 @@ class WorldHandler {
     private initialized = false;
     private pendingSnapshot: PendingWorldSnapshot | null = null;
 
+    private now(): number {
+        return typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+    }
+
     private refreshHeroSelection(): void {
         void import('../../store/uiStore').then(({ ensureHeroSelected }) => {
             ensureHeroSelected(false);
@@ -79,6 +87,7 @@ class WorldHandler {
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
         clientMessageRouter.on('calamity:event', this.handleCalamityEvent.bind(this));
+        clientMessageRouter.on('stewardship:report', this.handleStewardshipReport.bind(this));
     }
 
     private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
@@ -108,12 +117,70 @@ class WorldHandler {
         replaceShipOrderOverview(message.shipOrders);
     }
 
+    private applyWorldSnapshotWithLoader(
+        message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>,
+        source: 'single' | 'chunked',
+        snapshotId?: string,
+        totalChunks?: number,
+    ): void {
+        updateWorldSyncLoader({
+            status: 'Building colony map...',
+            completed: 0,
+            total: 0,
+            unitLabel: undefined,
+            infinite: true,
+        });
+
+        const startedAt = this.now();
+        console.info('[driftlands] world snapshot apply start', {
+            source,
+            snapshotId,
+            tileCount: message.tiles.length,
+            totalChunks,
+        });
+
+        this.applyWorldSnapshot(message);
+
+        const durationMs = Math.round(this.now() - startedAt);
+        console.info('[driftlands] world snapshot apply complete', {
+            source,
+            snapshotId,
+            tileCount: message.tiles.length,
+            totalChunks,
+            durationMs,
+        });
+
+        updateWorldSyncLoader({
+            status: 'Drawing first frame...',
+            completed: 0,
+            total: 0,
+            unitLabel: undefined,
+            infinite: true,
+        });
+        finishWorldSyncLoaderAfterPaint('Ready');
+    }
+
     private handleWorldSnapshot(message: WorldSnapshotMessage): void {
         this.pendingSnapshot = null;
-        this.applyWorldSnapshot(message);
+        this.applyWorldSnapshotWithLoader(message, 'single');
     }
 
     private handleWorldSnapshotStart(message: WorldSnapshotStartMessage): void {
+        updateWorldSyncLoader({
+            title: 'Loading colony...',
+            status: 'Receiving world snapshot...',
+            completed: 0,
+            total: message.totalChunks,
+            unitLabel: 'Chunks',
+            infinite: false,
+            popup: true,
+        });
+        console.info('[driftlands] world snapshot receive start', {
+            snapshotId: message.snapshotId,
+            totalTiles: message.totalTiles,
+            totalChunks: message.totalChunks,
+        });
+
         this.pendingSnapshot = {
             snapshotId: message.snapshotId,
             totalTiles: message.totalTiles,
@@ -142,6 +209,13 @@ class WorldHandler {
         }
 
         this.pendingSnapshot.tiles.push(...message.tiles);
+        updateWorldSyncLoader({
+            status: 'Receiving world snapshot...',
+            completed: Math.min(message.chunkIndex + 1, message.totalChunks),
+            total: message.totalChunks,
+            unitLabel: 'Chunks',
+            infinite: false,
+        });
     }
 
     private handleWorldSnapshotComplete(message: WorldSnapshotCompleteMessage): void {
@@ -159,7 +233,12 @@ class WorldHandler {
             return;
         }
 
-        this.applyWorldSnapshot(snapshot);
+        console.info('[driftlands] world snapshot receive complete', {
+            snapshotId: snapshot.snapshotId,
+            totalTiles: snapshot.totalTiles,
+            totalChunks: snapshot.totalChunks,
+        });
+        this.applyWorldSnapshotWithLoader(snapshot, 'chunked', snapshot.snapshotId, snapshot.totalChunks);
     }
 
     private handleTileUpdated(message: TileUpdatedMessage): void {
@@ -256,6 +335,20 @@ class WorldHandler {
             duration: message.severity === 'severe' ? 7200 : 5600,
         });
         openCalamityReport(message);
+    }
+
+    private handleStewardshipReport(message: StewardshipReportMessage): void {
+        const settlementId = currentPlayerSettlementId.value;
+        if (message.settlementId != null && message.settlementId !== settlementId) {
+            return;
+        }
+
+        addNotification({
+            type: 'stewardship',
+            title: message.title,
+            message: message.message,
+            duration: 7000,
+        });
     }
 
     private handleJobsUpdate(message: JobsUpdateMessage): void {

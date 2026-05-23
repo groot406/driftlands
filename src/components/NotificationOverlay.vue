@@ -53,6 +53,10 @@
               v-else-if="notification.type === 'calamity'"
               class="w-2 h-2 bg-red-300 rounded-full"
             ></div>
+            <div
+              v-else-if="notification.type === 'stewardship'"
+              class="w-2 h-2 bg-teal-200 rounded-full"
+            ></div>
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-white">{{ notification.title }}</p>
@@ -99,6 +103,8 @@ function getNotificationStyles(type: string) {
       return 'border-lime-300/35 bg-lime-300/10';
     case 'calamity':
       return 'border-red-300/40 bg-red-500/10';
+    case 'stewardship':
+      return 'border-teal-200/45 bg-teal-300/10';
     default:
       return 'border-gray-500/30';
   }

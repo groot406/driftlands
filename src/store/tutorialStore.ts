@@ -8,7 +8,10 @@ import { populationState, populationVersion } from './clientPopulationStore.ts';
 import { heroes } from './heroStore.ts';
 import { selectedHeroId } from './uiStore.ts';
 import { runSnapshot, runVersion } from './runStore.ts';
-import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
+import {
+  getBuildingDefinitionByTaskKey,
+  getBuildingDefinitionForTile,
+} from '../shared/buildings/registry.ts';
 import { axialDistanceCoords } from '../shared/game/hex.ts';
 import { listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier.ts';
 import { getSettlementTownCenterTile } from '../shared/game/settlement.ts';
@@ -24,6 +27,9 @@ import { isPositionControlled } from './settlementSupportStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 const TUTORIAL_PANEL_STORAGE_KEY = 'driftlands-tutorial-panel-v1';
+const RIDGE_INDUSTRY_REQUIRED_POPULATION = 5;
+const LIBRARY_REQUIRED_TOOLS = 2;
+const WORKSHOP_REQUIRED_ORE = 4;
 
 function readStoredPanelOpen() {
   if (typeof window === 'undefined') {
@@ -72,6 +78,12 @@ interface AnchoredTutorialMapHint extends TutorialMapHint {
   stepId: TutorialStepId;
 }
 
+interface TutorialHintRoute {
+  taskKeys: TaskType[];
+  scoutLabel?: string;
+  scoutTerrainKey?: string;
+}
+
 const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   chopWood: 'Chop wood',
   hunt: 'Hunt',
@@ -90,8 +102,14 @@ const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   irregateDirtTask: 'Irrigate',
   buildMine: 'Build mine',
   buildQuarry: 'Build quarry',
+  mineOre: 'Mine ore',
   buildLibrary: 'Build library',
   buildWorkshop: 'Build workshop',
+  buildPub: 'Build pub',
+  buildShop: 'Build shop',
+  buildHarbor: 'Build harbor',
+  upgradeHouseToStone: 'Upgrade house',
+  upgradeHouseToGlass: 'Upgrade house',
   buildTownCenter: 'Build town',
 };
 
@@ -210,6 +228,23 @@ function createTaskHint(taskKey: TaskType, tile: Tile): TutorialMapHint {
   };
 }
 
+function getCurrentPlayerPopulation() {
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId
+    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
+    : populationState;
+}
+
+function isTutorialTaskReadyForHint(taskKey: TaskType) {
+  const building = getBuildingDefinitionByTaskKey(taskKey);
+  const requiredPopulation = building?.requiredPopulation ?? 0;
+  if (getCurrentPlayerPopulation().current < requiredPopulation) {
+    return false;
+  }
+
+  return taskKey !== 'buildLibrary' || metricResource('tools') >= LIBRARY_REQUIRED_TOOLS;
+}
+
 function findTutorialTaskHint(taskKeys: TaskType[], hero: Hero): TutorialMapHint | null {
   const candidates: Array<{ tile: Tile; taskKey: TaskType; priority: number }> = [];
 
@@ -220,7 +255,7 @@ function findTutorialTaskHint(taskKeys: TaskType[], hero: Hero): TutorialMapHint
 
     const availableTasks = getAvailableTasks(tile, hero);
     for (const [priority, taskKey] of taskKeys.entries()) {
-      if (availableTasks.some((task) => task.key === taskKey)) {
+      if (isTutorialTaskReadyForHint(taskKey) && availableTasks.some((task) => task.key === taskKey)) {
         candidates.push({ tile, taskKey, priority });
         break;
       }
@@ -271,6 +306,7 @@ function isTutorialTaskHintValid(hint: TutorialMapHint, stepId: TutorialStepId, 
     && route.taskKeys.includes(hint.taskKey)
     && !!tile
     && tile.discovered
+    && isTutorialTaskReadyForHint(hint.taskKey)
     && getAvailableTasks(tile, hero).some((task) => task.key === hint.taskKey);
 }
 
@@ -295,22 +331,22 @@ function isAnchoredTutorialHintValid(hint: AnchoredTutorialMapHint, stepId: Tuto
 export function getTutorialHintTaskKeysForStep(
   stepId: TutorialStepId,
   archetype: LandingArchetype | undefined,
-): { taskKeys: TaskType[]; scoutLabel?: string } | null {
+): TutorialHintRoute | null {
   switch (stepId) {
     case 'gather-wood':
-      return { taskKeys: ['chopWood'], scoutLabel: 'Find forest' };
+      return { taskKeys: ['chopWood'], scoutLabel: 'Find forest', scoutTerrainKey: 'forest' };
     case 'lay-road':
       return { taskKeys: ['buildRoad'] };
     case 'raise-house':
       return { taskKeys: ['buildHouse'] };
     case 'build-dock':
       if (archetype === 'shoreline') {
-        return { taskKeys: ['buildDock'], scoutLabel: 'Find shore' };
+        return { taskKeys: ['buildDock'], scoutLabel: 'Find shore', scoutTerrainKey: 'water' };
       }
       if (archetype === 'woodland') {
-        return { taskKeys: ['hunt', 'buildHuntersHut'], scoutLabel: 'Find forest' };
+        return { taskKeys: ['hunt', 'buildHuntersHut'], scoutLabel: 'Find forest', scoutTerrainKey: 'forest' };
       }
-      return { taskKeys: ['plantTrees', 'hunt', 'buildHuntersHut'], scoutLabel: 'Find open land' };
+      return { taskKeys: ['plantTrees', 'hunt', 'buildHuntersHut'], scoutLabel: 'Find open land', scoutTerrainKey: 'plains' };
     case 'start-farming':
       return { taskKeys: ['seedGrain', 'tillLand', 'dig'] };
     case 'secure-perimeter':
@@ -322,16 +358,65 @@ export function getTutorialHintTaskKeysForStep(
     case 'run-job-sites':
       return { taskKeys: ['buildGranary', 'buildBakery', 'buildLumberCamp', 'buildHuntersHut', 'buildApiary'] };
     case 'mine-ridges':
-      return { taskKeys: ['buildMine', 'buildQuarry'], scoutLabel: 'Find mountains' };
+      return { taskKeys: ['buildMine', 'buildQuarry'], scoutLabel: 'Find mountains', scoutTerrainKey: 'mountain' };
     case 'stage-logistics':
       return { taskKeys: ['buildSupplyDepot', 'buildRoad'] };
     case 'study-and-upgrade':
-      return { taskKeys: ['buildLibrary', 'buildWorkshop'] };
+      return { taskKeys: ['buildWorkshop', 'buildLibrary'] };
+    case 'raise-comfort':
+      return { taskKeys: ['buildPub', 'buildShop', 'upgradeHouseToStone', 'upgradeHouseToGlass', 'buildHarbor'] };
     case 'found-second-hearth':
       return { taskKeys: ['buildTownCenter', 'buildRoad'] };
     default:
       return null;
   }
+}
+
+function shouldScoutForTutorialRoute(route: TutorialHintRoute) {
+  if (!route.scoutLabel) {
+    return false;
+  }
+
+  if (!route.scoutTerrainKey) {
+    return true;
+  }
+
+  return (tutorialMetrics.value.terrainCounts[route.scoutTerrainKey] ?? 0) <= 0;
+}
+
+function findTutorialPopulationHint(hero: Hero): TutorialMapHint | null {
+  const population = getCurrentPlayerPopulation();
+  if (population.beds <= population.current) {
+    return findTutorialTaskHint(['buildHouse'], hero);
+  }
+
+  return null;
+}
+
+function metricResource(type: keyof TutorialMetrics['resourceStock']) {
+  return Math.max(0, Math.floor(tutorialMetrics.value.resourceStock[type] ?? 0));
+}
+
+function metricBuilding(key: string) {
+  return Math.max(0, Math.floor(tutorialMetrics.value.buildingCounts[key] ?? 0));
+}
+
+function getStudyAndUpgradeHintTaskKeys(): TaskType[] {
+  if (metricResource('tools') >= LIBRARY_REQUIRED_TOOLS) {
+    return ['buildLibrary', 'buildWorkshop'];
+  }
+
+  if (metricBuilding('workshop') > 0) {
+    return ['buildLibrary'];
+  }
+
+  if (metricResource('ore') < WORKSHOP_REQUIRED_ORE) {
+    return metricBuilding('mine') > 0
+      ? ['mineOre', 'buildWorkshop']
+      : ['buildMine', 'mineOre', 'buildWorkshop'];
+  }
+
+  return ['buildWorkshop', 'buildLibrary'];
 }
 
 function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMapHint | null {
@@ -344,13 +429,21 @@ function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMa
       break;
   }
 
+  if (stepId === 'mine-ridges' && getCurrentPlayerPopulation().current < RIDGE_INDUSTRY_REQUIRED_POPULATION) {
+    return findTutorialPopulationHint(hero);
+  }
+
+  if (stepId === 'study-and-upgrade') {
+    return findTutorialTaskHint(getStudyAndUpgradeHintTaskKeys(), hero);
+  }
+
   const route = getTutorialHintTaskKeysForStep(stepId, tutorialMetrics.value.landingArchetype);
   if (!route) {
     return null;
   }
 
   return findTutorialTaskHint(route.taskKeys, hero)
-    ?? (route.scoutLabel ? findTutorialScoutHint(hero, route.scoutLabel) : null);
+    ?? (shouldScoutForTutorialRoute(route) ? findTutorialScoutHint(hero, route.scoutLabel) : null);
 }
 
 function getAnchoredTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMapHint | null {

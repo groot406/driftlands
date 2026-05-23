@@ -140,6 +140,8 @@ function indicatorClass(type: NotificationType) {
       return 'bg-lime-300';
     case 'calamity':
       return 'bg-red-300';
+    case 'stewardship':
+      return 'bg-teal-200';
     default:
       return 'bg-slate-300';
   }

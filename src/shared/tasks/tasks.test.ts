@@ -238,6 +238,37 @@ test('mission 1 offers hunt on forest but not on plains', () => {
   assert.equal(getAvailableTasks(tileIndex['1,0']!, hero).some((task) => task.key === 'hunt'), false);
 });
 
+test('mission 1 offers remove trunks on chopped forest so forest landings can open road space', () => {
+  setStoryProgressionForMission(1);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'chopped_forest',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'removeTrunks'), true);
+});
+
 test('manual dock fishing follows the roadmap when settlers are available', () => {
   setStoryProgressionForMission(2);
   loadPopulationSnapshot({

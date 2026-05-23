@@ -6,9 +6,11 @@ import type { Tile } from '../core/types/Tile.ts';
 import { loadWorld, tileIndex } from '../core/world.ts';
 import { heroes, loadHeroes } from './heroStore.ts';
 import { resourceInventory, resetResourceState } from './resourceStore.ts';
+import { loadPopulation, resetClientPopulationState } from './clientPopulationStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 import { selectedHeroId } from './uiStore.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../shared/story/progressionState.ts';
+import { createEmptyProgressionMetrics, evaluateProgression } from '../shared/story/progression.ts';
 import {
   getTutorialHintTaskKeysForStep,
   isTutorialPanelOpen,
@@ -73,11 +75,143 @@ test.afterEach(() => {
   loadWorld([]);
   loadHeroes([]);
   resetResourceState();
+  resetClientPopulationState();
   loadStoryProgression(null);
   currentPlayerSettlementId.value = null;
   selectedHeroId.value = null;
   isTutorialPanelOpen.value = true;
 });
+
+function setupMineRidgesTutorial(population: { current: number; beds: number }) {
+  setStoryProgressionForMission(1);
+  currentPlayerSettlementId.value = '0,0';
+  isTutorialPanelOpen.value = true;
+  resourceInventory.wood = 20;
+  resourceInventory.grain = 4;
+  resourceInventory.water = 1;
+
+  loadPopulation({
+    current: population.current,
+    beds: population.beds,
+    max: 15,
+    hungerMs: 0,
+    supportCapacity: 20,
+    activeTileCount: 20,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Guide',
+    avatar: 'guide',
+    q: 0,
+    r: 0,
+    stats: { xp: 0, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  };
+
+  loadHeroes([hero]);
+  selectedHeroId.value = hero.id;
+  loadWorld([
+    tile(0, 0, 'towncenter', { isBaseTile: false }),
+    tile(0, 1, 'plains', { isBaseTile: false, variant: 'road' }),
+    tile(1, 0, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(1, 1, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(2, 0, 'water', { variant: 'water_dock_a' }),
+    tile(2, 1, 'plains', { variant: 'plains_watchtower' }),
+    tile(3, 0, 'grain', { variant: 'grain_granary' }),
+    tile(3, 1, 'plains', { variant: 'plains_well' }),
+    tile(0, 2, 'dirt', { variant: 'dirt_tilled' }),
+    tile(0, 3, 'plains', { variant: 'road' }),
+    tile(0, 4, 'plains', { variant: 'road' }),
+    tile(0, 5, 'plains', { variant: 'road' }),
+    tile(4, 0, 'mountain'),
+    tile(5, 0, 'plains'),
+  ]);
+
+  return hero;
+}
+
+function setupStudyAndUpgradeTutorial() {
+  currentPlayerSettlementId.value = '0,0';
+  isTutorialPanelOpen.value = true;
+  resourceInventory.wood = 30;
+  resourceInventory.stone = 8;
+  resourceInventory.ore = 6;
+  resourceInventory.tools = 0;
+  resourceInventory.grain = 4;
+  resourceInventory.water = 1;
+
+  loadPopulation({
+    current: 5,
+    beds: 6,
+    max: 15,
+    hungerMs: 0,
+    supportCapacity: 24,
+    activeTileCount: 20,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+
+  loadStoryProgression(evaluateProgression({
+    ...createEmptyProgressionMetrics(),
+    population: 5,
+    beds: 6,
+    resourceStock: { wood: 30, stone: 8, ore: 6, grain: 4, water: 1 },
+    buildingCounts: {
+      house: 2,
+      dock: 1,
+      watchtower: 1,
+      granary: 1,
+      well: 1,
+      quarry: 1,
+      mine: 1,
+      supplyDepot: 1,
+    },
+    operationalBuildingCounts: {
+      mine: 1,
+    },
+    discoveredTerrains: ['water', 'grain', 'mountain'],
+  }), '0,0');
+
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Guide',
+    avatar: 'guide',
+    q: 0,
+    r: 0,
+    stats: { xp: 0, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  };
+
+  loadHeroes([hero]);
+  selectedHeroId.value = hero.id;
+  loadWorld([
+    tile(0, 0, 'towncenter', { isBaseTile: false }),
+    tile(0, 1, 'plains', { isBaseTile: false, variant: 'road' }),
+    tile(1, 0, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(1, 1, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(2, 0, 'water', { variant: 'water_dock_a' }),
+    tile(2, 1, 'plains', { variant: 'plains_watchtower' }),
+    tile(3, 0, 'grain', { variant: 'grain_granary' }),
+    tile(3, 1, 'plains', { variant: 'plains_well' }),
+    tile(0, 2, 'dirt', { variant: 'dirt_tilled' }),
+    tile(0, 3, 'plains', { variant: 'road' }),
+    tile(0, 4, 'plains', { variant: 'road' }),
+    tile(0, 5, 'plains', { variant: 'road' }),
+    tile(1, 2, 'plains', { variant: 'plains_depot' }),
+    tile(4, 0, 'mountain', { variant: 'mountains_with_mine' }),
+    tile(4, 1, 'mountain', { variant: 'mountains_with_quarry' }),
+    tile(5, 0, 'plains'),
+  ]);
+
+  return hero;
+}
 
 test('tutorial hint routing sends waterless open-field starts to tree planting instead of docks', () => {
   const route = getTutorialHintTaskKeysForStep('build-dock', 'open_field');
@@ -95,6 +229,20 @@ test('tutorial hint routing keeps shoreline and woodland early-food routes disti
   assert.deepEqual(
     getTutorialHintTaskKeysForStep('build-dock', 'woodland')?.taskKeys,
     ['hunt', 'buildHuntersHut'],
+  );
+});
+
+test('tutorial hint routing prefers workshop before tool-gated library', () => {
+  assert.deepEqual(
+    getTutorialHintTaskKeysForStep('study-and-upgrade', 'shoreline')?.taskKeys,
+    ['buildWorkshop', 'buildLibrary'],
+  );
+});
+
+test('tutorial hint routing includes hospitality, trade, and house comfort routes', () => {
+  assert.deepEqual(
+    getTutorialHintTaskKeysForStep('raise-comfort', 'shoreline')?.taskKeys,
+    ['buildPub', 'buildShop', 'upgradeHouseToStone', 'upgradeHouseToGlass', 'buildHarbor'],
   );
 });
 
@@ -148,4 +296,20 @@ test('tutorial task hints move only after the anchored tile becomes invalid', ()
   assert.equal(nextHint?.taskKey, 'buildHouse');
   assert.equal(nextHint?.q, 5);
   assert.equal(nextHint?.r, 0);
+});
+
+test('mine-ridge hints do not ask to find mountains already discovered when population is blocked', () => {
+  setupMineRidgesTutorial({ current: 4, beds: 4 });
+
+  const hint = tutorialMapHints.value[0];
+  assert.equal(hint?.taskKey, 'buildHouse');
+  assert.equal(hint?.label, 'Build house');
+});
+
+test('study-and-upgrade hints build a workshop before a library when tools are missing', () => {
+  setupStudyAndUpgradeTutorial();
+
+  const hint = tutorialMapHints.value[0];
+  assert.equal(hint?.taskKey, 'buildWorkshop');
+  assert.equal(hint?.label, 'Build workshop');
 });

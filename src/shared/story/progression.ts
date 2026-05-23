@@ -571,6 +571,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'task', key: 'hunt' },
       { kind: 'task', key: 'breakDirtRock' },
       { kind: 'task', key: 'plantTrees' },
+      { kind: 'task', key: 'removeTrunks' },
       { kind: 'terrain', key: 'plains' },
       { kind: 'terrain', key: 'forest' },
       { kind: 'terrain', key: 'dirt' },
@@ -604,7 +605,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
       { kind: 'task', key: 'harvestWaterLilies' },
       { kind: 'task', key: 'placeWaterLilies' },
       { kind: 'task', key: 'buildBridge' },
-      { kind: 'task', key: 'removeTrunks' },
     ],
     storyHooks: {
       unlockBeatKey: 'shoreline-unlocked',

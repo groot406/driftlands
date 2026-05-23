@@ -31,6 +31,7 @@ import {
   isMaintainedBuildingTile,
   updateTileCondition,
 } from '../../../src/shared/buildings/maintenance.ts';
+import { hasActivePlayers } from '../state/attendanceState.ts';
 
 type CalamitySeverity = CalamityEventMessage['severity'];
 
@@ -868,6 +869,11 @@ export const calamitySystem = {
   },
 
   tick: (ctx: TickContext) => {
+    if (!hasActivePlayers()) {
+      nextRollAtMs = Math.max(nextRollAtMs, ctx.now + CALAMITY_ROLL_INTERVAL_MS);
+      return;
+    }
+
     processPendingCalamities(ctx);
 
     if (ctx.now < nextRollAtMs) {

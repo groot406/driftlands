@@ -32,9 +32,11 @@ const config = {
   frontendCommitMessage: process.env.DRIFTLANDS_FRONTEND_COMMIT_MESSAGE || 'Update embedded Driftlands client',
   haosBundleDir: resolve(process.env.DRIFTLANDS_HAOS_BUNDLE_DIR || 'output/haos'),
   haosBundlePort: process.env.DRIFTLANDS_HAOS_BUNDLE_PORT || '8899',
-  haosPublishPort: process.env.DRIFTLANDS_HAOS_PUBLISH_PORT || '3000',
+  haosPublishPort: process.env.DRIFTLANDS_HAOS_PUBLISH_PORT || '3695',
   haosImagePlatform: process.env.DRIFTLANDS_HAOS_IMAGE_PLATFORM || 'linux/amd64',
   haosFrontendOrigin: process.env.DRIFTLANDS_HAOS_FRONTEND_ORIGIN || process.env.FRONTEND_ORIGIN || 'https://looperlands.io',
+  haosSshHost: process.env.DRIFTLANDS_HAOS_SSH_HOST || 'haos',
+  haosRemoteDir: process.env.DRIFTLANDS_HAOS_REMOTE_DIR || '/config/driftlands',
 };
 
 config.envFile = process.env.DRIFTLANDS_ENV_FILE || `${config.configDir}/.env`;
@@ -1037,12 +1039,12 @@ async function deployFrontend(options = {}) {
   return code;
 }
 
-async function fullFrontendPipeline() {
+async function fullFrontendPipeline(options = {}) {
   printHeader('Full Frontend Pipeline');
   printHint('Pipeline: copy current Driftlands client -> install deps -> build platform -> commit -> push -> deploy hook.');
   printHint(`Frontend repo: ${config.frontendRepoPath}`);
-  if (!await confirm('Run the full frontend deployment pipeline?')) {
-    return;
+  if (!options.assumeConfirmed && !await confirm('Run the full frontend deployment pipeline?')) {
+    return 0;
   }
 
   try {
@@ -1050,28 +1052,33 @@ async function fullFrontendPipeline() {
     printSuccess('Copied Driftlands client.');
   } catch (error) {
     printError(error instanceof Error ? error.message : String(error));
-    await pause();
-    return;
+    if (!options.skipPause) await pause();
+    return 1;
   }
 
   if (await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: config.frontendRepoPath }) !== 0) {
-    await pause();
-    return;
+    if (!options.skipPause) await pause();
+    return 1;
   }
   if (await run('npm', ['run', 'build'], { cwd: config.frontendRepoPath }) !== 0) {
-    await pause();
-    return;
+    if (!options.skipPause) await pause();
+    return 1;
   }
-  if (await commitFrontendChanges({ skipPause: true }) !== 0) {
-    await pause();
-    return;
+  if (await commitFrontendChanges({
+    skipPause: true,
+    assumeConfirmed: options.assumeConfirmed,
+    message: options.message,
+  }) !== 0) {
+    if (!options.skipPause) await pause();
+    return 1;
   }
   if (await pushFrontend({ skipPause: true }) !== 0) {
-    await pause();
-    return;
+    if (!options.skipPause) await pause();
+    return 1;
   }
-  await deployFrontend({ skipPause: true });
-  await pause();
+  const deployCode = await deployFrontend({ skipPause: true });
+  if (!options.skipPause) await pause();
+  return deployCode;
 }
 
 async function manageFrontendDeployment() {
@@ -1117,6 +1124,103 @@ async function manageFrontendDeployment() {
       default:
         printWarn('Unknown frontend action.');
         await pause();
+    }
+  }
+}
+
+function normalizeDeployTarget(value) {
+  const target = String(value || '').trim().toLowerCase();
+  if (['frontend', 'front', 'client'].includes(target)) return 'frontend';
+  if (['backend', 'server', 'haos'].includes(target)) return 'backend';
+  if (['both', 'all', 'full'].includes(target)) return 'both';
+  return '';
+}
+
+function deploysFrontend(target) {
+  return target === 'frontend' || target === 'both';
+}
+
+function deploysBackend(target) {
+  return target === 'backend' || target === 'both';
+}
+
+async function selectDeployTarget(targetArg) {
+  const normalized = normalizeDeployTarget(targetArg);
+  if (normalized) return normalized;
+
+  return selectMenu([
+    { value: 'both', label: 'Frontend + backend', detail: 'Run the platform frontend pipeline, then deploy the HAOS backend over SSH.' },
+    { value: 'frontend', label: 'Frontend only', detail: 'Copy, install, build, commit, push, and run the frontend deploy hook.' },
+    { value: 'backend', label: 'Backend only', detail: 'Build the Docker image and install it on HAOS through ssh haos.' },
+    { value: 'exit', label: 'Cancel', detail: 'Do not deploy anything.' },
+  ], 'Deploy', 'Choose what to deploy.');
+}
+
+function printDeployPlan(target) {
+  printHeader('Deploy Plan');
+  printWarn('Nothing has started yet. Review this plan before continuing.');
+
+  if (deploysFrontend(target)) {
+    section('Frontend');
+    console.log(formatKeyValue('repo', config.frontendRepoPath));
+    console.log(formatKeyValue('route', frontendDriftlandsPath()));
+    console.log(formatKeyValue('commit', config.frontendCommitMessage));
+    console.log(formatKeyValue('deploy', config.frontendDeployCommand || '(skipped; not configured)'));
+    console.log('');
+    console.log('Will run:');
+    console.log('1. Replace the embedded Driftlands client in the platform frontend.');
+    console.log('2. npm install --ignore-scripts --no-audit --no-fund');
+    console.log('3. npm run build');
+    console.log('4. Stage and commit platform changes when there are changes.');
+    console.log('5. git push origin HEAD');
+    console.log('6. Run the configured frontend deploy hook, when configured.');
+  }
+
+  if (deploysBackend(target)) {
+    section('Backend');
+    console.log(formatKeyValue('image', config.image));
+    console.log(formatKeyValue('platform', config.haosImagePlatform));
+    console.log(formatKeyValue('bundle', config.haosBundleDir));
+    console.log(formatKeyValue('ssh', config.haosSshHost));
+    console.log(formatKeyValue('remote', config.haosRemoteDir));
+    console.log(formatKeyValue('hostport', config.haosPublishPort));
+    console.log(formatKeyValue('origin', config.haosFrontendOrigin));
+    console.log('');
+    console.log('Will run:');
+    console.log('1. docker build and docker save on this machine.');
+    console.log('2. Write driftlands.env and an SSH installer into output/haos.');
+    console.log(`3. ssh ${config.haosSshHost} mkdir -p ${config.haosRemoteDir}`);
+    console.log(`4. scp the image, env, and installer to ${config.haosSshHost}:${config.haosRemoteDir}/`);
+    console.log('5. Run the installer over SSH, recreate the container, and wait for /health.');
+  }
+}
+
+async function deploySelected(targetArg) {
+  const target = await selectDeployTarget(targetArg);
+  if (!target || target === 'exit') return;
+
+  printDeployPlan(target);
+  if (!await confirm('Start this deployment now?')) {
+    return;
+  }
+
+  if (deploysFrontend(target)) {
+    const code = await fullFrontendPipeline({
+      assumeConfirmed: true,
+      skipPause: true,
+      message: config.frontendCommitMessage,
+    });
+    if (code !== 0) {
+      process.exitCode = code;
+      return;
+    }
+  }
+
+  if (deploysBackend(target)) {
+    const code = await deployHaosOverSsh();
+    if (code !== 0) {
+      process.exitCode = code;
+      return;
     }
   }
 }
@@ -1305,6 +1409,75 @@ echo
   return installScript;
 }
 
+function writeHaosSshInstallScript(publishPort = config.haosPublishPort) {
+  const { installScript } = haosBundlePaths();
+  const script = `#!/bin/sh
+set -eu
+
+CONFIG_DIR="${config.haosRemoteDir}"
+IMAGE_TAR="$CONFIG_DIR/driftlands-image.tar"
+START_PUBLISH_PORT="${publishPort}"
+PUBLISH_PORT="$START_PUBLISH_PORT"
+MAX_PUBLISH_PORT=$((START_PUBLISH_PORT + 50))
+
+echo "[driftlands] using $CONFIG_DIR"
+mkdir -p "$CONFIG_DIR"
+
+if [ -f "$CONFIG_DIR/driftlands.env" ]; then
+  echo "[driftlands] installing env"
+  cp "$CONFIG_DIR/driftlands.env" "$CONFIG_DIR/.env"
+fi
+
+sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$CONFIG_DIR/.env"
+sed -i 's/^PORT=.*/PORT=3000/' "$CONFIG_DIR/.env"
+
+echo "[driftlands] loading docker image"
+docker load -i "$IMAGE_TAR"
+
+echo "[driftlands] recreating container"
+while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
+  docker rm -f driftlands >/dev/null 2>&1 || true
+  echo "[driftlands] trying host port $PUBLISH_PORT"
+  if docker run -d \\
+    --name driftlands \\
+    --restart unless-stopped \\
+    --env-file "$CONFIG_DIR/.env" \\
+    -p "$PUBLISH_PORT:3000" \\
+    driftlands:latest; then
+    break
+  fi
+
+  PUBLISH_PORT=$((PUBLISH_PORT + 1))
+done
+
+if [ "$PUBLISH_PORT" -gt "$MAX_PUBLISH_PORT" ]; then
+  echo "[driftlands] no free host port found between $START_PUBLISH_PORT and $MAX_PUBLISH_PORT" >&2
+  exit 1
+fi
+
+echo "[driftlands] container status"
+docker ps --filter name=driftlands
+echo "[driftlands] selected host port: $PUBLISH_PORT"
+echo "[driftlands] local health check"
+for attempt in $(seq 1 30); do
+  if curl -fsS "http://127.0.0.1:$PUBLISH_PORT/health"; then
+    echo
+    exit 0
+  fi
+  echo "[driftlands] waiting for health check ($attempt/30)"
+  sleep 1
+done
+
+echo "[driftlands] health check did not become ready; recent logs:" >&2
+docker logs --tail=120 driftlands >&2 || true
+exit 1
+echo
+`;
+
+  writeFileSync(installScript, script);
+  return installScript;
+}
+
 function serveHaosBundle(host, port) {
   const { dir } = haosBundlePaths();
   const allowedFiles = new Map([
@@ -1341,16 +1514,20 @@ function serveHaosBundle(host, port) {
   });
 }
 
-async function prepareHaosBundle() {
+async function prepareHaosBundle(options = {}) {
   printHeader('Prepare Home Assistant Docker Bundle');
   printHint('Builds the Driftlands Docker image, exports it, and writes an install script for Home Assistant WebSSH.');
   console.log(formatKeyValue('bundle', config.haosBundleDir));
   console.log(formatKeyValue('image', config.image));
   console.log('');
 
-  const frontendOrigin = await askText('Allowed frontend origin', config.haosFrontendOrigin);
-  const imagePlatform = await askText('Home Assistant Docker platform', config.haosImagePlatform);
-  if (!await confirm('Build image and export Home Assistant bundle now?')) {
+  const frontendOrigin = options.frontendOrigin ?? (
+    options.assumeDefaults ? config.haosFrontendOrigin : await askText('Allowed frontend origin', config.haosFrontendOrigin)
+  );
+  const imagePlatform = options.imagePlatform ?? (
+    options.assumeDefaults ? config.haosImagePlatform : await askText('Home Assistant Docker platform', config.haosImagePlatform)
+  );
+  if (!options.assumeConfirmed && !await confirm('Build image and export Home Assistant bundle now?')) {
     return null;
   }
 
@@ -1363,13 +1540,13 @@ async function prepareHaosBundle() {
   buildArgs.push('.');
 
   if (await run('docker', buildArgs) !== 0) {
-    await pause();
+    if (!options.skipPause) await pause();
     return null;
   }
 
   const { imageTar, envFile } = haosBundlePaths();
   if (await run('docker', ['save', '-o', imageTar, config.image]) !== 0) {
-    await pause();
+    if (!options.skipPause) await pause();
     return null;
   }
 
@@ -1427,6 +1604,34 @@ async function publishHaosBundle() {
   printWarn('Keep this TUI open until the WebSSH command finishes downloading the image.');
   await pause();
   await serverHandle.close();
+}
+
+async function deployHaosOverSsh() {
+  printHeader('Deploy Backend To HAOS');
+  printHint(`Builds locally, copies the bundle to ${config.haosSshHost}:${config.haosRemoteDir}, then installs over SSH.`);
+
+  const prepared = await prepareHaosBundle({
+    assumeConfirmed: true,
+    assumeDefaults: true,
+    skipPause: true,
+  });
+  if (!prepared) return 1;
+
+  const { imageTar, envFile } = haosBundlePaths();
+  const installScript = writeHaosSshInstallScript(config.haosPublishPort);
+  const remoteDir = config.haosRemoteDir.replace(/\/+$/g, '');
+
+  if (await run('ssh', [config.haosSshHost, `mkdir -p ${shellQuote(remoteDir)}`]) !== 0) {
+    return 1;
+  }
+
+  if (await run('scp', [imageTar, envFile, installScript, `${config.haosSshHost}:${remoteDir}/`]) !== 0) {
+    return 1;
+  }
+
+  const remoteInstallScript = `${remoteDir}/install-driftlands-haos.sh`;
+  const remoteCommand = `chmod +x ${shellQuote(remoteInstallScript)} && ${shellQuote(remoteInstallScript)}`;
+  return run('ssh', [config.haosSshHost, remoteCommand]);
 }
 
 async function showHaosRestartServerCommand(options = {}) {
@@ -1636,6 +1841,7 @@ Usage:
   driftlands
   driftlands tui
   driftlands hosting
+  driftlands deploy [frontend|backend|both]
   driftlands frontend
   driftlands publish-frontend
   driftlands haos
@@ -1656,7 +1862,9 @@ Environment overrides:
   DRIFTLANDS_FRONTEND_REPO=/path/to/looperlands-platform-frontend
   DRIFTLANDS_FRONTEND_DEPLOY_COMMAND="npm run deploy"
   DRIFTLANDS_HAOS_BUNDLE_PORT=8899
-  DRIFTLANDS_HAOS_PUBLISH_PORT=3000
+  DRIFTLANDS_HAOS_PUBLISH_PORT=3695
+  DRIFTLANDS_HAOS_SSH_HOST=haos
+  DRIFTLANDS_HAOS_REMOTE_DIR=/config/driftlands
   DRIFTLANDS_HAOS_IMAGE_PLATFORM=linux/amd64
   DOCKER_HOST=ssh://root@<haos-host>
   DRIFTLANDS_TUI_NO_ANIMATION=1
@@ -1667,6 +1875,8 @@ try {
   const command = process.argv[2] || 'tui';
   if (command === 'tui' || command === 'hosting') {
     await mainMenu();
+  } else if (command === 'deploy') {
+    await deploySelected(process.argv[3]);
   } else if (command === 'frontend') {
     await manageFrontendDeployment();
   } else if (command === 'publish-frontend') {

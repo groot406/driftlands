@@ -9,6 +9,7 @@ import { initializeClientHandlers } from './messageHandlers';
 import { addPlayer, removePlayer } from '../store/playerStore';
 import { sanitizePlayerNickname } from '../shared/multiplayer/player.ts';
 import { getDriftlandsServerUrl } from './driftlandsServerUrl.ts';
+import { startWorldSyncLoader, updateWorldSyncLoader } from './worldSyncLoader.ts';
 
 const PLAYER_ID_KEY = 'driftlands-player-id-v1';
 const PLAYER_NAME_KEY = 'driftlands-player-name-v1';
@@ -103,6 +104,7 @@ initializeClientHandlers();
 
 socket.on('connect', () => {
   initializeClientHandlers();
+  updateWorldSyncLoader({ status: 'Joining colony...' });
   join();
 });
 
@@ -136,6 +138,7 @@ export function connectWithNickname(
   setStoredPlayerName(nickname);
   pendingLooperlandsAuth = looperlandsAuth ?? null;
   pendingStoryHeroIds = storyHeroIds ?? null;
+  startWorldSyncLoader(socket.connected ? 'Joining colony...' : 'Connecting to frontier...');
 
   if (socket.connected) {
     join();
@@ -166,5 +169,10 @@ socket.on('message', (message: ServerMessage) => {
 
 // Handle connection errors
 socket.on('connect_error', (error) => {
+  updateWorldSyncLoader({
+    title: 'Connection failed',
+    status: error.message || 'Could not reach the Driftlands server.',
+    infinite: true,
+  });
   console.error('Connection error:', error);
 });

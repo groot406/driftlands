@@ -53,6 +53,22 @@ export interface CalamityEventMessage extends BaseMessage {
     impactAt?: number;
 }
 
+export interface StewardshipReportMessage extends BaseMessage {
+    type: 'stewardship:report';
+    settlementId?: string | null;
+    offlineMs: number;
+    title: string;
+    message: string;
+    repairedBuildings: number;
+    repairCycles: number;
+    remainingDamagedBuildings: number;
+    remainingOfflineBuildings: number;
+    resourcesSpent?: ResourceAmount[];
+    resourceShortfalls?: ResourceAmount[];
+    affectedTileIds: string[];
+    nextActions: string[];
+}
+
 
 // Game-related messages
 export interface PlayerJoinMessage extends BaseMessage {
@@ -573,6 +589,7 @@ export type ServerMessage =
     | RunSnapshotMessage
     | RunUpdateMessage
     | CalamityEventMessage
+    | StewardshipReportMessage
     | PopulationUpdateMessage
     | JobsUpdateMessage
     | StudiesUpdateMessage

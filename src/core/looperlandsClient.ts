@@ -1,4 +1,5 @@
 import type { LooperlandsAsset, LooperlandsHeroSelection, LooperlandsJoinAuth } from '../shared/looperlands.ts';
+import { hashMessage } from 'ethers';
 import {
   buildLooperlandsPlayerId,
   isLooperAsset,
@@ -30,6 +31,10 @@ export interface LooperlandsWalletSession {
   chainId: number;
   token: string;
   apiUrl: string;
+}
+
+function isEnabled(value: string | boolean | undefined): boolean {
+  return value === true || value === '1' || value === 'true';
 }
 
 export function getLooperlandsApiUrl(): string {
@@ -174,10 +179,17 @@ function readPlatformSessionFromToken(token: string): LooperlandsWalletSession |
 }
 
 export function hasLooperlandsPlatformSessionCandidate(): boolean {
-  return getPlatformAuthToken().length > 0 && getLooperlandsPlatformApiUrl().length > 0;
+  return isEnabled(import.meta.env.VITE_DRIFTLANDS_REUSE_PLATFORM_SESSION)
+    && getPlatformAuthToken().length > 0
+    && getLooperlandsPlatformApiUrl().length > 0;
 }
 
 export async function restoreLooperlandsPlatformSession(): Promise<LooperlandsWalletSession | null> {
+  if (!isEnabled(import.meta.env.VITE_DRIFTLANDS_REUSE_PLATFORM_SESSION)) {
+    walletLog('platform session restore skipped', { reason: 'disabled' });
+    return null;
+  }
+
   const token = getPlatformAuthToken();
   const platformApiUrl = getLooperlandsPlatformApiUrl();
   walletLog('platform session restore start', {
@@ -390,7 +402,7 @@ export async function connectLooperlandsWallet(providerOverride?: EthereumProvid
       message,
       signature,
       network: chainId,
-      hash: '0x',
+      hash: hashMessage(message),
     }),
   });
   walletLog('proxy response', { step: 'verify', status: verifyResponse.status, ok: verifyResponse.ok });
@@ -420,32 +432,59 @@ export async function connectLooperlandsWallet(providerOverride?: EthereumProvid
 }
 
 export async function fetchLooperlandsLoopers(session: LooperlandsWalletSession): Promise<LooperlandsHeroSelection[]> {
-  const url = getDriftlandsLooperlandsProxyUrl(`/game/wallet/${encodeURIComponent(session.walletAddress)}/loopers`);
-  walletLog('proxy request', {
-    step: 'loopers',
-    url,
-    walletAddress: maskDebugValue(session.walletAddress),
-    chainId: session.chainId,
-    hasToken: session.token.length > 0,
-  });
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'X-AUTH-WEB3TOKEN': session.token,
-    },
-  });
-  walletLog('proxy response', { step: 'loopers', status: response.status, ok: response.ok });
+  const walletLookupKeys = Array.from(new Set([
+    `${session.walletAddress}:${session.chainId}`,
+    session.walletAddress,
+  ]));
+  let lastFailedStatus: number | null = null;
 
-  if (!response.ok) {
-    if ([401, 403, 500].includes(response.status)) {
-      clearStoredLooperlandsSession();
+  for (const walletLookupKey of walletLookupKeys) {
+    const url = getDriftlandsLooperlandsProxyUrl(`/game/wallet/${encodeURIComponent(walletLookupKey)}/loopers`);
+    walletLog('proxy request', {
+      step: 'loopers',
+      url,
+      walletLookupKey: maskDebugValue(walletLookupKey),
+      walletAddress: maskDebugValue(session.walletAddress),
+      chainId: session.chainId,
+      hasToken: session.token.length > 0,
+    });
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'X-AUTH-WEB3TOKEN': session.token,
+      },
+    });
+    walletLog('proxy response', {
+      step: 'loopers',
+      walletLookupKey: maskDebugValue(walletLookupKey),
+      status: response.status,
+      ok: response.ok,
+    });
+
+    if (!response.ok) {
+      lastFailedStatus = response.status;
+      if ([401, 403, 500].includes(response.status)) {
+        break;
+      }
+      continue;
     }
 
-    throw new Error('Could not load Looper avatars for this wallet. Reconnect your wallet and try again.');
+    const body = await response.json() as { loopers?: LooperlandsAsset[] };
+    const loopers = (body.loopers ?? []).filter(isLooperAsset).map(toLooperHeroSelection);
+    walletLog('loopers parsed', {
+      walletLookupKey: maskDebugValue(walletLookupKey),
+      count: loopers.length,
+    });
+    if (loopers.length > 0 || walletLookupKey === walletLookupKeys[walletLookupKeys.length - 1]) {
+      return loopers;
+    }
   }
 
-  const body = await response.json() as { loopers?: LooperlandsAsset[] };
-  return (body.loopers ?? []).filter(isLooperAsset).map(toLooperHeroSelection);
+  if (lastFailedStatus && [401, 403, 500].includes(lastFailedStatus)) {
+    clearStoredLooperlandsSession();
+  }
+
+  throw new Error('Could not load Looper avatars for this wallet. Reconnect your wallet and try again.');
 }
 
 export function buildLooperlandsJoinAuth(

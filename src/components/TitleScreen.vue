@@ -57,7 +57,7 @@
             <p v-if="walletError" class="title-wallet__error">{{ walletError }}</p>
           </div>
 
-          <div v-if="startMode === 'wallet' && walletSession && !existingWalletSettlementId" class="title-loopers" aria-label="Choose two Looper avatars">
+          <div v-if="walletReadyForLooperSelection" class="title-loopers" aria-label="Choose two Looper avatars">
             <p class="title-loopers__label">{{ looperPickerLabel }}</p>
             <div v-if="looperLoading" class="title-loopers__status">Loading avatars...</div>
             <div v-else-if="loopers.length" class="title-loopers__grid">
@@ -207,6 +207,7 @@ const existingWalletSettlementId = ref<string | null>(null);
 const looperLoading = ref(false);
 const loopers = ref<LooperlandsHeroSelection[]>([]);
 const selectedLooperIds = ref<string[]>([]);
+let walletPreparationRunId = 0;
 const selectedDefaultHeroIds = ref<StoryHeroId[]>(['h2', 'h3']);
 const previewStory = computed(() => currentRun.value?.chapter ?? openingStory);
 const defaultHeroes = computed(() => listStoryHeroTemplates().map((hero) => ({
@@ -241,6 +242,13 @@ const canStart = computed(() => {
 
   return selectedLoopers.value.length === 2;
 });
+const walletReadyForLooperSelection = computed(() => (
+  startMode.value === 'wallet'
+  && !!walletSession.value
+  && !walletLoading.value
+  && !walletSettlementLoading.value
+  && !existingWalletSettlementId.value
+));
 const shortWallet = computed(() => {
   const address = walletSession.value?.walletAddress ?? '';
   return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
@@ -272,6 +280,15 @@ function delay(ms: number) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function getWalletSessionKey(session: LooperlandsWalletSession | null): string {
+  return session ? `${session.walletAddress.toLowerCase()}:${session.chainId}:${session.token}` : '';
+}
+
+function isCurrentWalletPreparation(runId: number, session: LooperlandsWalletSession): boolean {
+  return walletPreparationRunId === runId
+    && getWalletSessionKey(walletSession.value) === getWalletSessionKey(session);
 }
 
 function isEthereumProvider(provider: unknown): provider is EthereumProvider {
@@ -392,6 +409,7 @@ async function connectAppKitProvider(): Promise<EthereumProvider | undefined> {
 }
 
 async function connectWallet() {
+  const runId = ++walletPreparationRunId;
   walletLoading.value = true;
   walletError.value = '';
   try {
@@ -413,18 +431,21 @@ async function connectWallet() {
     }
     selectedLooperIds.value = [];
     existingWalletSettlementId.value = null;
-    await prepareWalletStart();
+    await prepareWalletStart(runId);
     walletLog('connect wallet success');
   } catch (error) {
     walletWarn('connect wallet failed', { error: describeWalletError(error) });
     walletError.value = error instanceof Error ? error.message : 'Could not connect wallet.';
   } finally {
-    walletLoading.value = false;
+    if (walletPreparationRunId === runId) {
+      walletLoading.value = false;
+    }
   }
 }
 
 function disconnectWallet() {
   walletLog('disconnect wallet clicked');
+  walletPreparationRunId++;
   clearStoredLooperlandsSession();
   if (appKitDisconnect) {
     void appKitDisconnect.disconnect({ namespace: 'eip155' }).catch((error) => {
@@ -436,54 +457,138 @@ function disconnectWallet() {
   loopers.value = [];
   selectedLooperIds.value = [];
   walletError.value = '';
+  walletSettlementLoading.value = false;
+  looperLoading.value = false;
 }
 
-async function prepareWalletStart() {
-  if (!walletSession.value) {
+async function prepareWalletStart(runId = ++walletPreparationRunId) {
+  const session = walletSession.value;
+  if (!session) {
     return;
   }
 
-  await refreshExistingWalletSettlement();
-  if (!existingWalletSettlementId.value) {
-    await loadLoopers();
+  walletLog('prepare wallet start', {
+    runId,
+    walletAddress: session.walletAddress,
+    chainId: session.chainId,
+  });
+  loopers.value = [];
+  selectedLooperIds.value = [];
+
+  const settlementId = await refreshExistingWalletSettlement(session, runId);
+  if (!isCurrentWalletPreparation(runId, session)) {
+    walletLog('prepare wallet ignored stale settlement result', { runId });
+    return;
+  }
+
+  if (!settlementId) {
+    const loadedLoopers = await loadLoopers(session, runId);
+    if (!isCurrentWalletPreparation(runId, session)) {
+      walletLog('prepare wallet ignored stale looper result', { runId });
+      return;
+    }
+
+    if (loadedLoopers.length === 0) {
+      await delay(650);
+      const lateSettlementId = await refreshExistingWalletSettlement(session, runId);
+      if (isCurrentWalletPreparation(runId, session) && lateSettlementId) {
+        loopers.value = [];
+        selectedLooperIds.value = [];
+      }
+    }
   } else {
     loopers.value = [];
     selectedLooperIds.value = [];
   }
+
+  walletLog('prepare wallet complete', {
+    runId,
+    hasSettlement: !!existingWalletSettlementId.value,
+    looperCount: loopers.value.length,
+  });
 }
 
-async function refreshExistingWalletSettlement() {
-  if (!walletSession.value) {
+async function refreshExistingWalletSettlement(session = walletSession.value, runId = walletPreparationRunId) {
+  if (!session) {
     existingWalletSettlementId.value = null;
-    return;
+    return null;
   }
 
   walletSettlementLoading.value = true;
   walletError.value = '';
   try {
-    existingWalletSettlementId.value = await fetchDriftlandsWalletSettlement(walletSession.value);
+    const settlementId = await fetchDriftlandsWalletSettlement(session);
+    if (!isCurrentWalletPreparation(runId, session)) {
+      return null;
+    }
+
+    existingWalletSettlementId.value = settlementId;
+    walletLog('wallet settlement lookup complete', {
+      runId,
+      hasSettlement: !!settlementId,
+      settlementId: settlementId ?? null,
+    });
+    return settlementId;
   } catch (error) {
+    if (!isCurrentWalletPreparation(runId, session)) {
+      return null;
+    }
+
     existingWalletSettlementId.value = null;
     walletError.value = error instanceof Error ? error.message : 'Could not check this wallet colony.';
+    return null;
   } finally {
-    walletSettlementLoading.value = false;
+    if (isCurrentWalletPreparation(runId, session)) {
+      walletSettlementLoading.value = false;
+    }
   }
 }
 
-async function loadLoopers() {
-  if (!walletSession.value) {
-    return;
+async function loadLoopers(session = walletSession.value, runId = walletPreparationRunId) {
+  if (!session) {
+    return [];
   }
 
   looperLoading.value = true;
   walletError.value = '';
   try {
-    loopers.value = await fetchLooperlandsLoopers(walletSession.value);
-    selectedLooperIds.value = selectedLooperIds.value.filter((id) => loopers.value.some((looper) => looper.id === id));
+    let loadedLoopers: LooperlandsHeroSelection[] = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      loadedLoopers = await fetchLooperlandsLoopers(session);
+      if (!isCurrentWalletPreparation(runId, session)) {
+        return [];
+      }
+
+      walletLog('looper load attempt complete', {
+        runId,
+        attempt,
+        count: loadedLoopers.length,
+      });
+      if (loadedLoopers.length > 0 || attempt === 3) {
+        break;
+      }
+
+      await delay(attempt * 650);
+    }
+
+    if (!isCurrentWalletPreparation(runId, session)) {
+      return [];
+    }
+
+    loopers.value = loadedLoopers;
+    selectedLooperIds.value = selectedLooperIds.value.filter((id) => loadedLoopers.some((looper) => looper.id === id));
+    return loadedLoopers;
   } catch (error) {
+    if (!isCurrentWalletPreparation(runId, session)) {
+      return [];
+    }
+
     walletError.value = error instanceof Error ? error.message : 'Could not load Looper avatars.';
+    return [];
   } finally {
-    looperLoading.value = false;
+    if (isCurrentWalletPreparation(runId, session)) {
+      looperLoading.value = false;
+    }
   }
 }
 

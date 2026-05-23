@@ -9,6 +9,7 @@ import {
     isMaintainedBuildingTile,
     updateTileCondition,
 } from '../../../src/shared/buildings/maintenance';
+import { hasActivePlayers } from '../state/attendanceState';
 
 export const maintenanceSystem = {
     name: 'maintenance',
@@ -21,6 +22,10 @@ export const maintenanceSystem = {
     },
 
     tick: (ctx: TickContext) => {
+        if (!hasActivePlayers()) {
+            return;
+        }
+
         for (const tile of Object.values(tileIndex)) {
             if (!isMaintainedBuildingTile(tile)) {
                 continue;

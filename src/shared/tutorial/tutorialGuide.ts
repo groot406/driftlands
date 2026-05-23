@@ -1,4 +1,5 @@
 import type { ResourceType } from '../../core/types/Resource.ts';
+import { FOOD_SOURCE_TYPES } from '../game/resourceDefinitions.ts';
 import {
   classifyLandingArchetype,
   type LandingArchetype,
@@ -21,6 +22,7 @@ export type TutorialStepId =
   | 'mine-ridges'
   | 'stage-logistics'
   | 'study-and-upgrade'
+  | 'raise-comfort'
   | 'found-second-hearth'
   | 'work-harsh-frontier';
 
@@ -117,6 +119,18 @@ function anyBuilding(metrics: TutorialMetrics, keys: string[]) {
   return keys.reduce((total, key) => total + building(metrics, key), 0);
 }
 
+function anyVariant(metrics: TutorialMetrics, keys: string[]) {
+  return keys.reduce((total, key) => total + variant(metrics, key), 0);
+}
+
+function anyResource(metrics: TutorialMetrics, keys: ResourceType[]) {
+  return keys.reduce((total, key) => total + resource(metrics, key), 0);
+}
+
+function foodSourceStock(metrics: TutorialMetrics) {
+  return anyResource(metrics, [...FOOD_SOURCE_TYPES]);
+}
+
 function landingArchetype(metrics: TutorialMetrics): LandingArchetype {
   return metrics.landingArchetype ?? classifyLandingArchetype(metrics.terrainCounts);
 }
@@ -169,6 +183,33 @@ const PRODUCTION_BUILDINGS = [
   'quarry',
   'oven',
   'workshop',
+];
+
+const RIDGE_INDUSTRY_REQUIRED_POPULATION = 5;
+const WATCHTOWER_UNLOCK_REQUIRED_POPULATION = 4;
+const WATCHTOWER_UNLOCK_REQUIRED_FOOD = 8;
+const LIBRARY_REQUIRED_TOOLS = 2;
+const WORKSHOP_REQUIRED_ORE = 4;
+const WORKSHOP_REQUIRED_STONE = 4;
+
+const COMFORT_BUILDINGS = [
+  'pub',
+  'shop',
+  'harbor',
+];
+
+const COMFORT_HOUSE_VARIANTS = [
+  'plains_stone_house',
+  'dirt_stone_house',
+  'plains_glass_house',
+  'dirt_glass_house',
+];
+
+const TRADE_GOOD_TYPES: ResourceType[] = [
+  'tea',
+  'pottery',
+  'spices',
+  'silk',
 ];
 
 const fieldGuideTopics: FieldGuideTopicDefinition[] = [
@@ -338,7 +379,19 @@ const fieldGuideTopics: FieldGuideTopicDefinition[] = [
       'Load only what the colony can spare before the ship leaves.',
       'Partial orders still pay, while complete orders pay better and bring more trade goods.',
     ],
-    relatedStepIds: ['stage-logistics'],
+    relatedStepIds: ['stage-logistics', 'raise-comfort'],
+  },
+  {
+    id: 'comfort-and-entertainment',
+    category: 'Settlement',
+    title: 'Comfort and entertainment',
+    summary: 'Large colonies need morale systems: pubs, shops, imported trade goods, and better houses turn surplus industry into happier settlers.',
+    cues: [
+      'Pubs spend beer or wine to recover settler happiness.',
+      'Harbors can bring trade goods, and shops turn those imported luxuries into a local comfort service.',
+      'Stone and glass house upgrades add beds and comfort, so housing quality matters as much as raw capacity.',
+    ],
+    relatedStepIds: ['raise-comfort', 'stage-logistics', 'study-and-upgrade'],
   },
   {
     id: 'market-and-trade',
@@ -591,12 +644,47 @@ const tutorialSteps: TutorialStepDefinition[] = [
   {
     id: 'secure-perimeter',
     title: 'Secure the perimeter',
-    objective: 'Build one watchtower near the edge of your settlement.',
+    objective: (metrics) => {
+      if (metrics.population.current < WATCHTOWER_UNLOCK_REQUIRED_POPULATION) {
+        return `Reach ${WATCHTOWER_UNLOCK_REQUIRED_POPULATION} settlers before raising a watchtower.`;
+      }
+
+      if (foodSourceStock(metrics) < WATCHTOWER_UNLOCK_REQUIRED_FOOD) {
+        return `Store ${WATCHTOWER_UNLOCK_REQUIRED_FOOD} edible food before raising a watchtower.`;
+      }
+
+      return 'Build one watchtower near the edge of your settlement.';
+    },
     why: 'Perimeter security means extending reach with a watchtower so the frontier stays usable.',
-    action: 'Place a watchtower on reachable plains, dirt, mountain, snow, or desert near the outer edge.',
+    action: (metrics) => {
+      if (metrics.population.current < WATCHTOWER_UNLOCK_REQUIRED_POPULATION) {
+        const bedAdvice = metrics.population.beds <= metrics.population.current
+          ? 'Build another house, then keep food stocked'
+          : 'Keep food stocked and beds open';
+        return `${bedAdvice} until the colony reaches ${WATCHTOWER_UNLOCK_REQUIRED_POPULATION} settlers.`;
+      }
+
+      if (foodSourceStock(metrics) < WATCHTOWER_UNLOCK_REQUIRED_FOOD) {
+        return 'Hunt, fish, or bake until enough edible food is stored, then build the watchtower.';
+      }
+
+      return 'Place a watchtower on reachable plains, dirt, mountain, snow, or desert near the outer edge.';
+    },
     target: 1,
     progress: (metrics) => building(metrics, 'watchtower'),
-    label: (_metrics, progress) => formatCount(progress, 1, 'watchtower built'),
+    label: (metrics, progress) => {
+      if (progress >= 1) return 'Watchtower built';
+      if (metrics.population.current < WATCHTOWER_UNLOCK_REQUIRED_POPULATION) {
+        return `${metrics.population.current}/${WATCHTOWER_UNLOCK_REQUIRED_POPULATION} settlers`;
+      }
+
+      const foodStock = foodSourceStock(metrics);
+      if (foodStock < WATCHTOWER_UNLOCK_REQUIRED_FOOD) {
+        return `${foodStock}/${WATCHTOWER_UNLOCK_REQUIRED_FOOD} food stored`;
+      }
+
+      return formatCount(progress, 1, 'watchtower built');
+    },
   },
   {
     id: 'stabilize-colony',
@@ -652,9 +740,28 @@ const tutorialSteps: TutorialStepDefinition[] = [
   {
     id: 'mine-ridges',
     title: 'Mine the ridges',
-    objective: 'Discover mountain ground and start stone or ore production.',
+    objective: (metrics) => {
+      if (metrics.population.current < RIDGE_INDUSTRY_REQUIRED_POPULATION) {
+        return `Reach ${RIDGE_INDUSTRY_REQUIRED_POPULATION} settlers before starting mountain industry.`;
+      }
+
+      return 'Discover mountain ground and start stone or ore production.';
+    },
     why: 'Stone, ore, and tools introduce the industrial layer that supports upgrades and expansion.',
-    action: 'Scout toward mountain tiles, then build a quarry or mine from active access.',
+    action: (metrics) => {
+      if (metrics.population.current < RIDGE_INDUSTRY_REQUIRED_POPULATION) {
+        const bedAdvice = metrics.population.beds <= metrics.population.current
+          ? 'Build another house, then keep food stocked'
+          : 'Keep beds open and food stocked';
+        return `${bedAdvice} until the colony reaches ${RIDGE_INDUSTRY_REQUIRED_POPULATION} settlers.`;
+      }
+
+      if (terrain(metrics, 'mountain') > 0) {
+        return 'Use a discovered active mountain tile, then build a quarry or mine from active access.';
+      }
+
+      return 'Scout toward mountain tiles, then build a quarry or mine from active access.';
+    },
     target: 1,
     progress: (metrics) => Math.max(
       building(metrics, 'mine'),
@@ -665,6 +772,13 @@ const tutorialSteps: TutorialStepDefinition[] = [
     label: (metrics, progress) => {
       if (building(metrics, 'mine') > 0) return 'Mine built';
       if (building(metrics, 'quarry') > 0) return 'Quarry built';
+      if (metrics.population.current < RIDGE_INDUSTRY_REQUIRED_POPULATION) {
+        return `${metrics.population.current}/${RIDGE_INDUSTRY_REQUIRED_POPULATION} settlers`;
+      }
+      const mountainTiles = terrain(metrics, 'mountain');
+      if (mountainTiles > 0) {
+        return `${mountainTiles} mountain tile${mountainTiles === 1 ? '' : 's'} found`;
+      }
       return formatCount(progress, 1, 'ridge industry');
     },
   },
@@ -684,9 +798,41 @@ const tutorialSteps: TutorialStepDefinition[] = [
   {
     id: 'study-and-upgrade',
     title: 'Study and upgrade',
-    objective: 'Build a library or workshop so the colony can turn knowledge and ore into stronger infrastructure.',
+    objective: (metrics) => {
+      if (resource(metrics, 'tools') < LIBRARY_REQUIRED_TOOLS && building(metrics, 'workshop') <= 0) {
+        return 'Build a workshop before the library so the colony can make tools.';
+      }
+
+      if (resource(metrics, 'tools') < LIBRARY_REQUIRED_TOOLS && building(metrics, 'workshop') > 0) {
+        return 'Produce tools at the workshop before building a library.';
+      }
+
+      return 'Build a library or workshop so the colony can turn knowledge and ore into stronger infrastructure.';
+    },
     why: 'Studies and upgrades are late-loop improvements; they deepen existing buildings instead of adding another basic task.',
-    action: 'Build a library for studies, or build a workshop once ore is flowing.',
+    action: (metrics) => {
+      if (resource(metrics, 'tools') < LIBRARY_REQUIRED_TOOLS && building(metrics, 'workshop') <= 0) {
+        if (resource(metrics, 'ore') < WORKSHOP_REQUIRED_ORE && building(metrics, 'mine') <= 0) {
+          return 'Build or staff a mine for ore, then build a workshop before the library.';
+        }
+
+        if (resource(metrics, 'ore') < WORKSHOP_REQUIRED_ORE) {
+          return 'Mine enough ore, then build a workshop before the library.';
+        }
+
+        if (resource(metrics, 'stone') < WORKSHOP_REQUIRED_STONE) {
+          return 'Stock stone and ore, then build a workshop before the library.';
+        }
+
+        return 'Build a workshop first; it turns ore into the tools a library needs.';
+      }
+
+      if (resource(metrics, 'tools') < LIBRARY_REQUIRED_TOOLS && building(metrics, 'workshop') > 0) {
+        return `Assign workers to the workshop until at least ${LIBRARY_REQUIRED_TOOLS} tools are stored, then build the library.`;
+      }
+
+      return 'Build a library for studies, or build a workshop once ore is flowing.';
+    },
     target: 1,
     progress: (metrics) => Math.max(
       building(metrics, 'library'),
@@ -696,7 +842,55 @@ const tutorialSteps: TutorialStepDefinition[] = [
     label: (metrics, progress) => {
       if (building(metrics, 'library') > 0) return 'Library built';
       if (building(metrics, 'workshop') > 0) return 'Workshop built';
+      if (resource(metrics, 'tools') < LIBRARY_REQUIRED_TOOLS) {
+        return `${resource(metrics, 'tools')}/${LIBRARY_REQUIRED_TOOLS} tools`;
+      }
       return formatCount(progress, 1, 'advanced work');
+    },
+  },
+  {
+    id: 'raise-comfort',
+    title: 'Raise comfort',
+    objective: 'Add a comfort route through hospitality, imported goods, or upgraded housing.',
+    why: 'As the colony grows, happiness needs a real economy too: drinks, luxuries, and better homes keep settlers productive.',
+    action: (metrics) => {
+      if (building(metrics, 'pub') > 0) {
+        return 'Keep beer or wine stocked so the pub can serve settlers who need a morale lift.';
+      }
+
+      if (building(metrics, 'shop') > 0) {
+        return 'Keep imported trade goods stocked so the shop can turn luxuries into happiness.';
+      }
+
+      if (building(metrics, 'harbor') > 0 && anyResource(metrics, TRADE_GOOD_TYPES) <= 0) {
+        return 'Load ship orders at the harbor to bring home trade goods for shops and settlers.';
+      }
+
+      if (resource(metrics, 'tools') > 0 || resource(metrics, 'stone') >= 6 || resource(metrics, 'glass') > 0) {
+        return 'Build a pub or shop if hospitality is unlocked, or upgrade houses when stone, glass, and tools are ready.';
+      }
+
+      return 'Build a pub for drinks, a harbor and shop for traded goods, or improve houses once upgrades are available.';
+    },
+    target: 1,
+    progress: (metrics) => Math.max(
+      anyBuilding(metrics, COMFORT_BUILDINGS),
+      anyVariant(metrics, COMFORT_HOUSE_VARIANTS),
+      anyResource(metrics, TRADE_GOOD_TYPES) > 0 ? 1 : 0,
+    ),
+    label: (metrics, progress) => {
+      if (building(metrics, 'pub') > 0) return 'Pub built';
+      if (building(metrics, 'shop') > 0) return 'Shop built';
+      if (building(metrics, 'harbor') > 0) return 'Harbor ready';
+      const upgradedHouses = anyVariant(metrics, COMFORT_HOUSE_VARIANTS);
+      if (upgradedHouses > 0) {
+        return `${upgradedHouses} upgraded house${upgradedHouses === 1 ? '' : 's'}`;
+      }
+      const tradeGoods = anyResource(metrics, TRADE_GOOD_TYPES);
+      if (tradeGoods > 0) {
+        return `${tradeGoods} trade good${tradeGoods === 1 ? '' : 's'} stored`;
+      }
+      return formatCount(progress, 1, 'comfort route');
     },
   },
   {

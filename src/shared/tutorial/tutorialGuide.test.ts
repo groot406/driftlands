@@ -132,11 +132,11 @@ test('tutorial explains perimeter security as watchtower progress', () => {
     selectedHeroCount: 1,
     discoveredTiles: 18,
     terrainCounts: { water: 4, grain: 1 },
-    resourceStock: { wood: 10, grain: 4 },
+    resourceStock: { wood: 10, grain: 4, fish: 8 },
     variantCounts: { road: 1 },
     buildingCounts: { house: 1, dock: 1 },
     population: {
-      current: 3,
+      current: 4,
       beds: 4,
       max: 15,
       hungerMs: 0,
@@ -147,6 +147,50 @@ test('tutorial explains perimeter security as watchtower progress', () => {
   assert.equal(tutorial.currentStep?.id, 'secure-perimeter');
   assert.match(tutorial.currentStep?.objective ?? '', /watchtower/i);
   assert.match(tutorial.currentStep?.why ?? '', /Perimeter security/i);
+});
+
+test('perimeter step explains population and food blockers before watchtower', () => {
+  const populationBlocked = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 18,
+    terrainCounts: { water: 4, grain: 1 },
+    resourceStock: { wood: 10, grain: 4, fish: 8 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1, dock: 1 },
+    population: {
+      current: 2,
+      beds: 4,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  assert.equal(populationBlocked.currentStep?.id, 'secure-perimeter');
+  assert.match(populationBlocked.currentStep?.objective ?? '', /Reach 4 settlers/);
+  assert.match(populationBlocked.currentStep?.action ?? '', /food stocked and beds open/);
+  assert.equal(populationBlocked.currentStep?.progressLabel, '2/4 settlers');
+
+  const foodBlocked = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 18,
+    terrainCounts: { water: 4, grain: 1 },
+    resourceStock: { wood: 10, grain: 4, fish: 3 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1, dock: 1 },
+    population: {
+      current: 4,
+      beds: 4,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  assert.equal(foodBlocked.currentStep?.id, 'secure-perimeter');
+  assert.match(foodBlocked.currentStep?.objective ?? '', /Store 8 edible food/);
+  assert.match(foodBlocked.currentStep?.action ?? '', /Hunt, fish, or bake/);
+  assert.equal(foodBlocked.currentStep?.progressLabel, '3/8 food stored');
 });
 
 test('tutorial waits for online support after population reaches four', () => {
@@ -171,6 +215,98 @@ test('tutorial waits for online support after population reaches four', () => {
   assert.equal(tutorial.currentStep?.progressLabel, '2 inactive tiles');
 });
 
+test('ridge step points at population before known mountain industry', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 24,
+    terrainCounts: { water: 4, grain: 1, mountain: 3 },
+    resourceStock: { wood: 20, grain: 4, water: 1 },
+    variantCounts: { road: 4, dirt_tilled: 1 },
+    buildingCounts: {
+      house: 2,
+      dock: 1,
+      watchtower: 1,
+      granary: 1,
+      well: 1,
+    },
+    population: {
+      current: 4,
+      beds: 6,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  assert.equal(tutorial.currentStep?.id, 'mine-ridges');
+  assert.match(tutorial.currentStep?.objective ?? '', /5 settlers/);
+  assert.match(tutorial.currentStep?.action ?? '', /food stocked/);
+  assert.doesNotMatch(tutorial.currentStep?.action ?? '', /Scout toward mountain tiles/);
+  assert.equal(tutorial.currentStep?.progressLabel, '4/5 settlers');
+});
+
+test('study step points at workshop before a tool-gated library', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 28,
+    terrainCounts: { water: 4, grain: 1, mountain: 3 },
+    resourceStock: { wood: 24, stone: 8, ore: 4, tools: 0, grain: 4, water: 1 },
+    variantCounts: { road: 4, dirt_tilled: 1 },
+    buildingCounts: {
+      house: 2,
+      dock: 1,
+      watchtower: 1,
+      granary: 1,
+      well: 1,
+      quarry: 1,
+    },
+    population: {
+      current: 5,
+      beds: 6,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  assert.equal(tutorial.currentStep?.id, 'study-and-upgrade');
+  assert.match(tutorial.currentStep?.objective ?? '', /workshop before the library/i);
+  assert.match(tutorial.currentStep?.action ?? '', /Build a workshop first/i);
+  assert.equal(tutorial.currentStep?.progressLabel, '0/2 tools');
+});
+
+test('tutorial adds a comfort step after tools and studies begin', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 30,
+    terrainCounts: { water: 4, grain: 1, mountain: 3 },
+    resourceStock: { wood: 24, stone: 8, ore: 4, tools: 2, grain: 4, water: 1 },
+    variantCounts: { road: 4, dirt_tilled: 1 },
+    buildingCounts: {
+      house: 2,
+      dock: 1,
+      watchtower: 1,
+      granary: 1,
+      well: 1,
+      quarry: 1,
+      supplyDepot: 1,
+      workshop: 1,
+    },
+    population: {
+      current: 6,
+      beds: 6,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  assert.equal(tutorial.currentStep?.id, 'raise-comfort');
+  assert.match(tutorial.currentStep?.objective ?? '', /comfort/i);
+  assert.match(tutorial.currentStep?.action ?? '', /pub|shop|upgrade houses/i);
+  assert.equal(tutorial.currentStep?.progressLabel, '0/1 comfort route');
+});
+
 test('field guide covers the major systems and terrain alternatives', () => {
   const topics = getFieldGuideTopicDefinitions();
   const categories = new Set(topics.map((topic) => topic.category));
@@ -187,6 +323,7 @@ test('field guide covers the major systems and terrain alternatives', () => {
   assert.match(allGuideText, /roadmap/i);
   assert.match(allGuideText, /job sites/i);
   assert.match(allGuideText, /ship orders/i);
+  assert.match(allGuideText, /Pubs|trade goods|house upgrades/i);
   assert.match(allGuideText, /Market stock/i);
   assert.match(allGuideText, /repair/i);
   assert.match(allGuideText, /Calamities/i);

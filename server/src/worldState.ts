@@ -55,6 +55,7 @@ import { marketState } from './state/marketState';
 import type { MarketOverviewSnapshot } from '../../src/shared/game/market';
 import { shipOrderState } from './state/shipOrderState';
 import type { ShipOrderOverviewSnapshot } from '../../src/shared/game/shipOrders';
+import { resetAttendanceState } from './state/attendanceState';
 
 const STARTING_BREAD = 4;
 const STARTING_FISH = 4;
@@ -286,6 +287,7 @@ class WorldState {
     resetSettlementSupportState();
     resetMineReserveState();
     resetCalamitySystem();
+    resetAttendanceState();
     marketState.reset();
     shipOrderState.reset();
     loadTasks([]);

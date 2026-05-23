@@ -100,9 +100,11 @@ registerLooperlandsProxy(app);
 registerMarketRoutes(app);
 app.get('/api/driftlands/player/:playerId/settlement', (req: any, res: any) => {
   const playerId = String(req.params.playerId ?? '');
+  const settlementId = playerSettlementState.getPlayerSettlement(playerId);
+  console.log(`[driftlands:player] settlement lookup playerId=${playerId} settlementId=${settlementId ?? '-'}`);
   res.json({
     playerId,
-    settlementId: playerSettlementState.getPlayerSettlement(playerId),
+    settlementId,
   });
 });
 // @ts-ignore
