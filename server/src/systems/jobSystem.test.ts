@@ -755,7 +755,7 @@ test('library scholars advance the active study instead of producing resources',
   tickAll(1_000, 1_000);
   tickAll(62_000, 61_000);
 
-  const study = getStudySnapshot().studies.find((entry) => entry.key === 'field_notebooks');
+  const study = getStudySnapshot('0,0').studies.find((entry) => entry.key === 'field_notebooks');
   assert.equal(study?.progressMs, 60_000);
   assert.equal(study?.completed, false);
 

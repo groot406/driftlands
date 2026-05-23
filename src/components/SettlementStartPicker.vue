@@ -10,6 +10,12 @@
           <button class="settlement-start-refresh" type="button" @click="refreshOptions">Refresh</button>
         </header>
 
+        <section v-if="settlementStartLocked" class="settlement-start-lock" aria-live="polite">
+          <span>Season Locked</span>
+          <strong>{{ settlementStartLockTitle }}</strong>
+          <p>{{ settlementStartLockReason }}</p>
+        </section>
+
         <div class="settlement-start-body overflow-hidden rounded-lg">
           <div class="rounded-lg overflow-hidden">
             <div class="-m-2">
@@ -32,8 +38,8 @@
           <div v-if="isFreeStart" class="settlement-start-list">
             <button
               class="settlement-start-option settlement-start-option--selected settlement-start-option--free"
-              :class="{ 'settlement-start-option--blocked': selectedFreeBlocked }"
-              :disabled="!selectedFreeCoord"
+              :class="{ 'settlement-start-option--blocked': selectedFreeBlocked || settlementStartLocked }"
+              :disabled="!selectedFreeCoord || settlementStartLocked"
               type="button"
             >
               <span class="settlement-start-option__main">
@@ -55,9 +61,10 @@
               class="settlement-start-option"
               :class="{
                 'settlement-start-option--selected': candidate.id === selectedCandidateId,
+                'settlement-start-option--blocked': settlementStartLocked,
                 [`settlement-start-option--${candidate.distanceBand}`]: true,
               }"
-              :disabled="!candidate.available"
+              :disabled="!candidate.available || settlementStartLocked"
               type="button"
               @click="selectCandidate(candidate.id)"
             >
@@ -74,6 +81,33 @@
           </div>
         </div>
 
+        <section
+          v-if="season"
+          class="settlement-start-season"
+          :class="{ 'settlement-start-season--locked': settlementStartLocked }"
+          aria-label="Season briefing"
+        >
+          <div>
+            <p class="settlement-start-season__eyebrow">Season Briefing</p>
+            <strong>{{ seasonStageLabel }}</strong>
+            <span>{{ seasonStrategyHint }}</span>
+          </div>
+          <div class="settlement-start-season__stats">
+            <article>
+              <span>{{ nextSeasonStageLabel }}</span>
+              <strong>{{ seasonCountdown }}</strong>
+            </article>
+            <article>
+              <span>Borders</span>
+              <strong>{{ seasonBorderLabel }}</strong>
+            </article>
+            <article>
+              <span>Starts</span>
+              <strong>{{ settlementStartsLabel }}</strong>
+            </article>
+          </div>
+        </section>
+
         <footer class="settlement-start-footer">
           <p>{{ selectedSummary }}</p>
           <button
@@ -82,7 +116,7 @@
             :disabled="!canConfirm"
             @click="confirmSelection"
           >
-            {{ isFounding ? 'Founding...' : 'Found Settlement' }}
+            {{ confirmButtonLabel }}
           </button>
         </footer>
       </section>
@@ -91,25 +125,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import WorldMiniMap, { type MiniMapHotspot } from './WorldMiniMap.vue';
 import { requestFoundSettlement, requestFoundSettlementAt, requestSettlementStartOptions } from '../core/settlementStartService.ts';
 import {
   needsSettlementStart,
+  currentPlayerSettlementId,
   settlementStartCandidates,
   settlementStartError,
   settlementStartFoundingCandidateId,
   settlementStartMarkers,
   settlementStartMode,
+  settlementStartOptionsLoaded,
   settlementStartTerrainTiles,
 } from '../store/settlementStartStore.ts';
+import { seasonSnapshot } from '../store/seasonStore.ts';
 import { MIN_SETTLEMENT_START_CONNECTED_LAND, type SettlementStartCandidate } from '../shared/multiplayer/settlementStart.ts';
 
 const selectedCandidateId = ref<string | null>(null);
 const selectedFreeCoord = ref<{ q: number; r: number } | null>(null);
 const viewportCenter = ref<{ q: number; r: number } | null>(null);
+const now = ref(Date.now());
+let countdownTimer: number | null = null;
 
-const isOpen = computed(() => needsSettlementStart.value);
+const isOpen = computed(() => (
+  needsSettlementStart.value
+  || (settlementStartOptionsLoaded.value && !currentPlayerSettlementId.value && settlementStartLocked.value)
+));
+const season = computed(() => seasonSnapshot.value);
 const isFreeStart = computed(() => settlementStartMode.value === 'free');
 const candidates = computed(() => settlementStartCandidates.value);
 const markers = computed(() => settlementStartMarkers.value);
@@ -126,9 +169,12 @@ const selectedFreeTile = computed(() => {
 });
 const selectedFreeBlocked = computed(() => !!selectedFreeCoord.value && (!selectedFreeTile.value || !!selectedFreeTile.value.blocked));
 const canConfirm = computed(() => (
+  !settlementStartLocked.value
+  && (
   isFreeStart.value
     ? !!selectedFreeTile.value && !selectedFreeBlocked.value && !isFounding.value
     : !!selectedCandidate.value && !isFounding.value
+  )
 ));
 const selectedFreeTerrain = computed(() => {
   if (!selectedFreeCoord.value) {
@@ -154,14 +200,108 @@ const selectedFreeDescription = computed(() => {
         return `This island has ${tile.connectedNonWaterTiles ?? 0} connected non-water tiles; choose at least ${MIN_SETTLEMENT_START_CONNECTED_LAND}.`;
       case 'player_reach': {
         const playerName = tile.blockedByPlayerName ?? 'another player';
-        return `q ${coord.q}, r ${coord.r} is inside ${playerName}'s reach.`;
+        return `This site is inside ${playerName}'s reach.`;
       }
       default:
         return 'That tile cannot be used as a settlement start.';
     }
   }
 
-  return `q ${coord.q}, r ${coord.r}`;
+  return 'Ready to found on the selected site.';
+});
+const currentSeasonStage = computed(() => season.value?.currentStage ?? 'preparation');
+const currentSeasonStageConfig = computed(() => {
+  const snapshot = season.value;
+  if (!snapshot || snapshot.currentStage === 'completed') {
+    return null;
+  }
+
+  return snapshot.config.stages.find((stage) => stage.key === snapshot.currentStage) ?? null;
+});
+const seasonStageLabel = computed(() => stageName(currentSeasonStage.value));
+const nextSeasonStageLabel = computed(() => {
+  if (season.value?.status === 'completed' && season.value.nextSeasonStartsAt) {
+    return 'Next Season In';
+  }
+  const next = getNextSeasonStage();
+  return next === 'completed' ? 'Completes In' : `${stageName(next)} In`;
+});
+const seasonCountdown = computed(() => {
+  if (season.value?.status === 'completed' && season.value.nextSeasonStartsAt) {
+    return formatCountdown(Math.max(0, season.value.nextSeasonStartsAt - now.value));
+  }
+  const endsAt = season.value?.stageEndsAt;
+  return endsAt ? formatCountdown(Math.max(0, endsAt - now.value)) : '--';
+});
+const seasonBorderLabel = computed(() => {
+  switch (currentSeasonStageConfig.value?.borderPolicy) {
+    case 'locked_closed':
+      return 'Closed';
+    case 'locked_open':
+      return 'Open';
+    case 'player_choice':
+      return 'Player choice';
+    default:
+      return '--';
+  }
+});
+const settlementStartLocked = computed(() => {
+  const snapshot = season.value;
+  if (!snapshot) {
+    return false;
+  }
+  if (snapshot.status === 'completed' || snapshot.currentStage === 'completed') {
+    return true;
+  }
+  return currentSeasonStageConfig.value?.allowSettlementStarts === false;
+});
+const settlementStartsLabel = computed(() => settlementStartLocked.value ? 'Locked' : 'Open');
+const settlementStartLockTitle = computed(() => {
+  if (season.value?.status === 'completed' || season.value?.currentStage === 'completed') {
+    return 'This season is complete.';
+  }
+  return `New settlements are locked during ${seasonStageLabel.value}.`;
+});
+const settlementStartLockReason = computed(() => {
+  const snapshot = season.value;
+  if (!snapshot) {
+    return '';
+  }
+  if (snapshot.status === 'completed' || snapshot.currentStage === 'completed') {
+    const nextSeasonText = snapshot.nextSeasonStartsAt
+      ? ` A new season starts in ${seasonCountdown.value}.`
+      : '';
+    return `The world is now an archive: you can inspect the map and final scores, but no new colonies can join.${nextSeasonText}`;
+  }
+  const next = getNextSeasonStage();
+  const waitText = next === 'completed'
+    ? 'the next season'
+    : `${stageName(next)} ${seasonCountdown.value === '--' ? '' : `in ${seasonCountdown.value}`}`.trim();
+  return `The server has disabled new colony starts for this stage. You can inspect the current world, but founding reopens with ${waitText}.`;
+});
+const confirmButtonLabel = computed(() => {
+  if (settlementStartLocked.value) {
+    return 'Starts Locked';
+  }
+  return isFounding.value ? 'Founding...' : 'Found Settlement';
+});
+const seasonStrategyHint = computed(() => {
+  if (settlementStartLocked.value) {
+    return settlementStartLockReason.value;
+  }
+
+  switch (currentSeasonStage.value) {
+    case 'preparation':
+      return 'Pick a landing with room for food, roads and defenses while borders are still closed.';
+    case 'midgame':
+      return 'Borders are open, so distance, towers and access routes matter from the first minute.';
+    case 'endgame':
+      return 'Final goals are live. New starts may be blocked soon, so choose only if this site can score quickly.';
+    case 'completed':
+      return 'This world is complete and can only be inspected.';
+    default:
+      return 'Choose a landing that fits the active season rules.';
+  }
 });
 
 const mapHotspots = computed<MiniMapHotspot[]>(() => [
@@ -181,10 +321,12 @@ const mapHotspots = computed<MiniMapHotspot[]>(() => [
     r: candidate.r,
     kind: 'candidate' as const,
     tone: candidate.distanceBand,
-    interactive: candidate.available,
-    disabled: !candidate.available,
+    interactive: candidate.available && !settlementStartLocked.value,
+    disabled: !candidate.available || settlementStartLocked.value,
     selected: candidate.id === selectedCandidateId.value,
-    title: candidate.available
+    title: settlementStartLocked.value
+      ? 'Settlement starts are locked during this season stage.'
+      : candidate.available
       ? `${candidate.label}: ${candidate.description}`
       : `${candidate.label}: occupied by ${candidate.occupiedByPlayerName ?? 'another player'}`,
   }))),
@@ -239,13 +381,17 @@ watch(minimapViewport, (nextViewport) => {
 }, { immediate: true });
 
 const selectedSummary = computed(() => {
+  if (settlementStartLocked.value) {
+    return settlementStartLockReason.value;
+  }
+
   const candidate = selectedCandidate.value;
   if (isFreeStart.value) {
     const coord = selectedFreeCoord.value;
     return coord
       ? (selectedFreeBlocked.value
         ? 'Pick a valid land tile on a large enough island.'
-        : `Found at q ${coord.q}, r ${coord.r}.`)
+        : 'Found at the selected site.')
       : 'Click a tile on the minimap to choose your settlement site.';
   }
 
@@ -296,6 +442,9 @@ function formatTerrain(terrain: SettlementStartCandidate['terrain']) {
 }
 
 function selectCandidate(candidateId: string) {
+  if (settlementStartLocked.value) {
+    return;
+  }
   selectedCandidateId.value = candidateId;
 }
 
@@ -308,7 +457,7 @@ function handleHotspotClick(hotspot: MiniMapHotspot) {
 }
 
 function handleTerrainClick(coord: { q: number; r: number }) {
-  if (!isFreeStart.value) {
+  if (!isFreeStart.value || settlementStartLocked.value) {
     return;
   }
 
@@ -320,7 +469,7 @@ function refreshOptions() {
 }
 
 function confirmSelection() {
-  if (isFounding.value) {
+  if (isFounding.value || settlementStartLocked.value) {
     return;
   }
 
@@ -341,6 +490,56 @@ function confirmSelection() {
 
   requestFoundSettlement(candidate.id);
 }
+
+function getNextSeasonStage() {
+  const snapshot = season.value;
+  if (!snapshot || snapshot.status === 'completed' || snapshot.currentStage === 'completed') {
+    return 'completed';
+  }
+
+  const enabled = snapshot.config.stages.filter((stage) => stage.enabled && stage.durationMs > 0);
+  const index = enabled.findIndex((stage) => stage.key === snapshot.currentStage);
+  return enabled[index + 1]?.key ?? 'completed';
+}
+
+function stageName(stage: string) {
+  switch (stage) {
+    case 'preparation':
+      return 'Preparation';
+    case 'midgame':
+      return 'Midgame';
+    case 'endgame':
+      return 'Finale';
+    case 'completed':
+      return 'Completed';
+    default:
+      return stage;
+  }
+}
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+onMounted(() => {
+  countdownTimer = window.setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
+});
+
+onBeforeUnmount(() => {
+  if (countdownTimer != null) {
+    window.clearInterval(countdownTimer);
+  }
+});
 </script>
 
 <style scoped>
@@ -400,6 +599,120 @@ function confirmSelection() {
   display: grid;
   grid-template-columns: minmax(22rem, 1.35fr) minmax(18rem, 0.9fr);
   gap: 1rem;
+}
+
+.settlement-start-lock {
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(92, 44, 12, 0.74), rgba(31, 19, 13, 0.78)),
+    rgba(6, 18, 20, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 207, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.22);
+  padding: 0.75rem 0.9rem;
+}
+
+.settlement-start-lock span {
+  display: block;
+  color: #facc15;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.settlement-start-lock strong {
+  display: block;
+  margin-top: 0.22rem;
+  color: #fff4cf;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.settlement-start-lock p {
+  margin: 0.28rem 0 0;
+  color: rgba(255, 244, 207, 0.78);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.settlement-start-season {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid rgba(157, 216, 198, 0.24);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(45, 148, 123, 0.2), transparent 18rem),
+    linear-gradient(180deg, rgba(8, 28, 29, 0.78), rgba(5, 17, 20, 0.72));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 0.8rem 0.9rem;
+}
+
+.settlement-start-season--locked {
+  border-color: rgba(251, 191, 36, 0.34);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 191, 36, 0.16), transparent 18rem),
+    linear-gradient(180deg, rgba(43, 28, 13, 0.84), rgba(5, 17, 20, 0.72));
+}
+
+.settlement-start-season__eyebrow {
+  margin: 0 0 0.22rem;
+  color: #9dd8c6;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.settlement-start-season > div:first-child strong {
+  display: block;
+  color: #fff4cf;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.settlement-start-season > div:first-child span {
+  display: block;
+  margin-top: 0.28rem;
+  color: rgba(255, 244, 207, 0.75);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.settlement-start-season__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(5.4rem, 1fr));
+  gap: 0.45rem;
+}
+
+.settlement-start-season__stats article {
+  min-width: 0;
+  border: 1px solid rgba(255, 244, 207, 0.12);
+  border-radius: 6px;
+  background: rgba(6, 18, 20, 0.44);
+  padding: 0.5rem 0.55rem;
+}
+
+.settlement-start-season__stats span {
+  display: block;
+  color: rgba(255, 244, 207, 0.58);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.settlement-start-season__stats strong {
+  display: block;
+  min-width: 0;
+  margin-top: 0.26rem;
+  color: #c7f7ff;
+  font-size: 0.78rem;
+  line-height: 1.16;
+  overflow-wrap: anywhere;
 }
 
 .settlement-start-list {
@@ -547,9 +860,18 @@ function confirmSelection() {
   }
 
   .settlement-start-header,
-  .settlement-start-footer {
+  .settlement-start-footer,
+  .settlement-start-season {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settlement-start-season {
+    display: flex;
+  }
+
+  .settlement-start-season__stats {
+    grid-template-columns: 1fr;
   }
 }
 </style>

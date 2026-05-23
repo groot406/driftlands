@@ -291,7 +291,7 @@ export function getSiteBlockerReason(site: ResolvedJobSite, assignedWorkers: num
         };
     }
 
-    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+    if (site.building.jobKind === 'study' && !hasActiveStudy(getTileSettlementId(site.tile))) {
         return {
             code: 'no_work',
             tileId: site.tile.id,
@@ -341,7 +341,7 @@ export function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: n
         return false;
     }
 
-    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+    if (site.building.jobKind === 'study' && !hasActiveStudy(getTileSettlementId(site.tile))) {
         return false;
     }
 
@@ -358,7 +358,7 @@ export function resolveSiteStatus(site: ResolvedJobSite, assignedWorkers: number
         return 'paused';
     }
 
-    if (site.building.jobKind === 'study' && !hasActiveStudy()) {
+    if (site.building.jobKind === 'study' && !hasActiveStudy(getTileSettlementId(site.tile))) {
         return 'complete';
     }
 

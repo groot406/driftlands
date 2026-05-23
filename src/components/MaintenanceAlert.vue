@@ -7,7 +7,7 @@
             <p class="maintenance-alert__kicker pixel-font">Maintenance</p>
             <h3 class="maintenance-alert__title">Repairs needed</h3>
           </div>
-          <button class="maintenance-alert__close" type="button" title="Close maintenance panel" @click.stop="expanded = false">
+          <button class="maintenance-alert__close" type="button" title="Close maintenance panel" @click.stop="closeMaintenancePanel">
             &#x2715;
           </button>
         </div>
@@ -34,7 +34,7 @@
           <span v-if="topShortfall.shortfall > 0"> · short {{ formatAmount(topShortfall.shortfall) }}</span>
         </p>
         <p v-else class="maintenance-alert__note">
-          Repair crews pull wood and stone from colony storage automatically.
+          Repair crews pull wood, and stone for masonry buildings, from colony storage automatically.
         </p>
       </aside>
     </transition>
@@ -44,7 +44,7 @@
       :class="{ 'maintenance-toggle-btn--active': expanded, 'maintenance-toggle-btn--danger': summary.offlineCount > 0 || summary.damagedCount > 0 }"
       type="button"
       :title="`Maintenance: ${summary.statusText}`"
-      @click.stop="expanded = !expanded"
+      @click.stop="toggleMaintenancePanel"
     >
       <svg class="maintenance-toggle-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4" />
@@ -63,6 +63,7 @@ import { getSettlementResourceInventory, resourceInventory, resourceVersion } fr
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
 import { formatResourceType } from '../shared/buildings/jobSiteDetails.ts';
+import { activeToolbarPanel, closeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore.ts';
 
 const expanded = ref(false);
 
@@ -103,8 +104,28 @@ const badgeClass = computed(() => {
   return 'maintenance-alert__badge--warn';
 });
 
+function toggleMaintenancePanel() {
+  if (expanded.value) {
+    closeMaintenancePanel();
+  } else {
+    openToolbarPanel('maintenance');
+    expanded.value = true;
+  }
+}
+
+function closeMaintenancePanel() {
+  expanded.value = false;
+  closeToolbarPanel('maintenance');
+}
+
 watch(showAlert, (visible) => {
   if (!visible) {
+    closeMaintenancePanel();
+  }
+});
+
+watch(activeToolbarPanel, (panel) => {
+  if (panel !== 'maintenance' && expanded.value) {
     expanded.value = false;
   }
 });

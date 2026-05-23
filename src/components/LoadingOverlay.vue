@@ -1,9 +1,10 @@
 <template>
   <transition name="fade">
-    <div v-if="popupLoaders.length"
+    <div v-if="primaryLoader"
          class="absolute inset-0 flex items-center justify-center bg-[#101827]/75 backdrop-blur-[2px] z-50">
       <div class="flex flex-col space-y-4 w-full max-w-[400px] px-4">
-        <div v-for="loader in popupLoaders" :key="loader.id"
+        <div
+             :key="primaryLoader.id"
              class="loader-panel w-full space-y-5 p-6 border shadow-xl drop-shadow-md">
           <div class="flex items-center gap-4">
             <div class="hex-loader" aria-hidden="true">
@@ -16,21 +17,24 @@
               <span></span>
             </div>
             <div class="min-w-0">
-              <div class="text-sm font-semibold tracking-wide uppercase text-[#f8e7c0]">{{ loader.title }}</div>
-              <div class="mt-1 text-xs text-[#b9c2c4]" role="status">{{ loader.status }}</div>
+              <div class="text-sm font-semibold tracking-wide uppercase text-[#f8e7c0]">{{ primaryLoader.title }}</div>
+              <div class="mt-1 text-xs text-[#b9c2c4]" role="status">{{ primaryLoader.status }}</div>
             </div>
           </div>
-          <div v-if="loader.total" class="flex items-center justify-between text-xs text-[#b9c2c4]">
-            <div><template v-if="loader.unitLabel">{{ loader.unitLabel }}: </template>{{ loader.completed }} / {{ loader.total }}</div>
-            <div>{{ (getProgress(loader) * 100).toFixed(0) }}%</div>
+          <div v-if="primaryLoader.total" class="flex items-center justify-between text-xs text-[#b9c2c4]">
+            <div><template v-if="primaryLoader.unitLabel">{{ primaryLoader.unitLabel }}: </template>{{ primaryLoader.completed }} / {{ primaryLoader.total }}</div>
+            <div>{{ (getProgress(primaryLoader) * 100).toFixed(0) }}%</div>
           </div>
           <div class="h-3 overflow-hidden loader-track">
             <div
                 class="h-full loader-fill transition-all"
-                :style="loader.infinite ? undefined : { width: (loader.progress * 100) + '%' }"
-                :class="loader.infinite ? 'infinite-loader-bar' : ''"
+                :style="primaryLoader.infinite ? undefined : { width: (primaryLoader.progress * 100) + '%' }"
+                :class="primaryLoader.infinite ? 'infinite-loader-bar' : ''"
             ></div>
           </div>
+          <p v-if="hiddenPopupLoaderCount > 0" class="loader-panel__secondary">
+            {{ hiddenPopupLoaderCount }} more loading step{{ hiddenPopupLoaderCount === 1 ? '' : 's' }} running
+          </p>
         </div>
       </div>
     </div>
@@ -54,7 +58,15 @@ function getProgress(loader: Loader): number {
   return loader.progress || 0;
 }
 
-const popupLoaders = computed(() => activeLoaders.value.filter(loader => loader.popup))
+const popupLoaders = computed(() => activeLoaders.value.filter(loader => loader.popup));
+const primaryLoader = computed(() => {
+  const loaders = popupLoaders.value;
+  return loaders.find((loader) => loader.id === 'world-sync')
+    ?? loaders.find((loader) => loader.infinite)
+    ?? loaders[0]
+    ?? null;
+});
+const hiddenPopupLoaderCount = computed(() => Math.max(0, popupLoaders.value.length - 1));
 </script>
 
 <style scoped>
@@ -79,6 +91,14 @@ const popupLoaders = computed(() => activeLoaders.value.filter(loader => loader.
   border-radius: 2px;
   background: linear-gradient(90deg, #81b65f, #d8b167, #74a2bd);
   box-shadow: 0 0 16px rgba(216, 177, 103, 0.3);
+}
+
+.loader-panel__secondary {
+  margin: -0.45rem 0 0;
+  color: rgba(185, 194, 196, 0.72);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .hex-loader {

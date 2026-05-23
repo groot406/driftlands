@@ -112,7 +112,18 @@
             </div>
           </div>
 
-          <button class="title-menu__button" type="submit" :disabled="!canStart">{{ primaryActionLabel }}</button>
+          <div class="title-actions" aria-label="Game actions">
+            <button class="title-menu__button title-menu__button--primary" type="submit" :disabled="!canStart">{{ primaryActionLabel }}</button>
+            <button
+              class="title-menu__button title-menu__button--spectator"
+              type="button"
+              :disabled="startMode === 'wallet' && (!walletSession || walletLoading)"
+              @click="spectateGame"
+            >
+              Spectate World
+            </button>
+            <p class="title-wallet__notice title-actions__hint">Watch seasons and scoreboards without founding a settlement.</p>
+          </div>
         </form>
 
         <div class="title-menu__story">
@@ -652,6 +663,21 @@ function joinGame() {
   resumeGame();
 }
 
+function spectateGame() {
+  if (startMode.value === 'wallet' && !walletSession.value) {
+    walletError.value = 'Connect a wallet first, or switch to No Wallet to spectate anonymously.';
+    return;
+  }
+
+  connectWithNickname(
+    nickname.value,
+    startMode.value === 'wallet' && walletSession.value ? buildLooperlandsContinueAuth(walletSession.value) : null,
+    null,
+    { spectator: true },
+  );
+  resumeGame();
+}
+
 function retryTitleMusic() {
   musicManager.playTitleMusic().catch((error) => console.warn('Failed to play title music:', error));
 }
@@ -767,28 +793,19 @@ function retryTitleMusic() {
 
 .title-menu__button {
   width: 100%;
-  min-height: 3.55rem;
-  margin-top: 0.25rem;
-  border: 2px solid #60330f55;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #e8d966 0%, #dda845 53%, #9c5d1e 100%);
-  color: #2f1609;
-  font-size: 1.15rem;
+  border-radius: 12px;
   font-weight: 800;
-  text-transform: uppercase;
-  box-shadow: 0 6px 0 rgba(66, 32, 12, 0.86), 0 18px 24px rgba(0, 0, 0, 0.18);
+  letter-spacing: 0;
   transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
 }
 
 .title-menu__button:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);
-  box-shadow: 0 9px 0 rgba(66, 32, 12, 0.86), 0 22px 28px rgba(0, 0, 0, 0.3);
 }
 
 .title-menu__button:active {
-  transform: translateY(4px);
-  box-shadow: 0 4px 0 rgba(66, 32, 12, 0.86), 0 12px 20px rgba(0, 0, 0, 0.22);
+  transform: translateY(2px);
 }
 
 .title-menu__story {
@@ -852,8 +869,72 @@ function retryTitleMusic() {
   opacity: 0.55;
 }
 
+.title-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.title-menu__button--primary {
+  min-height: 3.35rem;
+  border: 2px solid rgba(96, 51, 15, 0.56);
+  background:
+    linear-gradient(180deg, rgba(255, 247, 185, 0.95) 0%, rgba(226, 176, 70, 0.98) 48%, rgba(143, 84, 26, 0.98) 100%);
+  color: #2f1609;
+  font-size: 1.08rem;
+  text-transform: uppercase;
+  box-shadow:
+    0 5px 0 rgba(66, 32, 12, 0.9),
+    0 16px 24px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.title-menu__button--primary:hover {
+  box-shadow:
+    0 8px 0 rgba(66, 32, 12, 0.9),
+    0 22px 28px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.title-menu__button--primary:active {
+  box-shadow:
+    0 3px 0 rgba(66, 32, 12, 0.9),
+    0 12px 18px rgba(0, 0, 0, 0.24);
+}
+
 .title-menu__button--wallet {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  min-height: 2.65rem;
+  border: 1px solid rgba(248, 231, 160, 0.32);
+  background:
+    linear-gradient(180deg, rgba(34, 63, 69, 0.9), rgba(15, 31, 35, 0.95));
+  color: #fff3d2;
+  font-size: 0.78rem;
+  text-transform: none;
+  box-shadow:
+    0 3px 0 rgba(2, 8, 10, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.title-menu__button--spectator {
+  min-height: 2.75rem;
+  border: 1px solid rgba(151, 202, 255, 0.3);
+  background:
+    linear-gradient(180deg, rgba(116, 155, 169, 0.22), rgba(24, 54, 64, 0.42));
+  color: #cfeaff;
+  font-size: 0.82rem;
+  text-transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.title-menu__button--spectator:hover {
+  border-color: rgba(151, 202, 255, 0.52);
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.title-actions__hint {
+  text-align: center;
 }
 
 .title-wallet__connected {

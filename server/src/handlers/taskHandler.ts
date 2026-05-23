@@ -11,6 +11,7 @@ import { isTileControlledBySettlement } from '../../../src/shared/game/state/set
 import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
 import type { Tile } from '../../../src/core/types/Tile';
+import { seasonState } from '../state/seasonState';
 
 export class ServerTaskHandler {
     constructor(_io: Server) {
@@ -22,6 +23,13 @@ export class ServerTaskHandler {
     }
 
     private handleStartRequest(_socket: Socket, message: StartTaskRequestMessage): void {
+        if (!seasonState.allowsNewHeroActions()) {
+            return;
+        }
+        if (playerSettlementState.isSocketSpectator(_socket.id)) {
+            return;
+        }
+
         const { heroId, task, location } = message;
         const hero = getHero(heroId);
         if (!hero || !location) return;

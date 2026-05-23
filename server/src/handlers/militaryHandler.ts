@@ -11,9 +11,9 @@ import {
   ensureTownCenterMilitaryState,
   ensureWatchtowerMilitaryState,
   getAvailableGuardReserve,
+  getEffectiveSettlementBorderMode,
   isBarracksTile,
   isProtectedByTownCenter,
-  isSettlementOpen,
   isTownCenterTile,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
@@ -32,6 +32,7 @@ import { getTileSettlementId } from '../../../src/shared/game/settlement.ts';
 import { isStudyCompleted } from '../../../src/store/studyStore.ts';
 import { withdrawResourceAcrossStoragesForSettlement } from '../../../src/store/resourceStore.ts';
 import type { Tile } from '../../../src/shared/game/types/Tile';
+import { seasonState } from '../state/seasonState';
 
 function canManageTile(
   tile: Pick<Tile, 'id' | 'terrain' | 'ownerSettlementId' | 'controlledBySettlementId'> | null | undefined,
@@ -112,9 +113,17 @@ export class ServerMilitaryHandler {
     return playerSettlementState.getPlayerSettlement(playerId ?? '');
   }
 
+  private isSpectator(socket: Socket) {
+    return playerSettlementState.isSocketSpectator(socket.id);
+  }
+
   private handleSetBorderMode(socket: Socket, message: SettlementSetBorderModeMessage) {
+    if (this.isSpectator(socket)) {
+      return;
+    }
+
     const settlementId = this.resolveSettlementId(socket);
-    if (!settlementId || settlementId !== message.settlementId || !isStudyCompleted('border_management')) {
+    if (!settlementId || settlementId !== message.settlementId || !isStudyCompleted('border_management', settlementId) || seasonState.getEffectiveBorderPolicy() !== 'player_choice') {
       return;
     }
 
@@ -146,9 +155,16 @@ export class ServerMilitaryHandler {
   }
 
   private handleQueueGuardTraining(socket: Socket, message: MilitaryQueueGuardTrainingMessage) {
+    if (!seasonState.allowsNewHeroActions()) {
+      return;
+    }
+    if (this.isSpectator(socket)) {
+      return;
+    }
+
     const settlementId = this.resolveSettlementId(socket);
     const barracks = tileIndex[message.barracksTileId] ?? null;
-    if (!settlementId || !isBarracksTile(barracks) || !canManageTile(barracks, settlementId) || !isStudyCompleted('guard_training')) {
+    if (!settlementId || !isBarracksTile(barracks) || !canManageTile(barracks, settlementId) || !isStudyCompleted('guard_training', settlementId)) {
       return;
     }
 
@@ -158,6 +174,13 @@ export class ServerMilitaryHandler {
   }
 
   private handleAssignGuards(socket: Socket, message: MilitaryAssignGuardsMessage) {
+    if (!seasonState.allowsNewHeroActions()) {
+      return;
+    }
+    if (this.isSpectator(socket)) {
+      return;
+    }
+
     const settlementId = this.resolveSettlementId(socket);
     const tower = tileIndex[message.tileId] ?? null;
     const townCenter = getTownCenterTile(settlementId);
@@ -194,9 +217,16 @@ export class ServerMilitaryHandler {
   }
 
   private handleBuildPalisade(socket: Socket, message: MilitaryBuildPalisadeMessage) {
+    if (!seasonState.allowsNewHeroActions()) {
+      return;
+    }
+    if (this.isSpectator(socket)) {
+      return;
+    }
+
     const settlementId = this.resolveSettlementId(socket);
     const tower = tileIndex[message.tileId] ?? null;
-    if (!settlementId || !tower || !isWatchtowerTile(tower) || !canManageTile(tower, settlementId) || !isStudyCompleted('defensive_construction')) {
+    if (!settlementId || !tower || !isWatchtowerTile(tower) || !canManageTile(tower, settlementId) || !isStudyCompleted('defensive_construction', settlementId)) {
       return;
     }
 
@@ -217,9 +247,17 @@ export class ServerMilitaryHandler {
   }
 
   private handleSetRaidTarget(socket: Socket, message: MilitarySetRaidTargetMessage) {
+    if (!seasonState.allowsNewHeroActions()) {
+      return;
+    }
+    if (this.isSpectator(socket)) {
+      return;
+    }
+
     const settlementId = this.resolveSettlementId(socket);
     const townCenter = getTownCenterTile(settlementId);
-    if (!settlementId || !townCenter || settlementId !== message.settlementId || !isSettlementOpen(townCenter)) {
+    const season = seasonState.getSnapshot();
+    if (!settlementId || !townCenter || settlementId !== message.settlementId || getEffectiveSettlementBorderMode(townCenter, season) !== 'open') {
       return;
     }
 
@@ -245,7 +283,7 @@ export class ServerMilitaryHandler {
     }
 
     const defenderTownCenter = getTownCenterTile(targetTile.ownerSettlementId ?? null);
-    if (!defenderTownCenter || !isSettlementOpen(defenderTownCenter) || isProtectedByTownCenter(targetTile, defenderTownCenter)) {
+    if (!defenderTownCenter || getEffectiveSettlementBorderMode(defenderTownCenter, season) !== 'open' || isProtectedByTownCenter(targetTile, defenderTownCenter)) {
       return;
     }
 

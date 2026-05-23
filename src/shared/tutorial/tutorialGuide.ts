@@ -186,6 +186,7 @@ const PRODUCTION_BUILDINGS = [
 ];
 
 const RIDGE_INDUSTRY_REQUIRED_POPULATION = 5;
+const SHORELINE_UNLOCK_REQUIRED_POPULATION = 2;
 const WATCHTOWER_UNLOCK_REQUIRED_POPULATION = 4;
 const WATCHTOWER_UNLOCK_REQUIRED_FOOD = 8;
 const LIBRARY_REQUIRED_TOOLS = 2;
@@ -351,7 +352,7 @@ const fieldGuideTopics: FieldGuideTopicDefinition[] = [
     title: 'Repairs and maintenance',
     summary: 'Buildings wear down, pause, or lose efficiency when the colony cannot keep repair stock and workers moving.',
     cues: [
-      'Keep wood and stone in storage before the settlement grows wide.',
+      'Keep wood stocked, and keep stone ready once masonry buildings appear.',
       'Offline or paused job sites usually need repairs, workers, input resources, or storage room.',
       'Use nearby roads and depots so repair pressure does not strand distant buildings.',
     ],
@@ -526,6 +527,10 @@ const tutorialSteps: TutorialStepDefinition[] = [
     objective: (metrics) => {
       switch (landingArchetype(metrics)) {
         case 'shoreline':
+          if (metrics.population.current < SHORELINE_UNLOCK_REQUIRED_POPULATION) {
+            return `Reach ${SHORELINE_UNLOCK_REQUIRED_POPULATION} settlers before building a dock.`;
+          }
+
           return 'Build a dock on water from adjacent active shore.';
         case 'woodland':
           return 'Hunt in nearby forest, then turn a forest tile into a steady food site.';
@@ -548,6 +553,13 @@ const tutorialSteps: TutorialStepDefinition[] = [
     action: (metrics) => {
       switch (landingArchetype(metrics)) {
         case 'shoreline':
+          if (metrics.population.current < SHORELINE_UNLOCK_REQUIRED_POPULATION) {
+            const bedAdvice = metrics.population.beds <= metrics.population.current
+              ? 'Build another house, then keep food stocked'
+              : 'Keep food stocked and beds open';
+            return `${bedAdvice} until the colony reaches ${SHORELINE_UNLOCK_REQUIRED_POPULATION} settlers, then build the dock.`;
+          }
+
           return 'Scout until water appears, then build a dock from a neighboring land tile.';
         case 'woodland':
           return 'Choose Hunt on a forest tile, or build a Hunter Hut once wood and workers are ready.';
@@ -600,6 +612,10 @@ const tutorialSteps: TutorialStepDefinition[] = [
 
       switch (landingArchetype(metrics)) {
         case 'shoreline': {
+          if (metrics.population.current < SHORELINE_UNLOCK_REQUIRED_POPULATION) {
+            return `${metrics.population.current}/${SHORELINE_UNLOCK_REQUIRED_POPULATION} settlers`;
+          }
+
           const waterTiles = terrain(metrics, 'water');
           return waterTiles > 0 ? `${waterTiles} water tiles found` : 'No shoreline found yet';
         }

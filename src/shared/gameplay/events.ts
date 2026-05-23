@@ -35,6 +35,25 @@ export type GameplayEvent =
   | {
       type: 'population:changed';
       settlementId: string | null;
+    }
+  | {
+      type: 'military:tower_captured';
+      towerTileId: string;
+      attackerSettlementId: string;
+      defenderSettlementId: string | null;
+      transferredTileIds: string[];
+    }
+  | {
+      type: 'ship_order:completed';
+      orderId: string;
+      settlementId: string;
+      playerId: string | null;
+      fulfilledValue: number;
+      requestedValue: number;
+    }
+  | {
+      type: 'calamity:survived';
+      settlementId: string | null;
     };
 
 type GameplayListener = (event: GameplayEvent) => void;

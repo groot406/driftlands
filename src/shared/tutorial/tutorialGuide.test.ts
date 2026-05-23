@@ -77,6 +77,31 @@ test('shoreline tutorial route completes early food by building a dock', () => {
   assert.equal(tutorial.currentStep?.id, 'grow-population');
 });
 
+test('shoreline tutorial route explains population blocker before dock unlock', () => {
+  const tutorial = evaluateTutorial(metrics({
+    selectedHeroCount: 1,
+    discoveredTiles: 12,
+    landingArchetype: 'shoreline',
+    terrainCounts: { water: 2 },
+    resourceStock: { wood: 3 },
+    variantCounts: { road: 1 },
+    buildingCounts: { house: 1 },
+    population: {
+      current: 1,
+      beds: 2,
+      max: 15,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    },
+  }));
+
+  const earlyFood = tutorial.currentStep;
+  assert.equal(earlyFood?.id, 'build-dock');
+  assert.match(earlyFood?.objective ?? '', /Reach 2 settlers/);
+  assert.match(earlyFood?.action ?? '', /food stocked and beds open/);
+  assert.equal(earlyFood?.progressLabel, '1/2 settlers');
+});
+
 test('woodland tutorial route completes early food by hunting or a hunter hut', () => {
   const tutorial = evaluateTutorial(metrics({
     selectedHeroCount: 1,

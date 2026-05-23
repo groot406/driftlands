@@ -1,5 +1,6 @@
 import type { SettlementBorderMode, Tile, WatchtowerConflictState } from '../../core/types/Tile.ts';
 import { axialDistanceCoords } from './hex';
+import type { SeasonSnapshot } from '../seasons/types.ts';
 
 export const DEFAULT_BORDER_MODE: SettlementBorderMode = 'closed';
 export const BORDER_MODE_COOLDOWN_MS = 10 * 60_000;
@@ -85,6 +86,30 @@ export function getSettlementBorderMode(tile: Tile | null | undefined): Settleme
   }
 
   return tile.borderMode ?? DEFAULT_BORDER_MODE;
+}
+
+export function getEffectiveSettlementBorderMode(
+  tile: Tile | null | undefined,
+  season: SeasonSnapshot | null | undefined,
+): SettlementBorderMode {
+  if (season?.status === 'active') {
+    const stage = season.config.stages.find((candidate) => candidate.key === season.currentStage);
+    if (stage?.borderPolicy === 'locked_closed') {
+      return 'closed';
+    }
+    if (stage?.borderPolicy === 'locked_open') {
+      return 'open';
+    }
+  }
+
+  return getSettlementBorderMode(tile);
+}
+
+export function isSettlementEffectivelyOpen(
+  tile: Tile | null | undefined,
+  season: SeasonSnapshot | null | undefined,
+) {
+  return getEffectiveSettlementBorderMode(tile, season) === 'open';
 }
 
 export function isSettlementOpen(tile: Tile | null | undefined) {

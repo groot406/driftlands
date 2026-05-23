@@ -16,6 +16,7 @@ const rl = readline.createInterface({ input, output });
 const isInteractive = Boolean(input.isTTY && output.isTTY);
 const useColor = Boolean(output.isTTY && !process.env.NO_COLOR);
 const useAnimation = Boolean(isInteractive && !process.env.CI && !process.env.DRIFTLANDS_TUI_NO_ANIMATION);
+const defaultAdminWallets = '0xfE49e5c384f5FddDFc52e9610BfAB3d49D86847D';
 
 const config = {
   image: process.env.DRIFTLANDS_IMAGE || 'driftlands:latest',
@@ -26,6 +27,7 @@ const config = {
   configDir: process.env.DRIFTLANDS_CONFIG_DIR || '/config/driftlands',
   domain: process.env.DRIFTLANDS_DOMAIN || 'driftlands.example.com',
   frontendOrigin: process.env.FRONTEND_ORIGIN || 'https://<looperlands-platform-frontend-domain>',
+  adminWallets: process.env.DRIFTLANDS_ADMIN_WALLETS || defaultAdminWallets,
   publishServerPort: process.env.DRIFTLANDS_PUBLISH_SERVER_PORT || '',
   frontendRepoPath: resolve(process.env.DRIFTLANDS_FRONTEND_REPO || '../looperlands-platform-frontend'),
   frontendDeployCommand: process.env.DRIFTLANDS_FRONTEND_DEPLOY_COMMAND || '',
@@ -114,6 +116,13 @@ const serverEnvFields = [
     type: 'boolean',
     defaultValue: '0',
     detail: 'Requires wallet/Web3 token validation before joining.',
+  },
+  {
+    key: 'DRIFTLANDS_ADMIN_WALLETS',
+    label: 'Admin wallets',
+    type: 'text',
+    defaultValue: config.adminWallets,
+    detail: 'Comma-separated wallet allowlist for production admin controls. Casing does not matter.',
   },
   {
     key: 'SERVER_SEED',
@@ -594,13 +603,15 @@ async function writeConfigFiles() {
 }
 
 function starterEnvContents() {
-  return readFileSync(resolve(rootDir, '.env.hassio.example'), 'utf8')
+  const contents = readFileSync(resolve(rootDir, '.env.hassio.example'), 'utf8')
     .replace('FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>', `FRONTEND_ORIGIN=${config.frontendOrigin}`);
+  return setEnvValue(contents, 'DRIFTLANDS_ADMIN_WALLETS', config.adminWallets);
 }
 
-function starterHaosEnvContents(frontendOrigin = config.haosFrontendOrigin) {
-  return readFileSync(resolve(rootDir, '.env.hassio.example'), 'utf8')
+function starterHaosEnvContents(frontendOrigin = config.haosFrontendOrigin, adminWallets = config.adminWallets) {
+  const contents = readFileSync(resolve(rootDir, '.env.hassio.example'), 'utf8')
     .replace('FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>', `FRONTEND_ORIGIN=${frontendOrigin}`);
+  return setEnvValue(contents, 'DRIFTLANDS_ADMIN_WALLETS', adminWallets);
 }
 
 function parseEnvValues(contents) {
@@ -1185,6 +1196,7 @@ function printDeployPlan(target) {
     console.log(formatKeyValue('remote', config.haosRemoteDir));
     console.log(formatKeyValue('hostport', config.haosPublishPort));
     console.log(formatKeyValue('origin', config.haosFrontendOrigin));
+    console.log(formatKeyValue('admins', config.adminWallets || '(none)'));
     console.log('');
     console.log('Will run:');
     console.log('1. docker build and docker save on this machine.');
@@ -1524,6 +1536,9 @@ async function prepareHaosBundle(options = {}) {
   const frontendOrigin = options.frontendOrigin ?? (
     options.assumeDefaults ? config.haosFrontendOrigin : await askText('Allowed frontend origin', config.haosFrontendOrigin)
   );
+  const adminWallets = options.adminWallets ?? (
+    options.assumeDefaults ? config.adminWallets : await askText('Admin wallet allowlist', config.adminWallets)
+  );
   const imagePlatform = options.imagePlatform ?? (
     options.assumeDefaults ? config.haosImagePlatform : await askText('Home Assistant Docker platform', config.haosImagePlatform)
   );
@@ -1550,11 +1565,11 @@ async function prepareHaosBundle(options = {}) {
     return null;
   }
 
-  writeFileSync(envFile, starterHaosEnvContents(frontendOrigin));
+  writeFileSync(envFile, starterHaosEnvContents(frontendOrigin, adminWallets));
   printSuccess(`Wrote ${envFile}`);
   printSuccess(`Wrote ${imageTar}`);
 
-  return { frontendOrigin, imagePlatform };
+  return { frontendOrigin, adminWallets, imagePlatform };
 }
 
 async function publishHaosBundle() {
@@ -1625,7 +1640,7 @@ async function deployHaosOverSsh() {
     return 1;
   }
 
-  if (await run('scp', [imageTar, envFile, installScript, `${config.haosSshHost}:${remoteDir}/`]) !== 0) {
+  if (await run('scp', ['-O', imageTar, envFile, installScript, `${config.haosSshHost}:${remoteDir}/`]) !== 0) {
     return 1;
   }
 
@@ -1861,6 +1876,7 @@ Environment overrides:
   DRIFTLANDS_HEALTH_URL=https://driftlands.example.com/health
   DRIFTLANDS_FRONTEND_REPO=/path/to/looperlands-platform-frontend
   DRIFTLANDS_FRONTEND_DEPLOY_COMMAND="npm run deploy"
+  DRIFTLANDS_ADMIN_WALLETS=0xabc...,0xdef...
   DRIFTLANDS_HAOS_BUNDLE_PORT=8899
   DRIFTLANDS_HAOS_PUBLISH_PORT=3695
   DRIFTLANDS_HAOS_SSH_HOST=haos

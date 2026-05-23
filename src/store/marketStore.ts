@@ -15,6 +15,7 @@ export const selectedMarketResourceType = ref<MarketResourceType>('wood');
 export const marketLoading = ref(false);
 export const marketTrading = ref(false);
 export const marketError = ref<string | null>(null);
+export const marketNotice = ref<string | null>(null);
 export const marketVersion = ref(0);
 
 function createEmptyMarketOverview(): MarketOverviewSnapshot {
@@ -56,13 +57,18 @@ export function closeMarketplace() {
 }
 
 export function replaceMarketOverview(overview: MarketOverviewSnapshot) {
+  const wallet = overview.wallet === null
+    ? (marketWallet.value ? { ...marketWallet.value } : null)
+    : overview.wallet
+      ? { ...overview.wallet }
+      : null;
   marketOverview.value = {
     resources: { ...overview.resources },
-    wallet: overview.wallet ? { ...overview.wallet } : null,
+    wallet,
     transactions: (overview.transactions ?? []).map((transaction) => ({ ...transaction })),
   };
-  if (overview.wallet !== undefined) {
-    marketWallet.value = overview.wallet ? { ...overview.wallet } : null;
+  if (overview.wallet) {
+    marketWallet.value = { ...overview.wallet };
   }
   marketVersion.value++;
 }
@@ -70,6 +76,7 @@ export function replaceMarketOverview(overview: MarketOverviewSnapshot) {
 export async function fetchMarketOverview(actorId?: string | null, actorType: MarketActorType = 'PLAYER') {
   marketLoading.value = true;
   marketError.value = null;
+  marketNotice.value = null;
   try {
     const params = new URLSearchParams();
     if (actorId) {
@@ -107,6 +114,7 @@ export async function tradeMarketResource(input: {
 }) {
   marketTrading.value = true;
   marketError.value = null;
+  marketNotice.value = null;
   try {
     const response = await fetch(getDriftlandsApiUrl(`/market/${input.action}`), {
       method: 'POST',
@@ -129,6 +137,8 @@ export async function tradeMarketResource(input: {
     }
 
     replaceMarketOverview(body);
+    const actionLabel = input.action === 'buy' ? 'Bought' : 'Sold';
+    marketNotice.value = `${actionLabel} ${input.quantity.toLocaleString()} ${input.resourceType.replaceAll('_', ' ')}.`;
     return body;
   } catch (error) {
     marketError.value = error instanceof Error ? error.message : 'The market rejected that trade.';

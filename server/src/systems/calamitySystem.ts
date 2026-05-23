@@ -12,7 +12,7 @@ import {
   broadcastPopulationState,
   getPopulationBySettlementInput,
   getPopulationSnapshot,
-  getPopulationState,
+  getSettlementHungerInput,
   killSettler,
   recalculatePopulationLimits,
   setSupportMetrics,
@@ -32,6 +32,7 @@ import {
   updateTileCondition,
 } from '../../../src/shared/buildings/maintenance.ts';
 import { hasActivePlayers } from '../state/attendanceState.ts';
+import { seasonState } from '../state/seasonState.ts';
 
 type CalamitySeverity = CalamityEventMessage['severity'];
 
@@ -335,8 +336,7 @@ function broadcastOutcome(outcome: CalamityOutcome) {
 }
 
 function syncSupportAndBroadcast(changedTileIds: Set<string>) {
-  const population = getPopulationState();
-  const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
+  const support = recalculateSettlementSupport(getPopulationBySettlementInput(), getSettlementHungerInput());
   setSupportMetrics(support.snapshot);
   recalculatePopulationLimits();
 
@@ -443,7 +443,7 @@ function triggerVolcanoEruption(options: ResolvedCalamityOptions) {
 
   let scorchedTiles = 0;
   let damagedBuildings = 0;
-  const buildingDamage = isStudyCompleted('masonry_treatises') ? 14 : 35;
+  const buildingDamage = isStudyCompleted('masonry_treatises', target.nearestSettlement.settlementId) ? 14 : 35;
   for (const tile of affected) {
     let changed = false;
     if (isCropTile(tile)) {
@@ -499,7 +499,7 @@ function triggerFlood(options: ResolvedCalamityOptions) {
     return null;
   }
 
-  const floodControlled = hasFloodControlNear(target, options.settlementId) || isStudyCompleted('frontier_almanacs');
+  const floodControlled = hasFloodControlNear(target, options.settlementId) || isStudyCompleted('frontier_almanacs', options.settlementId);
   const maxRuinedCrops = floodControlled ? 1 : 4;
   const maxWashedRoads = floodControlled ? 1 : 4;
   const buildingDamage = floodControlled ? 8 : 20;
@@ -555,7 +555,7 @@ function triggerFlood(options: ResolvedCalamityOptions) {
 
 function triggerLostHarvest(options: ResolvedCalamityOptions) {
   const crops = getSettlementTiles(options.settlementId).filter(isCropTile);
-  const protectedHarvest = isStudyCompleted('frontier_almanacs') || getSettlementWaterSourceCount(options.settlementId) > 0;
+  const protectedHarvest = isStudyCompleted('frontier_almanacs', options.settlementId) || getSettlementWaterSourceCount(options.settlementId) > 0;
   const baseTargetCount = Math.min(5, Math.max(2, Math.ceil(crops.length * 0.35)));
   const targets = takeRandom(options.rng, crops, protectedHarvest ? Math.max(1, Math.floor(baseTargetCount / 2)) : baseTargetCount);
   if (!targets.length) {
@@ -581,7 +581,7 @@ function triggerLostHarvest(options: ResolvedCalamityOptions) {
 
 function triggerFoodSpoilage(options: ResolvedCalamityOptions) {
   const inventory = getSettlementResourceInventory(options.settlementId);
-  const protectedStores = hasFoodStorage(options.settlementId) || isStudyCompleted('warehouse_ledgers');
+  const protectedStores = hasFoodStorage(options.settlementId) || isStudyCompleted('warehouse_ledgers', options.settlementId);
   const requests = FOOD_RESOURCE_TYPES
     .map((type) => {
       const stock = Math.floor(inventory[type] ?? 0);
@@ -620,7 +620,7 @@ function triggerForestFire(options: ResolvedCalamityOptions) {
     return null;
   }
 
-  const fireControlled = hasFloodControlNear(target, options.settlementId) || isStudyCompleted('frontier_almanacs');
+  const fireControlled = hasFloodControlNear(target, options.settlementId) || isStudyCompleted('frontier_almanacs', options.settlementId);
   const burnTargets = getSettlementTiles(options.settlementId)
     .filter((tile) => tile.terrain === 'forest' && axialDistanceCoords(tile.q, tile.r, target.q, target.r) <= 2)
     .slice(0, fireControlled ? 3 : 7);
@@ -667,7 +667,7 @@ function triggerOutbreak(options: ResolvedCalamityOptions) {
     return null;
   }
 
-  if (isStudyCompleted('field_medicine')) {
+  if (isStudyCompleted('field_medicine', options.settlementId)) {
     return {
       kind: 'outbreak',
       phase: 'averted',
@@ -747,7 +747,7 @@ export function getAvailableCalamities(settlementId: string | null | undefined) 
 }
 
 export function resetCalamitySystem(now: number = Date.now()) {
-  nextRollAtMs = now + INITIAL_CALAMITY_DELAY_MS;
+  nextRollAtMs = now + getCalamityTiming().initialDelayMs;
   lastAutomaticKind = null;
   nextPendingId = 1;
   pendingCalamities = [];
@@ -794,7 +794,7 @@ export function warnCalamity(kind: CalamityKind, options: TriggerCalamityOptions
   };
   const settlementId = resolveSettlementId(options, rng);
   const now = options.now ?? Date.now();
-  const impactAt = now + CALAMITY_WARNING_LEAD_MS;
+  const impactAt = now + getCalamityTiming().warningLeadMs;
   const targetTileId = options.targetTileId ?? pickWarningTarget(kind, settlementId, rng);
   const pending: PendingCalamity = {
     id: `calamity:${nextPendingId++}`,
@@ -836,6 +836,16 @@ function processPendingCalamities(ctx: TickContext) {
   }
 }
 
+function getCalamityTiming() {
+  const gameplay = seasonState.getCurrentStageConfig()?.gameplay;
+  return {
+    initialDelayMs: Math.max(0, Math.trunc(gameplay?.calamityInitialDelayMs ?? INITIAL_CALAMITY_DELAY_MS)),
+    rollIntervalMs: Math.max(1_000, Math.trunc(gameplay?.calamityRollIntervalMs ?? CALAMITY_ROLL_INTERVAL_MS)),
+    rollChance: Math.max(0, Math.min(1, Number(gameplay?.calamityRollChance ?? CALAMITY_ROLL_CHANCE))),
+    warningLeadMs: Math.max(0, Math.trunc(gameplay?.calamityWarningLeadMs ?? CALAMITY_WARNING_LEAD_MS)),
+  };
+}
+
 function triggerRandomCalamity(ctx: TickContext) {
   const pending: PendingCalamity[] = [];
   const previousAutomaticKind = lastAutomaticKind;
@@ -870,7 +880,7 @@ export const calamitySystem = {
 
   tick: (ctx: TickContext) => {
     if (!hasActivePlayers()) {
-      nextRollAtMs = Math.max(nextRollAtMs, ctx.now + CALAMITY_ROLL_INTERVAL_MS);
+      nextRollAtMs = Math.max(nextRollAtMs, ctx.now + getCalamityTiming().rollIntervalMs);
       return;
     }
 
@@ -880,8 +890,9 @@ export const calamitySystem = {
       return;
     }
 
-    nextRollAtMs = ctx.now + CALAMITY_ROLL_INTERVAL_MS;
-    if (ctx.rng.next() > CALAMITY_ROLL_CHANCE) {
+    const timing = getCalamityTiming();
+    nextRollAtMs = ctx.now + timing.rollIntervalMs;
+    if (ctx.rng.next() > timing.rollChance) {
       return;
     }
 

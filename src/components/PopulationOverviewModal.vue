@@ -14,9 +14,10 @@
             <div class="population-stat-grid">
               <PanelStatCard label="Population" :value="`${playerPopulation.current}/${playerPopulation.max}`" :icon-style="settlerIconStyle('status')" />
               <PanelStatCard label="Beds" :value="playerPopulation.beds" :icon-style="settlerIconStyle('home')" />
-              <PanelStatCard label="Workers" :value="`${workforceState.assignedWorkers}/${workforceState.availableWorkers}`" :icon-style="settlerIconStyle('work')" />
-              <PanelStatCard label="Food Use" :value="foodUseLabel" :icon-style="settlerIconStyle('food')" />
+              <PanelStatCard label="Meals" :value="mealStockLabel" :icon-style="settlerIconStyle('food')" />
+              <PanelStatCard label="Food Use" :value="foodUseLabel" :icon-style="settlerIconStyle('work')" />
             </div>
+            <p v-if="hungerWarningText" class="population-warning">{{ hungerWarningText }}</p>
           </section>
 
           <section class="population-section population-section--settlers">
@@ -64,8 +65,9 @@ import PanelStatCard from './ui/PanelStatCard.vue';
 import PanelPortraitFrame from './ui/PanelPortraitFrame.vue';
 import { getBuildingDefinitionForTile } from '../shared/buildings/registry.ts';
 import { populationState } from '../store/clientPopulationStore';
-import { workforceState } from '../store/clientJobStore';
 import { FOOD_PER_SETTLER_PER_MINUTE } from '../store/populationStore';
+import { getSettlementResourceInventory, resourceInventory, resourceVersion } from '../store/resourceStore';
+import { getHungerFoodMealValue } from '../shared/game/resourceDefinitions.ts';
 import { settlers as settlerState } from '../store/settlerStore';
 import { closePopulationModal, openSettlerModal } from '../store/uiStore';
 import { isWindowActive, isWindowOpen, WINDOW_IDS } from '../core/windowManager';
@@ -87,7 +89,18 @@ const settlers = computed(() => {
     ? settlerState.filter((settler) => settler.settlementId === settlementId)
     : [...settlerState];
 });
+const playerInventory = computed(() => {
+  resourceVersion.value;
+  const settlementId = currentPlayerSettlementId.value;
+  return settlementId ? getSettlementResourceInventory(settlementId) : resourceInventory;
+});
+const edibleMealValue = computed(() => Math.floor(getHungerFoodMealValue(playerInventory.value)));
+const mealStockLabel = computed(() => `${edibleMealValue.value}`);
 const foodUseLabel = computed(() => `${playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE}/min`);
+const hungerWarningText = computed(() => {
+  if (playerPopulation.value.hungerMs <= 0) return '';
+  return `Hunger risk is active for ${formatHungerDuration(playerPopulation.value.hungerMs)}. Settlers need reachable bread, meat, or fish; drinks and crops do not prevent hunger.`;
+});
 
 type SettlerOverviewIcon = 'home' | 'work' | 'status' | 'food';
 
@@ -122,6 +135,13 @@ function portraitStyle(settler: Settler) {
 
 function formatActivity(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatHungerDuration(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function getSettlerName(settler: Settler) {
@@ -329,6 +349,18 @@ onUnmounted(() => {
   display: grid;
   gap: 0.45rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.population-warning {
+  margin: 0.72rem 0 0;
+  border: 1px solid rgba(239, 184, 82, 0.36);
+  border-radius: 7px;
+  background: rgba(109, 61, 18, 0.25);
+  padding: 0.62rem 0.75rem;
+  color: #f4d194;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .population-section-title,

@@ -12,6 +12,7 @@ import { ServerMilitaryHandler } from '../handlers/militaryHandler';
 import { ServerShipOrderHandler } from '../handlers/shipOrderHandler';
 import { ServerSettlementStartHandler } from '../handlers/settlementStartHandler';
 import { ServerTestModeHandler } from '../handlers/testModeHandler';
+import { ServerSeasonAdminHandler } from '../handlers/seasonAdminHandler';
 import { serverDebugModeEnabled } from '../config/serverMode';
 
 // Initialize all server handlers
@@ -46,6 +47,9 @@ export function initializeServerHandlers(io: Server) {
   const testModeHandler = serverDebugModeEnabled ? new ServerTestModeHandler(io) : null;
   testModeHandler?.init();
 
+  const seasonAdminHandler = new ServerSeasonAdminHandler(io);
+  seasonAdminHandler.init();
+
   const heroAbilityHandler = new ServerHeroAbilityHandler(io);
   heroAbilityHandler.init();
 
@@ -66,6 +70,7 @@ export function initializeServerHandlers(io: Server) {
     militaryHandler,
     shipOrderHandler,
     testModeHandler,
+    seasonAdminHandler,
     heroAbilityHandler,
     coopHandler,
     scoutHandler,

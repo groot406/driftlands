@@ -24,6 +24,7 @@ import type { LooperlandsJoinAuth } from './looperlands.ts';
 import type { StoryHeroId } from './story/heroRoster.ts';
 import type { MarketOverviewSnapshot } from './game/market.ts';
 import type { ShipOrderOverviewSnapshot, ShipOrderResourceType } from './game/shipOrders.ts';
+import type { SeasonConfig, SeasonSnapshot, SeasonStageKey } from './seasons/types.ts';
 
 export interface BaseMessage {
     type: string;
@@ -78,6 +79,7 @@ export interface PlayerJoinMessage extends BaseMessage {
     playerColor?: string;
     looperlands?: LooperlandsJoinAuth;
     storyHeroIds?: StoryHeroId[];
+    spectator?: boolean;
 }
 
 export interface PlayerJoinRejectedMessage extends BaseMessage {
@@ -106,6 +108,7 @@ export interface ChatMessage extends BaseMessage {
     playerId: string;
     playerName: string;
     message: string;
+    isOwnMessage?: boolean;
 }
 
 export interface CoopSnapshotMessage extends BaseMessage {
@@ -200,6 +203,7 @@ export interface SetJobSiteEnabledMessage extends BaseMessage {
 export interface SetActiveStudyMessage extends BaseMessage {
     type: 'studies:set_active';
     studyKey: string;
+    settlementId?: string | null;
 }
 
 export interface SettlementSetBorderModeMessage extends BaseMessage {
@@ -236,6 +240,26 @@ export interface ShipOrderLoadMessage extends BaseMessage {
     orderId: string;
     settlementId: string;
     resources: Partial<Record<ShipOrderResourceType, number>>;
+}
+
+export interface SeasonAdminUpdateConfigMessage extends BaseMessage {
+    type: 'season_admin:update_config';
+    config: SeasonConfig;
+}
+
+export interface SeasonAdminSetStageMessage extends BaseMessage {
+    type: 'season_admin:set_stage';
+    stage: Exclude<SeasonStageKey, 'completed'>;
+}
+
+export interface SeasonAdminCompleteNowMessage extends BaseMessage {
+    type: 'season_admin:complete_now';
+    message?: string;
+}
+
+export interface SeasonAdminRestartNowMessage extends BaseMessage {
+    type: 'season_admin:restart_now';
+    seed?: number | null;
 }
 
 export interface TestSetSettingsMessage extends BaseMessage {
@@ -279,6 +303,7 @@ export interface WorldSnapshotMessage extends BaseMessage {
     market?: MarketOverviewSnapshot;
     shipOrders?: ShipOrderOverviewSnapshot;
     debugModeEnabled?: boolean;
+    currentPlayerIsAdmin?: boolean;
     spawnSafetyEnabled?: boolean;
 }
 
@@ -299,6 +324,7 @@ export interface WorldSnapshotStartMessage extends BaseMessage {
     market?: MarketOverviewSnapshot;
     shipOrders?: ShipOrderOverviewSnapshot;
     debugModeEnabled?: boolean;
+    currentPlayerIsAdmin?: boolean;
     spawnSafetyEnabled?: boolean;
 }
 
@@ -490,6 +516,21 @@ export interface RunUpdateMessage extends BaseMessage {
     run: RunSnapshot;
 }
 
+export interface SeasonSnapshotMessage extends BaseMessage {
+    type: 'season:snapshot';
+    season: SeasonSnapshot;
+}
+
+export interface SeasonUpdateMessage extends BaseMessage {
+    type: 'season:update';
+    season: SeasonSnapshot;
+}
+
+export interface SeasonCompletedMessage extends BaseMessage {
+    type: 'season:completed';
+    season: SeasonSnapshot;
+}
+
 export interface PopulationUpdateMessage extends BaseMessage {
     type: 'population:update';
     current: number;
@@ -501,6 +542,16 @@ export interface PopulationUpdateMessage extends BaseMessage {
     inactiveTileCount: number;
     pressureState: PopulationSnapshot['pressureState'];
     settlements: PopulationSnapshot['settlements'];
+}
+
+export interface PopulationIncidentMessage extends BaseMessage {
+    type: 'population:incident';
+    settlementId?: string | null;
+    severity: 'warning' | 'critical';
+    reason: 'starvation';
+    title: string;
+    message: string;
+    populationLoss?: number;
 }
 
 export interface JobsUpdateMessage extends BaseMessage {
@@ -545,6 +596,10 @@ export type ClientMessage =
     | MilitaryBuildPalisadeMessage
     | MilitarySetRaidTargetMessage
     | ShipOrderLoadMessage
+    | SeasonAdminUpdateConfigMessage
+    | SeasonAdminSetStageMessage
+    | SeasonAdminCompleteNowMessage
+    | SeasonAdminRestartNowMessage
     | TestSetSettingsMessage
     | TestRunActionMessage
     | MoveRequestMessage
@@ -588,9 +643,13 @@ export type ServerMessage =
     | HeroRosterUpdateMessage
     | RunSnapshotMessage
     | RunUpdateMessage
+    | SeasonSnapshotMessage
+    | SeasonUpdateMessage
+    | SeasonCompletedMessage
     | CalamityEventMessage
     | StewardshipReportMessage
     | PopulationUpdateMessage
+    | PopulationIncidentMessage
     | JobsUpdateMessage
     | StudiesUpdateMessage
     | TestUpdateMessage

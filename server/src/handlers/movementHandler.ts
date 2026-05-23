@@ -30,6 +30,7 @@ import {
     stopScoutResourceSearch,
 } from '../../../src/shared/game/scoutResources';
 import type { MoveHeroRuntimeOptions } from '../../../src/shared/game/runtime';
+import { seasonState } from '../state/seasonState';
 
 export class ServerMovementHandler {
     private initialized = false;
@@ -82,6 +83,13 @@ export class ServerMovementHandler {
     }
 
     private handleMoveRequest(socket: Socket, message: MoveRequestMessage): void {
+        if (!seasonState.allowsNewHeroActions()) {
+            return;
+        }
+        if (playerSettlementState.isSocketSpectator(socket.id)) {
+            return;
+        }
+
         const {heroId, origin: requestedOrigin, target, path: clientPath} = message;
 
         // Basic validation of origin/target
@@ -241,6 +249,10 @@ export class ServerMovementHandler {
         taskLocation?: { q: number; r: number },
         options?: MoveHeroRuntimeOptions,
     ) {
+        if (!seasonState.allowsNewHeroActions()) {
+            return;
+        }
+
         const targetTile = getTile(target);
         if (!targetTile) {
             return;

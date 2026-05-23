@@ -6,6 +6,7 @@ import type {
   CoopSnapshotMessage,
   PlayerJoinMessage,
   RunSnapshotMessage,
+  SeasonSnapshotMessage,
   WorldRequestMessage,
   WorldRestartMessage,
   WorldSnapshotChunkMessage,
@@ -17,6 +18,8 @@ import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
 import { testModeState } from '../state/testModeState';
 import { serverDebugModeEnabled, spawnSafetyEnabled } from '../config/serverMode';
+import { seasonState } from '../state/seasonState';
+import { isAdminSocket } from '../config/admin';
 
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
@@ -32,7 +35,7 @@ export class ServerGameStateHandler {
     serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
-  private sendWorldSnapshot(send: (message: WorldSnapshotStartMessage | WorldSnapshotChunkMessage | WorldSnapshotCompleteMessage) => void): void {
+  private sendWorldSnapshot(send: (message: WorldSnapshotStartMessage | WorldSnapshotChunkMessage | WorldSnapshotCompleteMessage) => void, currentPlayerIsAdmin?: boolean): void {
     const snapshot = worldState.getSnapshot();
     const totalChunks = Math.max(1, Math.ceil(snapshot.tiles.length / WORLD_SNAPSHOT_TILE_CHUNK_SIZE));
     const snapshotId = `world-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -54,6 +57,7 @@ export class ServerGameStateHandler {
       market: snapshot.market,
       shipOrders: snapshot.shipOrders,
       debugModeEnabled: serverDebugModeEnabled,
+      currentPlayerIsAdmin,
       spawnSafetyEnabled,
       timestamp: Date.now(),
     });
@@ -81,13 +85,13 @@ export class ServerGameStateHandler {
   private sendWorldSnapshotToSocket(socket: Socket): void {
     this.sendWorldSnapshot((message) => {
       sendToSocket(socket, message);
-    });
+    }, isAdminSocket(socket));
   }
 
   private broadcastWorldSnapshot(): void {
     this.sendWorldSnapshot((message) => {
       broadcast(message);
-    });
+    }, false);
   }
 
   private buildRunSnapshotMessage(socket?: Socket): RunSnapshotMessage | null {
@@ -114,12 +118,28 @@ export class ServerGameStateHandler {
     };
   }
 
+  private buildSeasonSnapshotMessage(): SeasonSnapshotMessage | null {
+    const season = seasonState.getSnapshot();
+    if (!season) {
+      return null;
+    }
+    return {
+      type: 'season:snapshot',
+      season,
+      timestamp: Date.now(),
+    };
+  }
+
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     this.sendWorldSnapshotToSocket(socket);
     testModeState.sendUpdate(socket);
     const runSnapshot = this.buildRunSnapshotMessage(socket);
     if (runSnapshot) {
       sendToSocket(socket, runSnapshot);
+    }
+    const seasonSnapshot = this.buildSeasonSnapshotMessage();
+    if (seasonSnapshot) {
+      sendToSocket(socket, seasonSnapshot);
     }
     sendToSocket(socket, this.buildCoopSnapshotMessage());
   }

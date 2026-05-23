@@ -6,6 +6,12 @@ import { getTaskDefinition } from '../shared/tasks/taskRegistry';
 import { tileIndex } from './world';
 import type {TaskSoundConfig} from "./types/Task.ts";
 
+function resolveSoundAssetUrl(soundPath: string) {
+    return soundPath.startsWith('/')
+        ? soundPath
+        : `/sounds/${soundPath}`;
+}
+
 export interface PositionalSound {
     id: string;
     q: number;
@@ -60,6 +66,8 @@ class SoundService {
     private loadingPromises: Map<string, Promise<string>> = new Map(); // Track loading promises
 
     private initializationPromise: Promise<void> | null = null;
+    private unlockListenersRegistered = false;
+    private unlockAudioHandler: (() => void) | null = null;
 
     async initialize(options: SoundInitializeOptions = { positionalAudio: true }) {
         const positionalAudio = options.positionalAudio ?? true;
@@ -90,6 +98,7 @@ class SoundService {
         try {
             this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             this.setupMusicNodes();
+            this.installAudioUnlockHandlers();
             if (options.positionalAudio) {
                 this.enablePositionalAudio();
             }
@@ -112,6 +121,24 @@ class SoundService {
         this.crossfadeGainNode.connect(this.audioContext.destination);
 
         this.crossfadeGainNode.gain.value = 0;
+    }
+
+    private installAudioUnlockHandlers() {
+        if (this.unlockListenersRegistered || typeof window === 'undefined') return;
+
+        const unlockAudio = () => {
+            if (this.audioContext?.state === 'suspended') {
+                this.audioContext.resume().catch((error: unknown) => {
+                    console.warn('Failed to unlock audio context:', error);
+                });
+            }
+        };
+
+        this.unlockAudioHandler = unlockAudio;
+        window.addEventListener('pointerdown', unlockAudio, { passive: true });
+        window.addEventListener('keydown', unlockAudio);
+        window.addEventListener('touchstart', unlockAudio, { passive: true });
+        this.unlockListenersRegistered = true;
     }
 
     private enablePositionalAudio() {
@@ -458,8 +485,38 @@ class SoundService {
         }
     }
 
+    async playInterfaceSound(
+        soundPath: string,
+        options: {
+            baseVolume?: number;
+        } = {}
+    ) {
+        await this.initialize({ positionalAudio: false });
+
+        const cachedAudioUrl = await this.loadAudioData(soundPath);
+        const audio = new Audio(cachedAudioUrl);
+        const baseVolume = Math.max(0, Math.min(1, options.baseVolume ?? 1.0));
+        audio.preload = 'auto';
+        audio.volume = Math.max(0, Math.min(1, baseVolume * soundState.effectsVolume * soundState.masterVolume));
+
+        audio.addEventListener('ended', () => {
+            audio.removeAttribute('src');
+            audio.load();
+        }, { once: true });
+
+        if (this.audioContext?.state === 'suspended') {
+            await this.audioContext.resume();
+        }
+
+        try {
+            await audio.play();
+        } catch (error) {
+            console.warn('Failed to play interface sound:', error);
+        }
+    }
+
     private async loadAudioData(soundPath: string): Promise<string> {
-        soundPath = 'src/assets/sounds/' + soundPath;
+        soundPath = resolveSoundAssetUrl(soundPath);
         // Check if already cached
         const cached = this.audioDataCache.get(soundPath);
         if (cached) {
@@ -632,7 +689,15 @@ class SoundService {
             this.audioContext = null;
         }
 
+        if (this.unlockAudioHandler && typeof window !== 'undefined') {
+            window.removeEventListener('pointerdown', this.unlockAudioHandler);
+            window.removeEventListener('keydown', this.unlockAudioHandler);
+            window.removeEventListener('touchstart', this.unlockAudioHandler);
+        }
+
         this.initialized = false;
+        this.unlockListenersRegistered = false;
+        this.unlockAudioHandler = null;
     }
 }
 

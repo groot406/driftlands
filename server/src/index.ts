@@ -24,7 +24,9 @@ import { maintenanceSystem } from './systems/maintenanceSystem';
 import { militarySystem } from './systems/militarySystem';
 import { calamitySystem } from './systems/calamitySystem';
 import { shipOrderSystem } from './systems/shipOrderSystem';
+import { seasonSystem } from './systems/seasonSystem';
 import { marketSystem } from './systems/marketSystem';
+import { seasonState } from './state/seasonState';
 import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
 import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
 import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
@@ -136,6 +138,7 @@ configureGameRuntime({
 });
 configureGameplayEventRuntime((event) => {
   runState.recordEvent(event);
+  seasonState.recordEvent(event);
 });
 
 // Apply message logging middleware
@@ -156,6 +159,7 @@ tickEngine.register(militarySystem);
 tickEngine.register(calamitySystem);
 tickEngine.register(marketSystem);
 tickEngine.register(shipOrderSystem);
+tickEngine.register(seasonSystem);
 tickEngine.register(settlerSystem);
 tickEngine.register(supportSystem);
 tickEngine.register(jobSystem);

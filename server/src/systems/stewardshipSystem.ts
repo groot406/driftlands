@@ -109,7 +109,7 @@ function summarizeNextActions(
   }
 
   if (actions.length === 0) {
-    actions.push('The settlement handled the night. Keep a small wood and stone reserve for the next absence.');
+    actions.push('The settlement handled the night. Keep small wood and stone reserves for the next absence.');
   }
 
   return actions.slice(0, 3);

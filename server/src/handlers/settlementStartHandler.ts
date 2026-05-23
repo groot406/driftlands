@@ -22,6 +22,7 @@ import type {
   SettlementStartRequestOptionsMessage,
   WorldSnapshotMessage,
   RunSnapshotMessage,
+  SeasonSnapshotMessage,
   WorldRestartMessage,
 } from '../../../src/shared/protocol';
 import { serverMessageRouter, sendToSocket } from '../messages/messageRouter';
@@ -30,12 +31,20 @@ import { coopState } from '../state/coopState';
 import { worldState } from '../worldState';
 import { runState } from '../state/runState';
 import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from '../config/serverMode';
+import { seasonState } from '../state/seasonState';
+import { isAdminSocket } from '../config/admin';
 
 export class ServerSettlementStartHandler {
+  private static activeInstance: ServerSettlementStartHandler | null = null;
   private readonly io: Server;
 
   constructor(io: Server) {
     this.io = io;
+    ServerSettlementStartHandler.activeInstance = this;
+  }
+
+  static broadcastStartOptionsToConnectedPlayers(): void {
+    ServerSettlementStartHandler.activeInstance?.broadcastOptionsToConnectedPlayers();
   }
 
   init(): void {
@@ -142,6 +151,19 @@ export class ServerSettlementStartHandler {
     sendToSocket(socket, this.buildOptionsMessage(playerSettlementState.getSocketPlayerId(socket.id) ?? socket.id));
   }
 
+  private sendSeasonSnapshotToSocket(socket: Socket) {
+    const season = seasonState.getSnapshot();
+    if (!season) {
+      return;
+    }
+
+    sendToSocket(socket, {
+      type: 'season:snapshot',
+      season,
+      timestamp: Date.now(),
+    } satisfies SeasonSnapshotMessage);
+  }
+
   private broadcastCoopSnapshot() {
     this.io.emit('message', {
       type: 'coop:snapshot',
@@ -166,11 +188,16 @@ export class ServerSettlementStartHandler {
   }
 
   private handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): void {
-    playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName);
+    playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName, message.spectator === true);
+    this.sendSeasonSnapshotToSocket(socket);
+    if (message.spectator === true) {
+      return;
+    }
     this.sendOptionsToSocket(socket);
   }
 
   private handleRequestOptions(socket: Socket, _message: SettlementStartRequestOptionsMessage): void {
+    this.sendSeasonSnapshotToSocket(socket);
     this.sendOptionsToSocket(socket);
   }
 
@@ -206,6 +233,16 @@ export class ServerSettlementStartHandler {
   }
 
   private handleFoundRequest(socket: Socket, message: SettlementFoundRequestMessage): void {
+    if (playerSettlementState.isSocketSpectator(socket.id)) {
+      this.rejectFoundRequest(socket, 'Spectators cannot found a settlement.');
+      return;
+    }
+
+    if (!seasonState.allowsSettlementStarts()) {
+      this.rejectFoundRequest(socket, 'Settlement founding is locked during this season stage.');
+      return;
+    }
+
     const playerId = playerSettlementState.getSocketPlayerId(socket.id) ?? socket.id;
     const existingSettlementId = playerSettlementState.getPlayerSettlement(playerId);
     if (existingSettlementId) {
@@ -341,10 +378,20 @@ export class ServerSettlementStartHandler {
       } satisfies RunSnapshotMessage);
     }
 
+    const season = seasonState.getSnapshot();
+    if (season) {
+      sendToSocket(socket, {
+        type: 'season:snapshot',
+        season,
+        timestamp: Date.now(),
+      } satisfies SeasonSnapshotMessage);
+    }
+
     sendToSocket(socket, {
       type: 'world:snapshot',
       ...worldState.getSnapshot(),
       debugModeEnabled: serverDebugModeEnabled,
+      currentPlayerIsAdmin: isAdminSocket(socket),
       spawnSafetyEnabled,
       timestamp: Date.now(),
     } satisfies WorldSnapshotMessage);

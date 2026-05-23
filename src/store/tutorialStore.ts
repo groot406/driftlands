@@ -28,6 +28,7 @@ import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 const TUTORIAL_PANEL_STORAGE_KEY = 'driftlands-tutorial-panel-v1';
 const RIDGE_INDUSTRY_REQUIRED_POPULATION = 5;
+const SHORELINE_UNLOCK_REQUIRED_POPULATION = 2;
 const LIBRARY_REQUIRED_TOOLS = 2;
 const WORKSHOP_REQUIRED_ORE = 4;
 
@@ -430,6 +431,14 @@ function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMa
   }
 
   if (stepId === 'mine-ridges' && getCurrentPlayerPopulation().current < RIDGE_INDUSTRY_REQUIRED_POPULATION) {
+    return findTutorialPopulationHint(hero);
+  }
+
+  if (
+    stepId === 'build-dock'
+    && tutorialMetrics.value.landingArchetype === 'shoreline'
+    && getCurrentPlayerPopulation().current < SHORELINE_UNLOCK_REQUIRED_POPULATION
+  ) {
     return findTutorialPopulationHint(hero);
   }
 

@@ -45,6 +45,21 @@ test('active study can be selected from unfinished subjects', () => {
   assert.notEqual(getStudySnapshot().activeStudyKey, 'warehouse_ledgers');
 });
 
+test('study state is scoped per settlement', () => {
+  resetStudyState();
+
+  assert.equal(selectActiveStudy('warehouse_ledgers', '0,0'), true);
+  addStudyProgress(12 * STUDY_WORK_CYCLE_MS, '0,0');
+
+  const firstSettlement = getStudySnapshot('0,0');
+  const secondSettlement = getStudySnapshot('10,0');
+
+  assert.deepEqual(firstSettlement.completedStudyKeys, ['warehouse_ledgers']);
+  assert.equal(firstSettlement.activeStudyKey, 'field_notebooks');
+  assert.deepEqual(secondSettlement.completedStudyKeys, []);
+  assert.equal(secondSettlement.activeStudyKey, 'field_notebooks');
+});
+
 test('study overrides can be applied and cleared without changing underlying progress', () => {
   resetStudyState();
 

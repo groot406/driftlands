@@ -15,7 +15,7 @@ import {
   broadcastPopulationState,
   getPopulationSnapshot,
   getPopulationBySettlementInput,
-  getPopulationState,
+  getSettlementHungerInput,
   initializePopulation,
   initializeSettlementPopulation,
   recalculatePopulationLimits,
@@ -43,6 +43,7 @@ import { resetCalamitySystem } from './systems/calamitySystem';
 import { promoteTileToTowncenter } from '../../src/shared/buildings/registry';
 import { broadcastGameMessage as broadcast } from '../../src/shared/game/runtime';
 import { createHeroFromTemplate, type StoryHeroId } from '../../src/shared/story/heroRoster';
+import { getTileSettlementId } from '../../src/shared/game/settlement';
 import type { HeroRosterUpdateMessage, ResourceDepositMessage, TileUpdatedMessage } from '../../src/shared/protocol';
 import type { LooperlandsHeroSelection } from '../../src/shared/looperlands';
 import {
@@ -54,6 +55,7 @@ import { playerSettlementState } from './state/playerSettlementState';
 import { marketState } from './state/marketState';
 import type { MarketOverviewSnapshot } from '../../src/shared/game/market';
 import { shipOrderState } from './state/shipOrderState';
+import { seasonState } from './state/seasonState';
 import type { ShipOrderOverviewSnapshot } from '../../src/shared/game/shipOrders';
 import { resetAttendanceState } from './state/attendanceState';
 
@@ -298,10 +300,10 @@ class WorldState {
     startWorldGeneration(worldRadius, resolvedSeed);
     initializePopulation();
     syncSettlerPopulation(Date.now());
-    const population = getPopulationState();
-    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
+    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), getSettlementHungerInput());
     setSupportMetrics(support.snapshot);
     runState.initialize(resolvedSeed);
+    seasonState.initialize(resolvedSeed);
     return Promise.resolve();
   }
 
@@ -440,8 +442,7 @@ class WorldState {
       }
     }
 
-    const population = getPopulationState();
-    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), population.hungerMs);
+    const support = recalculateSettlementSupport(getPopulationBySettlementInput(), getSettlementHungerInput());
     setSupportMetrics(support.snapshot);
     recalculatePopulationLimits();
 
@@ -477,6 +478,12 @@ class WorldState {
     const settlementResources = listSettlementResourceSnapshots();
     const population = getPopulationSnapshot();
     const jobs = getWorkforceSnapshot();
+    for (const tile of tiles) {
+      const settlementId = tile.terrain === 'towncenter' ? getTileSettlementId(tile) : null;
+      if (settlementId) {
+        getStudySnapshot(settlementId);
+      }
+    }
     const studies = getStudySnapshot();
     const settlers = getSettlerSnapshot();
     const market = marketState.getOverview();

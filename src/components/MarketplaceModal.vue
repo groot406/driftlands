@@ -107,6 +107,7 @@
               </div>
 
               <p v-if="marketError" class="market-error">{{ marketError }}</p>
+              <p v-else-if="marketNotice" class="market-success">{{ marketNotice }}</p>
               <p v-else-if="disabledReason" class="market-hint">{{ disabledReason }}</p>
 
               <button
@@ -149,6 +150,7 @@ import {
   fetchMarketOverview,
   marketplaceOpen,
   marketError,
+  marketNotice,
   marketOverview,
   marketTrading,
   marketWallet,
@@ -159,6 +161,8 @@ import {
 import { getSettlementResourceInventory, resourceVersion } from '../store/resourceStore.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { currentPlayerId } from '../core/socket.ts';
+import { hasSettlementMarketAccess } from '../shared/game/marketAccess.ts';
+import { worldVersion } from '../shared/game/world.ts';
 
 const mode = ref<'buy' | 'sell'>('buy');
 const quantity = ref(1);
@@ -171,6 +175,10 @@ const playerInventory = computed(() => {
 });
 
 const walletGold = computed(() => marketWallet.value?.gold ?? 0);
+const hasMarketAccess = computed(() => {
+  worldVersion.value;
+  return hasSettlementMarketAccess(currentPlayerSettlementId.value);
+});
 const hasSellableInventory = computed(() => MARKET_RESOURCE_TYPES.some((type) => Math.floor(playerInventory.value[type] ?? 0) > 0));
 
 const marketRows = computed(() => MARKET_RESOURCE_TYPES.map((type) => {
@@ -208,6 +216,10 @@ const canSubmit = computed(() => {
     return false;
   }
 
+  if (!hasMarketAccess.value) {
+    return false;
+  }
+
   if (mode.value === 'buy') {
     return selectedMarket.value.stock >= normalizedQuantity.value && walletGold.value >= totalGold.value;
   }
@@ -221,6 +233,10 @@ const disabledReason = computed(() => {
 
   if (!currentPlayerId.value || !currentPlayerSettlementId.value) {
     return 'Start or select a settlement before trading.';
+  }
+
+  if (!hasMarketAccess.value) {
+    return 'Build a Trade Center in your settlement before trading.';
   }
 
   if (mode.value === 'buy') {
@@ -597,6 +613,12 @@ watch(quantity, () => {
 .market-error {
   margin: 0 0 0.62rem;
   color: #ffb1a3;
+  font-weight: 800;
+}
+
+.market-success {
+  margin: 0 0 0.62rem;
+  color: #9ee7a4;
   font-weight: 800;
 }
 

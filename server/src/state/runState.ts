@@ -587,7 +587,7 @@ class RunState {
       discoveredTerrains: Array.from(discoveredTerrains).filter((terrain): terrain is NonNullable<typeof terrain> => !!terrain),
       landingTerrains: Object.keys(landingProfile.terrainCounts) as NonNullable<typeof tiles[number]['terrain']>[],
       unlockedHeroIds: this.snapshot?.progression.unlocked.heroes.slice() ?? [],
-      completedStudyKeys: getStudySnapshot().completedStudyKeys,
+      completedStudyKeys: getStudySnapshot(settlementId).completedStudyKeys,
       heroAbilityChargesEarned: heroes
         .filter((hero) => !settlementId || hero.settlementId === settlementId)
         .reduce((sum, hero) => sum + (hero.abilityChargesEarned ?? 0), 0),

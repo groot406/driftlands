@@ -7,6 +7,7 @@ import { getTileSettlementId } from '../shared/game/settlement';
 import {
     type PressureState,
     type SettlementSupportCounts,
+    type SettlementHungerInput,
     type SettlementPopulationInput,
     computeControlledTileIds,
     computeControlledTileIdsForTC,
@@ -388,7 +389,33 @@ export function killSettler(settlementId?: string | null): boolean {
  * Used by the population system to track hunger between food ticks.
  */
 export function setHungerMs(ms: number) {
-    state.hungerMs = ms;
+    const next = Math.max(0, ms);
+    if (state.hungerMs === next) {
+        return false;
+    }
+    state.hungerMs = next;
+    return true;
+}
+
+export function setSettlementHungerMs(settlementId: string | null | undefined, ms: number) {
+    if (!settlementId) {
+        return setHungerMs(ms);
+    }
+
+    const settlementState = getOrCreateSettlementPopulationState(settlementId);
+    const next = Math.max(0, ms);
+    const previousSettlementHunger = settlementState.hungerMs;
+    const previousColonyHunger = state.hungerMs;
+    settlementState.hungerMs = next;
+    state.hungerMs = Math.max(0, ...Array.from(settlementPopulation.values()).map((entry) => entry.hungerMs));
+    refreshSettlementPopulationSnapshots();
+    return previousSettlementHunger !== next || previousColonyHunger !== state.hungerMs;
+}
+
+export function getSettlementHungerInput(): SettlementHungerInput {
+    return Object.fromEntries(
+        Array.from(settlementPopulation.entries()).map(([settlementId, settlementState]) => [settlementId, settlementState.hungerMs]),
+    );
 }
 
 export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSupportSnapshot>) {
@@ -401,7 +428,7 @@ export function setSupportMetrics(snapshot: ReturnType<typeof getSettlementSuppo
         settlementState.supportCapacity = settlement.supportCapacity;
         settlementState.activeTileCount = settlement.activeTileCount;
         settlementState.inactiveTileCount = settlement.inactiveTileCount;
-        settlementState.pressureState = snapshot.pressureState;
+        settlementState.pressureState = settlement.pressureState ?? snapshot.pressureState;
 
         return {
             ...settlement,

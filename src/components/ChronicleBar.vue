@@ -96,6 +96,7 @@ import Sprite from './Sprite.vue';
 import NineSlicePanel from './ui/NineSlicePanel.vue';
 import { runSnapshot } from '../store/runStore.ts';
 import { chronicleReopenRequested, chronicleHasEntries } from '../store/chronicleStore.ts';
+import { activeToolbarPanel, closeToolbarPanel } from '../store/toolbarPanelStore.ts';
 import boyAvatar from '../assets/heroes/boy.png';
 import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
@@ -212,6 +213,7 @@ function advanceOrDismiss() {
   const entry = currentEntry.value;
   if (!entry) {
     dismissed.value = true;
+    closeToolbarPanel('chronicle');
     return;
   }
 
@@ -221,6 +223,7 @@ function advanceOrDismiss() {
     browseEntryId.value = null;
     if (unreadEntries.value.length === 0) {
       dismissed.value = true;
+      closeToolbarPanel('chronicle');
     }
     return;
   }
@@ -231,6 +234,7 @@ function advanceOrDismiss() {
   // If no more unread, close.
   if (unreadEntries.value.length === 0) {
     dismissed.value = true;
+    closeToolbarPanel('chronicle');
   }
 }
 
@@ -241,6 +245,7 @@ function dismissAll() {
   }
   browseEntryId.value = null;
   dismissed.value = true;
+  closeToolbarPanel('chronicle');
 }
 
 function showPreviousEntry() {
@@ -278,6 +283,13 @@ watch(() => entries.value.length, (len) => {
 watch(chronicleReopenRequested, () => {
   if (entries.value.length > 0) {
     reopenConversation();
+  }
+});
+
+watch(activeToolbarPanel, (panel) => {
+  if (panel !== 'chronicle' && visibleEntry.value) {
+    dismissed.value = true;
+    browseEntryId.value = null;
   }
 });
 </script>

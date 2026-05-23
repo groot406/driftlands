@@ -4,59 +4,69 @@
       <div class="game-gui-resources min-w-0 flex-1 flex flex-col gap-4">
         <ResourceBar/>
       </div>
+      <SeasonStageHud />
       <div class="game-gui-menu pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
-      <div class="pointer-events-auto gap-2 flex flex-col items-end" v-if="showHelpers && serverDebugModeEnabled">
-        <WorldControls/>
-        <FpsCounter />
-      </div>
     </div>
+    <Transition name="calamity-countdown">
+      <button
+        v-if="calamityCountdown"
+        class="calamity-countdown-hud"
+        type="button"
+        :style="{ '--calamity-progress': `${calamityCountdown.progress}%` }"
+        :aria-label="`Open ${calamityCountdown.name} warning. Impact in ${calamityCountdown.time}.`"
+        @click="reopenActiveCalamityWarning"
+      >
+        <span class="calamity-countdown-icon" aria-hidden="true">!</span>
+        <span class="calamity-countdown-copy">
+          <span class="calamity-countdown-kicker">Disaster warning</span>
+          <span class="calamity-countdown-name">Incoming {{ calamityCountdown.name }}</span>
+        </span>
+        <strong>{{ calamityCountdown.time }}</strong>
+        <span class="calamity-countdown-track" aria-hidden="true">
+          <span></span>
+        </span>
+      </button>
+    </Transition>
     <HeroesBar />
   </div>
-  <Transition name="calamity-countdown">
-    <button
-      v-if="calamityCountdown"
-      class="calamity-countdown-hud"
-      type="button"
-      :style="{ '--calamity-progress': `${calamityCountdown.progress}%` }"
-      :aria-label="`Open ${calamityCountdown.name} warning. Impact in ${calamityCountdown.time}.`"
-      @click="reopenActiveCalamityWarning"
-    >
-      <span class="calamity-countdown-icon" aria-hidden="true">!</span>
-      <span class="calamity-countdown-copy">
-        <span class="calamity-countdown-kicker">Disaster warning</span>
-        <span class="calamity-countdown-name">Incoming {{ calamityCountdown.name }}</span>
-      </span>
-      <strong>{{ calamityCountdown.time }}</strong>
-      <span class="calamity-countdown-track" aria-hidden="true">
-        <span></span>
-      </span>
-    </button>
-  </Transition>
+  <OnlinePlayersStatus />
   <!-- Bottom-right toolbar -->
   <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
-      v-if="serverDebugModeEnabled"
+      v-if="canUseDebugTools"
       class="debug-toggle-btn pixel-font"
-      :class="{ 'debug-toggle-btn--active': showHelpers }"
+      :class="{ 'debug-toggle-btn--active': activeToolPanel === 'debug' }"
       type="button"
-      @click="toggleDebugHelpers"
+      @click="toggleToolPanel('debug')"
       title="Toggle debug panel (F2, F9, or `)"
     >
       DBG
     </button>
     <button
-      v-if="hasTutorial"
-      class="tutorial-toggle-btn"
-      :class="{ 'tutorial-toggle-btn--active': isTutorialPanelOpen }"
-      @click="toggleTutorialPanel"
-      title="Open help guide"
+      v-if="canUseAdminTools"
+      class="debug-toggle-btn debug-toggle-btn--admin pixel-font"
+      :class="{ 'debug-toggle-btn--active': activeToolPanel === 'admin' }"
+      type="button"
+      @click="toggleToolPanel('admin')"
+      title="Toggle season admin panel"
     >
-      <span class="tutorial-toggle-glyph">?</span>
-      <span v-if="!tutorialSnapshot.allCompleted" class="tutorial-toggle-badge">{{ visibleTutorialStepNumber }}</span>
+      ADM
     </button>
+    <div v-if="hasTutorial" class="toolbar-popover-anchor">
+      <button
+        class="tutorial-toggle-btn"
+        :class="{ 'tutorial-toggle-btn--active': isTutorialPanelOpen }"
+        @click="toggleTutorialGuide"
+        title="Open help guide"
+      >
+        <span class="tutorial-toggle-glyph">?</span>
+        <span v-if="!tutorialSnapshot.allCompleted" class="tutorial-toggle-badge">{{ visibleTutorialStepNumber }}</span>
+      </button>
+      <TutorialPanel />
+    </div>
     <button
       v-if="hasGoals"
       class="goals-toggle-btn"
@@ -83,9 +93,16 @@
     <OnlinePlayersIndicator />
   </div>
   <InGameMiniMap />
+  <DebugToolsPanel
+    v-if="activeToolPanel && canUseActiveToolPanel"
+    :mode="activeToolPanel"
+    :show-debug-tools="canUseDebugTools"
+    :show-admin-tools="canUseAdminTools"
+    @close="closeDebugPanel"
+  />
+  <SeasonScoreboard />
   <!-- Goals panel (anchored bottom-right) -->
   <GoalsPanel />
-  <TutorialPanel />
   <!-- Centered conversation overlay -->
   <ChronicleBar />
   <SettlementStartPicker />
@@ -98,22 +115,27 @@
   <CalamityEventModal />
   <UnlockAnnouncementModal />
   <NotificationOverlay />
+  <SettlementWelcomeModal />
+  <SeasonStageAnnouncementModal />
+  <SeasonCompletedOverlay />
 </template>
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import ResourceBar from './ResourceBar.vue';
+import SeasonStageHud from './SeasonStageHud.vue';
 import MaintenanceAlert from './MaintenanceAlert.vue';
 import ChronicleBar from './ChronicleBar.vue';
 import SettlementStartPicker from './SettlementStartPicker.vue';
 import GoalsPanel from './GoalsPanel.vue';
 import TutorialPanel from './TutorialPanel.vue';
-import WorldControls from './WorldControls.vue';
 import HeroesBar from './HeroesBar.vue';
-import FpsCounter from './FpsCounter.vue';
+import DebugToolsPanel from './DebugToolsPanel.vue';
 import OnlinePlayersIndicator from './OnlinePlayersIndicator.vue';
+import OnlinePlayersStatus from './OnlinePlayersStatus.vue';
 import MusicPlayer from './MusicPlayer.vue';
 import InGameMiniMap from './InGameMiniMap.vue';
+import SeasonScoreboard from './SeasonScoreboard.vue';
 import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
@@ -123,26 +145,37 @@ import SettlerModal from './SettlerModal.vue';
 import CalamityEventModal from './CalamityEventModal.vue';
 import UnlockAnnouncementModal from './UnlockAnnouncementModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
+import SettlementWelcomeModal from './SettlementWelcomeModal.vue';
+import SeasonStageAnnouncementModal from './SeasonStageAnnouncementModal.vue';
+import SeasonCompletedOverlay from './SeasonCompletedOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
-import { chronicleHasEntries, requestChronicleReopen, toggleGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
+import { chronicleHasEntries, requestChronicleReopen, openGoalsPanel, closeGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
-import { serverDebugModeEnabled } from '../store/serverConfigStore.ts';
+import { currentPlayerIsAdmin, serverDebugModeEnabled } from '../store/serverConfigStore.ts';
 import {
   hasTutorial,
   isTutorialPanelOpen,
-  toggleTutorialPanel,
+  openTutorialPanel,
+  closeTutorialPanel,
   tutorialSnapshot,
   visibleTutorialStepNumber,
 } from '../store/tutorialStore';
 import { activeCalamityWarning, getCalamityDisplayName, reopenActiveCalamityWarning } from '../store/calamityEventStore.ts';
+import { activeToolbarPanel, closeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore.ts';
 
-const showHelpers = ref(false);
+const activeToolPanel = ref<'debug' | 'admin' | null>(null);
 const countdownNow = ref(Date.now());
 const globalKeyListenerOptions = { capture: true };
 const DEBUG_HELPER_SHORTCUTS = new Set(['Tab', 'F2', 'F9', 'Backquote']);
 let countdownTimer: number | null = null;
 
+const canUseDebugTools = computed(() => serverDebugModeEnabled.value);
+const canUseAdminTools = computed(() => currentPlayerIsAdmin.value);
+const canUseActiveToolPanel = computed(() => (
+  (activeToolPanel.value === 'debug' && canUseDebugTools.value)
+  || (activeToolPanel.value === 'admin' && canUseAdminTools.value)
+));
 
 const hasGoals = computed(() => {
   const run = runSnapshot.value;
@@ -187,16 +220,47 @@ function formatCountdown(ms: number) {
 }
 
 function recallConversation() {
+  openToolbarPanel('chronicle');
   requestChronicleReopen();
 }
 
 function toggleGoals() {
-  toggleGoalsPanel();
+  if (isGoalsPanelOpen.value) {
+    closeGoalsPanel();
+    closeToolbarPanel('goals');
+  } else {
+    openToolbarPanel('goals');
+    openGoalsPanel();
+  }
 }
 
-function toggleDebugHelpers() {
-  if (!serverDebugModeEnabled.value) return;
-  showHelpers.value = !showHelpers.value;
+function toggleTutorialGuide() {
+  if (isTutorialPanelOpen.value) {
+    closeTutorialPanel();
+    closeToolbarPanel('tutorial');
+  } else {
+    openToolbarPanel('tutorial');
+    openTutorialPanel();
+  }
+}
+
+function toggleToolPanel(panel: 'debug' | 'admin') {
+  if (panel === 'debug' && !canUseDebugTools.value) return;
+  if (panel === 'admin' && !canUseAdminTools.value) return;
+  if (activeToolPanel.value === panel) {
+    closeDebugPanel();
+  } else {
+    openToolbarPanel(panel);
+    activeToolPanel.value = panel;
+  }
+}
+
+function closeDebugPanel() {
+  const panel = activeToolPanel.value;
+  activeToolPanel.value = null;
+  if (panel) {
+    closeToolbarPanel(panel);
+  }
 }
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -209,7 +273,7 @@ function handleKeyDown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    toggleDebugHelpers();
+    toggleToolPanel('debug');
     return;
   }
 
@@ -235,9 +299,21 @@ onBeforeUnmount(() => {
   }
 });
 
-watch(serverDebugModeEnabled, (enabled) => {
+watch(canUseActiveToolPanel, (enabled) => {
   if (!enabled) {
-    //showHelpers.value = false;
+    activeToolPanel.value = null;
+  }
+});
+
+watch(activeToolbarPanel, (panel) => {
+  if (panel !== 'tutorial' && isTutorialPanelOpen.value) {
+    closeTutorialPanel();
+  }
+  if (panel !== 'goals' && isGoalsPanelOpen.value) {
+    closeGoalsPanel();
+  }
+  if (panel !== 'debug' && panel !== 'admin' && activeToolPanel.value) {
+    activeToolPanel.value = null;
   }
 });
 </script>
@@ -251,30 +327,79 @@ watch(serverDebugModeEnabled, (enabled) => {
 }
 
 .menu-shortcut-btn {
-  @apply self-end text-[10px] uppercase tracking-normal shadow-md;
-  min-width: 5.75rem;
-  min-height: 3rem;
-  color: #2f1609;
-  font-weight: 800;
+  @apply self-end uppercase shadow-md;
+  min-width: 5.9rem;
+  min-height: 3.05rem;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 226, 161, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(45, 27, 13, 0.9), rgba(17, 12, 8, 0.96));
+  color: #fff1c5;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.78rem;
+  font-weight: 900;
   letter-spacing: 0;
+  text-shadow:
+    0 2px 0 rgba(5, 3, 2, 0.92),
+    0 0 10px rgba(255, 210, 118, 0.26);
+  box-shadow:
+    0 8px 18px rgba(7, 6, 4, 0.34),
+    inset 0 1px 0 rgba(255, 226, 161, 0.16);
+}
+
+.menu-shortcut-btn .ui-nine-slice-button__content {
+  min-width: 100%;
+  padding: 0.35rem 0.92rem 0.3rem;
+  color: #fff1c5;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .menu-shortcut-btn:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.1);
+  color: #fff8dc;
+  transform: translateY(-1px);
+}
+
+.menu-shortcut-btn:hover .ui-nine-slice-button__content {
+  color: #fff8dc;
+}
+
+.menu-shortcut-btn:focus-visible {
+  outline: 2px solid rgba(255, 238, 177, 0.95);
+  outline-offset: 2px;
+}
+
+.game-gui-top {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(22rem, 32rem) auto;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.game-gui-resources {
+  min-width: 0;
+}
+
+.game-gui-top .season-stage-hud {
+  justify-self: end;
+  width: min(32rem, 100%);
+}
+
+.game-gui-menu {
+  justify-self: end;
 }
 
 .calamity-countdown-hud {
-  position: fixed;
-  top: 0.85rem;
-  left: 50%;
-  z-index: 34;
+  position: relative;
+  z-index: 6;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.7rem;
+  align-self: center;
   width: min(28rem, calc(100vw - 1.5rem));
   min-height: 3.35rem;
-  transform: translateX(-50%);
   overflow: hidden;
   border: 1px solid rgba(250, 204, 21, 0.58);
   border-radius: 8px;
@@ -296,7 +421,7 @@ watch(serverDebugModeEnabled, (enabled) => {
 .calamity-countdown-hud:focus-visible {
   border-color: rgba(253, 230, 138, 0.88);
   box-shadow: 0 14px 32px rgba(20, 12, 8, 0.42), 0 0 0 2px rgba(250, 204, 21, 0.16), inset 0 1px 0 rgba(255, 247, 207, 0.16);
-  transform: translate(-50%, -1px);
+  transform: translateY(-1px);
 }
 
 .calamity-countdown-icon {
@@ -383,7 +508,19 @@ watch(serverDebugModeEnabled, (enabled) => {
 .calamity-countdown-enter-from,
 .calamity-countdown-leave-to {
   opacity: 0;
-  transform: translate(-50%, -0.45rem);
+  transform: translateY(-0.45rem);
+}
+
+@media (max-width: 1180px) {
+  .game-gui-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .game-gui-top .season-stage-hud {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 640px) {
@@ -417,9 +554,9 @@ watch(serverDebugModeEnabled, (enabled) => {
   }
 
   .calamity-countdown-hud {
-    top: 4.15rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.5rem;
+    width: min(100%, calc(100vw - 0.7rem));
     min-height: 3.2rem;
     padding-inline: 0.58rem;
   }
@@ -477,6 +614,23 @@ watch(serverDebugModeEnabled, (enabled) => {
   border-color: rgba(252, 211, 77, 0.6);
   background: rgba(36, 48, 26, 0.9);
   color: rgb(254 243 199);
+}
+
+.debug-toggle-btn--admin {
+  border-color: rgba(252, 211, 77, 0.46);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.18), transparent 54%),
+    rgba(42, 32, 18, 0.82);
+  color: rgb(253 230 138);
+}
+
+.toolbar-popover-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
 }
 
 .goals-toggle-btn {

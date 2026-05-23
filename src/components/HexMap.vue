@@ -220,7 +220,7 @@ import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/ta
 import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
 import {
   getAvailableGuardReserve,
-  isSettlementOpen,
+  getEffectiveSettlementBorderMode,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
 } from '../shared/game/military.ts';
@@ -233,6 +233,7 @@ import { canStartTaskWhileCarrying } from '../store/taskStore';
 import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { findHarborShipRoute, isHarborTile } from '../shared/game/harbor.ts';
 import { shipOrderOverview, toggleShipOrderPanel } from '../store/shipOrderStore.ts';
+import { seasonSnapshot } from '../store/seasonStore.ts';
 import tradingShipDirectionsUrl from '../assets/tiles/trading_ship_directions.png';
 
 const emit = defineEmits<{
@@ -523,7 +524,7 @@ const militaryHud = computed(() => {
     const active = (tile.barracksTrainingProgressMs ?? 0) > 0 ? 1 : 0;
     return total + queued + active;
   }, 0);
-  const modeOpen = isSettlementOpen(townCenter);
+  const modeOpen = getEffectiveSettlementBorderMode(townCenter, seasonSnapshot.value) === 'open';
 
   return {
     modeLabel: modeOpen ? 'Open' : 'Closed',
@@ -543,12 +544,13 @@ const militaryHud = computed(() => {
 });
 
 const militaryHudUnlocked = computed(() => {
-  return !!currentPlayerSettlementId.value
+  const settlementId = currentPlayerSettlementId.value;
+  return !!settlementId
     && (
-      isStudyCompleted('guard_training')
-      || isStudyCompleted('defensive_construction')
-      || isStudyCompleted('border_management')
-      || isStudyCompleted('weapon_smithing')
+      isStudyCompleted('guard_training', settlementId)
+      || isStudyCompleted('defensive_construction', settlementId)
+      || isStudyCompleted('border_management', settlementId)
+      || isStudyCompleted('weapon_smithing', settlementId)
     );
 });
 
@@ -1139,7 +1141,7 @@ function drawAnimationFrame(frameNowMs = performance.now()) {
       globalReachBoundary: globalReachBoundary.value,
       globalReachTileIds: globalReachTileIds.value,
       globalReachColor: currentPlayerReachColor.value ?? undefined,
-      globalReachDashed: isSettlementOpen(getSettlementTownCenterTile(Object.values(tileIndex), currentPlayerSettlementId.value)),
+      globalReachDashed: getEffectiveSettlementBorderMode(getSettlementTownCenterTile(Object.values(tileIndex), currentPlayerSettlementId.value), seasonSnapshot.value) === 'open',
       settlementReachOutlines: settlementReachOutlines.value,
       storyHintTiles: mapHintTiles.value,
       showSupportOverlay: showSupportOverlay.value,
@@ -1998,7 +2000,7 @@ function recomputeGlobalReach(force = false) {
         tileIds: cached.reach,
         color: settlement.playerColor,
         isOwn: settlement.settlementId === currentPlayerSettlementId.value,
-        dashed: isSettlementOpen(townCenterTile),
+        dashed: getEffectiveSettlementBorderMode(townCenterTile, seasonSnapshot.value) === 'open',
       };
     })
     .filter((outline) => outline.boundary.length > 0);

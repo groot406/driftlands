@@ -1,7 +1,7 @@
 import type { TickContext } from '../tick';
 import { PathService } from '../../../src/shared/game/PathService';
 import { canUseWarehouseAtTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../../../src/shared/buildings/storage';
-import { HOUSE_VARIANT_KEYS, HUNGER_GRACE_MINUTES, FOOD_PER_SETTLER_PER_MINUTE, getPopulationState, growPopulation, killSettler, setHungerMs } from '../../../src/shared/game/state/populationStore';
+import { HOUSE_VARIANT_KEYS, HUNGER_GRACE_MINUTES, FOOD_PER_SETTLER_PER_MINUTE, broadcastPopulationState, getPopulationState, growPopulation, killSettler, setHungerMs, setSettlementHungerMs } from '../../../src/shared/game/state/populationStore';
 import { broadcastSettlersState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import { resolveJobResources } from './jobSiteRuntime';
@@ -42,6 +42,7 @@ import type { ResourceAmount, ResourceType } from '../../../src/shared/game/type
 import type { Settler, SettlerActivity, SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol';
+import type { PopulationIncidentMessage } from '../../../src/shared/protocol';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../../../src/shared/tasks/taskAccess';
 import { tileIndex } from '../../../src/shared/game/world';
 import { canAssignWorkersToSite, compareResolvedSites, finalizeMineExtraction, getJobSiteSettlementId, isVirtualJobInput, listResolvedJobSites } from './jobSiteRuntime';
@@ -2013,9 +2014,10 @@ function maybeFetchInput(settler: Settler, now: number) {
 function completeWorkCycle(settler: Settler, now: number) {
     const siteInfo = getSiteInputsOutputs(settler);
     if (siteInfo?.site.building.jobKind === 'study') {
-        const completedStudy = addStudyProgress(siteInfo.site.building.cycleMs ?? SETTLER_MEAL_INTERVAL_MS);
+        const settlementId = getJobSiteSettlementId(siteInfo.site.tile);
+        const completedStudy = addStudyProgress(siteInfo.site.building.cycleMs ?? SETTLER_MEAL_INTERVAL_MS, settlementId);
         settler.workProgressMs = 0;
-        broadcastStudyState();
+        broadcastStudyState(settlementId);
         if (completedStudy) {
             emitGameplayEvent({
                 type: 'study:completed',
@@ -2023,7 +2025,7 @@ function completeWorkCycle(settler: Settler, now: number) {
             });
         }
 
-        if (hasActiveStudy()) {
+        if (hasActiveStudy(settlementId)) {
             setActivity(settler, 'working', now);
             return true;
         }
@@ -2386,52 +2388,73 @@ function computeColonyHungerMs() {
     }, 0);
 }
 
+function computeHungerMsBySettlement() {
+    const bySettlement = new Map<string, number>();
+    for (const settler of settlers) {
+        if (isGuardSettler(settler) || !settler.settlementId) {
+            continue;
+        }
+        bySettlement.set(
+            settler.settlementId,
+            Math.max(bySettlement.get(settler.settlementId) ?? 0, getStarvationMs(settler)),
+        );
+    }
+    return bySettlement;
+}
+
+function broadcastPopulationIncident(message: Omit<PopulationIncidentMessage, 'type' | 'timestamp'>) {
+    broadcast({
+        type: 'population:incident',
+        timestamp: Date.now(),
+        ...message,
+    } satisfies PopulationIncidentMessage);
+}
+
 function tryGrowPopulation(now: number) {
     const population = getPopulationState();
+    if (population.settlements.length > 0) {
+        const candidates = population.settlements
+            .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
+            .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
+            .filter((entry) => {
+                const currentFood = getHungerFoodMealValue(getSettlementResourceInventory(entry.settlementId));
+                const foodNeededNow = entry.current * FOOD_PER_SETTLER_PER_MINUTE;
+                const foodNeededNext = (entry.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
+                return currentFood >= foodNeededNow + foodNeededNext;
+            });
+
+        for (const settlement of candidates) {
+            if (now - (lastGrowthCheckMsPerSettlement[settlement.settlementId] ?? 0) < getEffectivePopulationGrowthIntervalMs()) {
+                continue;
+            }
+
+            lastGrowthCheckMsPerSettlement[settlement.settlementId] = now;
+            const grew = growPopulation(settlement.settlementId);
+            if (grew) {
+                emitGameplayEvent({ type: 'population:changed', settlementId: settlement.settlementId });
+            }
+            return grew;
+        }
+
+        return false;
+    }
+
     if (population.current >= population.max || population.current >= population.beds) {
         return false;
     }
 
-
-        const settlement = population.settlements
-            .filter((entry) => entry.current < entry.max && entry.current < entry.beds)
-            .sort((left, right) => left.settlementId.localeCompare(right.settlementId))
-            .find((entry) => {
-            const currentFood = getHungerFoodMealValue(getSettlementResourceInventory(entry.settlementId));
-            const foodNeededNow = entry.current * FOOD_PER_SETTLER_PER_MINUTE;
-            const foodNeededNext = (entry.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
-            return currentFood >= foodNeededNow + foodNeededNext;
-        });
-
-    if (settlement) {
-        if (now - (lastGrowthCheckMsPerSettlement[settlement.settlementId] ?? 0) < getEffectivePopulationGrowthIntervalMs()) {
-            return false;
-        }
-
-        lastGrowthCheckMsPerSettlement[settlement.settlementId] = now;
-        const grew = growPopulation(settlement.settlementId);
-        if (grew) {
-            emitGameplayEvent({ type: 'population:changed', settlementId: settlement.settlementId });
-        }
-        return grew;
+    const currentFood = getHungerFoodMealValue(getEffectiveResourceInventory());
+    const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
+    const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
+    if (currentFood < foodNeededNow + foodNeededNext) {
+        return false;
     }
 
-    if (population.settlements.length === 0) {
-        const currentFood = getHungerFoodMealValue(getEffectiveResourceInventory());
-        const foodNeededNow = population.current * FOOD_PER_SETTLER_PER_MINUTE;
-        const foodNeededNext = (population.current + 1) * FOOD_PER_SETTLER_PER_MINUTE;
-        if (currentFood < foodNeededNow + foodNeededNext) {
-            return false;
-        }
-
-        const grew = growPopulation();
-        if (grew) {
-            emitGameplayEvent({ type: 'population:changed', settlementId: null });
-        }
-        return grew;
+    const grew = growPopulation();
+    if (grew) {
+        emitGameplayEvent({ type: 'population:changed', settlementId: null });
     }
-
-    return false;
+    return grew;
 }
 
 export const settlerSystem = {
@@ -2493,20 +2516,47 @@ export const settlerSystem = {
             changed = planSettler(settler, ctx.now, ctx.dt) || changed;
         }
 
+        const starvationLossBySettlement = new Map<string | null, number>();
         for (const settler of settlersToKill) {
             if (removeSettler(settler.id)) {
                 changed = true;
                 killSettler(settler.settlementId);
+                emitGameplayEvent({ type: 'population:changed', settlementId: settler.settlementId });
+                starvationLossBySettlement.set(
+                    settler.settlementId,
+                    (starvationLossBySettlement.get(settler.settlementId) ?? 0) + 1,
+                );
             }
+        }
+
+        for (const [settlementId, populationLoss] of starvationLossBySettlement.entries()) {
+            broadcastPopulationIncident({
+                settlementId,
+                severity: 'critical',
+                reason: 'starvation',
+                title: 'Settlers lost to hunger',
+                message: `${populationLoss} settler${populationLoss === 1 ? '' : 's'} died because they could not reach edible meals. Only bread, meat, and fish count as hunger food; drinks and crops do not.`,
+                populationLoss,
+            });
         }
 
         changed = syncSettlerPopulation(ctx.now) || changed;
 
         changed = consumeHouseGoods(ctx.now) || changed;
 
-        const nextHunger = computeColonyHungerMs();
-        if (getPopulationState().hungerMs !== nextHunger) {
-            setHungerMs(nextHunger);
+        const population = getPopulationState();
+        let hungerChanged = false;
+        if (population.settlements.length > 0) {
+            const hungerBySettlement = computeHungerMsBySettlement();
+            for (const settlement of population.settlements) {
+                hungerChanged = setSettlementHungerMs(settlement.settlementId, hungerBySettlement.get(settlement.settlementId) ?? 0) || hungerChanged;
+            }
+        } else {
+            const nextHunger = computeColonyHungerMs();
+            hungerChanged = setHungerMs(nextHunger);
+        }
+        if (hungerChanged) {
+            broadcastPopulationState();
             changed = true;
         }
 

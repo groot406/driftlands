@@ -23,8 +23,9 @@ class PlayerSettlementState {
   private readonly ownerBySettlementId = new Map<string, { playerId: string; playerName: string; playerColor: string }>();
   private readonly starterHeroesByPlayerId = new Map<string, LooperlandsHeroSelection[]>();
   private readonly starterStoryHeroIdsByPlayerId = new Map<string, StoryHeroId[]>();
+  private readonly spectatorSocketIds = new Set<string>();
 
-  registerPlayer(socketId: string, requestedPlayerId: string, playerName: string) {
+  registerPlayer(socketId: string, requestedPlayerId: string, playerName: string, spectator: boolean = false) {
     const playerId = requestedPlayerId;
     const nickname = sanitizePlayerNickname(playerName);
     let player = this.players.get(playerId);
@@ -49,6 +50,11 @@ class PlayerSettlementState {
     this.ensureDistinctPlayerColors();
     player.connectedSocketIds.add(socketId);
     this.playerIdBySocketId.set(socketId, playerId);
+    if (spectator) {
+      this.spectatorSocketIds.add(socketId);
+    } else {
+      this.spectatorSocketIds.delete(socketId);
+    }
 
     const settlementId = this.settlementByPlayerId.get(playerId);
     if (settlementId) {
@@ -66,6 +72,7 @@ class PlayerSettlementState {
   unregisterSocket(socketId: string) {
     const playerId = this.playerIdBySocketId.get(socketId);
     this.playerIdBySocketId.delete(socketId);
+    this.spectatorSocketIds.delete(socketId);
     if (!playerId) {
       return;
     }
@@ -96,6 +103,7 @@ class PlayerSettlementState {
     this.ownerBySettlementId.clear();
     this.starterHeroesByPlayerId.clear();
     this.starterStoryHeroIdsByPlayerId.clear();
+    this.spectatorSocketIds.clear();
   }
 
   clearAssignments() {
@@ -108,6 +116,10 @@ class PlayerSettlementState {
 
   getSocketPlayerId(socketId: string) {
     return this.playerIdBySocketId.get(socketId) ?? null;
+  }
+
+  isSocketSpectator(socketId: string) {
+    return this.spectatorSocketIds.has(socketId);
   }
 
   getPlayerSettlement(playerId: string) {

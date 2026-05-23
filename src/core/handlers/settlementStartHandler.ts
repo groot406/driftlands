@@ -5,6 +5,7 @@ import type {
 } from '../../shared/protocol.ts';
 import { addNotification } from '../../store/notificationStore.ts';
 import { applySettlementFoundResult, replaceSettlementStartOptions, upsertSettlementStartMarker } from '../../store/settlementStartStore.ts';
+import { queueSettlementWelcome } from '../../store/settlementWelcomeStore.ts';
 import { jumpCamera } from '../camera.ts';
 import { clientMessageRouter } from '../messageRouter.ts';
 import { currentPlayerId } from '../socket.ts';
@@ -76,6 +77,7 @@ class SettlementStartHandler {
 
     if (message.playerId === currentPlayerId.value) {
       jumpCamera(message.q, message.r);
+      queueSettlementWelcome(message.settlementId);
       addNotification({
         type: 'settlement',
         title: 'Settlement founded',

@@ -10,10 +10,10 @@ import {
   ensureTownCenterMilitaryState,
   ensureWatchtowerMilitaryState,
   getAvailableGuardReserve,
+  getEffectiveSettlementBorderMode,
   getWatchtowerDefenseScore,
   isBarracksTile,
   isProtectedByTownCenter,
-  isSettlementOpen,
   isTownCenterTile,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
@@ -22,13 +22,15 @@ import type { Tile } from '../../../src/core/types/Tile.ts';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import type { ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol.ts';
 import type { ResourceType } from '../../../src/core/types/Resource.ts';
-import { broadcastPopulationState, getPopulationBySettlementInput, getPopulationSnapshot, getPopulationState, recalculatePopulationLimits, setSupportMetrics } from '../../../src/store/populationStore.ts';
+import { broadcastPopulationState, getPopulationBySettlementInput, getPopulationSnapshot, getSettlementHungerInput, recalculatePopulationLimits, setSupportMetrics } from '../../../src/store/populationStore.ts';
 import { recalculateSettlementSupport } from '../../../src/store/settlementSupportStore.ts';
 import { getSettlementResourceInventory, withdrawResourceAcrossStoragesForSettlement } from '../../../src/store/resourceStore.ts';
 import { getGuardTrainingSpeedMultiplier, testModeSettings } from '../../../src/shared/game/testMode.ts';
 import { settlers } from '../../../src/shared/game/state/settlerStore.ts';
 import { axialDistanceCoords } from '../../../src/shared/game/hex';
 import { FOOD_SOURCE_TYPES, getResourceRequirementStock } from '../../../src/shared/game/resourceDefinitions.ts';
+import { seasonState } from '../state/seasonState';
+import { emitGameplayEvent } from '../../../src/shared/gameplay/events.ts';
 
 function getTownCenters() {
   return Object.values(tileIndex).filter((tile) => isTownCenterTile(tile)).map((tile) => ensureTownCenterMilitaryState(tile)!);
@@ -102,8 +104,7 @@ function withdrawFoodSourcesForSettlement(settlementId: string, amount: number) 
 
 function syncTerritory() {
   const previousPopulation = getPopulationSnapshot();
-  const populationState = getPopulationState();
-  const result = recalculateSettlementSupport(getPopulationBySettlementInput(), populationState.hungerMs);
+  const result = recalculateSettlementSupport(getPopulationBySettlementInput(), getSettlementHungerInput());
   setSupportMetrics(result.snapshot);
   recalculatePopulationLimits();
 
@@ -246,7 +247,15 @@ function processRaids(ctx: TickContext) {
 
     const targetTower = tileIndex[targetId] ?? null;
     const defenderTownCenter = getTownCenterTile(targetTower?.ownerSettlementId ?? null);
-    if (!targetTower || !isWatchtowerTile(targetTower) || !defenderTownCenter || !isSettlementOpen(attackerTownCenter) || !isSettlementOpen(defenderTownCenter) || isProtectedByTownCenter(targetTower, defenderTownCenter)) {
+    const season = seasonState.getSnapshot();
+    if (
+      !targetTower
+      || !isWatchtowerTile(targetTower)
+      || !defenderTownCenter
+      || getEffectiveSettlementBorderMode(attackerTownCenter, season) !== 'open'
+      || getEffectiveSettlementBorderMode(defenderTownCenter, season) !== 'open'
+      || isProtectedByTownCenter(targetTower, defenderTownCenter)
+    ) {
       concludeRaid(attackerTownCenter, targetTower, Math.max(0, attackerTownCenter.raidCommittedGuards ?? 0), true);
       continue;
     }
@@ -321,6 +330,7 @@ function processRaids(ctx: TickContext) {
 
     if ((targetTower.towerCaptureProgress ?? 0) >= 100) {
       const survivingRaiders = Math.max(0, attackerTownCenter.raidCommittedGuards ?? 0);
+      const previousOwnerSettlementId = targetTower.ownerSettlementId ?? null;
       targetTower.ownerSettlementId = attackerTownCenter.id;
       targetTower.controlledBySettlementId = attackerTownCenter.id;
       const transferredTileIds = applyWatchtowerCaptureTransfer(targetTower, attackerTownCenter.id);
@@ -342,6 +352,13 @@ function processRaids(ctx: TickContext) {
         }
       }
       territoryChanged = true;
+      emitGameplayEvent({
+        type: 'military:tower_captured',
+        towerTileId: targetTower.id,
+        attackerSettlementId: attackerTownCenter.id,
+        defenderSettlementId: previousOwnerSettlementId,
+        transferredTileIds,
+      });
       continue;
     }
 
@@ -356,7 +373,7 @@ function processRaids(ctx: TickContext) {
     const before = roundedMilitaryValue(tower);
     if (!!tower.towerAttackerSettlementId) {
       const attackerTownCenter = getTownCenterTile(tower.towerAttackerSettlementId);
-      if (!attackerTownCenter || attackerTownCenter.raidTargetTileId !== tower.id || !isSettlementOpen(attackerTownCenter)) {
+      if (!attackerTownCenter || attackerTownCenter.raidTargetTileId !== tower.id || getEffectiveSettlementBorderMode(attackerTownCenter, seasonState.getSnapshot()) !== 'open') {
         tower.towerAttackerSettlementId = null;
       }
     }
@@ -400,6 +417,9 @@ function processRaids(ctx: TickContext) {
 export const militarySystem = {
   name: 'military',
   tick: (ctx: TickContext) => {
+    if (seasonState.isCompleted()) {
+      return;
+    }
     processBarracksTraining(ctx);
     processRaids(ctx);
   },

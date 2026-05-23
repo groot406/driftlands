@@ -4,10 +4,12 @@ import type { Tile } from '../../core/types/Tile.ts';
 import {
   getTileConditionState,
   getTileMaintenanceDecayPerMinute,
+  getTileRepairResources,
   initializeBuildingCondition,
   MAINTENANCE_DECAY_RATE_MULTIPLIER,
   updateTileCondition,
 } from './maintenance.ts';
+import { listBuildingDefinitions } from './registry.ts';
 
 function createMaintainedTile(overrides: Partial<Tile> = {}): Tile {
   return {
@@ -49,4 +51,41 @@ test('condition state reflects degraded maintained buildings', () => {
 test('maintenance decay is tuned through the global pacing multiplier', () => {
   const tile = createMaintainedTile();
   assert.equal(getTileMaintenanceDecayPerMinute(tile), 2.1 * MAINTENANCE_DECAY_RATE_MULTIPLIER);
+});
+
+test('stone-built maintained buildings require stone for repairs', () => {
+  const mismatches = listBuildingDefinitions()
+    .filter((building) => building.repairResources?.length)
+    .filter((building) => building.requiredResources(0).some((resource) => resource.type === 'stone'))
+    .filter((building) => !building.repairResources?.some((resource) => resource.type === 'stone'))
+    .map((building) => building.key);
+
+  assert.deepEqual(mismatches, []);
+});
+
+test('upgraded masonry variants add stone to repair costs', () => {
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'plains', variant: 'plains_house' })),
+    [{ type: 'wood', amount: 1 }],
+  );
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'plains', variant: 'plains_stone_house' })),
+    [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+  );
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'plains', variant: 'plains_glass_house' })),
+    [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+  );
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'plains', variant: 'plains_warehouse' })),
+    [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+  );
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'forest', variant: 'forest_sawmill' })),
+    [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+  );
+  assert.deepEqual(
+    getTileRepairResources(createMaintainedTile({ terrain: 'mountain', variant: 'mountains_reinforced_mine' })),
+    [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
+  );
 });

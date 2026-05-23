@@ -66,8 +66,8 @@ test('maintenance overview summarizes damage, backlog, and repair crews', () => 
   assert.equal(summary.uncoveredTargets, 1);
   assert.equal(summary.backlogCycles, 5);
   assert.deepEqual(summary.backlogResources, [
+    { type: 'wood', amount: 5, available: 1, shortfall: 4 },
     { type: 'stone', amount: 3, available: 0, shortfall: 3 },
-    { type: 'wood', amount: 2, available: 1, shortfall: 1 },
   ]);
   assert.equal(summary.urgentSites[0]?.tileId, '1,0');
   assert.equal(summary.tone, 'danger');

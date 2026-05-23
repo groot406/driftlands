@@ -20,6 +20,8 @@ import {
 import { isUnlimitedResourcesEnabled, testModeSettings } from '../../../src/shared/game/testMode.ts';
 import { playerSettlementState } from './playerSettlementState';
 import { marketState } from './marketState';
+import { emitGameplayEvent } from '../../../src/shared/gameplay/events.ts';
+import { seasonState } from './seasonState';
 
 const SHIP_DURATION_MS = 12 * 60_000;
 const SHIP_APPROACH_MS = 45_000;
@@ -138,6 +140,37 @@ function randomDelay(minMs: number, maxMs: number) {
   return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
+function normalizedRange(minMs: number, maxMs: number) {
+  const min = Math.max(1_000, Math.trunc(minMs));
+  const max = Math.max(min, Math.trunc(maxMs));
+  return { min, max };
+}
+
+function getShipOrderTuning() {
+  const gameplay = seasonState.getCurrentStageConfig()?.gameplay;
+  const firstArrival = normalizedRange(
+    gameplay?.shipFirstArrivalMinMs ?? FIRST_SHIP_ARRIVAL_MIN_MS,
+    gameplay?.shipFirstArrivalMaxMs ?? FIRST_SHIP_ARRIVAL_MAX_MS,
+  );
+  const nextArrival = normalizedRange(
+    gameplay?.shipNextArrivalMinMs ?? NEXT_SHIP_ARRIVAL_MIN_MS,
+    gameplay?.shipNextArrivalMaxMs ?? NEXT_SHIP_ARRIVAL_MAX_MS,
+  );
+
+  return {
+    firstArrivalMinMs: firstArrival.min,
+    firstArrivalMaxMs: firstArrival.max,
+    nextArrivalMinMs: nextArrival.min,
+    nextArrivalMaxMs: nextArrival.max,
+    approachMs: Math.max(1_000, Math.trunc(gameplay?.shipApproachMs ?? SHIP_APPROACH_MS)),
+    dockedDurationMs: Math.max(1_000, Math.trunc(gameplay?.shipDockedDurationMs ?? SHIP_DURATION_MS)),
+    departureMs: Math.max(1_000, Math.trunc(gameplay?.shipDepartureMs ?? SHIP_DEPARTURE_MS)),
+    orderSizeMultiplier: Math.max(0.1, Number(gameplay?.shipOrderSizeMultiplier ?? 1)),
+    rewardGoldMultiplier: Math.max(0, Number(gameplay?.shipRewardGoldMultiplier ?? 1)),
+    rewardGoodsMultiplier: Math.max(0, Number(gameplay?.shipRewardGoodsMultiplier ?? 1)),
+  };
+}
+
 interface HarborShipState {
   harborTileId: string;
   settlementId: string;
@@ -174,8 +207,9 @@ class ShipOrderState {
       }
 
       if (state.departingShip && now >= state.departingShip.phaseEndsAt) {
+        const tuning = getShipOrderTuning();
         state.departingShip = null;
-        state.nextArrivalAt = now + randomDelay(NEXT_SHIP_ARRIVAL_MIN_MS, NEXT_SHIP_ARRIVAL_MAX_MS);
+        state.nextArrivalAt = now + randomDelay(tuning.nextArrivalMinMs, tuning.nextArrivalMaxMs);
         changed = true;
       }
 
@@ -190,7 +224,7 @@ class ShipOrderState {
           ...state.approachingOrder,
           status: 'active',
           startedAt: arrivedAt,
-          departsAt: arrivedAt + SHIP_DURATION_MS,
+          departsAt: arrivedAt + getShipOrderTuning().dockedDurationMs,
         };
         state.approachingOrder = null;
         changed = true;
@@ -201,7 +235,8 @@ class ShipOrderState {
       }
 
       if (state.nextArrivalAt == null) {
-        state.nextArrivalAt = now + randomDelay(FIRST_SHIP_ARRIVAL_MIN_MS, FIRST_SHIP_ARRIVAL_MAX_MS);
+        const tuning = getShipOrderTuning();
+        state.nextArrivalAt = now + randomDelay(tuning.firstArrivalMinMs, tuning.firstArrivalMaxMs);
         changed = true;
         continue;
       }
@@ -352,13 +387,17 @@ class ShipOrderState {
   }
 
   private createOrder(now: number, state: HarborShipState): ShipOrderSnapshot {
+    const tuning = getShipOrderTuning();
     const template = ORDER_TEMPLATES[this.sequence % ORDER_TEMPLATES.length]!;
     const id = `ship:${this.sequence + 1}`;
     const name = this.pickShipName();
     this.sequence += 1;
     const owner = playerSettlementState.getSettlementOwner(state.settlementId);
 
-    const requested = template.requested.map((resource) => ({ ...resource }));
+    const requested = template.requested.map((resource) => ({
+      ...resource,
+      amount: Math.max(1, Math.round(resource.amount * tuning.orderSizeMultiplier)),
+    }));
     return {
       id,
       harborTileId: state.harborTileId,
@@ -370,16 +409,19 @@ class ShipOrderState {
       originDescription: template.originDescription,
       status: 'approaching',
       startedAt: now,
-      arrivesAt: now + SHIP_APPROACH_MS,
-      departsAt: now + SHIP_APPROACH_MS + SHIP_DURATION_MS,
+      arrivesAt: now + tuning.approachMs,
+      departsAt: now + tuning.approachMs + tuning.dockedDurationMs,
       departedAt: null,
       requested,
       fulfilled: {},
       totalRequestedValue: requested.reduce((sum, resource) => sum + getShipOrderResourceAmountValue(resource), 0),
       totalFulfilledValue: 0,
-      rewardPoolGold: SHIP_REWARD_POOL_GOLD,
+      rewardPoolGold: Math.round(SHIP_REWARD_POOL_GOLD * tuning.rewardGoldMultiplier),
       rewardGoldPaid: 0,
-      rewardGoods: template.rewardGoods.map((resource) => ({ ...resource })),
+      rewardGoods: template.rewardGoods.map((resource) => ({
+        ...resource,
+        amount: Math.max(0, Math.round(resource.amount * tuning.rewardGoodsMultiplier)),
+      })),
       deliveredRewardGoods: [],
       completionMultiplier: 1,
     };
@@ -419,6 +461,16 @@ class ShipOrderState {
     order.status = 'departed';
     order.departedAt = now;
     order.completionMultiplier = completionMultiplier;
+    if (completionMultiplier >= 1) {
+      emitGameplayEvent({
+        type: 'ship_order:completed',
+        orderId: order.id,
+        settlementId: order.settlementId,
+        playerId: rewardPlayerId ?? null,
+        fulfilledValue: order.totalFulfilledValue,
+        requestedValue: order.totalRequestedValue,
+      });
+    }
     state.lastDepartedOrder = cloneOrder(order);
     state.departingShip = {
       id: order.id,
@@ -428,7 +480,7 @@ class ShipOrderState {
       name: order.name,
       phase: 'departing',
       phaseStartedAt: now,
-      phaseEndsAt: now + SHIP_DEPARTURE_MS,
+      phaseEndsAt: now + getShipOrderTuning().departureMs,
     };
     state.activeOrder = null;
   }

@@ -130,6 +130,16 @@ export async function playPositionalSound(
     await soundService.playPositionalSound(id, soundPath, q, r, options);
 }
 
+export async function playInterfaceSound(
+    soundPath: string,
+    options?: {
+        baseVolume?: number;
+    }
+) {
+    if (!soundStore.soundEnabled) return;
+    await soundService.playInterfaceSound(soundPath, options);
+}
+
 
 // Get current sound state for UI
 export function getSoundState() {

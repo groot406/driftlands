@@ -9,6 +9,8 @@ import {
   type StudyKey,
 } from '../shared/studies/studies.ts';
 
+const DEFAULT_STUDY_SCOPE = '__global__';
+
 export interface StudyProgressSnapshot {
   key: StudyKey;
   label: string;
@@ -22,9 +24,11 @@ export interface StudyProgressSnapshot {
 }
 
 export interface StudyStateSnapshot {
+  settlementId?: string | null;
   activeStudyKey: StudyKey | null;
   completedStudyKeys: StudyKey[];
   studies: StudyProgressSnapshot[];
+  settlements?: StudyStateSnapshot[];
 }
 
 interface StudyState {
@@ -33,17 +37,43 @@ interface StudyState {
   progressByKey: Partial<Record<StudyKey, number>>;
 }
 
-const state: StudyState = {
-  activeStudyKey: getInitialStudyKey(),
-  completedStudyKeys: [],
-  progressByKey: {},
-};
-let studyOverrideCompletedKeys: StudyKey[] = [];
+const studyStates = new Map<string, StudyState>();
+const studyOverrideCompletedKeys = new Map<string, StudyKey[]>();
 
-function getEffectiveCompletedStudyKeys() {
+function normalizeStudyScope(settlementId: string | null | undefined) {
+  const normalized = settlementId?.trim();
+  return normalized || DEFAULT_STUDY_SCOPE;
+}
+
+function snapshotSettlementId(scope: string) {
+  return scope === DEFAULT_STUDY_SCOPE ? null : scope;
+}
+
+function createStudyState(): StudyState {
+  return {
+    activeStudyKey: getInitialStudyKey(),
+    completedStudyKeys: [],
+    progressByKey: {},
+  };
+}
+
+function ensureStudyState(settlementId?: string | null) {
+  const scope = normalizeStudyScope(settlementId);
+  let state = studyStates.get(scope);
+  if (!state) {
+    state = createStudyState();
+    studyStates.set(scope, state);
+  }
+
+  return state;
+}
+
+function getEffectiveCompletedStudyKeys(settlementId?: string | null) {
+  const scope = normalizeStudyScope(settlementId);
+  const state = ensureStudyState(settlementId);
   return normalizeCompletedKeys([
     ...state.completedStudyKeys,
-    ...studyOverrideCompletedKeys,
+    ...(studyOverrideCompletedKeys.get(scope) ?? []),
   ]);
 }
 
@@ -55,8 +85,8 @@ function normalizeProgress(study: StudyDefinition, progressMs: number | null | u
   return Math.max(0, Math.min(study.requiredProgressMs, Math.round(progressMs ?? 0)));
 }
 
-function cloneStudyProgress(study: StudyDefinition): StudyProgressSnapshot {
-  const completedStudyKeys = getEffectiveCompletedStudyKeys();
+function cloneStudyProgress(study: StudyDefinition, state: StudyState, settlementId?: string | null): StudyProgressSnapshot {
+  const completedStudyKeys = getEffectiveCompletedStudyKeys(settlementId);
   const completed = completedStudyKeys.includes(study.key);
   const activeStudyKey = chooseActiveStudyKey(state.activeStudyKey, completedStudyKeys);
 
@@ -96,19 +126,9 @@ function chooseActiveStudyKey(activeStudyKey: StudyKey | null | undefined, compl
   return getNextStudyKey(completedStudyKeys);
 }
 
-export function resetStudyState() {
-  state.completedStudyKeys = [];
-  state.progressByKey = {};
-  state.activeStudyKey = getInitialStudyKey();
-  studyOverrideCompletedKeys = [];
-}
-
-export function loadStudySnapshot(snapshot: StudyStateSnapshot | null | undefined) {
-  if (!snapshot) {
-    resetStudyState();
-    return;
-  }
-
+function applyStudySnapshotToScope(snapshot: StudyStateSnapshot, settlementId?: string | null) {
+  const scope = normalizeStudyScope(settlementId ?? snapshot.settlementId ?? null);
+  const state = createStudyState();
   state.completedStudyKeys = normalizeCompletedKeys(snapshot.completedStudyKeys);
   state.progressByKey = {};
 
@@ -126,34 +146,88 @@ export function loadStudySnapshot(snapshot: StudyStateSnapshot | null | undefine
   }
 
   state.activeStudyKey = chooseActiveStudyKey(snapshot.activeStudyKey, state.completedStudyKeys);
+  studyStates.set(scope, state);
 }
 
-export function setStudyOverrides(completedStudyKeys: readonly string[] | null | undefined) {
-  studyOverrideCompletedKeys = normalizeCompletedKeys(completedStudyKeys);
+export function resetStudyState(settlementId?: string | null) {
+  if (settlementId) {
+    studyStates.set(normalizeStudyScope(settlementId), createStudyState());
+    studyOverrideCompletedKeys.delete(normalizeStudyScope(settlementId));
+    return;
+  }
+
+  studyStates.clear();
+  studyOverrideCompletedKeys.clear();
+  studyStates.set(DEFAULT_STUDY_SCOPE, createStudyState());
 }
 
-export function getStudySnapshot(): StudyStateSnapshot {
-  const completedStudyKeys = getEffectiveCompletedStudyKeys();
+export function loadStudySnapshot(snapshot: StudyStateSnapshot | null | undefined, settlementId?: string | null) {
+  if (!snapshot) {
+    resetStudyState(settlementId);
+    return;
+  }
+
+  if (!settlementId && Array.isArray(snapshot.settlements)) {
+    studyStates.clear();
+    if (snapshot.studies?.length) {
+      applyStudySnapshotToScope(snapshot, snapshot.settlementId ?? null);
+    } else {
+      studyStates.set(DEFAULT_STUDY_SCOPE, createStudyState());
+    }
+
+    for (const settlementSnapshot of snapshot.settlements) {
+      applyStudySnapshotToScope(settlementSnapshot, settlementSnapshot.settlementId ?? null);
+    }
+    return;
+  }
+
+  applyStudySnapshotToScope(snapshot, settlementId);
+}
+
+export function setStudyOverrides(completedStudyKeys: readonly string[] | null | undefined, settlementId?: string | null) {
+  studyOverrideCompletedKeys.set(normalizeStudyScope(settlementId), normalizeCompletedKeys(completedStudyKeys));
+}
+
+export function getStudySnapshot(settlementId?: string | null): StudyStateSnapshot {
+  const scope = normalizeStudyScope(settlementId);
+  const state = ensureStudyState(settlementId);
+  const completedStudyKeys = getEffectiveCompletedStudyKeys(settlementId);
   const activeStudyKey = chooseActiveStudyKey(state.activeStudyKey, completedStudyKeys);
-
-  return {
+  const snapshot: StudyStateSnapshot = {
+    settlementId: snapshotSettlementId(scope),
     activeStudyKey,
     completedStudyKeys,
-    studies: listStudyDefinitions().map(cloneStudyProgress),
+    studies: listStudyDefinitions().map((study) => cloneStudyProgress(study, state, settlementId)),
   };
+
+  if (!settlementId) {
+    snapshot.settlements = Array.from(studyStates.entries())
+      .filter(([entryScope]) => entryScope !== DEFAULT_STUDY_SCOPE)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([entryScope]) => getStudySnapshot(entryScope));
+  }
+
+  return snapshot;
 }
 
-export function getActiveStudyProgress() {
-  const activeStudy = getStudyDefinition(chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys()));
-  return activeStudy ? cloneStudyProgress(activeStudy) : null;
+export function getActiveStudyProgress(settlementId?: string | null) {
+  const activeStudy = getStudyDefinition(chooseActiveStudyKey(
+    ensureStudyState(settlementId).activeStudyKey,
+    getEffectiveCompletedStudyKeys(settlementId),
+  ));
+  return activeStudy ? cloneStudyProgress(activeStudy, ensureStudyState(settlementId), settlementId) : null;
 }
 
-export function hasActiveStudy() {
-  return !!getStudyDefinition(chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys()));
+export function hasActiveStudy(settlementId?: string | null) {
+  return !!getStudyDefinition(chooseActiveStudyKey(
+    ensureStudyState(settlementId).activeStudyKey,
+    getEffectiveCompletedStudyKeys(settlementId),
+  ));
 }
 
-export function addStudyProgress(progressMs: number) {
-  const resolvedActiveStudyKey = chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys());
+export function addStudyProgress(progressMs: number, settlementId?: string | null) {
+  const state = ensureStudyState(settlementId);
+  const resolvedActiveStudyKey = chooseActiveStudyKey(state.activeStudyKey, getEffectiveCompletedStudyKeys(settlementId));
   const activeStudy = getStudyDefinition(resolvedActiveStudyKey);
   if (!activeStudy || progressMs <= 0) {
     return null;
@@ -175,16 +249,17 @@ export function addStudyProgress(progressMs: number) {
   }
 
   state.progressByKey[activeStudy.key] = activeStudy.requiredProgressMs;
-  state.activeStudyKey = getNextStudyKey(getEffectiveCompletedStudyKeys());
+  state.activeStudyKey = getNextStudyKey(getEffectiveCompletedStudyKeys(settlementId));
   return activeStudy;
 }
 
-export function selectActiveStudy(studyKey: string | null | undefined) {
+export function selectActiveStudy(studyKey: string | null | undefined, settlementId?: string | null) {
   const study = getStudyDefinition(studyKey);
-  if (!study || getEffectiveCompletedStudyKeys().includes(study.key)) {
+  if (!study || getEffectiveCompletedStudyKeys(settlementId).includes(study.key)) {
     return false;
   }
 
+  const state = ensureStudyState(settlementId);
   if (state.activeStudyKey === study.key) {
     return true;
   }
@@ -193,23 +268,23 @@ export function selectActiveStudy(studyKey: string | null | undefined) {
   return true;
 }
 
-export function isContentUnlockedByStudies(content: Parameters<typeof studyUnlocksContent>[1]) {
-  return getEffectiveCompletedStudyKeys().some((studyKey) => {
+export function isContentUnlockedByStudies(content: Parameters<typeof studyUnlocksContent>[1], settlementId?: string | null) {
+  return getEffectiveCompletedStudyKeys(settlementId).some((studyKey) => {
     const study = getStudyDefinition(studyKey);
     return !!study && studyUnlocksContent(study, content);
   });
 }
 
-export function isStudyCompleted(studyKey: string | null | undefined) {
+export function isStudyCompleted(studyKey: string | null | undefined, settlementId?: string | null) {
   if (!studyKey) {
     return false;
   }
 
-  return getEffectiveCompletedStudyKeys().includes(studyKey as StudyKey);
+  return getEffectiveCompletedStudyKeys(settlementId).includes(studyKey as StudyKey);
 }
 
-export function getStudyJobOutputMultiplier() {
-  return getEffectiveCompletedStudyKeys().reduce((multiplier, studyKey) => {
+export function getStudyJobOutputMultiplier(settlementId?: string | null) {
+  return getEffectiveCompletedStudyKeys(settlementId).reduce((multiplier, studyKey) => {
     const study = getStudyDefinition(studyKey);
     if (!study) {
       return multiplier;
@@ -225,9 +300,11 @@ export function getStudyJobOutputMultiplier() {
   }, 1);
 }
 
-export function broadcastStudyState() {
+export function broadcastStudyState(settlementId?: string | null) {
   broadcast({
     type: 'studies:update',
-    studies: getStudySnapshot(),
+    studies: getStudySnapshot(settlementId),
   });
 }
+
+resetStudyState();

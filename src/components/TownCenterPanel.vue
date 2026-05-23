@@ -119,14 +119,14 @@
             <button
               class="tc-detail-toggle"
               :class="{ 'tc-detail-toggle-off': militarySummary.borderMode === 'open' }"
-              :disabled="militarySummary.borderMode === 'closed' || militarySummary.borderCooldownActive || militarySummary.borderLocked"
+              :disabled="militarySummary.borderMode === 'closed' || militarySummary.borderCooldownActive || militarySummary.borderLocked || militarySummary.borderSeasonLocked"
               @click.stop="setBorderMode('closed')"
             >
               Close Borders
             </button>
             <button
               class="tc-detail-toggle"
-              :disabled="militarySummary.borderMode === 'open' || militarySummary.borderCooldownActive"
+              :disabled="militarySummary.borderMode === 'open' || militarySummary.borderCooldownActive || militarySummary.borderSeasonLocked"
               @click.stop="setBorderMode('open')"
             >
               Open Borders
@@ -595,7 +595,7 @@
                         'tc-study-option-active': study.active,
                         'tc-study-option-complete': study.completed,
                       }"
-                      :disabled="study.completed || study.active"
+                      :disabled="study.completed || study.active || !study.canSelect"
                       @click.stop="selectStudy(study.key)"
                     >
                       <div class="tc-study-option-top">
@@ -707,7 +707,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
-import type { TileConditionState } from '../core/types/Tile.ts';
+import type { Tile, TileConditionState } from '../core/types/Tile.ts';
 import type { Hero } from '../core/types/Hero.ts';
 import type { TaskDefinition } from '../core/types/Task.ts';
 import type { Settler } from '../core/types/Settler.ts';
@@ -734,11 +734,11 @@ import { getSettlerDisplayName } from '../shared/game/settlerNames.ts';
 import {
   GUARD_TRAINING_DURATION_MS,
   getAvailableGuardReserve,
+  getEffectiveSettlementBorderMode,
   getSettlementBorderMode,
   getWatchtowerDurabilityPercent,
   isBarracksTile,
   isProtectedByTownCenter,
-  isSettlementOpen,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
 } from '../shared/game/military.ts';
@@ -753,9 +753,10 @@ import { tileIndex, worldVersion } from '../shared/game/world.ts';
 import { formatSettlerBlocker } from '../shared/game/settlerBlockers.ts';
 import { populationState } from '../store/clientPopulationStore';
 import { workforceState } from '../store/clientJobStore';
-import { studyState, studyVersion } from '../store/clientStudyStore';
+import { getStudyStateForSettlement, studyState, studyVersion } from '../store/clientStudyStore';
 import { getSettlementResourceInventory, resourceInventory, resourceVersion, storageInventories } from '../store/resourceStore';
 import { runSnapshot } from '../store/runStore';
+import { seasonSnapshot } from '../store/seasonStore.ts';
 import { settlers, settlerVersion } from '../store/settlerStore';
 import { getSelectedHero, openSettlerModal } from '../store/uiStore';
 import { detachHeroFromCurrentTask } from '../store/taskStore.ts';
@@ -924,7 +925,7 @@ function storageBelongsToCurrentSettlement(storageTileId: string) {
   return isTileInSettlement(tile, settlementId);
 }
 
-function canManageTile(tile: { id: string; terrain?: string | null; ownerSettlementId?: string | null; controlledBySettlementId?: string | null } | null | undefined) {
+function canManageTile(tile: Pick<Tile, 'id' | 'terrain' | 'ownerSettlementId' | 'controlledBySettlementId'> | null | undefined) {
   const settlementId = currentPlayerSettlementId.value;
   if (!tile || !settlementId) {
     return false;
@@ -974,9 +975,21 @@ function toggleJobSiteEnabled(tileId: string, enabled: boolean) {
 }
 
 function selectStudy(studyKey: string) {
+  const settlementId = inspectedSettlementId.value;
+  if (!settlementId || settlementId !== currentPlayerSettlementId.value) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign library',
+      message: 'You can inspect this library, but only its owner can choose research here.',
+      duration: 2600,
+    });
+    return;
+  }
+
   sendMessage({
     type: 'studies:set_active',
     studyKey,
+    settlementId,
     timestamp: Date.now(),
   });
 }
@@ -1425,8 +1438,9 @@ const militarySummary = computed(() => {
     }));
 
   return {
-    borderMode: getSettlementBorderMode(townCenter),
-    borderModeLabel: formatBorderModeLabel(getSettlementBorderMode(townCenter)),
+    borderMode: getEffectiveSettlementBorderMode(townCenter, seasonSnapshot.value),
+    borderModeLabel: formatBorderModeLabel(getEffectiveSettlementBorderMode(townCenter, seasonSnapshot.value)),
+    storedBorderMode: getSettlementBorderMode(townCenter),
     reserveGuards: getAvailableGuardReserve(townCenter),
     committedRaiders: Math.max(0, townCenter?.raidCommittedGuards ?? 0),
     vulnerableTowerCount: vulnerableTowers.length,
@@ -1442,12 +1456,17 @@ const militarySummary = computed(() => {
     raidBlockedReason: townCenter?.raidBlockedReason ?? null,
     borderCooldownActive: (townCenter?.borderModeCooldownUntilMs ?? 0) > Date.now(),
     borderLocked: (townCenter?.borderLockedUntilMs ?? 0) > Date.now(),
+    borderSeasonLocked: seasonSnapshot.value?.status === 'active'
+      && seasonSnapshot.value.config.stages.find((stage) => stage.key === seasonSnapshot.value?.currentStage)?.borderPolicy !== 'player_choice',
     canManageBorders: currentPlayerSettlementId.value === inspectedSettlementId.value && completedStudyKeys.value.has('border_management'),
   };
 });
 
 const borderCooldownText = computed(() => {
   const townCenter = inspectedTownCenterTile.value;
+  if (militarySummary.value.borderSeasonLocked) {
+    return `Season locked ${militarySummary.value.borderModeLabel} (effective)`;
+  }
   const cooldownUntil = townCenter?.borderModeCooldownUntilMs ?? 0;
   if (cooldownUntil > Date.now()) {
     return `Cooldown ${formatCountdown(cooldownUntil)}`;
@@ -1668,8 +1687,9 @@ const selectedJobSiteDetail = computed(() => {
   const repairResources = tile ? building?.repairResources ?? [] : [];
   const repairNeeded = conditionPercent !== null ? Math.max(0, 100 - conditionPercent) : 0;
   const repairShortages = getMissingInputResources(repairResources, 1, playerInventory.value);
+  const tileStudyState = getStudyStateForSettlement(getTileSettlementId(tile));
   const activeStudy = building?.key === 'library'
-    ? (studyState.studies.find((study) => study.active) ?? null)
+    ? (tileStudyState.studies.find((study) => study.active) ?? null)
     : null;
   const studyProgress = activeStudy
     ? {
@@ -1685,13 +1705,13 @@ const selectedJobSiteDetail = computed(() => {
       ? {
         label: 'All studies complete',
         summary: 'The shelves are quiet for now. Future subjects can plug into the library queue.',
-        progressLabel: `${studyState.completedStudyKeys.length} completed`,
+        progressLabel: `${tileStudyState.completedStudyKeys.length} completed`,
         percent: 100,
         unlocks: [],
       }
       : null);
   const studyOptions = building?.key === 'library'
-    ? studyState.studies.map((study) => {
+    ? tileStudyState.studies.map((study) => {
       const percent = study.requiredProgressMs > 0
         ? Math.min(100, Math.floor((study.progressMs / study.requiredProgressMs) * 100))
         : 100;
@@ -1703,6 +1723,7 @@ const selectedJobSiteDetail = computed(() => {
         percent,
         active: study.active,
         completed: study.completed,
+        canSelect: getTileSettlementId(tile) === currentPlayerSettlementId.value,
         statusLabel: study.completed ? 'Complete' : study.active ? 'Active' : 'Available',
         statusClass: study.completed || study.active ? 'tc-detail-pill-ok' : 'tc-detail-pill-warn',
         unlocks: study.unlocks,
@@ -1736,6 +1757,7 @@ const selectedJobSiteDetail = computed(() => {
   const hero = selectedHero.value;
   const inspectorHero = hero ?? createInspectorHero(tile);
   const defenderTownCenter = tile?.ownerSettlementId ? tileIndex[tile.ownerSettlementId] ?? null : null;
+  const defenderBorderMode = getEffectiveSettlementBorderMode(defenderTownCenter, seasonSnapshot.value);
   const currentBorderTownCenter = currentPlayerTownCenterTile.value;
   const raidLockReason = isWatchtowerTile(tile)
     ? (
@@ -1745,11 +1767,11 @@ const selectedJobSiteDetail = computed(() => {
           ? 'You cannot raid your own watchtower.'
           : canManage
             ? 'Only foreign border watchtowers can be targeted for raids.'
-            : !isSettlementOpen(currentBorderTownCenter)
+            : getEffectiveSettlementBorderMode(currentBorderTownCenter, seasonSnapshot.value) !== 'open'
               ? 'Open your own borders before issuing a raid.'
               : !defenderTownCenter
                 ? 'This tower is not linked to a valid defending settlement.'
-                : !isSettlementOpen(defenderTownCenter)
+                : getEffectiveSettlementBorderMode(defenderTownCenter, seasonSnapshot.value) !== 'open'
                   ? 'The target settlement must also have open borders.'
                   : isProtectedByTownCenter(tile, defenderTownCenter)
                     ? 'This tower is still inside the defender safe zone.'
@@ -1773,7 +1795,7 @@ const selectedJobSiteDetail = computed(() => {
   const watchtowerDetails = isWatchtowerTile(tile)
     ? {
       stateLabel: formatWatchtowerStateLabel(resolveWatchtowerConflictState(tile)),
-      borderLabel: `Owner borders ${formatBorderModeLabel(getSettlementBorderMode(defenderTownCenter))}`,
+      borderLabel: `Owner borders ${formatBorderModeLabel(defenderBorderMode)}${seasonSnapshot.value?.status === 'active' ? ' (season)' : ''}`,
       durabilityPercent: getWatchtowerDurabilityPercent(tile),
       captureLabel: `Capture ${Math.round(tile.towerCaptureProgress ?? 0)}%`,
       assignedGuards: tile.towerAssignedGuards ?? 0,
@@ -1903,6 +1925,7 @@ const selectedJobSiteDetail = computed(() => {
       const topStock = stockedMarketResources.slice(0, 3)
         .map((resource) => `${formatNumber(resource.stock)} ${getResourceDefinition(resource.type).label.toLowerCase()}`)
         .join(' • ');
+      const isOwnSettlement = inspectedSettlementId.value === currentPlayerSettlementId.value;
 
       return {
         accessLabel: marketAccessReady.value ? 'Market open' : 'Trade Center needed',
@@ -1911,10 +1934,12 @@ const selectedJobSiteDetail = computed(() => {
           : 'Build a Trade Center to authorize settlement trading.',
         marketLabel: `${stockedMarketResources.length} stocked good${stockedMarketResources.length === 1 ? '' : 's'}`,
         stockLabel: topStock || 'Market stock is refreshing.',
-        canOpenMarket: marketAccessReady.value,
-        buttonCopy: marketAccessReady.value
-          ? 'Open the exchange to buy or sell any stocked resource.'
-          : 'Build a Trade Center first, then the exchange opens from here.',
+        canOpenMarket: marketAccessReady.value && isOwnSettlement,
+        buttonCopy: !isOwnSettlement
+          ? 'Only this settlement owner can trade from this Trade Center.'
+          : marketAccessReady.value
+            ? 'Open the exchange to buy or sell any stocked resource.'
+            : 'Build a Trade Center first, then the exchange opens from here.',
       };
     })()
     : null;
@@ -2059,6 +2084,16 @@ function openShipLoadingPanel() {
 }
 
 function openTradeCenter() {
+  if (inspectedSettlementId.value !== currentPlayerSettlementId.value) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign trade center',
+      message: 'You can inspect this Trade Center, but only its owner can trade from this settlement.',
+      duration: 3000,
+    });
+    return;
+  }
+
   if (!marketAccessReady.value) {
     return;
   }

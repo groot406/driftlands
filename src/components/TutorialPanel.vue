@@ -2,7 +2,9 @@
   <Transition name="tutorial-panel-pop">
     <aside
       v-if="isTutorialPanelOpen && visibleStep"
+      ref="panelEl"
       class="tutorial-panel pointer-events-auto"
+      :style="popoverStyle"
       aria-live="polite"
     >
       <header class="tutorial-panel__header">
@@ -10,7 +12,7 @@
           <p class="tutorial-panel__kicker">Field Guide</p>
           <h2 class="tutorial-panel__title">{{ visibleStep.title }}</h2>
         </div>
-        <button class="tutorial-panel__close" type="button" title="Hide help guide" @click="closeTutorialPanel">
+        <button class="tutorial-panel__close" type="button" title="Hide help guide" @click="closeGuidePanel">
           x
         </button>
       </header>
@@ -134,10 +136,17 @@ import {
   visibleTutorialStepNumber,
 } from '../store/tutorialStore.ts';
 import { getFieldGuideTopicDefinitions } from '../shared/tutorial/tutorialGuide.ts';
+import { useToolbarPopoverPosition } from '../composables/useToolbarPopoverPosition.ts';
+import { closeToolbarPanel } from '../store/toolbarPanelStore.ts';
 
 const visibleStep = computed(() => visibleTutorialStep.value);
 const activeMode = ref<'steps' | 'topics'>('steps');
+const panelEl = ref<HTMLElement | null>(null);
 const fieldGuideTopics = getFieldGuideTopicDefinitions();
+const { popoverStyle } = useToolbarPopoverPosition({
+  isOpen: isTutorialPanelOpen,
+  panel: panelEl,
+});
 
 const stepStatusLabel = computed(() => {
   switch (visibleStep.value?.status) {
@@ -179,25 +188,31 @@ const canGoNext = computed(() => {
   const step = visibleStep.value;
   return !!step && step.index < tutorialSnapshot.value.steps.length - 1;
 });
+
+function closeGuidePanel() {
+  closeTutorialPanel();
+  closeToolbarPanel('tutorial');
+}
 </script>
 
 <style scoped>
 .tutorial-panel {
   position: fixed;
-  left: calc(50vw - 14rem);
-  bottom: 1rem;
-  z-index: 31;
-  width: min(28rem, calc(100vw - 2rem));
-  max-height: min(34rem, calc(100dvh - 2rem));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100dvh - 8rem);
   overflow: hidden;
-  border: 1px solid rgba(252, 211, 77, 0.28);
-  border-radius: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
   background:
-    linear-gradient(180deg, rgba(20, 83, 45, 0.94), rgba(15, 23, 42, 0.94)),
-    rgba(15, 23, 42, 0.94);
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.16), transparent 36%),
+    radial-gradient(circle at 85% 20%, rgba(34, 211, 238, 0.12), transparent 26%),
+    linear-gradient(180deg, rgba(16, 24, 39, 0.92), rgba(15, 23, 42, 0.9));
   color: rgb(248 250 252);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.36);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 38px rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(18px);
 }
 
 .tutorial-panel__header,
@@ -215,41 +230,46 @@ const canGoNext = computed(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding-top: 0.9rem;
+  gap: 12px;
+  padding-top: 14px;
 }
 
 .tutorial-panel__kicker {
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.14em;
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgb(253 230 138);
+  color: rgba(253, 186, 116, 0.9);
 }
 
 .tutorial-panel__title {
-  margin-top: 0.35rem;
+  margin: 6px 0 0;
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.25;
+  color: #f8fafc;
 }
 
 .tutorial-panel__close {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.54);
-  color: rgb(226 232 240);
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  color: rgba(248, 250, 252, 0.86);
+  cursor: pointer;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
 }
 
 .tutorial-panel__close:hover {
-  border-color: rgba(252, 211, 77, 0.5);
+  border-color: rgba(245, 158, 11, 0.32);
   color: rgb(254 243 199);
 }
 
@@ -263,14 +283,14 @@ const canGoNext = computed(() => {
 .tutorial-panel__mode-tabs {
   display: flex;
   gap: 0.45rem;
-  margin-top: 0.75rem;
+  margin-top: 12px;
 }
 
 .tutorial-panel__mode-tab {
   min-height: 1.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.44);
   padding: 0.3rem 0.7rem;
   font-size: 0.68rem;
   font-weight: 900;
@@ -281,17 +301,18 @@ const canGoNext = computed(() => {
 
 .tutorial-panel__mode-tab:hover,
 .tutorial-panel__mode-tab--active {
-  border-color: rgba(252, 211, 77, 0.48);
-  color: rgb(254 240 138);
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(15, 23, 42, 0.58);
+  color: rgb(253 230 138);
 }
 
 .tutorial-panel__chip {
   display: inline-flex;
   align-items: center;
   min-height: 1.45rem;
-  border: 1px solid rgba(148, 163, 184, 0.32);
+  border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.46);
+  background: rgba(15, 23, 42, 0.44);
   padding: 0.25rem 0.55rem;
   font-size: 0.64rem;
   font-weight: 800;
@@ -326,7 +347,13 @@ const canGoNext = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  padding-top: 0.95rem;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 12px 16px 0;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  padding: 10px 12px;
 }
 
 .tutorial-panel__objective {
@@ -347,9 +374,9 @@ const canGoNext = computed(() => {
   grid-template-columns: auto 1fr;
   gap: 0.6rem;
   align-items: start;
-  border: 1px solid rgba(252, 211, 77, 0.24);
-  border-radius: 10px;
-  background: rgba(120, 53, 15, 0.26);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.46);
   padding: 0.75rem;
   font-size: 0.78rem;
   line-height: 1.45;
@@ -367,18 +394,25 @@ const canGoNext = computed(() => {
 .tutorial-panel__topics {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  max-height: min(23rem, calc(100dvh - 12rem));
-  margin-top: 0.85rem;
+  gap: 8px;
+  min-height: 0;
+  max-height: min(23rem, calc(100dvh - 15rem));
+  margin-top: 12px;
   overflow-y: auto;
-  padding-bottom: 0.9rem;
+  padding-bottom: 14px;
 }
 
 .tutorial-panel__topic {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.38);
-  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.44);
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tutorial-panel__topic:hover {
+  border-color: rgba(245, 158, 11, 0.18);
+  background: rgba(15, 23, 42, 0.58);
 }
 
 .tutorial-panel__topic-head {
@@ -458,9 +492,9 @@ const canGoNext = computed(() => {
 
 .tutorial-panel__nav {
   min-height: 2.15rem;
-  border: 1px solid rgba(148, 163, 184, 0.38);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.44);
   padding: 0.35rem 0.7rem;
   font-size: 0.75rem;
   font-weight: 800;
@@ -468,7 +502,8 @@ const canGoNext = computed(() => {
 }
 
 .tutorial-panel__nav:hover:not(:disabled) {
-  border-color: rgba(252, 211, 77, 0.5);
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(15, 23, 42, 0.58);
   color: rgb(254 243 199);
 }
 
@@ -478,8 +513,8 @@ const canGoNext = computed(() => {
 }
 
 .tutorial-panel__nav--primary {
-  border-color: rgba(252, 211, 77, 0.42);
-  background: rgba(146, 64, 14, 0.46);
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.14);
   color: rgb(254 243 199);
 }
 
@@ -491,15 +526,13 @@ const canGoNext = computed(() => {
 .tutorial-panel-pop-enter-from,
 .tutorial-panel-pop-leave-to {
   opacity: 0;
-  transform: translateY(0.5rem);
+  transform: translateY(12px);
 }
 
 @media (max-width: 640px) {
   .tutorial-panel {
-    left: 0.75rem;
-    right: 0.75rem;
-    bottom: 0.75rem;
-    width: auto;
+    width: min(300px, calc(100vw - 24px));
+    max-height: calc(100dvh - 108px);
   }
 }
 </style>

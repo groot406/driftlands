@@ -21,7 +21,7 @@ import { noteActivePlayerCount, noteFirstActivePlayer } from '../state/attendanc
 import { resolveStewardshipAfterAbsence } from '../systems/stewardshipSystem';
 
 export class ServerPlayerHandler {
-  private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket }>();
+  private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket, spectator: boolean }>();
   private readonly io: Server;
 
   constructor(io: Server) {
@@ -57,6 +57,16 @@ export class ServerPlayerHandler {
     this.io.emit('message', this.buildPlayerSnapshot());
   }
 
+  private countActivePlayers(): number {
+    let count = 0;
+    for (const player of this.connectedPlayers.values()) {
+      if (!player.spectator) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   private rejectPlayerJoin(socket: Socket, message: string): void {
     sendToSocket(socket, {
       type: 'player:join_rejected',
@@ -82,24 +92,25 @@ export class ServerPlayerHandler {
   }
 
   private async handlePlayerJoin(socket: Socket, message: PlayerJoinMessage): Promise<void> {
+    const spectator = message.spectator === true;
     if (message.looperlands) {
       try {
         const requestedWalletPlayerId = buildLooperlandsPlayerId(message.looperlands.walletAddress, message.looperlands.chainId);
         const hasExistingSettlement = !!playerSettlementState.getPlayerSettlement(requestedWalletPlayerId);
         const validated = await validateLooperlandsJoin(message.looperlands, {
-          requireHeroSelection: !hasExistingSettlement,
+          requireHeroSelection: !spectator && !hasExistingSettlement,
         });
         message.playerId = validated.playerId;
         message.playerName = message.playerName || validated.playerName || 'Pioneer';
         message.looperlands.heroes = validated.heroes;
-        if (!hasExistingSettlement) {
+        if (!hasExistingSettlement && !spectator) {
           playerSettlementState.setStarterHeroes(validated.playerId, validated.heroes);
         }
       } catch (error) {
         this.rejectPlayerJoin(socket, error instanceof Error ? error.message : 'Could not validate wallet ownership.');
         throw error;
       }
-    } else {
+    } else if (!spectator) {
       const storyHeroIds = this.validateStoryHeroIds(message.storyHeroIds);
       if (storyHeroIds) {
         if (!playerSettlementState.getPlayerSettlement(message.playerId)) {
@@ -111,8 +122,8 @@ export class ServerPlayerHandler {
       }
     }
 
-    const wasEmpty = this.connectedPlayers.size === 0;
-    const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName);
+    const activePlayerCountBeforeJoin = this.countActivePlayers();
+    const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName, spectator);
     const playerId = player.id;
 
     // Store player info
@@ -120,12 +131,12 @@ export class ServerPlayerHandler {
       id: playerId,
       name: player.nickname,
       color: player.color,
-      socket
+      socket,
+      spectator,
     });
-    const absence = wasEmpty ? noteFirstActivePlayer(Date.now()) : null;
-    if (!wasEmpty) {
-      noteActivePlayerCount(this.connectedPlayers.size);
-    }
+    const activePlayerCountAfterJoin = this.countActivePlayers();
+    const absence = !spectator && activePlayerCountBeforeJoin === 0 ? noteFirstActivePlayer(Date.now()) : null;
+    noteActivePlayerCount(activePlayerCountAfterJoin);
     coopState.upsertPlayer(socket, player.nickname, player.id, player.color, player.settlementId);
 
     // Broadcast to all other players
@@ -206,7 +217,7 @@ export class ServerPlayerHandler {
     this.connectedPlayers.delete(socket.id);
     coopState.removePlayer(socket.id);
     playerSettlementState.unregisterSocket(socket.id);
-    noteActivePlayerCount(this.connectedPlayers.size);
+    noteActivePlayerCount(this.countActivePlayers());
 
     // Broadcast to all other players
     socket.broadcast.emit('message', {
@@ -228,14 +239,22 @@ export class ServerPlayerHandler {
 
   private handleChatMessage(socket: Socket, message: ChatMessage): void {
     const player = this.connectedPlayers.get(socket.id);
-
-    // Broadcast chat message to all connected players (including sender)
-    this.io.emit('message', {
+    const baseMessage = {
       type: 'chat:message',
       playerId: player?.id ?? socket.id,
       playerName: player?.name ?? message.playerName,
       message: message.message,
       timestamp: Date.now()
+    } satisfies Omit<ChatMessage, 'isOwnMessage'>;
+
+    socket.emit('message', {
+      ...baseMessage,
+      isOwnMessage: true,
+    });
+
+    socket.broadcast.emit('message', {
+      ...baseMessage,
+      isOwnMessage: false,
     });
   }
 
@@ -247,7 +266,7 @@ export class ServerPlayerHandler {
       this.connectedPlayers.delete(socket.id);
       coopState.removePlayer(socket.id);
       playerSettlementState.unregisterSocket(socket.id);
-      noteActivePlayerCount(this.connectedPlayers.size);
+      noteActivePlayerCount(this.countActivePlayers());
 
       // Broadcast to all other players
       socket.broadcast.emit('message', {

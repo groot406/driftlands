@@ -192,6 +192,61 @@ test('passive growth creates the settler in the settlement that grew', () => {
   assert.equal(settlers[0]?.r, 0);
 });
 
+test('passive growth skips multiplayer settlements that are still cooling down', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 30,
+    beds: 3,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 15,
+        beds: 2,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '20,0',
+        current: 0,
+        max: 15,
+        beds: 1,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  depositResourceToStorage('0,0', 'meat', 8);
+  depositResourceToStorage('20,0', 'meat', 8);
+  settlerSystem.init();
+
+  tickAt(61_000, 1_000);
+  tickAt(62_000, 1_000);
+
+  assert.deepEqual(settlers.map((settler) => settler.settlementId).sort(), ['0,0', '20,0']);
+});
+
 test('passive growth emits a settlement-scoped population change event', () => {
   loadWorld([
     createTowncenterTile(),

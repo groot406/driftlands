@@ -1,9 +1,12 @@
 import type { ChatMessage } from '../../shared/protocol';
 import { clientMessageRouter } from '../messageRouter';
-import { addChatMessage } from '../../store/chatStore';
+import { addChatMessage, consumeOutgoingChatEcho, getIsPlayerModalOpen } from '../../store/chatStore';
 import { addNotification } from '../../store/notificationStore';
-import { getCurrentPlayerInfo } from '../socket';
-import { isWindowActive, WINDOW_IDS } from '../windowManager';
+import { playInterfaceSound } from '../../store/soundStore';
+
+const INCOMING_CHAT_SOUND_COOLDOWN_MS = 800;
+const INCOMING_CHAT_SOUND_VOLUME = 0.85;
+let lastIncomingChatSoundAt = 0;
 
 // Client-side chat handler
 class ChatMessageHandler {
@@ -19,25 +22,38 @@ class ChatMessageHandler {
   }
 
   private handleChatMessage(message: ChatMessage): void {
+    const isOwnMessage = message.isOwnMessage ?? consumeOutgoingChatEcho(message);
+    const isIncomingMessage = !isOwnMessage;
+    const shouldMarkUnread = isIncomingMessage && !getIsPlayerModalOpen.value;
+
     // Add to chat store
     addChatMessage({
       playerId: message.playerId,
       playerName: message.playerName,
-      message: message.message
-    });
+      message: message.message,
+      isOwnMessage,
+    }, { unread: shouldMarkUnread });
 
-    // Show notification if chat modal is not active and message is from another player
-    const currentPlayer = getCurrentPlayerInfo();
-    const isOwnMessage = currentPlayer && message.playerId === currentPlayer.id;
-
-    if (!isOwnMessage && !isWindowActive(WINDOW_IDS.PLAYER_MODAL)) {
+    // Show feedback for incoming chat even if the chat panel is currently open.
+    if (isIncomingMessage) {
+      this.playIncomingChatSound();
       addNotification({
         type: 'chat',
-        title: 'New message',
+        title: 'New chat message',
         message: `${message.playerName}: ${message.message}`,
-        duration: 4000
+        duration: 6000
       });
     }
+  }
+
+  private playIncomingChatSound(): void {
+    const now = Date.now();
+    if (now - lastIncomingChatSoundAt < INCOMING_CHAT_SOUND_COOLDOWN_MS) {
+      return;
+    }
+
+    lastIncomingChatSoundAt = now;
+    void playInterfaceSound('chat-incoming.wav', { baseVolume: INCOMING_CHAT_SOUND_VOLUME });
   }
 }
 

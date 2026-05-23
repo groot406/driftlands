@@ -288,7 +288,7 @@ test('flood control reduces road washout during impact', () => {
 test('field medicine contains outbreak before population drops', () => {
   loadWorld([townCenter()]);
   loadSettlementPopulation(6);
-  setStudyOverrides(['field_medicine']);
+  setStudyOverrides(['field_medicine'], '0,0');
 
   const outcome = triggerCalamity('outbreak', { settlementId: '0,0', rng: firstRng, now: 10_000 });
 

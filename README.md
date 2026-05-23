@@ -169,6 +169,7 @@ Available variables:
 - `SERVER_SPAWN_SAFETY`: safer world-generation spawn constraints toggle, default disabled
 - `LOOPERLANDS_API_URL`: Looperlands API URL used by the Driftlands server for wallet validation and proxying
 - `SERVER_REQUIRE_LOOPERLANDS_AUTH`: force wallet auth requirement when set to `1`
+- `DRIFTLANDS_ADMIN_WALLETS`: comma-separated wallet allowlist for production admin controls; casing does not matter
 - `DRIFTLANDS_ENV_FILE`: optional server-only env file path; when set in the shell, the server loads only that file
 
 Helpful notes:
@@ -204,6 +205,7 @@ SERVER_TPS=10
 FRONTEND_ORIGIN=https://your-frontend-domain.example
 LOOPERLANDS_API_URL=https://api.looperlands.io/api
 SERVER_REQUIRE_LOOPERLANDS_AUTH=1
+DRIFTLANDS_ADMIN_WALLETS=0xfE49e5c384f5FddDFc52e9610BfAB3d49D86847D
 ```
 
 The included `Procfile` starts the same non-debug server command for Node buildpack platforms. If you deploy with Docker, the `Dockerfile` also uses that command.

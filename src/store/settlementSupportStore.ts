@@ -27,6 +27,7 @@ export interface SettlementSupportCounts {
     inactiveTileCount: number;
     fragileTileCount: number;
     uncontrolledTileCount: number;
+    pressureState?: PressureState;
 }
 
 export interface SettlementSupportSnapshot {
@@ -53,6 +54,7 @@ interface SupportSelectionResult {
 }
 
 export type SettlementPopulationInput = number | Partial<Record<string, number>>;
+export type SettlementHungerInput = number | Partial<Record<string, number>>;
 
 const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower'] as const;
 const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'] as const;
@@ -622,7 +624,7 @@ function buildSupportSnapshot(
     supportCapacityBySettlementId: Map<string, number>,
     ownerByTileId: Map<string, string | null>,
     controlledByTileId: Map<string, string | null>,
-    hungerMs: number,
+    hungerMs: SettlementHungerInput,
 ): SettlementSupportSnapshot {
     const countsBySettlementId = new Map<string, SettlementSupportCounts>();
 
@@ -642,6 +644,7 @@ function buildSupportSnapshot(
                 inactiveTileCount: 0,
                 fragileTileCount: 0,
                 uncontrolledTileCount: 0,
+                pressureState: 'stable',
             };
             countsBySettlementId.set(ownerSettlementId, counts);
         }
@@ -663,17 +666,22 @@ function buildSupportSnapshot(
     }
 
     const settlements = Array.from(countsBySettlementId.values())
+        .map((settlement) => ({
+            ...settlement,
+            pressureState: resolvePressureState(
+                getSettlementHungerMs(hungerMs, settlement.settlementId),
+                settlement.inactiveTileCount,
+                settlement.ownedTileCount,
+            ),
+        }))
         .sort((a, b) => a.settlementId.localeCompare(b.settlementId));
-    const ownedTileCount = settlements.reduce((sum, settlement) => sum + settlement.ownedTileCount, 0);
     const activeTileCount = settlements.reduce((sum, settlement) => sum + settlement.activeTileCount, 0);
     const inactiveTileCount = settlements.reduce((sum, settlement) => sum + settlement.inactiveTileCount, 0);
-
-    let pressureState: PressureState = 'stable';
-    if (hungerMs > 0 || inactiveTileCount >= Math.ceil(Math.max(1, ownedTileCount) * 0.25)) {
-        pressureState = 'collapsing';
-    } else if (inactiveTileCount > 0) {
-        pressureState = 'strained';
-    }
+    const pressureState = settlements.some((settlement) => settlement.pressureState === 'collapsing')
+        ? 'collapsing'
+        : settlements.some((settlement) => settlement.pressureState === 'strained')
+            ? 'strained'
+            : 'stable';
 
     return {
         supportCapacity,
@@ -707,7 +715,10 @@ export function syncSettlementSupportSnapshot(snapshot: Partial<SettlementSuppor
         activeTileCount: snapshot?.activeTileCount ?? 0,
         inactiveTileCount: snapshot?.inactiveTileCount ?? 0,
         pressureState: snapshot?.pressureState ?? 'stable',
-        settlements: snapshot?.settlements?.map((settlement) => ({ ...settlement })) ?? [],
+        settlements: snapshot?.settlements?.map((settlement) => ({
+            ...settlement,
+            pressureState: settlement.pressureState ?? snapshot.pressureState ?? 'stable',
+        })) ?? [],
     };
 }
 
@@ -717,6 +728,26 @@ function getSettlementPopulation(populationCurrent: SettlementPopulationInput, s
     }
 
     return populationCurrent[settlementId] ?? 0;
+}
+
+function getSettlementHungerMs(hungerMs: SettlementHungerInput, settlementId: string) {
+    if (typeof hungerMs === 'number') {
+        return Math.max(0, hungerMs);
+    }
+
+    return Math.max(0, hungerMs[settlementId] ?? 0);
+}
+
+function resolvePressureState(hungerMs: number, inactiveTileCount: number, ownedTileCount: number): PressureState {
+    if (hungerMs > 0 || inactiveTileCount >= Math.ceil(Math.max(1, ownedTileCount) * 0.25)) {
+        return 'collapsing';
+    }
+
+    if (inactiveTileCount > 0) {
+        return 'strained';
+    }
+
+    return 'stable';
 }
 
 function getBaseSupportCapacityBySettlementId(townCenters: Tile[], populationCurrent: SettlementPopulationInput) {
@@ -738,7 +769,7 @@ function getBaseSupportCapacityBySettlementId(townCenters: Tile[], populationCur
     return supportCapacityBySettlementId;
 }
 
-export function recalculateSettlementSupport(populationCurrent: SettlementPopulationInput, hungerMs: number): RecalculateResult {
+export function recalculateSettlementSupport(populationCurrent: SettlementPopulationInput, hungerMs: SettlementHungerInput): RecalculateResult {
     const supportAllControlledTiles = isTileSupportEnabled(testModeSettings);
     const townCenters = getTownCenters();
     const townCentersBySettlementId = buildTownCentersBySettlementId(townCenters);

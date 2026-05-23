@@ -61,6 +61,7 @@ import {populationState} from '../store/clientPopulationStore';
 import { openPopulationModal, openResourceDetailModal } from '../store/uiStore';
 import { runSnapshot, runVersion } from '../store/runStore.ts';
 import { getVisibleInventoryGroups } from '../shared/game/inventoryPresentation.ts';
+import { getHungerFoodMealValue } from '../shared/game/resourceDefinitions.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { fetchMarketOverview, marketWallet, openMarketplace } from '../store/marketStore.ts';
 import { worldVersion } from '../core/world.ts';
@@ -92,8 +93,10 @@ const groupedEntries = computed(() => {
 
 const populationPressureClass = computed(() => `pop-bubble-${playerPopulation.value.pressureState ?? 'stable'}`);
 
+const edibleMealValue = computed(() => Math.floor(getHungerFoodMealValue(playerInventory.value)));
+
 const populationTitle = computed(() => (
-  `Open settler overview (${playerPopulation.value.current}/${playerPopulation.value.max})`
+  `Open settler overview (${playerPopulation.value.current}/${playerPopulation.value.max}, ${edibleMealValue.value} edible meals, ${formatHungerRisk(playerPopulation.value.hungerMs)} hunger risk)`
 ));
 
 const marketAccessUnlocked = computed(() => {
@@ -115,6 +118,13 @@ function formatGold(value: number) {
   }
 
   return `${normalized}`;
+}
+
+function formatHungerRisk(hungerMs: number) {
+  if (hungerMs <= 0) return 'no';
+  const minutes = Math.floor(hungerMs / 60_000);
+  const seconds = Math.floor((hungerMs % 60_000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function refreshMarketWallet() {

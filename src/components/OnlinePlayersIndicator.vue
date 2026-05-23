@@ -2,45 +2,102 @@
   <button
     @click="openPlayerModal"
     class="toolbar-icon-btn"
-    :title="`${playerCount} player${playerCount === 1 ? '' : 's'} online`"
+    :title="buttonTitle"
+    :aria-label="buttonTitle"
   >
-    <!-- People icon -->
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
-      <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+      <path d="M4.5 5.25A2.25 2.25 0 016.75 3h10.5a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0117.25 15H9.31l-3.97 3.31A.75.75 0 014.125 17.73V15H4.5a2.25 2.25 0 01-2.25-2.25v-7.5A2.25 2.25 0 014.5 5.25z" />
     </svg>
-    <!-- Player count badge -->
-    <span class="count-badge">{{ playerCount }}</span>
+    <span v-if="unreadChatCount > 0" class="count-badge" aria-label="Unread chat messages">
+      {{ unreadChatLabel }}
+    </span>
   </button>
 </template>
 
 <script setup lang="ts">
-import { getOnlinePlayersCount } from '../store/playerStore';
-import { setPlayerModalOpen } from '../store/chatStore';
-import { openWindow, WINDOW_IDS } from '../core/windowManager';
-import { computed } from 'vue';
+import { getUnreadChatCount, setPlayerModalOpen } from '../store/chatStore';
+import { closeWindow, openWindow, WINDOW_IDS } from '../core/windowManager';
+import { computed, watch } from 'vue';
+import { activeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore';
 
-// Show mock count if no real connection, otherwise show actual count
-const playerCount = computed(() => {
-  const actualCount = getOnlinePlayersCount.value;
-  return actualCount > 0 ? actualCount : 1; // Show at least 1 (yourself) when connected
+const unreadChatCount = getUnreadChatCount;
+const unreadChatLabel = computed(() => unreadChatCount.value > 9 ? '9+' : `${unreadChatCount.value}`);
+const buttonTitle = computed(() => {
+  if (unreadChatCount.value <= 0) {
+    return 'Open chat';
+  }
+
+  return `Open chat - ${unreadChatCount.value} unread message${unreadChatCount.value === 1 ? '' : 's'}`;
 });
 
 function openPlayerModal() {
+  openToolbarPanel('chat');
   setPlayerModalOpen(true);
   openWindow(WINDOW_IDS.PLAYER_MODAL);
 }
+
+watch(activeToolbarPanel, (panel) => {
+  if (panel !== 'chat') {
+    setPlayerModalOpen(false);
+    closeWindow(WINDOW_IDS.PLAYER_MODAL);
+  }
+});
 </script>
 
 <style scoped>
 .toolbar-icon-btn {
-  @apply relative flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2.5 py-2 text-green-400/80 shadow-lg backdrop-blur-sm transition-all hover:border-green-400/50 hover:text-green-400 cursor-pointer;
-  background: rgba(2, 6, 23, 0.82);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.34);
+  background:
+    radial-gradient(circle at top left, rgba(52, 211, 153, 0.18), transparent 44%),
+    rgba(15, 23, 42, 0.78);
+  color: rgb(110 231 183);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .toolbar-icon-btn:hover {
-  background: rgba(15, 23, 42, 0.92);
+  transform: translateY(-1px);
+  border-color: rgba(52, 211, 153, 0.58);
+  background:
+    radial-gradient(circle at top left, rgba(52, 211, 153, 0.28), transparent 44%),
+    rgba(21, 83, 45, 0.9);
 }
 
 .count-badge {
-  @apply text-[11px] font-mono leading-none text-green-400;
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  min-width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border: 1px solid rgba(52, 211, 153, 0.58);
+  border-radius: 999px;
+  background: rgb(52 211 153);
+  color: rgb(15 23 42);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(2, 6, 23, 0.9), 0 0 12px rgba(52, 211, 153, 0.5);
+  animation: chat-unread-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes chat-unread-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
 }
 </style>

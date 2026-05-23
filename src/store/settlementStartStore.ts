@@ -15,12 +15,24 @@ export const currentPlayerSettlementId = ref<string | null>(null);
 export const currentPlayerReachColor = ref<string | null>(null);
 export const settlementStartError = ref<string | null>(null);
 export const settlementStartFoundingCandidateId = ref<string | null>(null);
+export const settlementStartOptionsLoaded = ref(false);
+export const settlementStartSpectatorMode = ref(false);
 
 export const availableSettlementStartCandidates = computed(() => settlementStartCandidates.value.filter((candidate) => candidate.available));
 export const needsSettlementStart = computed(() => (
+  !settlementStartSpectatorMode.value
+  &&
   !currentPlayerSettlementId.value
   && (settlementStartMode.value === 'free' || availableSettlementStartCandidates.value.length > 0)
 ));
+
+export function setSettlementStartSpectatorMode(enabled: boolean) {
+  settlementStartSpectatorMode.value = enabled;
+  if (enabled) {
+    settlementStartFoundingCandidateId.value = null;
+    settlementStartError.value = null;
+  }
+}
 
 export function replaceSettlementStartOptions(options: {
   currentSettlementId: string | null;
@@ -29,6 +41,7 @@ export function replaceSettlementStartOptions(options: {
   settlements: SettlementStartMarker[];
   terrainTiles?: SettlementStartTerrainTile[];
 }) {
+  settlementStartOptionsLoaded.value = true;
   currentPlayerSettlementId.value = options.currentSettlementId;
   setActiveStorySettlement(options.currentSettlementId);
   settlementStartMode.value = options.startMode ?? 'candidates';

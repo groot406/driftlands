@@ -6,6 +6,7 @@ import { broadcastGameMessage as broadcast } from '../../game/runtime.ts';
 import { addStudyProgress, broadcastStudyState } from '../../../store/studyStore.ts';
 import { STUDY_WORK_CYCLE_MS } from '../../studies/studies.ts';
 import { hasRevealedSpecial } from '../../game/tileFeatures.ts';
+import { getTileSettlementId } from '../../game/settlement.ts';
 
 const activateRuinsTask: TaskDefinition = {
     key: 'activateRuins',
@@ -26,8 +27,9 @@ const activateRuinsTask: TaskDefinition = {
 
     onComplete(tile) {
         tile.specialActivated = true;
-        addStudyProgress(2 * STUDY_WORK_CYCLE_MS);
-        broadcastStudyState();
+        const settlementId = getTileSettlementId(tile);
+        addStudyProgress(2 * STUDY_WORK_CYCLE_MS, settlementId);
+        broadcastStudyState(settlementId);
         broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
     },
 };

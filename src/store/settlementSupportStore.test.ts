@@ -8,6 +8,7 @@ import {
   recalculateSettlementSupport,
   resetSettlementSupportState,
 } from './settlementSupportStore.ts';
+import { getPopulationSnapshot, resetPopulationState, setSupportMetrics } from './populationStore.ts';
 import { loadTestModeSettings, resetTestModeSettings } from '../shared/game/testMode.ts';
 
 function createTowncenterTile(): Tile {
@@ -100,6 +101,7 @@ function createSortedFrontierCoords(reserved: Set<string> = new Set()) {
 test.afterEach(() => {
   loadWorld([]);
   resetSettlementSupportState();
+  resetPopulationState();
   resetTestModeSettings();
 });
 
@@ -182,6 +184,38 @@ test('each settlement spends only its own population support capacity', () => {
   assert.equal(settlementA?.inactiveTileCount, 0);
   assert.equal(settlementB?.supportCapacity, 84);
   assert.equal(settlementB?.inactiveTileCount, 1);
+});
+
+test('pressure state is calculated per settlement instead of copied globally', () => {
+  const settlementATiles = createFrontierTiles(1);
+  const settlementBTiles = settlementATiles.map((tile) => ({
+    ...tile,
+    id: `${tile.q + 40},${tile.r}`,
+    q: tile.q + 40,
+  }));
+
+  loadWorld([
+    createTowncenterTileAt(0, 0),
+    createTowncenterTileAt(40, 0),
+    ...settlementATiles,
+    ...settlementBTiles,
+  ]);
+
+  const result = recalculateSettlementSupport({
+    '0,0': 1,
+    '40,0': 1,
+  }, {
+    '0,0': 1_000,
+    '40,0': 0,
+  });
+  setSupportMetrics(result.snapshot);
+  const population = getPopulationSnapshot();
+  const settlementA = population.settlements.find((settlement) => settlement.settlementId === '0,0');
+  const settlementB = population.settlements.find((settlement) => settlement.settlementId === '40,0');
+
+  assert.equal(result.snapshot.pressureState, 'collapsing');
+  assert.equal(settlementA?.pressureState, 'collapsing');
+  assert.equal(settlementB?.pressureState, 'stable');
 });
 
 test('overlapping reach keeps discovered tiles with their owner settlement', () => {

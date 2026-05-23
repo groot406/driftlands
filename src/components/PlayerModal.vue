@@ -16,13 +16,11 @@
             <div class="player-list">
               <div v-for="player in players" :key="player.id" class="player-row">
                 <div class="player-main">
+                  <span class="player-color-dot" :style="playerColorStyle(player.color)" aria-hidden="true"></span>
                   <span class="player-name">
                     {{ player.name }}
                     <span v-if="isCurrentPlayer(player.id)" class="player-you">(you)</span>
                   </span>
-                </div>
-                <div class="player-meta">
-                  <span>{{ player.claimedHeroIds.length }} heroes claimed</span>
                 </div>
               </div>
 
@@ -39,11 +37,14 @@
                 v-for="msg in messages"
                 :key="msg.id"
                 class="chat-bubble"
-                :class="{ 'chat-bubble-own': isOwnMessage(msg.playerId) }"
+                :class="{ 'chat-bubble-own': msg.isOwnMessage }"
+                :style="chatBubbleStyle(msg)"
               >
-                <span v-if="!isOwnMessage(msg.playerId)" class="chat-sender">{{ msg.playerName }}</span>
+                <span class="chat-meta">
+                  <span class="chat-sender">{{ msg.isOwnMessage ? 'You' : msg.playerName }}</span>
+                  <span class="chat-time">{{ formatTime(msg.timestamp) }}</span>
+                </span>
                 <span class="chat-text">{{ msg.message }}</span>
-                <span class="chat-time">{{ formatTime(msg.timestamp) }}</span>
               </div>
               <div v-if="messages.length === 0" class="chat-empty">
                 No messages yet. Say hello!
@@ -78,12 +79,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
-import { getConnectedPlayers } from '../store/playerStore';
-import { getChatMessages, getIsPlayerModalOpen, setPlayerModalOpen } from '../store/chatStore';
+import { getConnectedPlayers, getPlayerColor } from '../store/playerStore';
+import { getChatMessages, getIsPlayerModalOpen, recordOutgoingChatMessage, setPlayerModalOpen, type ChatMessage as LocalChatMessage } from '../store/chatStore';
 import { closeWindow, isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import { currentPlayerId, sendMessage } from '../core/socket';
 import PanelActionButton from './ui/PanelActionButton.vue';
 import PanelModalShell from './ui/PanelModalShell.vue';
+import { closeToolbarPanel } from '../store/toolbarPanelStore';
 
 const isOpen = computed(() => getIsPlayerModalOpen.value);
 const players = computed(() => getConnectedPlayers.value);
@@ -97,13 +99,30 @@ function isCurrentPlayer(playerId: string) {
   return playerId === currentPlayerId.value;
 }
 
-function isOwnMessage(playerId: string) {
-  return playerId === currentPlayerId.value;
-}
-
 function formatTime(timestamp: number) {
   const d = new Date(timestamp);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function chatBubbleStyle(message: LocalChatMessage) {
+  const color = getPlayerColor(message.playerId);
+  if (!color) {
+    return undefined;
+  }
+
+  return {
+    '--chat-player-color': color,
+  };
+}
+
+function playerColorStyle(color: string | null | undefined) {
+  if (!color) {
+    return undefined;
+  }
+
+  return {
+    '--player-color': color,
+  };
 }
 
 function sendChat() {
@@ -112,10 +131,16 @@ function sendChat() {
 
   const myId = currentPlayerId.value;
   const me = players.value.find((p) => p.id === myId);
+  const playerId = myId ?? 'unknown';
+
+  recordOutgoingChatMessage({
+    playerId,
+    message: text,
+  });
 
   sendMessage({
     type: 'chat:message',
-    playerId: myId ?? 'unknown',
+    playerId,
     playerName: me?.name ?? 'Pioneer',
     message: text,
     timestamp: Date.now(),
@@ -150,6 +175,7 @@ watch(isOpen, (open) => {
 
 function close() {
   setPlayerModalOpen(false);
+  closeToolbarPanel('chat');
   closeWindow(WINDOW_IDS.PLAYER_MODAL);
 }
 
@@ -249,26 +275,36 @@ onUnmounted(() => {
 .player-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
+}
+
+.player-color-dot {
+  flex: 0 0 auto;
+  width: 0.68rem;
+  height: 0.68rem;
+  border: 1px solid color-mix(in srgb, var(--player-color, #c99a4b) 72%, #fff0d2);
+  border-radius: 999px;
+  background: var(--player-color, #c99a4b);
+  box-shadow:
+    0 0 0 2px rgba(4, 5, 5, 0.72),
+    0 0 8px color-mix(in srgb, var(--player-color, #c99a4b) 36%, transparent);
 }
 
 .player-name {
+  min-width: 0;
+  flex: 1;
   color: #fff0d2;
   font-family: Georgia, 'Times New Roman', serif;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-you {
   font-weight: 400;
   font-size: 12px;
   color: rgba(201, 154, 75, 0.78);
-}
-
-.player-meta {
-  margin-top: 8px;
-  font-size: 13px;
-  color: rgba(215, 200, 167, 0.72);
 }
 
 .player-empty {
@@ -285,61 +321,111 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid rgba(132, 94, 44, 0.26);
+  border: 1px solid rgba(143, 103, 54, 0.34);
   border-radius: 0;
   background:
-    radial-gradient(circle at 24% 0%, rgba(102, 71, 37, 0.08), transparent 18rem),
-    rgba(9, 10, 11, 0.42);
+    radial-gradient(circle at 24% 0%, rgba(102, 71, 37, 0.1), transparent 18rem),
+    linear-gradient(180deg, rgba(13, 16, 17, 0.72), rgba(7, 8, 9, 0.84));
+  box-shadow:
+    inset 0 0 24px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 226, 161, 0.035);
   overflow: hidden;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 0.9rem;
+  padding: 0.95rem;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.62rem;
   min-height: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, rgba(255, 230, 170, 0.018), transparent 7rem);
 }
 
 .chat-bubble {
   display: flex;
   flex-direction: column;
-  max-width: 80%;
-  padding: 0.55rem 0.72rem;
-  border: 1px solid rgba(132, 94, 44, 0.25);
-  border-radius: 0;
-  background: rgba(28, 25, 20, 0.72);
-  color: #f3e4c9;
+  width: fit-content;
+  min-width: min(12rem, 100%);
+  max-width: min(86%, 32rem);
+  padding: 0.58rem 0.72rem 0.66rem 0.86rem;
+  border: 1px solid rgba(135, 101, 60, 0.34);
+  border-left: 3px solid color-mix(in srgb, var(--chat-player-color, #c99a4b) 62%, #c99a4b);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(31, 30, 25, 0.92), rgba(14, 17, 17, 0.9)),
+    rgba(10, 11, 11, 0.86);
+  color: #f4e8cf;
   align-self: flex-start;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 238, 177, 0.055),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.52),
+    0 6px 16px rgba(0, 0, 0, 0.16);
 }
 
 .chat-bubble-own {
   align-self: flex-end;
-  border-color: rgba(84, 153, 65, 0.36);
-  background: rgba(24, 62, 34, 0.56);
+  padding-right: 0.86rem;
+  padding-left: 0.72rem;
+  border-color: color-mix(in srgb, var(--chat-player-color, #b0974d) 28%, rgba(137, 129, 80, 0.36));
+  border-right: 3px solid color-mix(in srgb, var(--chat-player-color, #b0974d) 46%, #b0974d);
+  border-left-width: 1px;
+  background:
+    linear-gradient(180deg, rgba(31, 34, 25, 0.94), rgba(15, 17, 14, 0.92)),
+    rgba(10, 12, 10, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 168, 0.055),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.52),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+.chat-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.28rem;
 }
 
 .chat-sender {
-  font-size: 11px;
-  font-weight: 600;
-  color: #c99a4b;
-  margin-bottom: 2px;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--chat-player-color, #d8ab62) 54%, #d8ab62);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.chat-bubble-own .chat-sender {
+  color: color-mix(in srgb, var(--chat-player-color, #c9b16e) 42%, #c9b16e);
 }
 
 .chat-text {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 14px;
-  line-height: 1.4;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.48;
+  white-space: pre-wrap;
 }
 
 .chat-time {
-  font-size: 10px;
-  color: rgba(215, 200, 167, 0.55);
-  margin-top: 2px;
-  align-self: flex-end;
+  flex: 0 0 auto;
+  color: rgba(215, 200, 167, 0.58);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .chat-empty {
@@ -347,8 +433,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
+  border: 1px dashed rgba(132, 94, 44, 0.24);
+  background: rgba(8, 10, 11, 0.34);
   color: rgba(215, 200, 167, 0.58);
   font-size: 13px;
+  text-align: center;
 }
 
 /* Chat input row */
@@ -406,6 +496,10 @@ onUnmounted(() => {
 
   .player-section {
     min-height: 0;
+  }
+
+  .chat-bubble {
+    max-width: 94%;
   }
 }
 </style>

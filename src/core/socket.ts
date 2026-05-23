@@ -10,6 +10,7 @@ import { addPlayer, removePlayer } from '../store/playerStore';
 import { sanitizePlayerNickname } from '../shared/multiplayer/player.ts';
 import { getDriftlandsServerUrl } from './driftlandsServerUrl.ts';
 import { startWorldSyncLoader, updateWorldSyncLoader } from './worldSyncLoader.ts';
+import { setSettlementStartSpectatorMode } from '../store/settlementStartStore.ts';
 
 const PLAYER_ID_KEY = 'driftlands-player-id-v1';
 const PLAYER_NAME_KEY = 'driftlands-player-name-v1';
@@ -84,10 +85,12 @@ export const socket = io(SOCKET_URL, {
   autoConnect: false,
   transports: SOCKET_TRANSPORTS,
 });
-export const currentPlayer = ref<{ id: string; name: string } | null>(null);
+export const currentPlayer = ref<{ id: string; name: string; spectator?: boolean } | null>(null);
 export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);
+export const currentPlayerIsSpectator = computed(() => currentPlayer.value?.spectator === true);
 let pendingLooperlandsAuth: LooperlandsJoinAuth | null = null;
 let pendingStoryHeroIds: StoryHeroId[] | null = null;
+let pendingSpectator = false;
 
 // Generic message sending function
 export function sendMessage(message: ClientMessage): void {
@@ -111,13 +114,15 @@ socket.on('connect', () => {
 function join() {
   const playerId = pendingLooperlandsAuth
     ? buildLooperlandsPlayerId(pendingLooperlandsAuth.walletAddress, pendingLooperlandsAuth.chainId)
-    : getStoredPlayerName();
+    : getStoredPlayerId();
   const playerName = getStoredPlayerName();
 
   currentPlayer.value = {
     id: playerId,
     name: playerName,
+    spectator: pendingSpectator,
   };
+  setSettlementStartSpectatorMode(pendingSpectator);
 
   addPlayer({ id: playerId, name: playerName });
   sendMessage({
@@ -126,6 +131,7 @@ function join() {
     playerName,
     looperlands: pendingLooperlandsAuth ?? undefined,
     storyHeroIds: pendingStoryHeroIds ?? undefined,
+    spectator: pendingSpectator,
     timestamp: Date.now(),
   });
 }
@@ -134,11 +140,13 @@ export function connectWithNickname(
   nickname: string,
   looperlandsAuth?: LooperlandsJoinAuth | null,
   storyHeroIds?: StoryHeroId[] | null,
+  options: { spectator?: boolean } = {},
 ) {
   setStoredPlayerName(nickname);
   pendingLooperlandsAuth = looperlandsAuth ?? null;
   pendingStoryHeroIds = storyHeroIds ?? null;
-  startWorldSyncLoader(socket.connected ? 'Joining colony...' : 'Connecting to frontier...');
+  pendingSpectator = options.spectator === true;
+  startWorldSyncLoader(socket.connected ? (pendingSpectator ? 'Joining as spectator...' : 'Joining colony...') : 'Connecting to frontier...');
 
   if (socket.connected) {
     join();
@@ -160,10 +168,20 @@ socket.on('disconnect', () => {
   }
 
   currentPlayer.value = null;
+  setSettlementStartSpectatorMode(false);
 });
 
 // Route all incoming messages through the message router
 socket.on('message', (message: ServerMessage) => {
+  if (message.type === 'player:snapshot' && message.currentPlayerId && currentPlayer.value) {
+    const serverPlayer = message.players.find((player) => player.id === message.currentPlayerId);
+    currentPlayer.value = {
+      ...currentPlayer.value,
+      id: message.currentPlayerId,
+      name: serverPlayer?.nickname ?? currentPlayer.value.name,
+    };
+  }
+
   clientMessageRouter.route(message);
 });
 

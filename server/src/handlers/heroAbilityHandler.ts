@@ -23,6 +23,7 @@ import type { Tile } from '../../../src/core/types/Tile.ts';
 import type { Hero } from '../../../src/core/types/Hero.ts';
 import { playerSettlementState } from '../state/playerSettlementState';
 import { isTileControlledBySettlement } from '../../../src/shared/game/state/settlementSupportStore.ts';
+import { seasonState } from '../state/seasonState';
 
 interface AbilityResult {
     applied: boolean;
@@ -38,6 +39,13 @@ export class ServerHeroAbilityHandler {
     }
 
     private handleAbilityUse(socket: Socket, message: HeroAbilityUseMessage): void {
+        if (!seasonState.allowsNewHeroActions()) {
+            return;
+        }
+        if (playerSettlementState.isSocketSpectator(socket.id)) {
+            return;
+        }
+
         const hero = getHero(message.heroId);
         if (!hero || !coopState.canControlHero(socket.id, hero.id)) {
             return;
@@ -63,6 +71,10 @@ export class ServerHeroAbilityHandler {
     }
 
     private handleSkillSelect(socket: Socket, message: HeroSkillSelectMessage): void {
+        if (playerSettlementState.isSocketSpectator(socket.id)) {
+            return;
+        }
+
         const hero = getHero(message.heroId);
         if (!hero || !coopState.canControlHero(socket.id, hero.id) || !isHeroSkillKey(message.skill)) {
             return;

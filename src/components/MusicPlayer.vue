@@ -1,33 +1,33 @@
 <template>
-  <div class="fixed bottom-16 right-4 z-30 pointer-events-auto">
-    <!-- Collapsed: music icon toggle -->
-    <Transition name="player-fade">
-      <button
-        v-if="!expanded"
-        @click="expanded = true"
-        class="music-toggle-btn"
-        title="Open music player"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
-          <path d="M19.952 1.651a.75.75 0 01.298.599V16.303a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.403-4.909l2.311-.66a1.5 1.5 0 001.088-1.442V6.994l-9.75 2.439v8.217a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.403-4.909l2.311-.66A1.5 1.5 0 007.5 13.9V4.272a.75.75 0 01.544-.721l11.25-3.188a.75.75 0 01.658.288z" />
-        </svg>
-        <!-- Animated bars when playing -->
-        <div v-if="state.isPlaying" class="playing-bars">
-          <span></span><span></span><span></span>
-        </div>
-      </button>
-    </Transition>
+  <div class="music-player-shell">
+    <button
+      @click="toggleMusicPanel"
+      class="music-toggle-btn"
+      :class="{ 'music-toggle-btn--active': expanded }"
+      :title="expanded ? 'Close music player' : 'Open music player'"
+      :aria-expanded="expanded"
+      aria-label="Music player"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+        <path d="M19.952 1.651a.75.75 0 01.298.599V16.303a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.403-4.909l2.311-.66a1.5 1.5 0 001.088-1.442V6.994l-9.75 2.439v8.217a3 3 0 01-2.176 2.884l-1.32.377a2.553 2.553 0 11-1.403-4.909l2.311-.66A1.5 1.5 0 007.5 13.9V4.272a.75.75 0 01.544-.721l11.25-3.188a.75.75 0 01.658.288z" />
+      </svg>
+      <div v-if="state.isPlaying" class="playing-bars">
+        <span></span><span></span><span></span>
+      </div>
+    </button>
 
     <!-- Expanded: full player -->
     <Transition name="player-slide">
-      <div v-if="expanded" class="music-panel">
-        <!-- Header row -->
-        <div class="flex items-center justify-between mb-2">
-          <span class="pixel-font text-[9px] uppercase tracking-[0.2em] text-amber-300/70">Now Playing</span>
+      <div v-if="expanded" ref="panelEl" class="music-panel" :style="popoverStyle">
+        <div class="music-panel__header">
+          <div>
+            <p class="music-panel__kicker pixel-font">Now Playing</p>
+            <h2 class="music-panel__title">Music</h2>
+          </div>
           <button
-            @click="expanded = false"
-            class="text-slate-400 hover:text-white transition-colors p-0.5"
-            title="Close"
+            @click="closeMusicPanel"
+            class="music-panel__close"
+            title="Close music player"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -103,41 +103,107 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { musicManager, musicPlayerState } from '../core/musicManager';
 import { soundStore, setMusicVolume } from '../store/soundStore';
+import { useToolbarPopoverPosition } from '../composables/useToolbarPopoverPosition';
+import { activeToolbarPanel, closeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore';
 
 const expanded = ref(false);
+const panelEl = ref<HTMLElement | null>(null);
 const state = musicPlayerState;
+const { popoverStyle } = useToolbarPopoverPosition({
+  isOpen: expanded,
+  panel: panelEl,
+});
 
 const isTrackNameLong = computed(() => (state.trackName?.length ?? 0) > 22);
+
+function toggleMusicPanel() {
+  if (expanded.value) {
+    closeMusicPanel();
+  } else {
+    openToolbarPanel('music');
+    expanded.value = true;
+  }
+}
+
+function closeMusicPanel() {
+  expanded.value = false;
+  closeToolbarPanel('music');
+}
 
 function updateVolume(event: Event) {
   const target = event.target as HTMLInputElement;
   setMusicVolume(parseFloat(target.value));
 }
+
+watch(activeToolbarPanel, (panel) => {
+  if (panel !== 'music' && expanded.value) {
+    expanded.value = false;
+  }
+});
 </script>
 
 <style scoped>
 /* Toggle button (collapsed) */
+.music-player-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  pointer-events: auto;
+}
+
 .music-toggle-btn {
-  @apply flex items-center gap-1.5 rounded-lg border border-slate-600/80 px-2.5 py-2 text-amber-200/80 shadow-lg backdrop-blur-sm transition-all hover:border-amber-300/50 hover:text-amber-200 cursor-pointer;
-  background: rgba(2, 6, 23, 0.82);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(252, 211, 77, 0.34);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.18), transparent 44%),
+    rgba(15, 23, 42, 0.78);
+  color: rgb(253 230 138);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .music-toggle-btn:hover {
-  background: rgba(15, 23, 42, 0.92);
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.58);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.28), transparent 44%),
+    rgba(65, 83, 49, 0.9);
+}
+
+.music-toggle-btn--active {
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.58);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.28), transparent 44%),
+    rgba(65, 83, 49, 0.9);
 }
 
 /* Playing bars animation */
 .playing-bars {
+  position: absolute;
+  right: 0.32rem;
+  bottom: 0.34rem;
   display: flex;
   align-items: flex-end;
   gap: 1.5px;
-  height: 12px;
+  height: 9px;
 }
 .playing-bars span {
   display: block;
-  width: 2px;
+  width: 1.5px;
   background: currentColor;
   border-radius: 1px;
   animation: bar-bounce 0.8s ease-in-out infinite;
@@ -153,14 +219,66 @@ function updateVolume(event: Event) {
 
 /* Expanded panel */
 .music-panel {
-  @apply rounded-2xl border border-slate-700/80 p-3.5 shadow-xl backdrop-blur-md;
-  background: linear-gradient(
-    160deg,
-    rgba(2, 6, 23, 0.92) 0%,
-    rgba(15, 23, 42, 0.88) 50%,
-    rgba(2, 6, 23, 0.92) 100%
-  );
-  width: 220px;
+  position: fixed;
+  z-index: 60;
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100dvh - 8rem);
+  overflow: hidden;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.16), transparent 36%),
+    radial-gradient(circle at 85% 20%, rgba(34, 211, 238, 0.12), transparent 26%),
+    linear-gradient(180deg, rgba(16, 24, 39, 0.92), rgba(15, 23, 42, 0.9));
+  box-shadow: 0 20px 38px rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(18px);
+  color: rgb(248 250 252);
+  padding: 14px 16px 16px;
+}
+
+.music-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0.65rem;
+}
+
+.music-panel__kicker {
+  margin: 0;
+  color: rgba(253, 186, 116, 0.9);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.music-panel__title {
+  margin: 6px 0 0;
+  color: #f8fafc;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.music-panel__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  color: rgba(248, 250, 252, 0.86);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.music-panel__close:hover {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(15, 23, 42, 0.68);
+  color: rgb(254 243 199);
 }
 
 /* Track name with marquee scroll */
@@ -246,10 +364,16 @@ function updateVolume(event: Event) {
 }
 .player-slide-enter-from {
   opacity: 0;
-  transform: translateY(8px) scale(0.95);
+  transform: translateY(12px);
 }
 .player-slide-leave-to {
   opacity: 0;
-  transform: translateY(4px) scale(0.97);
+  transform: translateY(8px);
+}
+
+@media (max-width: 640px) {
+  .music-panel {
+    width: min(300px, calc(100vw - 24px));
+  }
 }
 </style>

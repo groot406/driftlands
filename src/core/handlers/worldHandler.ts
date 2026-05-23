@@ -2,6 +2,7 @@ import type {
     CalamityEventMessage,
     JobsUpdateMessage,
     PopulationUpdateMessage,
+    PopulationIncidentMessage,
     SettlersUpdateMessage,
     StewardshipReportMessage,
     StudiesUpdateMessage,
@@ -23,7 +24,7 @@ import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
 import { loadSettlers, updateSettlers } from '../../store/settlerStore';
 import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
 import { loadTestModeSettings } from '../../shared/game/testMode.ts';
-import { setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
+import { setCurrentPlayerIsAdmin, setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
 import { addNotification } from '../../store/notificationStore';
 import { openCalamityReport } from '../../store/calamityEventStore.ts';
 import { currentPlayerSettlementId } from '../../store/settlementStartStore.ts';
@@ -50,6 +51,7 @@ interface PendingWorldSnapshot {
     market: WorldSnapshotMessage['market'];
     shipOrders: WorldSnapshotMessage['shipOrders'];
     debugModeEnabled?: boolean;
+    currentPlayerIsAdmin?: boolean;
     spawnSafetyEnabled?: boolean;
     timestamp?: number;
 }
@@ -86,12 +88,16 @@ class WorldHandler {
         clientMessageRouter.on('test:update', this.handleTestModeUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
+        clientMessageRouter.on('population:incident', this.handlePopulationIncident.bind(this));
         clientMessageRouter.on('calamity:event', this.handleCalamityEvent.bind(this));
         clientMessageRouter.on('stewardship:report', this.handleStewardshipReport.bind(this));
     }
 
-    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>): void {
+    private applyWorldSnapshot(message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'currentPlayerIsAdmin' | 'spawnSafetyEnabled'>): void {
         setServerDebugModeEnabled((message as WorldSnapshotMessage).debugModeEnabled);
+        if (typeof (message as WorldSnapshotMessage).currentPlayerIsAdmin === 'boolean') {
+            setCurrentPlayerIsAdmin((message as WorldSnapshotMessage).currentPlayerIsAdmin);
+        }
         setWorldGenerationSpawnSafetyEnabled((message as WorldSnapshotMessage).spawnSafetyEnabled === true);
         loadWorld(message.tiles);
         for (const tile of message.tiles) {
@@ -118,7 +124,7 @@ class WorldHandler {
     }
 
     private applyWorldSnapshotWithLoader(
-        message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'spawnSafetyEnabled'>,
+        message: Pick<WorldSnapshotMessage, 'tiles' | 'heroes' | 'settlers' | 'tasks' | 'resources' | 'settlementResources' | 'storages' | 'population' | 'jobs' | 'studies' | 'market' | 'shipOrders' | 'timestamp' | 'debugModeEnabled' | 'currentPlayerIsAdmin' | 'spawnSafetyEnabled'>,
         source: 'single' | 'chunked',
         snapshotId?: string,
         totalChunks?: number,
@@ -198,6 +204,7 @@ class WorldHandler {
             market: message.market,
             shipOrders: message.shipOrders,
             debugModeEnabled: message.debugModeEnabled,
+            currentPlayerIsAdmin: message.currentPlayerIsAdmin,
             spawnSafetyEnabled: message.spawnSafetyEnabled,
             timestamp: message.timestamp,
         };
@@ -319,6 +326,20 @@ class WorldHandler {
             inactiveTileCount: message.inactiveTileCount,
             pressureState: message.pressureState,
             settlements: message.settlements,
+        });
+    }
+
+    private handlePopulationIncident(message: PopulationIncidentMessage): void {
+        const settlementId = currentPlayerSettlementId.value;
+        if (message.settlementId && settlementId && message.settlementId !== settlementId) {
+            return;
+        }
+
+        addNotification({
+            type: 'settlement',
+            title: message.title,
+            message: message.message,
+            duration: message.severity === 'critical' ? 9000 : 6500,
         });
     }
 

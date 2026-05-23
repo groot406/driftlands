@@ -12,6 +12,24 @@ export const REPAIR_RESTORE_AMOUNT = 35;
 export const REPAIR_CYCLE_MS = 30_000;
 export const MAINTENANCE_DECAY_RATE_MULTIPLIER = 0.6;
 
+const STONE_REPAIR_VARIANTS = new Set([
+    'plains_stone_house',
+    'dirt_stone_house',
+    'plains_glass_house',
+    'dirt_glass_house',
+    'plains_warehouse',
+    'dirt_warehouse',
+    'forest_sawmill',
+    'mountains_reinforced_mine',
+]);
+
+function withStoneRepairResource(resources: ResourceAmount[]): ResourceAmount[] {
+    const cloned = resources.map((resource) => ({ ...resource }));
+    return cloned.some((resource) => resource.type === 'stone')
+        ? cloned
+        : [...cloned, { type: 'stone', amount: 1 }];
+}
+
 export function clampBuildingCondition(value: number | null | undefined) {
     if (!Number.isFinite(value)) {
         return MAX_BUILDING_CONDITION;
@@ -41,7 +59,15 @@ export function isMaintainedBuildingTile(tile: Tile | null | undefined) {
 
 export function getTileRepairResources(tile: Tile | null | undefined): ResourceAmount[] {
     const building = getBuildingDefinitionForTile(tile);
-    return building?.repairResources?.map((resource) => ({ ...resource })) ?? [];
+    if (!building?.repairResources?.length) {
+        return [];
+    }
+
+    if (tile?.variant && STONE_REPAIR_VARIANTS.has(tile.variant)) {
+        return withStoneRepairResource(building.repairResources);
+    }
+
+    return building.repairResources.map((resource) => ({ ...resource }));
 }
 
 export function getTileMaintenanceDecayPerMinute(tile: Tile | null | undefined) {

@@ -112,7 +112,7 @@ function createStorehouseBuildingDefinition(config: {
         providesWarehouse: true,
         storageKind: config.storageKind,
         maxIncomingRoads: 1,
-        repairResources: [{ type: 'wood', amount: 1 }],
+        repairResources: getStandardRepairResources(config.requiredResources),
         maintenanceDecayPerMinute: 1.2,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -144,6 +144,12 @@ function cloneResource(resource: ResourceAmount): ResourceAmount {
         type: resource.type,
         amount: resource.amount,
     };
+}
+
+function getStandardRepairResources(requiredResources: ResourceAmount[]): ResourceAmount[] {
+    return requiredResources.some((resource) => resource.type === 'stone')
+        ? [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }]
+        : [{ type: 'wood', amount: 1 }];
 }
 
 export function scaleJobResources(resources: ResourceAmount[] | undefined, multiplier: number): ResourceAmount[] {
@@ -275,7 +281,7 @@ function getQuarryStonePerCycle(tile: Tile, assignedWorkers: number) {
     }
 
     const rockyBonus = hasRevealedModifier(tile, 'rocky_ground') ? 1 : 0;
-    return (Math.min(4, Math.max(1, countActiveConnectedTiles(tile, 'mountain'))) + rockyBonus) * assignedWorkers;
+    return (1 + Math.min(4, Math.max(1, countActiveConnectedTiles(tile, 'mountain'))) + rockyBonus) * assignedWorkers;
 }
 
 function countActiveAdjacentTiles(tile: Tile, terrain: Tile['terrain']) {
@@ -919,7 +925,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'bread', amount: 2 }],
         jobLabel: 'Baker',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.6,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -966,7 +972,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'beer', amount: 1 }],
         jobLabel: 'Brewer',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.7,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1009,7 +1015,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'wine', amount: 1 }],
         jobLabel: 'Vintner',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.7,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1057,7 +1063,7 @@ const buildings: BuildingDefinition[] = [
         serviceCapacity: 3,
         jobLabel: 'Publican',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'wood', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.4,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1107,7 +1113,7 @@ const buildings: BuildingDefinition[] = [
         serviceCapacity: 3,
         jobLabel: 'Shopkeeper',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'wood', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.3,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1205,7 +1211,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'glass', amount: 1 }],
         jobLabel: 'Glassmaker',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.8,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1249,7 +1255,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'tools', amount: 1 }],
         jobLabel: 'Toolmaker',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.8,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1292,7 +1298,7 @@ const buildings: BuildingDefinition[] = [
         jobLabel: 'Scholar',
         jobKind: 'study',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'wood', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.5,
         getJobResources() {
             return {
@@ -1344,7 +1350,7 @@ const buildings: BuildingDefinition[] = [
         produces: [{ type: 'weapons', amount: 1 }],
         jobLabel: 'Weaponsmith',
         jobPresentation: 'indoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.8,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1382,7 +1388,7 @@ const buildings: BuildingDefinition[] = [
         variantKeys: ['plains_barracks', 'dirt_barracks'],
         overlayAssetKey: 'building_barracks',
         maxIncomingRoads: 1,
-        repairResources: [{ type: 'wood', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.5,
         canPlace(tile, _hero) {
             return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
@@ -1461,7 +1467,7 @@ const buildings: BuildingDefinition[] = [
         cycleMs: 60_000,
         jobLabel: 'Stone crew',
         jobPresentation: 'outdoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.4,
         getJobResources(tile, assignedWorkers) {
             return {
@@ -1500,7 +1506,7 @@ const buildings: BuildingDefinition[] = [
         cycleMs: 60_000,
         jobLabel: 'Miner',
         jobPresentation: 'outdoor',
-        repairResources: [{ type: 'stone', amount: 1 }],
+        repairResources: [{ type: 'wood', amount: 1 }],
         maintenanceDecayPerMinute: 1.4,
         getJobResources(tile, assignedWorkers) {
             const oreBonus = hasRevealedSpecial(tile, 'rich_ore_vein') ? 1 : 0;

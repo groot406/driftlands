@@ -3,6 +3,7 @@ import { clientMessageRouter } from '../messageRouter';
 import { addPlayer, removePlayer, replacePlayerEntities, updateOnlinePlayersCount } from '../../store/playerStore';
 import { addNotification } from '../../store/notificationStore';
 import { returnToTitle } from '../../store/uiStore';
+import { setSettlementStartSpectatorMode } from '../../store/settlementStartStore.ts';
 
 class PlayerMessageHandler {
   private initialized = false;
@@ -35,6 +36,7 @@ class PlayerMessageHandler {
   }
 
   private handlePlayerJoinRejected(message: PlayerJoinRejectedMessage): void {
+    setSettlementStartSpectatorMode(false);
     returnToTitle();
     addNotification({
       type: 'run_state',

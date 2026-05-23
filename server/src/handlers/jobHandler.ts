@@ -28,6 +28,10 @@ export class ServerJobHandler {
     }
 
     private handleSetJobSiteEnabled(socket: Socket, message: SetJobSiteEnabledMessage): void {
+        if (playerSettlementState.isSocketSpectator(socket.id)) {
+            return;
+        }
+
         if (!isToggleableJobSite(message.tileId)) {
             return;
         }

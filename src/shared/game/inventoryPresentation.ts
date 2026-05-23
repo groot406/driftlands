@@ -9,6 +9,7 @@ import type {
 } from '../story/progression.ts';
 import {
   getResourceDefinition,
+  getHungerFoodMealValue,
   RESOURCE_GROUP_DEFINITIONS,
   getResourceGroupDefinition,
   type ResourceCategory,
@@ -333,7 +334,10 @@ export function getVisibleInventoryGroups(context: InventoryVisibilityContext): 
     }))
     .map((group) => ({
       ...group,
-      value: group.entries.reduce((sum, entry) => sum + entry.value, 0),
+      shortLabel: group.key === 'food' ? 'Meals' : group.shortLabel,
+      value: group.key === 'food'
+        ? Math.floor(getHungerFoodMealValue(context.inventory))
+        : group.entries.reduce((sum, entry) => sum + entry.value, 0),
     }))
     .filter((group) => group.key !== 'trade_goods' || group.entries.length > 0)
     .sort((a, b) => {

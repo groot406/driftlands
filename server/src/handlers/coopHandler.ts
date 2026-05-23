@@ -55,6 +55,10 @@ export class ServerCoopHandler {
   }
 
   private handleHeroClaim(socket: Socket, message: CoopHeroClaimMessage): void {
+    if (playerSettlementState.isSocketSpectator(socket.id)) {
+      return;
+    }
+
     const hero = getHero(message.heroId);
     const playerId = playerSettlementState.getSocketPlayerId(socket.id);
     if (!playerSettlementState.canPlayerControlHero(playerId, hero)) {
@@ -77,6 +81,10 @@ export class ServerCoopHandler {
   }
 
   private handlePingRequest(socket: Socket, message: CoopPingRequestMessage): void {
+    if (playerSettlementState.isSocketSpectator(socket.id)) {
+      return;
+    }
+
     const player = coopState.getPlayer(socket.id);
     if (!player) {
       return;

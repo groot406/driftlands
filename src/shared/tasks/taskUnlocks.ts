@@ -1,5 +1,5 @@
 import type { TaskType } from '../../core/types/Task.ts';
-import { getPopulationState } from '../game/state/populationStore.ts';
+import { getPopulationState, getSettlementPopulationState } from '../game/state/populationStore.ts';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry.ts';
 import { getUpgradeDefinitionByTaskKey } from '../buildings/upgrades.ts';
 import { isContentUnlockedByStudies } from '../../store/studyStore.ts';
@@ -66,7 +66,10 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
     };
   }
 
-  if (ZERO_SETTLER_FALLBACK_TASK_KEYS.has(taskKey) && getPopulationState().current <= 0) {
+  const populationCurrent = settlementId
+    ? (getSettlementPopulationState(settlementId)?.current ?? getPopulationState().current)
+    : getPopulationState().current;
+  if (ZERO_SETTLER_FALLBACK_TASK_KEYS.has(taskKey) && populationCurrent <= 0) {
     return {
       unlocked: true,
       recommended: true,
@@ -83,7 +86,7 @@ export function getTaskUnlockStatus(taskKey: TaskType | string | null | undefine
     ? isStoryTaskUnlocked(taskKey as TaskType, settlementId)
     : !!lockingNode?.unlocked;
   const studyUnlocked = content.kind === 'task' || content.kind === 'building' || content.kind === 'upgrade'
-    ? isContentUnlockedByStudies(content)
+    ? isContentUnlockedByStudies(content, settlementId)
     : false;
   const recommended = storyUnlocked || studyUnlocked;
   const unlocked = recommended;

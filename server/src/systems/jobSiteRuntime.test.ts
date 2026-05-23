@@ -45,7 +45,7 @@ test('quarry sites resolve into infinite stone-producing job sites', () => {
 
   const resources = quarrySite ? resolveJobResources(quarrySite, 1) : null;
   assert.deepEqual(resources?.consumes ?? [], []);
-  assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 3 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 4 }]);
 });
 
 test('active adjacent volcanoes increase nearby job-site output', () => {
@@ -62,7 +62,7 @@ test('active adjacent volcanoes increase nearby job-site output', () => {
   assert.equal(quarrySite?.building.key, 'quarry');
 
   const resources = quarrySite ? resolveJobResources(quarrySite, 1) : null;
-  assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 3.75 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 5 }]);
 });
 
 test('winery sites resolve into grape-to-wine job sites', () => {

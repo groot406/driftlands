@@ -81,6 +81,7 @@
 import { computed } from 'vue';
 import { runSnapshot } from '../store/runStore.ts';
 import { closeGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore.ts';
+import { closeToolbarPanel } from '../store/toolbarPanelStore.ts';
 
 const isOpen = isGoalsPanelOpen;
 
@@ -106,6 +107,7 @@ const nextGoals = computed(() => {
 
 function close() {
   closeGoalsPanel();
+  closeToolbarPanel('goals');
 }
 </script>
 

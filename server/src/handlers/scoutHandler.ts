@@ -20,6 +20,10 @@ export class ServerScoutHandler {
   }
 
   private handleScoutResourceRequest(socket: Socket, message: HeroScoutResourceRequestMessage): void {
+    if (playerSettlementState.isSocketSpectator(socket.id)) {
+      return;
+    }
+
     const hero = getHero(message.heroId);
     if (!hero) {
       return;
