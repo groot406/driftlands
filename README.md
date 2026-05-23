@@ -86,7 +86,15 @@ To publish the backend as a Docker container on Home Assistant OS from this mach
 npm run haos:deploy
 ```
 
-The guided flow builds `driftlands:latest`, exports it into `output/haos`, starts a temporary LAN bundle server, and prints one command to paste into Home Assistant WebSSH. It defaults to a `linux/amd64` image for HAOS. After that, point Nginx Proxy Manager at the Home Assistant host and the port you selected, usually `3000` or `3001`.
+The guided flow builds `driftlands:latest`, exports it into `output/haos`, starts a temporary LAN bundle server, and prints one command to paste into Home Assistant WebSSH. It defaults to a `linux/amd64` image for HAOS and host port `3695`. After that, point Nginx Proxy Manager at the Home Assistant host and the selected port.
+
+For the regular full deploy flow:
+
+```bash
+npm run deploy
+```
+
+This first asks whether to deploy frontend, backend, or both, then prints a plan before running anything. The backend path uses `ssh haos`, copies the bundle to `/config/driftlands`, recreates the Docker container, and waits for `/health`. Use `npm run deploy -- frontend`, `npm run deploy -- backend`, or `npm run deploy -- both` to preselect the target.
 
 To play from outside your network through router port forwarding:
 
@@ -115,6 +123,7 @@ Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards t
 - `npm run external:https` starts a local Caddy HTTPS proxy in Docker; it asks for the backend hostname once and stores it in `.env.https`
 - `npm run start-external` is a longer alias for `npm run external`
 - `npm run start:external` is an alias for `npm run start-external`
+- `npm run deploy` lets you choose frontend, backend, or both, prints a plan, then runs the selected deployment
 - `npm run haos:deploy` builds and serves a Home Assistant Docker install bundle for WebSSH
 - `npm run test:unit` runs the automated test suite
 - `npm run build` builds the client for production

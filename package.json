@@ -31,6 +31,7 @@
     "start-external": "node scripts/start-external.mjs",
     "start:external": "npm run start-external",
     "hosting:tui": "node scripts/hosting-tui.mjs",
+    "deploy": "node scripts/hosting-tui.mjs deploy",
     "frontend:deploy": "node scripts/hosting-tui.mjs publish-frontend",
     "haos:deploy": "node scripts/hosting-tui.mjs haos-deploy",
     "typecheck:server": "tsc --noEmit --project tsconfig.server.json",
