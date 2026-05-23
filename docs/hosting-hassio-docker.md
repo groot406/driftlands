@@ -38,7 +38,9 @@ Use `Server config` in the TUI to change server variables. Docker containers do 
 
 Use `Frontend deployment` in the TUI to copy the current Driftlands client into `looperlands-platform-frontend`, install dependencies, build the platform frontend, commit the platform changes, push the current branch, and run an optional deploy command.
 
-Use `Home Assistant Docker` when you can access HAOS through WebSSH but cannot use normal SSH copy. The guided publish flow builds `driftlands:latest`, writes `output/haos/driftlands.env`, exports `output/haos/driftlands-image.tar`, serves those files temporarily over your LAN, and prints one `curl ... | sh` command to paste into Home Assistant WebSSH. It asks which Home Assistant Docker platform to build for, defaulting to `linux/amd64`, and which Home Assistant host port should publish Driftlands, defaulting to `3000`. If that port is already used, the WebSSH installer automatically tries the next 50 ports and prints the selected port. Use that selected port in Nginx Proxy Manager. Keep the TUI open until the WebSSH install finishes.
+Use `npm run deploy` for the regular deployment. It asks whether to deploy frontend, backend, or both, prints the exact plan, then asks for confirmation before running anything long-lived. The backend path defaults to `ssh haos`, copies the image bundle to `/config/driftlands`, recreates the Driftlands container, publishes host port `3695`, and waits for `/health`. You can skip the target picker with `npm run deploy -- frontend`, `npm run deploy -- backend`, or `npm run deploy -- both`.
+
+Use `Home Assistant Docker` when you can access HAOS through WebSSH but cannot use normal SSH copy. The guided publish flow builds `driftlands:latest`, writes `output/haos/driftlands.env`, exports `output/haos/driftlands-image.tar`, serves those files temporarily over your LAN, and prints one `curl ... | sh` command to paste into Home Assistant WebSSH. It asks which Home Assistant Docker platform to build for, defaulting to `linux/amd64`, and which Home Assistant host port should publish Driftlands, defaulting to `3695`. If that port is already used, the WebSSH installer automatically tries the next 50 ports and prints the selected port. Use that selected port in Nginx Proxy Manager. Keep the TUI open until the WebSSH install finishes.
 
 By default, it uses the same names as this guide. Override them with environment variables when needed:
 
@@ -65,6 +67,9 @@ DRIFTLANDS_CADDY_DATA_VOLUME=driftlands-caddy-data
 DRIFTLANDS_FRONTEND_REPO=/path/to/looperlands-platform-frontend
 DRIFTLANDS_FRONTEND_COMMIT_MESSAGE=Update embedded Driftlands client
 DRIFTLANDS_FRONTEND_DEPLOY_COMMAND=npm run deploy
+DRIFTLANDS_HAOS_SSH_HOST=haos
+DRIFTLANDS_HAOS_REMOTE_DIR=/config/driftlands
+DRIFTLANDS_HAOS_PUBLISH_PORT=3695
 DRIFTLANDS_TUI_NO_ANIMATION=1
 FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>
 ```

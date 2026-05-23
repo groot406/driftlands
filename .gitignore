@@ -22,6 +22,7 @@ __pycache__/
 *.pyc
 output/art_candidates/
 output/art_review/
+output/haos/
 
 # Editor directories and files
 .vscode/*
