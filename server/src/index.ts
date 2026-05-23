@@ -65,6 +65,20 @@ function isAllowedFrontendOrigin(origin?: string): boolean {
 }
 
 const app = express();
+app.use((req: any, _res: any, next: any) => {
+  console.log(`[http] ${req.method} ${req.originalUrl ?? req.url} origin=${req.headers.origin ?? '-'} ip=${req.ip ?? req.socket?.remoteAddress ?? '-'}`);
+  next();
+});
+app.get('/', (_req: any, res: any) => {
+  res.json({
+    name: 'driftlands-server',
+    status: 'ok',
+    health: '/health',
+  });
+});
+app.get('/health', (_req: any, res: any) => {
+  res.json({ status: 'ok' });
+});
 app.use(['/api/looperlands', '/api/driftlands'], (req: any, res: any, next: any) => {
   const origin = typeof req.headers?.origin === 'string' ? req.headers.origin : undefined;
   if (origin && isAllowedFrontendOrigin(origin)) {
@@ -97,14 +111,19 @@ const io = new Server(httpServer, {
   cors: {
     origin(origin, callback) {
       if (isAllowedFrontendOrigin(origin)) {
+        console.log(`[socket.io:cors] allow origin=${origin ?? '-'}`);
         callback(null, true);
         return;
       }
 
+      console.warn(`[socket.io:cors] reject origin=${origin ?? '-'} allowed=${configuredFrontendOrigins.join(',') || '(default local/LAN only)'}`);
       callback(new Error(`Origin ${origin ?? 'unknown'} is not allowed by FRONTEND_ORIGIN`));
     },
     methods: ["GET", "POST"]
   }
+});
+io.engine.on('connection_error', (error) => {
+  console.warn(`[socket.io:error] code=${error.code} message=${error.message} origin=${error.req?.headers.origin ?? '-'} ip=${error.req?.socket.remoteAddress ?? '-'}`);
 });
 setIo(io);
 configureGameRuntime({
@@ -144,6 +163,11 @@ tickEngine.register(runSystem);
 tickEngine.start();
 
 io.on('connection', (socket) => {
+  console.log(`[socket.io] connected id=${socket.id} origin=${socket.handshake.headers.origin ?? '-'} ip=${socket.handshake.address} transport=${socket.conn.transport.name}`);
+  socket.conn.on('upgrade', (transport) => {
+    console.log(`[socket.io] upgraded id=${socket.id} transport=${transport.name}`);
+  });
+
   // Route all incoming messages through the message router
   socket.on('message', (message: BaseMessage) => {
     // If logging is enabled:
@@ -155,6 +179,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log(`[socket.io] disconnected id=${socket.id}`);
     // Handle player disconnection
     playerHandler.handleDisconnection(socket);
   });
@@ -170,5 +195,6 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Server listening on ${HOST}:${PORT}`);
+  console.log(`Allowed frontend origins: ${configuredFrontendOrigins.join(', ') || '(default local/LAN only)'}`);
   console.log(`Debug mode: ${serverDebugModeEnabled ? 'on' : 'off'}; settlement start mode: ${settlementStartMode}; spawn safety: ${spawnSafetyEnabled ? 'on' : 'off'}`);
 });

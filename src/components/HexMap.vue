@@ -186,6 +186,7 @@ import {isHitStopActive, resetGameFeelState, sampleGameFeelTime} from '../core/g
 import {addNotification} from '../store/notificationStore';
 import {
   graphicsDiagnosticOverrideStore,
+  getEffectiveMapTargetFps,
   shouldUseCanvasDropShadow,
   shouldUseWindowsRescueTimer,
 } from '../store/graphicsStore';
@@ -687,10 +688,8 @@ function cancelPendingMenu() {
   }
 }
 
-// Cap canvas rendering to the target FPS while movement simulation stays on real time.
+// Cap canvas rendering separately from simulation; rAF still limits lower-refresh displays.
 let lastDrawTime = 0;
-const TARGET_FPS = 60;
-const FRAME_INTERVAL = 1000 / TARGET_FPS;
 const FRAME_INTERVAL_TOLERANCE_MS = 0.5;
 const RESCUE_TIMER_INTERVAL_MS = 8;
 const HIDDEN_RESCUE_TIMER_INTERVAL_MS = 250;
@@ -1091,19 +1090,22 @@ function handlePointerLeaveEvent() {
 }
 
 function shouldDrawFrame(frameNowMs: number) {
+  const targetFps = getEffectiveMapTargetFps();
+  const frameInterval = 1000 / targetFps;
+
   if (lastDrawTime === 0) {
     lastDrawTime = frameNowMs;
     return true;
   }
 
   const elapsedMs = frameNowMs - lastDrawTime;
-  if (elapsedMs + FRAME_INTERVAL_TOLERANCE_MS < FRAME_INTERVAL) {
+  if (elapsedMs + FRAME_INTERVAL_TOLERANCE_MS < frameInterval) {
     return false;
   }
 
-  lastDrawTime = elapsedMs > FRAME_INTERVAL * 4
+  lastDrawTime = elapsedMs > frameInterval * 4
     ? frameNowMs
-    : lastDrawTime + FRAME_INTERVAL;
+    : lastDrawTime + frameInterval;
   return true;
 }
 
@@ -1113,11 +1115,9 @@ function drawAnimationFrame(frameNowMs = performance.now()) {
   const hitStopActive = isHitStopActive(movementNowMs);
   const cameraMoving = isCameraMoving();
 
-  // Movement must stay on wall-clock time; hit-stop only affects visual effects.
-  updateHeroMovements(movementNowMs);
-
-  // Cap rendering separately from movement updates.
+  // Movement uses wall-clock time, but only needs sampling when a visual frame is drawn.
   if (shouldDrawFrame(frameNowMs)) {
+    updateHeroMovements(movementNowMs);
     shipVisualNow.value = movementNowMs;
 
     if (!hitStopActive && lastPointerClient && !showTaskMenu.value && (isKeyboardNavigating() || cameraMoving)) {

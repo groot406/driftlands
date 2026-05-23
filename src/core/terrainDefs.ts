@@ -115,7 +115,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
         moveCost: 2.5,
         variations: [
             {key: 'chopped_forest', weight: 0, overlayAssetKey: false},
-            {key: 'young_forest', weight: 2, growth: {next: null, ageMsRange: [600000, 2000000]}, overlayAssetKey: false},
+            {key: 'young_forest', weight: 2, growth: {next: null, ageMsRange: [90000, 240000]}, overlayAssetKey: false},
             {key: 'forest_lumber_camp', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},
             {key: 'forest_sawmill', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},
             {key: 'forest_hunters_hut', weight: 0, assetKey: 'forest', overlayAssetKey: false, heroOffset: { x: 0, y: 6 }},

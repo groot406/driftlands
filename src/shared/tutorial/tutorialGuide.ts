@@ -24,6 +24,15 @@ export type TutorialStepId =
   | 'found-second-hearth'
   | 'work-harsh-frontier';
 
+export type FieldGuideTopicCategory =
+  | 'Basics'
+  | 'Settlement'
+  | 'Food'
+  | 'Logistics'
+  | 'Frontier'
+  | 'Industry'
+  | 'Progression';
+
 export interface TutorialMetrics {
   selectedHeroCount: number;
   discoveredTiles: number;
@@ -61,6 +70,15 @@ export interface TutorialSnapshot {
   completedCount: number;
   totalCount: number;
   allCompleted: boolean;
+}
+
+export interface FieldGuideTopicDefinition {
+  id: string;
+  category: FieldGuideTopicCategory;
+  title: string;
+  summary: string;
+  cues: string[];
+  relatedStepIds?: TutorialStepId[];
 }
 
 interface TutorialStepDefinition {
@@ -151,6 +169,236 @@ const PRODUCTION_BUILDINGS = [
   'quarry',
   'oven',
   'workshop',
+];
+
+const fieldGuideTopics: FieldGuideTopicDefinition[] = [
+  {
+    id: 'heroes-and-orders',
+    category: 'Basics',
+    title: 'Heroes and orders',
+    summary: 'Heroes do the direct tile work: scouting, chopping, digging, hunting, building, mining, and emergency fixes.',
+    cues: [
+      'Select a hero before choosing a tile order.',
+      'Put multiple heroes on the same urgent task when speed matters.',
+      'Settlers take over repeated work once a job site exists.',
+    ],
+    relatedStepIds: ['select-hero', 'gather-wood'],
+  },
+  {
+    id: 'exploration',
+    category: 'Frontier',
+    title: 'Exploration',
+    summary: 'The world is procedural, so scouting is how the colony finds forests, shorelines, fields, ridges, and harsh late terrain.',
+    cues: [
+      'Click dark edge tiles to reveal the next ring.',
+      'If the terrain you need is missing, scout around similar ground and keep another progression lane moving.',
+      'Watchtowers and later town centers make distant discoveries easier to hold.',
+    ],
+    relatedStepIds: ['scout-frontier', 'secure-perimeter', 'work-harsh-frontier'],
+  },
+  {
+    id: 'resources-and-storage',
+    category: 'Settlement',
+    title: 'Resources and storage',
+    summary: 'Wood, food, crops, stone, ore, tools, and special goods all flow through colony storage before buildings or settlers can use them.',
+    cues: [
+      'Construction waits when storage is missing a required resource.',
+      'Dedicated storehouses and depots keep bigger settlements from bottlenecking at the town center.',
+      'Open resource details to see production, demand, downtime, and repair pressure.',
+    ],
+    relatedStepIds: ['gather-wood', 'build-storage', 'stage-logistics'],
+  },
+  {
+    id: 'housing-and-population',
+    category: 'Settlement',
+    title: 'Housing and population',
+    summary: 'Population grows when there are beds and food. More settlers unlock support, job sites, and deeper progression.',
+    cues: [
+      'Build houses before you expect new settlers.',
+      'Keep food stocked or population pressure will rise.',
+      'Population support determines how much frontier can stay active.',
+    ],
+    relatedStepIds: ['raise-house', 'grow-population', 'stabilize-colony'],
+  },
+  {
+    id: 'active-support',
+    category: 'Settlement',
+    title: 'Active support',
+    summary: 'Discovered tiles need enough population support to stay usable. Overexpansion can leave outer work sites inactive.',
+    cues: [
+      'If tiles go inactive, grow population or restore from adjacent active ground.',
+      'Do not scout much farther than your support can hold.',
+      'Town centers, watchtowers, and logistics help stabilize wider borders.',
+    ],
+    relatedStepIds: ['stabilize-colony', 'stage-logistics'],
+  },
+  {
+    id: 'roads-and-reach',
+    category: 'Logistics',
+    title: 'Roads and reach',
+    summary: 'Roads make repeated travel less painful, while reach determines where the colony can build and restore safely.',
+    cues: [
+      'Start roads from the town center or another connected road.',
+      'Use roads between houses, storage, and busy job sites.',
+      'Use watchtowers when terrain exists but sits just beyond reliable reach.',
+    ],
+    relatedStepIds: ['lay-road', 'secure-perimeter', 'stage-logistics'],
+  },
+  {
+    id: 'building-placement',
+    category: 'Settlement',
+    title: 'Building placement',
+    summary: 'Buildings block movement and many production sites care about nearby terrain, so placement is part of the puzzle.',
+    cues: [
+      'Leave paths around the town center.',
+      'Place job sites near houses and storage when possible.',
+      'Build terrain-specific sites on the terrain they ask for: docks on water, mines on ridges, granaries on grain.',
+    ],
+    relatedStepIds: ['raise-house', 'build-dock', 'mine-ridges'],
+  },
+  {
+    id: 'early-food-routes',
+    category: 'Food',
+    title: 'Early food routes',
+    summary: 'The first stable food source adapts to the landing: docks for shorelines, hunting for woodland, and planted groves for open fields.',
+    cues: [
+      'Use docks when reachable water appears.',
+      'Use hunting and hunter huts when forest is easier than shoreline.',
+      'On open starts, plant trees first so a local food route can exist.',
+    ],
+    relatedStepIds: ['build-dock', 'grow-population'],
+  },
+  {
+    id: 'farming-and-irrigation',
+    category: 'Food',
+    title: 'Farming and irrigation',
+    summary: 'Farming moves the colony from emergency food into repeatable crop chains: dig, prepare, seed, grow, harvest.',
+    cues: [
+      'Water-adjacent plots are easiest early.',
+      'Wells and irrigation make inland farming reliable.',
+      'Grain leads to granaries, bakeries, bread, and later brewing.',
+    ],
+    relatedStepIds: ['start-farming', 'irrigate-fields', 'build-storage'],
+  },
+  {
+    id: 'job-sites',
+    category: 'Food',
+    title: 'Job sites and settlers',
+    summary: 'Job sites are staffed buildings that turn repeated hero work into automatic colony production.',
+    cues: [
+      'Assign enough workers to production buildings.',
+      'Low happiness, long travel, missing input, or full output storage can create downtime.',
+      'Use resource details to spot why a site is not producing.',
+    ],
+    relatedStepIds: ['run-job-sites', 'stage-logistics'],
+  },
+  {
+    id: 'logistics',
+    category: 'Logistics',
+    title: 'Depots and hauling',
+    summary: 'Depots and storehouses stage materials near the work front so distant construction does not depend on a long walk home.',
+    cues: [
+      'Build depots before a far work front gets busy.',
+      'Pair depots with roads when possible.',
+      'Specialized storage keeps crops, food, materials, and crafted goods easier to manage.',
+    ],
+    relatedStepIds: ['build-storage', 'stage-logistics'],
+  },
+  {
+    id: 'repairs-and-maintenance',
+    category: 'Settlement',
+    title: 'Repairs and maintenance',
+    summary: 'Buildings wear down, pause, or lose efficiency when the colony cannot keep repair stock and workers moving.',
+    cues: [
+      'Keep wood and stone in storage before the settlement grows wide.',
+      'Offline or paused job sites usually need repairs, workers, input resources, or storage room.',
+      'Use nearby roads and depots so repair pressure does not strand distant buildings.',
+    ],
+    relatedStepIds: ['build-storage', 'stage-logistics'],
+  },
+  {
+    id: 'mining-and-tools',
+    category: 'Industry',
+    title: 'Mining and tools',
+    summary: 'Ridges unlock stone, ore, quarries, mines, workshops, tools, and the first serious expansion projects.',
+    cues: [
+      'If mountains are hard to find, keep scouting while strengthening food, roads, and storage.',
+      'Quarries help with stone; mines feed ore and toolmaking.',
+      'Tools are the bridge to advanced construction and new town centers.',
+    ],
+    relatedStepIds: ['mine-ridges', 'study-and-upgrade', 'found-second-hearth'],
+  },
+  {
+    id: 'harbor-orders',
+    category: 'Logistics',
+    title: 'Harbors and ship orders',
+    summary: 'Harbors turn surplus resources into timed cargo orders, trade goods, and Gold for the wider economy.',
+    cues: [
+      'Build a harbor beside a large water body once logistics and tools can support it.',
+      'Load only what the colony can spare before the ship leaves.',
+      'Partial orders still pay, while complete orders pay better and bring more trade goods.',
+    ],
+    relatedStepIds: ['stage-logistics'],
+  },
+  {
+    id: 'market-and-trade',
+    category: 'Logistics',
+    title: 'Market and trade',
+    summary: 'Trade Centers open resource exchange so a strong surplus can cover a weak local terrain route.',
+    cues: [
+      'Sell surplus goods to earn Gold before buying scarce ore, stone, food, or specialty goods.',
+      'Market stock and prices change, so buying everything is expensive and unreliable.',
+      'Use trade as a backup lane, not a replacement for a working local economy.',
+    ],
+    relatedStepIds: ['stage-logistics', 'study-and-upgrade'],
+  },
+  {
+    id: 'studies-and-upgrades',
+    category: 'Progression',
+    title: 'Studies and upgrades',
+    summary: 'Libraries, workshops, studies, and upgrades deepen the buildings you already have instead of only adding new ones.',
+    cues: [
+      'Use studies to unlock colony knowledge.',
+      'Use stone, glass, tools, and industry outputs to improve infrastructure.',
+      'Upgrades usually appear on eligible existing buildings.',
+    ],
+    relatedStepIds: ['study-and-upgrade'],
+  },
+  {
+    id: 'calamities',
+    category: 'Frontier',
+    title: 'Calamities',
+    summary: 'Fires, spoilage, sickness, and harsh events test whether the settlement has reserves instead of only perfect plans.',
+    cues: [
+      'Warnings are a signal to stock food, repair materials, and active support.',
+      'Do not let one specialized food chain become the whole colony diet.',
+      'Recovery is faster when roads, storage, and job sites are already close to the trouble spot.',
+    ],
+    relatedStepIds: ['stabilize-colony', 'work-harsh-frontier'],
+  },
+  {
+    id: 'story-and-roadmap',
+    category: 'Progression',
+    title: 'Story and roadmap',
+    summary: 'Story chapters explain the colony stakes, while the roadmap shows the exact milestone blocking the next unlock.',
+    cues: [
+      'Read the Chronicle when you want the current chapter goal in plain language.',
+      'Use the roadmap for exact requirements and unlock previews.',
+      'The guide gives immediate next actions; the roadmap gives the wider plan.',
+    ],
+  },
+  {
+    id: 'harsh-frontier',
+    category: 'Frontier',
+    title: 'Harsh frontier',
+    summary: 'Snow, desert, and volcanic ground are late checks on the whole settlement loop: food, reach, roads, logistics, industry, and recovery.',
+    cues: [
+      'Push harsh terrain after the core economy is stable.',
+      'Use depots and roads before sending long projects outward.',
+      'If one route is slow, keep working another roadmap lane until the frontier opens.',
+    ],
+    relatedStepIds: ['work-harsh-frontier'],
+  },
 ];
 
 const tutorialSteps: TutorialStepDefinition[] = [
@@ -483,6 +731,14 @@ const tutorialSteps: TutorialStepDefinition[] = [
 
 export function getTutorialStepDefinitions() {
   return tutorialSteps.slice();
+}
+
+export function getFieldGuideTopicDefinitions() {
+  return fieldGuideTopics.map((topic) => ({
+    ...topic,
+    cues: topic.cues.slice(),
+    relatedStepIds: topic.relatedStepIds?.slice(),
+  }));
 }
 
 export function evaluateTutorial(metrics: TutorialMetrics): TutorialSnapshot {

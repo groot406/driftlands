@@ -217,7 +217,7 @@ function computeReachTileIdsFromTownCenters(
             if (activatedWatchtowers.has(watchtower.id)) continue;
             if (!reachSet.has(watchtower.id)) continue;
             if (!canActivateWatchtower(watchtower)) continue;
-            if (!settlementId || watchtower.ownerSettlementId !== settlementId) {
+            if (!settlementCanClaimTile(watchtower, settlementId)) {
                 continue;
             }
 
@@ -959,20 +959,15 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
 export function computeControlledTileIds() {
     const allReach = new Set<string>();
     const townCenters = getTownCenters();
-    const townCentersBySettlementId = buildTownCentersBySettlementId(townCenters);
 
-    // Use recalculate logic to ensure non-overlap
-    const staticReachBySettlementId = new Map<string, Set<string>>();
-    for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
-        staticReachBySettlementId.set(
-            settlementId,
-            computeSettlementReachFromTownCenters(settlementTownCenters, settlementId, () => true, false),
-        );
-    }
-    for (const tile of getOwnedDiscoveredTiles()) {
-        const ownerSettlementId = chooseOwnerSettlement(tile, staticReachBySettlementId, townCenters);
-        if (ownerSettlementId) {
-            allReach.add(tile.id);
+    for (const townCenter of townCenters) {
+        const settlementId = getTownCenterSettlementId(townCenter);
+        if (!settlementId) {
+            continue;
+        }
+
+        for (const tileId of computeControlledTileIdsForSettlement(settlementId)) {
+            allReach.add(tileId);
         }
     }
 

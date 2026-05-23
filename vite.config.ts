@@ -13,7 +13,7 @@ const backendProxy: Record<string, ProxyOptions> = {
     ws: true,
     configure(proxy) {
       proxy.on('proxyReq', (proxyReq) => {
-        proxyReq.setHeader('origin', socketServerUrl)
+        proxyReq.removeHeader('origin')
       })
     },
   },

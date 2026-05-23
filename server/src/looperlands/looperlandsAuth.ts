@@ -5,6 +5,7 @@ import {
   normalizeWalletAddress,
   toLooperHeroSelection,
 } from '../../../src/shared/looperlands';
+import { parseBooleanEnv } from '../config/serverMode';
 
 export interface ValidatedLooperlandsJoin {
   playerId: string;
@@ -30,7 +31,7 @@ export function getLooperlandsWeb3Url(): string {
 }
 
 export function isLooperlandsAuthRequired(): boolean {
-  return process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH === '1' || !!getLooperlandsApiUrl();
+  return parseBooleanEnv(process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH, true);
 }
 
 function assertWalletShape(auth: LooperlandsJoinAuth): void {

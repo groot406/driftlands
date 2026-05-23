@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    getEffectiveMapTargetFps,
+    shouldUseAmbientParticles,
     shouldUseBrowserLightRendering,
     shouldUseDesynchronizedCanvas,
     shouldUseWindowsPresentationSafeMode,
@@ -40,6 +42,7 @@ test('Windows Chrome uses presentation-safe rendering defaults', () => {
             assert.equal(shouldUseWindowsPresentationSafeMode(), true);
             assert.equal(shouldUseBrowserLightRendering(), true);
             assert.equal(shouldUseDesynchronizedCanvas(), false);
+            assert.equal(shouldUseAmbientParticles(), false);
         },
     );
 });
@@ -64,6 +67,11 @@ test('non-Windows Chromium keeps desynchronized canvas enabled', () => {
             assert.equal(shouldUseWindowsPresentationSafeMode(), false);
             assert.equal(shouldUseBrowserLightRendering(), false);
             assert.equal(shouldUseDesynchronizedCanvas(), true);
+            assert.equal(shouldUseAmbientParticles(), true);
         },
     );
+});
+
+test('map renderer targets 60 fps', () => {
+    assert.equal(getEffectiveMapTargetFps(), 60);
 });

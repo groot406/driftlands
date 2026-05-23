@@ -177,12 +177,20 @@ export function shouldUseParticleGlowPass() {
     return !shouldUseSafariLightRendering();
 }
 
+export function shouldUseAmbientParticles() {
+    return !shouldUseBrowserLightRendering();
+}
+
 export function shouldUseDesynchronizedCanvas() {
     return resolveDiagnosticBooleanOverride('desynchronizedCanvas', !shouldUseWindowsPresentationSafeMode());
 }
 
 export function shouldUseWindowsRescueTimer() {
     return resolveDiagnosticBooleanOverride('rescueTimer', shouldUseWindowsPresentationSafeMode());
+}
+
+export function getEffectiveMapTargetFps() {
+    return 60;
 }
 
 export function getEffectiveCanvasDpr() {

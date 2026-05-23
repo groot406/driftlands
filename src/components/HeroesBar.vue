@@ -218,8 +218,23 @@ const scoutResourceColors: Record<ScoutTargetType, string> = {
   snow: '#dbeafe',
 };
 
+function buildHeroSources(): Record<string, string> {
+  const heroImageModules = import.meta.glob('../assets/heroes/*.png', { eager: true });
+  const sources: Record<string, string> = {};
+  for (const path in heroImageModules) {
+    const mod = heroImageModules[path] as { default?: string } | string;
+    const url = typeof mod === 'string' ? mod : mod.default;
+    const nameMatch = path.match(/([^/]+)\.png$/);
+    if (!url || !nameMatch) continue;
+    sources[nameMatch[1]!] = url;
+  }
+  return sources;
+}
+
+const heroSpriteSources = buildHeroSources();
+
 function heroSprite(hero: Hero): string {
-  return hero.avatarSpriteUrl ?? `src/assets/heroes/${hero.avatar}.png`;
+  return hero.avatarSpriteUrl ?? heroSpriteSources[hero.avatar] ?? heroSpriteSources.boy ?? '';
 }
 
 function isLooperHero(hero: Hero): boolean {

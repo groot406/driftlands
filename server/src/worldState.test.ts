@@ -86,13 +86,12 @@ test('worldState.init uses the provided seed and resets hero/task state', async 
 
     await worldState.init(42);
 
-    assert.equal(runState.getSnapshot()?.seed, 42);
+    assert.equal(runState.getSnapshot(), null);
+    assert.equal(worldState.getSeed(), 42);
     assert.equal(getWorldGenerationSeed(), 42);
     assert.equal(taskStore.tasks.length, 0);
-    assert.ok(heroes.length > 0);
+    assert.equal(heroes.length, 0);
     assert.equal(settlers.length, 0);
-    assert.ok(heroes.every((hero) => hero.q === 0 && hero.r === 0));
-    assert.ok(heroes.every((hero) => !hero.currentTaskId && !hero.pendingTask && !hero.carryingPayload));
   } finally {
     if (originalEnvSeed === undefined) {
       delete process.env.SERVER_SEED;
@@ -113,7 +112,8 @@ test('worldState.init rolls a random seed when no seed is provided', async () =>
 
     await worldState.init();
 
-    assert.equal(runState.getSnapshot()?.seed, 0x80000000);
+    assert.equal(runState.getSnapshot(), null);
+    assert.equal(worldState.getSeed(), 0x80000000);
     assert.equal(getWorldGenerationSeed(), 0x80000000);
   } finally {
     Math.random = originalRandom;
@@ -130,11 +130,11 @@ test('worldState.init respects the requested world radius', async () => {
 
   await worldState.init(42, 3);
 
-  const discoveredTiles = tiles.filter((tile) => tile.discovered);
-  const discoveredRings = discoveredTiles.map((tile) => hexDistance(tile.q, tile.r));
+  const generatedRings = tiles.map((tile) => hexDistance(tile.q, tile.r));
 
-  assert.equal(Math.max(...discoveredRings), 3);
-  assert.equal(discoveredTiles.length, 37);
+  assert.equal(tiles.filter((tile) => tile.discovered).length, 0);
+  assert.equal(Math.max(...generatedRings), 4);
+  assert.equal(tiles.length, 61);
 });
 
 test('worldState.init clamps oversized debug world radius', async () => {
@@ -142,11 +142,11 @@ test('worldState.init clamps oversized debug world radius', async () => {
 
   await worldState.init(42, 999);
 
-  const discoveredTiles = tiles.filter((tile) => tile.discovered);
-  const discoveredRings = discoveredTiles.map((tile) => hexDistance(tile.q, tile.r));
+  const generatedRings = tiles.map((tile) => hexDistance(tile.q, tile.r));
 
-  assert.equal(Math.max(...discoveredRings), 64);
-  assert.equal(discoveredTiles.length, 12481);
+  assert.equal(tiles.filter((tile) => tile.discovered).length, 0);
+  assert.equal(Math.max(...generatedRings), 65);
+  assert.equal(tiles.length, 12871);
 });
 
 test('worldState.foundSettlementAt reveals a landing, creates a town center, and stocks it', async () => {
@@ -162,7 +162,7 @@ test('worldState.foundSettlementAt reveals a landing, creates a town center, and
   assert.equal(getStorageResourceAmount('18,-4', 'bread'), 4);
   assert.equal(getStorageResourceAmount('18,-4', 'fish'), 4);
   assert.equal(getStorageResourceAmount('18,-4', 'meat'), 4);
-  assert.equal(getPopulationSnapshot().max, 30);
+  assert.equal(getPopulationSnapshot().max, 15);
 
   const revealedLandingTiles = tiles.filter((tile) => (
     tile.discovered && axialDistanceCoords(tile.q, tile.r, 18, -4) <= 3
@@ -264,6 +264,8 @@ test('worldState.foundSettlementAt uses selected starter heroes as story dialogu
 
   const run = runState.getSnapshotForSettlement(founded.settlementId);
   assert.ok(run);
+  assert.ok(run.objectives.length > 0);
+  assert.ok(run.objectives.every((objective) => objective.required));
 
   const speakerNames = new Set(run.dialogue.entries.map((entry) => entry.speaker.name));
   assert.ok(speakerNames.size > 0);

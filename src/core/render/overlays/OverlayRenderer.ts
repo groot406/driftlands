@@ -52,6 +52,10 @@ interface RenderFrameLike {
     effectNowMs: number;
     movementNowMs: number;
     visibleTiles: Tile[];
+    surfaceContent?: {
+        overlayUnderlay?: boolean;
+        overlayTop: boolean;
+    };
 }
 
 interface OverlayRendererDependencies {
@@ -90,11 +94,16 @@ interface OverlayRendererDependencies {
         nowMs: number,
         applyCameraFade: boolean,
     ): void;
+    hasGameplayWorldImpacts(nowMs: number): boolean;
     drawGrowthTileMotion(
         ctx: CanvasRenderingContext2D,
         tiles: Tile[],
         nowMs: number,
     ): void;
+    hasGrowthTileMotion(
+        tiles: Tile[],
+        nowMs: number,
+    ): boolean;
     drawReachOutline(
         ctx: CanvasRenderingContext2D,
         boundary: Array<{ q: number; r: number }>,
@@ -121,15 +130,46 @@ interface OverlayRendererDependencies {
     isHeroWalking(hero: Hero, now: number): boolean;
 }
 
+interface TileOverlayActivity {
+    leadingTask: TaskInstance | null;
+    scoutProgress: number | null;
+}
+
+interface TileTaskState {
+    incompleteTasks: TaskInstance[];
+    leadingTask: TaskInstance | null;
+}
+
+interface OverlayFrameSummary {
+    activeTilesByEffectNow: Tile[];
+    progressTilesByMovementNow: Tile[];
+    taskIndicatorTiles: Tile[];
+    storageIndicatorTiles: Tile[];
+}
+
 export class OverlayRenderer {
+    private hadUnderlayContent = false;
+    private hadTopContent = false;
+    private cachedFrame: RenderFrameLike | null = null;
+    private cachedSummaryFrame: RenderFrameLike | null = null;
+    private cachedSummaryOptions: DrawOptionsLike | null = null;
+    private cachedSummaryDeps: OverlayRendererDependencies | null = null;
+    private cachedSummary: OverlayFrameSummary | null = null;
+    private tileActivityCache = new Map<string, TileOverlayActivity>();
+    private tileTaskCache = new Map<string, TileTaskState>();
+    private scoutProgressByNowMsCache = new Map<number, Map<string, number>>();
+    private topOverlayCacheKey = '';
+
     renderLayers(
         context: RenderPassContext,
         frame: RenderFrameLike,
         opts: DrawOptionsLike,
         deps: OverlayRendererDependencies,
     ) {
-        this.drawUnderlay(context, frame, opts, deps);
-        this.drawTop(context, frame, opts, deps);
+        this.prepareFrameCaches(frame);
+        const summary = this.getFrameSummary(frame, opts, deps);
+        this.drawUnderlay(context, frame, opts, deps, summary);
+        this.drawTop(context, frame, opts, deps, summary);
     }
 
     drawDepthEdgeHighlights(
@@ -138,11 +178,13 @@ export class OverlayRenderer {
         opts: DrawOptionsLike,
         deps: OverlayRendererDependencies,
     ) {
+        this.prepareFrameCaches(frame);
+        const summary = this.getFrameSummary(frame, opts, deps);
         this.drawPathTopHighlights(ctx, frame, opts, deps);
         this.drawStoryHintHighlights(ctx, opts.storyHintTiles ?? [], frame.effectNowMs, deps, false);
         this.drawScoutedTopHighlights(ctx, frame.visibleTiles, opts, deps);
         this.drawInteractiveTopHighlights(ctx, frame, opts, deps);
-        this.drawActiveTaskHighlights(ctx, frame.visibleTiles, frame.effectNowMs, deps);
+        this.drawActiveTaskHighlights(ctx, summary.activeTilesByEffectNow, frame.effectNowMs, deps);
     }
 
     private drawUnderlay(
@@ -150,6 +192,7 @@ export class OverlayRenderer {
         frame: RenderFrameLike,
         opts: DrawOptionsLike,
         deps: OverlayRendererDependencies,
+        summary: OverlayFrameSummary,
     ) {
         const underlay = context.overlayUnderlaySurface;
         if (!underlay || !deps.canvas) return;
@@ -159,6 +202,22 @@ export class OverlayRenderer {
         const translateX = cx - camPx.x;
         const translateY = cy - camPx.y;
 
+        if (!this.hasUnderlayContent(frame, opts, deps, summary)) {
+            if (this.hadUnderlayContent) {
+                underlay.ctx.clearRect(0, 0, underlay.canvas.width, underlay.canvas.height);
+            }
+            this.hadUnderlayContent = false;
+            if (frame.surfaceContent) {
+                frame.surfaceContent.overlayUnderlay = false;
+            }
+            return;
+        }
+
+        this.hadUnderlayContent = true;
+        if (frame.surfaceContent) {
+            frame.surfaceContent.overlayUnderlay = true;
+        }
+
         underlay.ctx.clearRect(0, 0, underlay.canvas.width, underlay.canvas.height);
         underlay.ctx.save();
         underlay.ctx.scale(deps.dpr, deps.dpr);
@@ -167,7 +226,7 @@ export class OverlayRenderer {
         deps.drawGameplayWorldImpacts(underlay.ctx, frame.effectNowMs, false);
         deps.drawSupportOverlay(underlay.ctx, frame.visibleTiles, false, opts.showSupportOverlay === true);
         deps.drawGrowthTileMotion(underlay.ctx, frame.visibleTiles, frame.effectNowMs);
-        this.drawActiveTaskHighlights(underlay.ctx, frame.visibleTiles, frame.effectNowMs, deps);
+        this.drawActiveTaskHighlights(underlay.ctx, summary.activeTilesByEffectNow, frame.effectNowMs, deps);
         this.drawStoryHintHighlights(underlay.ctx, opts.storyHintTiles ?? [], frame.effectNowMs, deps);
 
         const selectedHero = selectedHeroId.value ? heroes.find((hero) => hero.id === selectedHeroId.value) || null : null;
@@ -314,11 +373,32 @@ export class OverlayRenderer {
         underlay.ctx.restore();
     }
 
+    private hasUnderlayContent(
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+        summary: OverlayFrameSummary,
+    ) {
+        if (deps.hasGameplayWorldImpacts(frame.effectNowMs)) return true;
+        if (opts.showSupportOverlay === true) return true;
+        if (deps.hasGrowthTileMotion(frame.visibleTiles, frame.effectNowMs)) return true;
+        if (summary.activeTilesByEffectNow.length > 0) return true;
+        if ((opts.storyHintTiles?.length ?? 0) > 0) return true;
+        if (opts.pathCoords.length > 0) return true;
+        if (opts.hoveredTile) return true;
+        if (opts.taskMenuTile) return true;
+        if ((opts.clusterBoundaryTiles?.length ?? 0) > 0) return true;
+
+        const selectedHero = selectedHeroId.value ? heroes.find((hero) => hero.id === selectedHeroId.value) || null : null;
+        return !!selectedHero?.movement;
+    }
+
     private drawTop(
         context: RenderPassContext,
         frame: RenderFrameLike,
         opts: DrawOptionsLike,
         deps: OverlayRendererDependencies,
+        summary: OverlayFrameSummary,
     ) {
         const overlay = context.overlayTopSurface;
         if (!overlay || !deps.canvas) return;
@@ -328,6 +408,29 @@ export class OverlayRenderer {
         const translateX = cx - camPx.x;
         const translateY = cy - camPx.y;
 
+        if (!this.hasTopOverlayContent(opts, summary)) {
+            if (this.hadTopContent) {
+                overlay.ctx.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
+            }
+            this.hadTopContent = false;
+            this.topOverlayCacheKey = '';
+            if (frame.surfaceContent) {
+                frame.surfaceContent.overlayTop = false;
+            }
+            return;
+        }
+
+        this.hadTopContent = true;
+        if (frame.surfaceContent) {
+            frame.surfaceContent.overlayTop = true;
+        }
+
+        const topOverlayCacheKey = this.getReusableTopOverlayCacheKey(context, frame, opts, summary);
+        if (topOverlayCacheKey && this.topOverlayCacheKey === topOverlayCacheKey) {
+            return;
+        }
+
+        this.topOverlayCacheKey = topOverlayCacheKey;
         overlay.ctx.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
         overlay.ctx.save();
         overlay.ctx.scale(deps.dpr, deps.dpr);
@@ -357,9 +460,110 @@ export class OverlayRenderer {
             );
         }
 
-        this.drawTaskProgressBars(overlay.ctx, frame.visibleTiles, frame.movementNowMs, deps);
-        this.drawTaskIndicators(overlay.ctx, frame.visibleTiles, false, opts.hoveredTile, deps);
+        this.drawTaskProgressBars(overlay.ctx, summary.progressTilesByMovementNow, frame.movementNowMs, deps);
+        this.drawTaskIndicators(
+            overlay.ctx,
+            summary.taskIndicatorTiles,
+            summary.storageIndicatorTiles,
+            false,
+            opts.hoveredTile,
+            deps,
+        );
         overlay.ctx.restore();
+    }
+
+    private hasTopOverlayContent(
+        opts: DrawOptionsLike,
+        summary: OverlayFrameSummary,
+    ) {
+        if (opts.settlementReachOutlines?.length || opts.globalReachBoundary?.length) {
+            return true;
+        }
+
+        return summary.progressTilesByMovementNow.length > 0
+            || summary.taskIndicatorTiles.length > 0
+            || summary.storageIndicatorTiles.length > 0;
+    }
+
+    private getReusableTopOverlayCacheKey(
+        context: RenderPassContext,
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        summary: OverlayFrameSummary,
+    ) {
+        if (summary.progressTilesByMovementNow.length > 0 || summary.storageIndicatorTiles.length > 0) {
+            return '';
+        }
+
+        const overlay = context.overlayTopSurface;
+        if (!overlay) {
+            return '';
+        }
+
+        return [
+            overlay.canvas.width,
+            overlay.canvas.height,
+            context.viewport.dpr,
+            context.viewport.cameraX,
+            context.viewport.cameraY,
+            context.viewport.cameraQ,
+            context.viewport.cameraR,
+            context.viewport.zoom,
+            context.viewport.roll,
+            context.viewport.offsetX,
+            context.viewport.offsetY,
+            context.scene.frameInfo.worldRenderVersion,
+            frame.cameraFx.offsetX,
+            frame.cameraFx.offsetY,
+            frame.cameraFx.roll,
+            frame.cameraFx.zoom,
+            this.getReachOverlayCacheKey(opts),
+            this.getTaskIndicatorCacheKey(summary.taskIndicatorTiles),
+        ].join(':');
+    }
+
+    private getReachOverlayCacheKey(opts: DrawOptionsLike) {
+        if (opts.settlementReachOutlines?.length) {
+            return opts.settlementReachOutlines
+                .map((outline) => [
+                    outline.color ?? '',
+                    outline.isOwn ? 1 : 0,
+                    outline.dashed ? 1 : 0,
+                    outline.boundary.map((point) => `${point.q},${point.r}`).join(';'),
+                    [...outline.tileIds].sort().join(';'),
+                ].join(','))
+                .join('|');
+        }
+
+        if (opts.globalReachBoundary?.length) {
+            return [
+                opts.globalReachColor ?? '',
+                opts.globalReachDashed ? 1 : 0,
+                opts.globalReachBoundary.map((point) => `${point.q},${point.r}`).join(';'),
+                [...(opts.globalReachTileIds ?? new Set<string>())].sort().join(';'),
+            ].join(',');
+        }
+
+        return '';
+    }
+
+    private getTaskIndicatorCacheKey(tiles: Tile[]) {
+        return tiles
+            .map((tile) => {
+                const taskState = this.getTileTaskState(tile);
+                return [
+                    tile.id,
+                    tile.q,
+                    tile.r,
+                    taskState.incompleteTasks.map((task) => [
+                        task.id,
+                        task.type,
+                        task.requiredResources?.map((resource) => `${resource.type}:${resource.amount}`).join(';') ?? '',
+                        task.collectedResources?.map((resource) => `${resource.type}:${resource.amount}`).join(';') ?? '',
+                    ].join('/')).join(','),
+                ].join('@');
+            })
+            .join('|');
     }
 
     private drawScoutedTopHighlights(
@@ -517,8 +721,9 @@ export class OverlayRenderer {
         deps: OverlayRendererDependencies,
     ) {
         for (const tile of tiles) {
-            const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            const scoutProgress = this.getScoutScanProgressForTile(tile, nowMs);
+            const activity = this.getTileOverlayActivity(tile, nowMs);
+            const chosenTask = activity.leadingTask;
+            const scoutProgress = activity.scoutProgress;
             if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
@@ -542,8 +747,9 @@ export class OverlayRenderer {
         deps: OverlayRendererDependencies,
     ) {
         for (const tile of tiles) {
-            const chosenTask = this.getLeadingIncompleteTaskForTile(tile);
-            const scoutProgress = this.getScoutScanProgressForTile(tile, nowMs);
+            const activity = this.getTileOverlayActivity(tile, nowMs);
+            const chosenTask = activity.leadingTask;
+            const scoutProgress = activity.scoutProgress;
             if (!chosenTask && scoutProgress === null) continue;
 
             const dist = hexDistance(camera, tile);
@@ -562,15 +768,57 @@ export class OverlayRenderer {
         }
     }
 
-    private getLeadingIncompleteTaskForTile(tile: Tile): TaskInstance | null {
-        const activeTasksForTile = taskStore.tasksByTile[tile.id];
-        if (!activeTasksForTile) return null;
+    private getTileOverlayActivity(tile: Tile, nowMs: number): TileOverlayActivity {
+        const cacheKey = `${tile.id}:${nowMs}`;
+        const cached = this.tileActivityCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
 
-        let chosenTask: TaskInstance | null = null;
+        const taskState = this.getTileTaskState(tile);
+        const activity: TileOverlayActivity = {
+            leadingTask: taskState.leadingTask,
+            scoutProgress: this.getScoutScanProgressForTile(tile, nowMs),
+        };
+        this.tileActivityCache.set(cacheKey, activity);
+        return activity;
+    }
+
+    private getTileTaskState(tile: Tile): TileTaskState {
+        const cached = this.tileTaskCache.get(tile.id);
+        if (cached) {
+            return cached;
+        }
+
+        const incompleteTasks = this.getIncompleteTasksForTile(tile);
+        const taskState: TileTaskState = {
+            incompleteTasks,
+            leadingTask: this.getLeadingIncompleteTask(incompleteTasks),
+        };
+        this.tileTaskCache.set(tile.id, taskState);
+        return taskState;
+    }
+
+    private getIncompleteTasksForTile(tile: Tile): TaskInstance[] {
+        const activeTasksForTile = taskStore.tasksByTile[tile.id];
+        if (!activeTasksForTile) return [];
+
+        const incompleteTasks: TaskInstance[] = [];
         for (const taskId of Object.values(activeTasksForTile)) {
             const inst = taskStore.taskIndex[taskId];
-            if (!inst || inst.completedMs) continue;
+            if (!inst || inst.completedMs) {
+                continue;
+            }
 
+            incompleteTasks.push(inst);
+        }
+
+        return incompleteTasks;
+    }
+
+    private getLeadingIncompleteTask(tasks: TaskInstance[]): TaskInstance | null {
+        let chosenTask: TaskInstance | null = null;
+        for (const inst of tasks) {
             const ratio = inst.requiredXp > 0 ? (inst.progressXp / inst.requiredXp) : 0;
             if (!chosenTask) {
                 chosenTask = inst;
@@ -586,19 +834,127 @@ export class OverlayRenderer {
         return chosenTask;
     }
 
-    private getScoutScanProgressForTile(tile: Tile, nowMs: number = Date.now()) {
-        let bestProgress: number | null = null;
+    private clearFrameCaches() {
+        this.tileActivityCache.clear();
+        this.tileTaskCache.clear();
+        this.scoutProgressByNowMsCache.clear();
+        this.cachedSummaryFrame = null;
+        this.cachedSummaryOptions = null;
+        this.cachedSummaryDeps = null;
+        this.cachedSummary = null;
+    }
 
+    private prepareFrameCaches(frame: RenderFrameLike) {
+        if (this.cachedFrame === frame) {
+            return;
+        }
+
+        this.cachedFrame = frame;
+        this.clearFrameCaches();
+    }
+
+    private getFrameSummary(
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ) {
+        if (
+            this.cachedSummary
+            && this.cachedSummaryFrame === frame
+            && this.cachedSummaryOptions === opts
+            && this.cachedSummaryDeps === deps
+        ) {
+            return this.cachedSummary;
+        }
+
+        const summary = this.buildFrameSummary(frame, opts, deps);
+        this.cachedSummaryFrame = frame;
+        this.cachedSummaryOptions = opts;
+        this.cachedSummaryDeps = deps;
+        this.cachedSummary = summary;
+        return summary;
+    }
+
+    private buildFrameSummary(
+        frame: RenderFrameLike,
+        opts: DrawOptionsLike,
+        deps: OverlayRendererDependencies,
+    ): OverlayFrameSummary {
+        const activeTilesByEffectNow: Tile[] = [];
+        const progressTilesByMovementNow: Tile[] = [];
+        const taskIndicatorTiles: Tile[] = [];
+        const storageIndicatorTiles: Tile[] = [];
+
+        for (const tile of frame.visibleTiles) {
+            const taskState = this.getTileTaskState(tile);
+            if (taskState.incompleteTasks.length > 0) {
+                taskIndicatorTiles.push(tile);
+            }
+
+            const effectActivity = this.getTileOverlayActivity(tile, frame.effectNowMs);
+            if (effectActivity.leadingTask || effectActivity.scoutProgress !== null) {
+                activeTilesByEffectNow.push(tile);
+            }
+
+            const movementActivity = frame.movementNowMs === frame.effectNowMs
+                ? effectActivity
+                : this.getTileOverlayActivity(tile, frame.movementNowMs);
+            if (movementActivity.leadingTask || movementActivity.scoutProgress !== null) {
+                progressTilesByMovementNow.push(tile);
+            }
+
+            if (this.shouldUpdateStorageIndicator(tile, opts.hoveredTile, deps)) {
+                storageIndicatorTiles.push(tile);
+            }
+        }
+
+        return {
+            activeTilesByEffectNow,
+            progressTilesByMovementNow,
+            taskIndicatorTiles,
+            storageIndicatorTiles,
+        };
+    }
+
+    private shouldUpdateStorageIndicator(
+        tile: Tile,
+        hoveredTile: Tile | null,
+        deps: OverlayRendererDependencies,
+    ) {
+        return canUseWarehouseAtTile(tile)
+            && (
+                (hoveredTile?.id === tile.id && !!getStorageKindForTile(tile))
+                || (deps.storageIndicatorAlphaByTileId.get(tile.id) ?? 0) > 0.02
+            );
+    }
+
+    private getScoutScanProgressForTile(tile: Tile, nowMs: number = Date.now()) {
+        return this.getScoutScanProgressByTile(nowMs).get(tile.id) ?? null;
+    }
+
+    private getScoutScanProgressByTile(nowMs: number) {
+        const cached = this.scoutProgressByNowMsCache.get(nowMs);
+        if (cached) {
+            return cached;
+        }
+
+        const progressByTile = new Map<string, number>();
         for (const hero of heroes) {
-            const progress = getScoutScanProgress(hero, tile.id, nowMs);
+            const tileId = hero.scoutResourceIntent?.scanTileId;
+            if (!tileId) {
+                continue;
+            }
+
+            const progress = getScoutScanProgress(hero, tileId, nowMs);
             if (progress === null) {
                 continue;
             }
 
-            bestProgress = bestProgress === null ? progress : Math.max(bestProgress, progress);
+            progressByTile.set(tileId, Math.max(progressByTile.get(tileId) ?? 0, progress));
         }
 
-        return bestProgress;
+        this.scoutProgressByNowMsCache.set(nowMs, progressByTile);
+        return progressByTile;
     }
 
     private drawProgressBar(
@@ -669,27 +1025,24 @@ export class OverlayRenderer {
 
     private drawTaskIndicators(
         ctx: CanvasRenderingContext2D,
-        tiles: Tile[],
+        taskTiles: Tile[],
+        storageTiles: Tile[],
         applyCameraFade: boolean,
         hoveredTile: Tile | null,
         deps: OverlayRendererDependencies,
     ) {
-        for (const tile of tiles) {
+        for (const tile of storageTiles) {
             const dist = hexDistance(camera, tile);
             const opacity = deps.getTileOpacity(dist, applyCameraFade);
+            this.drawStorageIndicator(ctx, tile, opacity, hoveredTile, deps);
+        }
 
-            if (canUseWarehouseAtTile(tile)) {
-                this.drawStorageIndicator(ctx, tile, opacity, hoveredTile, deps);
-            }
-
-            const activeTasksForTile = taskStore.tasksByTile[tile.id];
-            if (activeTasksForTile) {
-                for (const taskId of Object.values(activeTasksForTile)) {
-                    const inst = taskStore.taskIndex[taskId];
-                    if (inst && !inst.completedMs) {
-                        this.drawResourceIndicator(ctx, tile, inst, opacity, deps);
-                    }
-                }
+        for (const tile of taskTiles) {
+            const dist = hexDistance(camera, tile);
+            const opacity = deps.getTileOpacity(dist, applyCameraFade);
+            const taskState = this.getTileTaskState(tile);
+            for (const inst of taskState.incompleteTasks) {
+                this.drawResourceIndicator(ctx, tile, inst, opacity, deps);
             }
         }
     }
@@ -790,7 +1143,7 @@ export class OverlayRenderer {
         const text = pendingResources
             .map((required) => {
                 const collected = task.collectedResources?.find((resource) => resource.type === required.type)?.amount || 0;
-                return `${deps.resourceIconMap[required.type] ?? '?'} ${collected}/${required.amount}`;
+                return `${deps.resourceIconMap[required.type] ?? '?'} ${this.formatResourceIndicatorAmount(collected)}/${this.formatResourceIndicatorAmount(required.amount)}`;
             })
             .join('  ');
 
@@ -813,6 +1166,10 @@ export class OverlayRenderer {
         ctx.fillStyle = '#fff6d7aa';
         ctx.fillText(text, x, y - deps.hexSize);
         ctx.restore();
+    }
+
+    private formatResourceIndicatorAmount(amount: number) {
+        return String(Math.max(0, Math.floor(Number.isFinite(amount) ? amount : 0)));
     }
 
 }

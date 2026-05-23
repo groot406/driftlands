@@ -167,8 +167,18 @@ export class HeroRenderer {
         }
 
         const radius = camera.radius + 1;
-        const layoutMap = new Map<string, Hero[]>();
+        const visibleHeroCandidates: Array<{ hero: Hero; dist: number }> = [];
         for (const hero of heroes) {
+            const dist = hexDistance(camera, hero);
+            if (dist > radius) {
+                continue;
+            }
+
+            visibleHeroCandidates.push({ hero, dist });
+        }
+
+        const layoutMap = new Map<string, Hero[]>();
+        for (const { hero } of visibleHeroCandidates) {
             const key = axialKey(hero.q, hero.r);
             let list = layoutMap.get(key);
             if (!list) {
@@ -184,12 +194,27 @@ export class HeroRenderer {
         }
         deps.setHeroLayouts(nextLayouts);
 
-        const settlerLayoutMap = new Map<string, Settler[]>();
+        const visibleSettlerCandidates: Array<{
+            settler: Settler;
+            dist: number;
+            renderCoords: { q: number; r: number };
+        }> = [];
         for (const settler of settlers) {
             if (!isSettlerVisibleOnMap(settler)) {
                 continue;
             }
+
+            const dist = hexDistance(camera, settler);
+            if (dist > radius) {
+                continue;
+            }
+
             const renderCoords = getSettlerRenderCoords(settler);
+            visibleSettlerCandidates.push({ settler, dist, renderCoords });
+        }
+
+        const settlerLayoutMap = new Map<string, Settler[]>();
+        for (const { settler, renderCoords } of visibleSettlerCandidates) {
             const key = axialKey(renderCoords.q, renderCoords.r);
             let list = settlerLayoutMap.get(key);
             if (!list) {
@@ -219,15 +244,13 @@ export class HeroRenderer {
         }> = [];
         const settlerRecords: Array<{
             settler: Settler;
+            renderCoords: { q: number; r: number };
             pos: { x: number; y: number };
             interp: { x: number; y: number };
             opacity: number;
         }> = [];
 
-        for (const hero of heroes) {
-            const dist = hexDistance(camera, hero);
-            if (dist > radius) continue;
-
+        for (const { hero, dist } of visibleHeroCandidates) {
             const img = deps.heroImages[hero.avatar];
             if (!img) continue;
 
@@ -283,19 +306,13 @@ export class HeroRenderer {
             });
         }
 
-        for (const settler of settlers) {
-            if (!isSettlerVisibleOnMap(settler)) {
-                continue;
-            }
-            const dist = hexDistance(camera, settler);
-            if (dist > radius) continue;
-
-            const renderCoords = getSettlerRenderCoords(settler);
+        for (const { settler, dist, renderCoords } of visibleSettlerCandidates) {
             const layout = settlerLayouts.get(axialKey(renderCoords.q, renderCoords.r)) || {};
             const pos = layout[settler.id] || { x: -6, y: 7 };
 
             settlerRecords.push({
                 settler,
+                renderCoords,
                 pos,
                 interp: getSettlerInterpolatedPixelPosition(settler, now),
                 opacity: deps.getActorOpacity(dist, applyCameraFade),
@@ -344,23 +361,23 @@ export class HeroRenderer {
                 ? a.ov.r
                 : a.kind === 'hero'
                     ? a.rec.hero.r
-                    : getSettlerRenderCoords(a.rec.settler).r;
+                    : a.rec.renderCoords.r;
             const br = b.kind === 'overlay'
                 ? b.ov.r
                 : b.kind === 'hero'
                     ? b.rec.hero.r
-                    : getSettlerRenderCoords(b.rec.settler).r;
+                    : b.rec.renderCoords.r;
             if (ar !== br) return ar - br;
             const aq = a.kind === 'overlay'
                 ? a.ov.q
                 : a.kind === 'hero'
                     ? a.rec.hero.q
-                    : getSettlerRenderCoords(a.rec.settler).q;
+                    : a.rec.renderCoords.q;
             const bq = b.kind === 'overlay'
                 ? b.ov.q
                 : b.kind === 'hero'
                     ? b.rec.hero.q
-                    : getSettlerRenderCoords(b.rec.settler).q;
+                    : b.rec.renderCoords.q;
             if (aq !== bq) return aq - bq;
             if (a.kind === 'overlay' && b.kind === 'overlay' && a.ov.z !== b.ov.z) return a.ov.z - b.ov.z;
             if (a.kind !== b.kind) {

@@ -26,7 +26,7 @@ import { selectedHeroId } from '../store/uiStore';
 import {heroAnimationSet, heroAnimName, resolveActivity, shouldFlip} from './heroSprite';
 import {taskStore} from '../store/taskStore';
 import { worldOuterRadius } from './world';
-import {getTextIndicators} from "./textIndicators.ts";
+import {getTextIndicators, hasTextIndicators} from "./textIndicators.ts";
 import type { PathCoord } from './PathService';
 import { OPPOSITE_SIDE, SIDE_NAMES, type Tile, type TileSide } from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
@@ -38,6 +38,7 @@ import {
     getEffectiveCanvasDpr,
     getEffectiveParticleBudget,
     graphicsStore,
+    shouldUseAmbientParticles,
     shouldUseDesynchronizedCanvas,
     shouldUseParticleGlowPass,
 } from '../store/graphicsStore';
@@ -53,6 +54,7 @@ import { getScoutScanProgress, isHeroScanningScoutResource } from '../shared/gam
 import {
     consumePendingCameraNudges,
     consumePendingTerrainBursts,
+    hasPendingTerrainBursts,
     getActiveImpactRings,
     getActiveResourceFlights,
     getActiveTileFlashes,
@@ -245,7 +247,14 @@ interface RenderFrameContext {
     stressTier: RenderStressState['tier'];
     cameraMoving: boolean;
     dirtyChunkKeys: string[];
+    discoveredTileIds: Set<string>;
     passTimingsMs: Record<string, number>;
+    surfaceContent: {
+        overlayUnderlay: boolean;
+        overlayTop: boolean;
+        particleUnderlay: boolean;
+        particleOverlay: boolean;
+    };
 }
 
 interface TileRenderState {
@@ -1001,9 +1010,11 @@ export class HexMapService {
                         drawGameplayWorldImpacts: (ctx, nowMs, applyCameraFade) => {
                             this.drawGameplayWorldImpacts(ctx, nowMs, applyCameraFade);
                         },
+                        hasGameplayWorldImpacts: (nowMs) => this.hasGameplayWorldImpacts(nowMs),
                         drawGrowthTileMotion: (ctx, tiles, nowMs) => {
                             this.drawGrowthTileMotion(ctx, tiles, nowMs);
                         },
+                        hasGrowthTileMotion: (tiles, nowMs) => this.hasGrowthTileMotion(tiles, nowMs),
                         drawReachOutline: (ctx, boundary, reachSet, alpha, hovered, color, options) => {
                             this.drawReachOutline(ctx, boundary, reachSet, alpha, hovered, color, options);
                         },
@@ -1088,9 +1099,11 @@ export class HexMapService {
                                 drawGameplayWorldImpacts: (highlightCtx, nowMs, applyCameraFade) => {
                                     this.drawGameplayWorldImpacts(highlightCtx, nowMs, applyCameraFade);
                                 },
+                                hasGameplayWorldImpacts: (nowMs) => this.hasGameplayWorldImpacts(nowMs),
                                 drawGrowthTileMotion: (highlightCtx, tiles, nowMs) => {
                                     this.drawGrowthTileMotion(highlightCtx, tiles, nowMs);
                                 },
+                                hasGrowthTileMotion: (tiles, nowMs) => this.hasGrowthTileMotion(tiles, nowMs),
                                 drawReachOutline: (highlightCtx, boundary, reachSet, alpha, hovered, color, options) => {
                                     this.drawReachOutline(highlightCtx, boundary, reachSet, alpha, hovered, color, options);
                                 },
@@ -1176,11 +1189,14 @@ export class HexMapService {
                         toRgba: (color, alpha) => this.toRgba(color, alpha),
                         resetParticles: (now) => this.resetParticles(now),
                         updateParticles: (deltaMs, now) => this.updateParticles(deltaMs, now),
+                        hasGameplayBursts: () => hasPendingTerrainBursts(),
                         spawnGameplayBursts: (now) => this.spawnGameplayBursts(now),
+                        allowAmbientParticles: () => shouldUseAmbientParticles(),
                         spawnAmbientParticles: (now, tiles) => this.spawnAmbientParticles(now, tiles),
                         spawnTaskParticles: (now, tiles) => this.spawnTaskParticles(now, tiles),
                         spawnHeroTrailParticles: (now) => this.spawnHeroTrailParticles(now),
                         getParticles: () => this._particles,
+                        getParticleCount: () => this._particles.length,
                         getLastParticleUpdateMs: () => this._lastParticleUpdateMs,
                         setLastParticleUpdateMs: (now) => {
                             this._lastParticleUpdateMs = now;
@@ -1216,7 +1232,7 @@ export class HexMapService {
             },
             {
                 name: 'ScreenOverlayPass',
-                isEnabled: () => true,
+                isEnabled: () => hasTextIndicators(),
                 execute: (context) => {
                     const frame = this.getLegacyFrameFromPassContext(context);
                     if (!this._ctx) return;
@@ -1341,10 +1357,12 @@ export class HexMapService {
             visibleChunkCount: frame.scene.debug.visibleChunkCount,
             dirtyChunkCount: frame.scene.debug.dirtyChunkCount,
             terrainChunkRebuilds: 0,
+            terrainSurfaceReused: false,
         }) as {
             visibleChunkCount: number;
             dirtyChunkCount: number;
             terrainChunkRebuilds: number;
+            terrainSurfaceReused?: boolean;
         };
         const particlesEnabled = frame.quality.enableParticles;
         const birdAmbientEnabled = particlesEnabled && this.areBirdAmbientParticlesEnabled();
@@ -1371,8 +1389,8 @@ export class HexMapService {
             visibleTileCount: frame.visibleTiles.length,
             discoveredVisibleCount: frame.visibleTiles.reduce((count, tile) => count + (tile.discovered ? 1 : 0), 0),
             worldRenderVersion: getWorldRenderVersion(),
-            staticTerrainReused: false,
-            staticTerrainReason: 'reuse',
+            staticTerrainReused: terrainMetrics.terrainSurfaceReused === true,
+            staticTerrainReason: terrainMetrics.terrainSurfaceReused === true ? 'reuse' : 'viewport',
             staticTerrainRebuilds: terrainMetrics.terrainChunkRebuilds,
             staticTerrainPaddingPx: 0,
             staticTerrainThresholdPx: 0,
@@ -1430,8 +1448,6 @@ export class HexMapService {
         const cq = Math.round(camera.q);
         const cr = Math.round(camera.r);
         const storyHintTileIds = new Set((opts.storyHintTiles ?? []).map((tile) => tile.id));
-        const radiusTiles = getTilesInRadius(cq, cr, camera.radius)
-            .filter((tile) => isRenderableExplorationTile(tile) || storyHintTileIds.has(tile.id));
         const viewport = this.getCurrentViewportSnapshot(cameraFx);
         const visibleTiles = this.getVisibleTiles(cq, cr, camera.radius, storyHintTileIds);
         const dirtyTiles = consumePendingRenderDirtyTiles();
@@ -1454,7 +1470,7 @@ export class HexMapService {
             drawOptions: this.toRenderDrawOptions(opts),
             frameTimes,
             cameraMoving,
-            candidateTiles: radiusTiles,
+            candidateTiles: visibleTiles,
             candidateHeroes: heroes,
             candidateSettlers: settlers,
             selectedHeroId: selectedHeroId.value,
@@ -1483,7 +1499,14 @@ export class HexMapService {
             stressTier,
             cameraMoving,
             dirtyChunkKeys,
+            discoveredTileIds,
             passTimingsMs: {},
+            surfaceContent: {
+                overlayUnderlay: false,
+                overlayTop: true,
+                particleUnderlay: false,
+                particleOverlay: false,
+            },
         };
     }
 
@@ -1779,6 +1802,10 @@ export class HexMapService {
         }
     }
 
+    private hasGameplayWorldImpacts(nowMs: number) {
+        return getActiveTileFlashes(nowMs).length > 0 || getActiveImpactRings(nowMs).length > 0;
+    }
+
     private registerTileRevealAnimations(
         dirtyTiles: readonly Tile[],
         nowMs: number,
@@ -1838,6 +1865,7 @@ export class HexMapService {
         }
 
         const lowQuality = this._currentRenderQuality.name === 'low';
+        const enableWaterShimmer = !lowQuality && this._currentRenderQuality.expensiveAtmosphere;
         const waterShimmerLimit = this.getWaterShimmerTileLimit();
         let waterShimmerDrawn = 0;
         for (const tile of tiles) {
@@ -1855,7 +1883,7 @@ export class HexMapService {
                 continue;
             }
 
-            if (!lowQuality && this.isGrowthWaterTile(tile) && waterShimmerDrawn < waterShimmerLimit) {
+            if (enableWaterShimmer && this.isGrowthWaterTile(tile) && waterShimmerDrawn < waterShimmerLimit) {
                 this.drawWaterTileShimmer(ctx, tile, nowMs, opacity);
                 waterShimmerDrawn += 1;
             }
@@ -1873,6 +1901,33 @@ export class HexMapService {
 
             this.drawTileRevealPulse(ctx, tile, reveal, nowMs, opacity);
         }
+    }
+
+    private hasGrowthTileMotion(tiles: Tile[], nowMs: number) {
+        if (!tiles.length) {
+            return false;
+        }
+
+        const enableWaterShimmer = this._currentRenderQuality.name !== 'low'
+            && this._currentRenderQuality.expensiveAtmosphere
+            && this.getWaterShimmerTileLimit() > 0;
+
+        for (const tile of tiles) {
+            if (!tile.discovered || !tile.terrain) {
+                continue;
+            }
+
+            if (enableWaterShimmer && this.isGrowthWaterTile(tile)) {
+                return true;
+            }
+
+            const reveal = this._tileRevealAnimations.get(tile.id);
+            if (reveal && nowMs - reveal.startedMs < reveal.durationMs) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private emitTileRevealSparkles(tile: Tile, nowMs: number, intensity: number) {
@@ -4003,7 +4058,7 @@ export class HexMapService {
     }
 
     private areBirdAmbientParticlesEnabled() {
-        return resolveRenderFeatureEnabled('birds', true);
+        return shouldUseAmbientParticles() && resolveRenderFeatureEnabled('birds', true);
     }
 
     private pruneDisabledSkyAmbientParticles() {
@@ -4248,6 +4303,20 @@ export class HexMapService {
             opacity,
             maskedCanvasKey,
             maskedCanvas,
+        };
+    }
+
+    private createTileDepthEdgeRenderState(t: Tile, now: number, opacity: number): TileRenderState | null {
+        const {x, y} = axialToPixel(t.q, t.r);
+        return {
+            tile: t,
+            key: t.terrain ?? UNDISCOVERED_TILE_KEY,
+            x,
+            y,
+            now,
+            opacity,
+            maskedCanvasKey: '',
+            maskedCanvas: null,
         };
     }
 
@@ -5395,8 +5464,8 @@ export class HexMapService {
     private hasVisibleTileOnSide(tile: Tile, side: TileSide, visibleTileIds?: ReadonlySet<string>) {
         const [dq, dr] = TILE_SIDE_DELTAS[side];
         const neighborKey = axialKey(tile.q + dq, tile.r + dr);
-        if (visibleTileIds?.has(neighborKey)) {
-            return true;
+        if (visibleTileIds) {
+            return visibleTileIds.has(neighborKey);
         }
 
         const neighbor = tile.neighbors?.[side] ?? tileIndex[neighborKey];
@@ -5573,7 +5642,7 @@ export class HexMapService {
         opacity: number,
         visibleTileIds?: ReadonlySet<string>,
     ) {
-        const state = this.createTileRenderState(t, now, opacity);
+        const state = this.createTileDepthEdgeRenderState(t, now, opacity);
         if (!state) return;
 
         this.drawTileBottomEdgeStage(ctx, state, visibleTileIds);

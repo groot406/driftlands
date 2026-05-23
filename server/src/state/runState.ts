@@ -9,6 +9,7 @@ import { getDistanceToNearestTowncenter } from '../../../src/shared/game/worldQu
 import type {
   DialogueEntrySnapshot,
   DialogueLogSnapshot,
+  ObjectiveSnapshot,
   DialogueSpeakerSnapshot,
   RunSnapshot,
   RunStoryBeat,
@@ -18,6 +19,7 @@ import type { RunUpdateMessage } from '../../../src/shared/protocol';
 import {
   cloneStoryProgression,
   evaluateProgression,
+  getStoryProgressionObjectives,
   type BuildingKey,
   type ProgressionMetrics,
   type ProgressionNodeKey,
@@ -84,6 +86,13 @@ function cloneDialogue(dialogue: DialogueLogSnapshot): DialogueLogSnapshot {
 
 function cloneProgression(progression: ProgressionSnapshot): ProgressionSnapshot {
   return cloneStoryProgression(progression);
+}
+
+function cloneObjective(objective: ObjectiveSnapshot): ObjectiveSnapshot {
+  return {
+    ...objective,
+    reward: objective.reward ? { ...objective.reward } : undefined,
+  };
 }
 
 function incrementRecordValue<T extends string>(record: Partial<Record<T, number>>, key: T, amount: number = 1) {
@@ -298,7 +307,7 @@ class RunState {
       mutator: { ...DEFAULT_MUTATOR },
       chapter: storyChapter,
       progression: cloneProgression(progression),
-      objectives: [],
+      objectives: getStoryProgressionObjectives(progression),
       dialogue,
       chapterArchive: [],
       lastCompletedChapter: undefined,
@@ -332,9 +341,14 @@ class RunState {
       mutator: { ...this.snapshot.mutator },
       chapter: { ...this.snapshot.chapter },
       progression: cloneProgression(this.snapshot.progression),
-      objectives: [],
+      objectives: this.snapshot.objectives.map(cloneObjective),
       dialogue: cloneDialogue(this.snapshot.dialogue),
-      chapterArchive: [],
+      chapterArchive: this.snapshot.chapterArchive.map((chapter) => ({
+        ...chapter,
+        mutator: { ...chapter.mutator },
+        chapter: { ...chapter.chapter },
+        objectives: chapter.objectives.map(cloneObjective),
+      })),
       lastCompletedChapter: undefined,
     };
   }
@@ -354,9 +368,14 @@ class RunState {
       mutator: { ...snapshot.mutator },
       chapter: { ...snapshot.chapter },
       progression: cloneProgression(snapshot.progression),
-      objectives: [],
+      objectives: snapshot.objectives.map(cloneObjective),
       dialogue: cloneDialogue(snapshot.dialogue),
-      chapterArchive: [],
+      chapterArchive: snapshot.chapterArchive.map((chapter) => ({
+        ...chapter,
+        mutator: { ...chapter.mutator },
+        chapter: { ...chapter.chapter },
+        objectives: chapter.objectives.map(cloneObjective),
+      })),
       lastCompletedChapter: undefined,
     };
   }
@@ -660,7 +679,7 @@ class RunState {
     this.snapshot.restoredTiles = this.restoredTiles;
     this.snapshot.score = 0;
     this.snapshot.chapterScore = 0;
-    this.snapshot.objectives = [];
+    this.snapshot.objectives = getStoryProgressionObjectives(nextProgression);
     this.snapshot.chapterArchive = [];
     this.snapshot.lastCompletedChapter = undefined;
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { evaluateTutorial, type TutorialMetrics } from './tutorialGuide.ts';
+import { evaluateTutorial, getFieldGuideTopicDefinitions, type TutorialMetrics } from './tutorialGuide.ts';
 
 function metrics(overrides: Partial<TutorialMetrics> = {}): TutorialMetrics {
   return {
@@ -169,4 +169,25 @@ test('tutorial waits for online support after population reaches four', () => {
   assert.equal(tutorial.currentStep?.id, 'stabilize-colony');
   assert.equal(tutorial.currentStep?.completed, false);
   assert.equal(tutorial.currentStep?.progressLabel, '2 inactive tiles');
+});
+
+test('field guide covers the major systems and terrain alternatives', () => {
+  const topics = getFieldGuideTopicDefinitions();
+  const categories = new Set(topics.map((topic) => topic.category));
+  const allGuideText = topics
+    .flatMap((topic) => [topic.title, topic.summary, ...topic.cues])
+    .join(' ');
+
+  assert.ok(topics.length >= 18);
+  assert.deepEqual(
+    Array.from(categories).sort(),
+    ['Basics', 'Food', 'Frontier', 'Industry', 'Logistics', 'Progression', 'Settlement'],
+  );
+  assert.match(allGuideText, /If the terrain you need is missing|If mountains are hard to find/);
+  assert.match(allGuideText, /roadmap/i);
+  assert.match(allGuideText, /job sites/i);
+  assert.match(allGuideText, /ship orders/i);
+  assert.match(allGuideText, /Market stock/i);
+  assert.match(allGuideText, /repair/i);
+  assert.match(allGuideText, /Calamities/i);
 });

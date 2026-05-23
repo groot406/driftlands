@@ -1,0 +1,45 @@
+- generic [active] [ref=e1]:
+  - generic "Loading Driftlands" [ref=e2]:
+    - heading "Driftlands" [level=1] [ref=e5]
+  - generic [ref=e8]:
+    - region "Introduction story":
+      - generic:
+        - paragraph: They crossed the old sea because the old maps had run out of room. Behind them were crowded ports, tired fields, and promises too small for the people asked to keep them. Ahead lay the Driftlands, a chain of green islands rising from the morning haze, bright with timber, stone, clean water, and questions no council had managed to answer.
+        - paragraph: "The heroes were not sent as conquerors. They came as the first steady hands: builders, scouts, harvesters, and shelter-raisers when the wind turned cold. Each carried a reason for leaving, but they shared one charge. Find a place where a frontier could become a home, and make it last long enough for others to follow."
+        - paragraph: Frontier into New World became more than a banner on a ship. It was a wager that courage could be practical. Raise shelter before the first storm. Cut roads through wild ground. Turn scattered supplies into workshops, granaries, wells, and stories worth telling by lantern light.
+        - paragraph: "What is expected is simple to say and difficult to do: grow. Feed the landing. House the crew. Learn the land without breaking it. Build each new chain of work so the next one can begin. The Driftlands will not hand over a future, but with patience, brave choices, and enough stubborn hope, the heroes can carve one out tile by tile."
+    - main "Driftlands title screen" [ref=e10]:
+      - generic [ref=e11]:
+        - img "Driftlands" [ref=e12]
+        - generic "Current run" [ref=e13]:
+          - generic [ref=e14]: Landfall
+          - generic [ref=e15]: Opening Days
+        - generic [ref=e16]:
+          - generic [ref=e17]: Nickname
+          - textbox "Nickname" [ref=e18]: Pioneer FLGY
+          - group "Start mode" [ref=e19]:
+            - button "Wallet" [ref=e20] [cursor=pointer]
+            - button "No Wallet" [ref=e21] [cursor=pointer]
+          - generic "Choose two default heroes" [ref=e22]:
+            - paragraph [ref=e23]: Two default heroes selected
+            - generic [ref=e24]:
+              - button "Santa Quartermaster" [ref=e25] [cursor=pointer]:
+                - generic [ref=e29]: Santa
+                - generic [ref=e30]: Quartermaster
+              - button "Harm Trailbreaker" [ref=e31] [cursor=pointer]:
+                - generic [ref=e35]: Harm
+                - generic [ref=e36]: Trailbreaker
+              - button "Jess Surveyor" [ref=e37] [cursor=pointer]:
+                - generic [ref=e41]: Jess
+                - generic [ref=e42]: Surveyor
+              - button "Jacky Rigger" [ref=e43] [cursor=pointer]:
+                - generic [ref=e47]: Jacky
+                - generic [ref=e48]: Rigger
+              - button "Mossling Colony Pet" [ref=e49] [cursor=pointer]:
+                - generic [ref=e53]: Mossling
+                - generic [ref=e54]: Colony Pet
+          - button "Start Colony" [ref=e55] [cursor=pointer]
+        - generic [ref=e56]:
+          - paragraph [ref=e57]: Current Story
+          - heading "A New Landing" [level=1] [ref=e58]
+          - paragraph [ref=e59]: Gather the first stockpile, raise shelter, and turn scattered labor into the first real production chain.

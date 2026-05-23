@@ -46,6 +46,18 @@ test('settlement start candidates include home, near, frontier, and remote optio
   assert.ok(candidates.every((candidate) => candidate.distanceBand === 'home' || candidate.terrain === 'plains' || candidate.terrain === 'dirt'));
 });
 
+test('settlement start candidates include a first-settlement home option when no towns exist yet', () => {
+  const candidates = generateSettlementStartCandidates({
+    settlements: [],
+    resolveTerrain: terrainFor,
+  });
+
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [getSettlementStartCandidateId(0, 0)]);
+  assert.equal(candidates[0]?.distanceBand, 'home');
+  assert.equal(candidates[0]?.available, true);
+  assert.equal(candidates[0]?.terrain, 'towncenter');
+});
+
 test('settlement start candidates mark claimed settlements unavailable', () => {
   const originId = getSettlementStartCandidateId(0, 0);
   const candidates = generateSettlementStartCandidates({

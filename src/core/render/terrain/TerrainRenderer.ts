@@ -11,6 +11,7 @@ interface TerrainRendererRuntime {
         visibleChunkCount: number;
         dirtyChunkCount: number;
         terrainChunkRebuilds: number;
+        terrainSurfaceReused?: boolean;
     };
 }
 
@@ -29,6 +30,7 @@ export class TerrainRenderer {
     private readonly drawAnimatedTile?: (tile: Tile, now: number, ctx: CanvasRenderingContext2D, opacity: number) => void;
     private readonly getSupportAwareTileOpacity?: (tile: Tile, opacity: number) => number;
     private lastWorldRenderVersion = -1;
+    private lastSurfaceKey = '';
 
     constructor(options: TerrainRendererOptions) {
         this.cache = options.cache;
@@ -54,6 +56,23 @@ export class TerrainRenderer {
         this.lastWorldRenderVersion = context.scene.frameInfo.worldRenderVersion;
 
         const rebuildsBefore = this.cache.getTotalRebuildCount();
+        const hasAnimatedVisibleTile = this.hasAnimatedVisibleTile(context);
+        const surfaceKey = this.getSurfaceKey(context, surface.canvas);
+        const canReuseSurface = !hasAnimatedVisibleTile
+            && dirtyChunkKeys.length === 0
+            && this.cache.getDirtyCount() === 0
+            && this.lastSurfaceKey === surfaceKey;
+
+        if (canReuseSurface) {
+            runtime.terrainMetrics = {
+                visibleChunkCount: context.scene.visibleChunks.length,
+                dirtyChunkCount: this.cache.getDirtyCount(),
+                terrainChunkRebuilds: 0,
+                terrainSurfaceReused: true,
+            };
+            return;
+        }
+
         surface.ctx.clearRect(0, 0, surface.canvas.width, surface.canvas.height);
         surface.ctx.save();
         surface.ctx.scale(context.viewport.dpr, context.viewport.dpr);
@@ -91,10 +110,45 @@ export class TerrainRenderer {
         }
 
         surface.ctx.restore();
+        this.lastSurfaceKey = surfaceKey;
         runtime.terrainMetrics = {
             visibleChunkCount: context.scene.visibleChunks.length,
             dirtyChunkCount: this.cache.getDirtyCount(),
             terrainChunkRebuilds: this.cache.getTotalRebuildCount() - rebuildsBefore,
+            terrainSurfaceReused: false,
         };
+    }
+
+    private hasAnimatedVisibleTile(context: RenderPassContext) {
+        if (!this.shouldDrawAnimatedTile) {
+            return false;
+        }
+
+        for (const item of context.scene.visibleTiles) {
+            const tile = tileIndex[item.tileId];
+            if (tile?.discovered && this.shouldDrawAnimatedTile(tile)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private getSurfaceKey(context: RenderPassContext, canvas: HTMLCanvasElement) {
+        const viewport = context.viewport;
+        const chunkKeys = context.scene.visibleChunks.map((chunk) => chunk.key).join('|');
+        return [
+            canvas.width,
+            canvas.height,
+            viewport.dpr,
+            viewport.cameraX,
+            viewport.cameraY,
+            viewport.zoom,
+            viewport.roll,
+            viewport.offsetX,
+            viewport.offsetY,
+            context.scene.frameInfo.worldRenderVersion,
+            chunkKeys,
+        ].join(':');
     }
 }

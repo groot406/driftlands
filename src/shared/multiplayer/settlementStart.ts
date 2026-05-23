@@ -457,28 +457,29 @@ function toCandidate(draft: CandidateDraft, band: SettlementStartBand, options: 
 
 export function generateSettlementStartCandidates(options: GenerateSettlementStartCandidatesOptions): SettlementStartCandidate[] {
   const settlements = options.settlements.slice().sort((left, right) => left.settlementId.localeCompare(right.settlementId));
-  if (settlements.length === 0) {
-    return [];
-  }
-
   const candidates: SettlementStartCandidate[] = [];
   const origin = settlements.find((settlement) => settlement.q === 0 && settlement.r === 0);
-  if (origin) {
-    const owner = options.getSettlementOwner?.(origin.settlementId) ?? null;
+  const bootstrapOrigin = origin ?? (settlements.length === 0 ? { settlementId: '0,0', q: 0, r: 0 } : null);
+  if (bootstrapOrigin) {
+    const owner = options.getSettlementOwner?.(bootstrapOrigin.settlementId) ?? null;
     candidates.push({
-      id: getSettlementStartCandidateId(origin.q, origin.r),
-      q: origin.q,
-      r: origin.r,
+      id: getSettlementStartCandidateId(bootstrapOrigin.q, bootstrapOrigin.r),
+      q: bootstrapOrigin.q,
+      r: bootstrapOrigin.r,
       label: getBandLabel('home'),
       description: getBandDescription('home', 0),
       distanceBand: 'home',
       distanceFromNearestSettlement: 0,
-      terrain: 'towncenter',
-      available: !owner && !(options.isSettlementClaimed?.(origin.settlementId) ?? false),
+      terrain: origin ? 'towncenter' : options.resolveTerrain(bootstrapOrigin.q, bootstrapOrigin.r),
+      available: !owner && !(options.isSettlementClaimed?.(bootstrapOrigin.settlementId) ?? false),
       occupiedByPlayerId: owner?.playerId ?? null,
       occupiedByPlayerName: owner?.playerName ?? null,
       occupiedByPlayerColor: owner?.playerColor ?? null,
     });
+  }
+
+  if (settlements.length === 0) {
+    return candidates;
   }
 
   for (const band of START_BANDS) {

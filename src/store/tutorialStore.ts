@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue';
-import { tiles, worldVersion } from '../core/world.ts';
+import { tileIndex, tiles, worldVersion } from '../core/world.ts';
 import type { Hero } from '../core/types/Hero.ts';
 import type { TaskType } from '../core/types/Task.ts';
 import type { Tile } from '../core/types/Tile.ts';
@@ -68,6 +68,10 @@ export interface TutorialMapHint {
   taskKey?: TaskType;
 }
 
+interface AnchoredTutorialMapHint extends TutorialMapHint {
+  stepId: TutorialStepId;
+}
+
 const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   chopWood: 'Chop wood',
   hunt: 'Hunt',
@@ -90,6 +94,8 @@ const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
   buildWorkshop: 'Build workshop',
   buildTownCenter: 'Build town',
 };
+
+let anchoredTutorialMapHint: AnchoredTutorialMapHint | null = null;
 
 function getSelectedTutorialHero() {
   return selectedHeroId.value
@@ -252,6 +258,40 @@ function findTutorialScoutHint(hero: Hero, label = 'Scout here'): TutorialMapHin
     : null;
 }
 
+function getTutorialHintTile(hint: TutorialMapHint): Tile | null {
+  return tileIndex[`${hint.q},${hint.r}`] ?? null;
+}
+
+function isTutorialTaskHintValid(hint: TutorialMapHint, stepId: TutorialStepId, hero: Hero) {
+  const route = getTutorialHintTaskKeysForStep(stepId, tutorialMetrics.value.landingArchetype);
+  const tile = getTutorialHintTile(hint);
+  return !!route
+    && hint.action === 'open-task-menu'
+    && !!hint.taskKey
+    && route.taskKeys.includes(hint.taskKey)
+    && !!tile
+    && tile.discovered
+    && getAvailableTasks(tile, hero).some((task) => task.key === hint.taskKey);
+}
+
+function isTutorialScoutHintValid(hint: TutorialMapHint, hero: Hero) {
+  const tile = getTutorialHintTile(hint);
+  return hint.action === 'explore'
+    && !!tile
+    && !tile.discovered
+    && isPositionControlled(tile.q, tile.r)
+    && !!findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
+}
+
+function isAnchoredTutorialHintValid(hint: AnchoredTutorialMapHint, stepId: TutorialStepId, hero: Hero) {
+  if (hint.stepId !== stepId) {
+    return false;
+  }
+
+  return isTutorialTaskHintValid(hint, stepId, hero)
+    || isTutorialScoutHintValid(hint, hero);
+}
+
 export function getTutorialHintTaskKeysForStep(
   stepId: TutorialStepId,
   archetype: LandingArchetype | undefined,
@@ -313,6 +353,21 @@ function findTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMa
     ?? (route.scoutLabel ? findTutorialScoutHint(hero, route.scoutLabel) : null);
 }
 
+function getAnchoredTutorialHintForStep(stepId: TutorialStepId, hero: Hero): TutorialMapHint | null {
+  const anchoredHint = anchoredTutorialMapHint;
+  if (anchoredHint && isAnchoredTutorialHintValid(anchoredHint, stepId, hero)) {
+    return anchoredHint;
+  }
+
+  const nextHint = findTutorialHintForStep(stepId, hero);
+  anchoredTutorialMapHint = nextHint ? { ...nextHint, stepId } : null;
+  return nextHint;
+}
+
+export function resetTutorialMapHintAnchorForTests() {
+  anchoredTutorialMapHint = null;
+}
+
 export const tutorialMapHints = computed<TutorialMapHint[]>(() => {
   worldVersion.value;
   resourceVersion.value;
@@ -326,10 +381,11 @@ export const tutorialMapHints = computed<TutorialMapHint[]>(() => {
   const step = visibleTutorialStep.value;
   const hero = getSelectedTutorialHero();
   if (!step || step.completed || !hero) {
+    anchoredTutorialMapHint = null;
     return [];
   }
 
-  const hint = findTutorialHintForStep(step.id, hero);
+  const hint = getAnchoredTutorialHintForStep(step.id, hero);
   return hint ? [hint] : [];
 });
 
@@ -383,5 +439,6 @@ watch(
   () => runSnapshot.value?.seed ?? null,
   () => {
     browsedTutorialStepId.value = null;
+    anchoredTutorialMapHint = null;
   },
 );

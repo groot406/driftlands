@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "driftlands": "./scripts/hosting-tui.mjs"
+  },
   "scripts": {
     "start": "npm run dev",
     "start:free": "SERVER_SETTLEMENT_START_MODE=free npm run dev",
@@ -23,6 +26,13 @@
     "start:server": "tsx server/src/index.ts",
     "start:server:no-debug": "SERVER_DEBUG_MODE=0 tsx server/src/index.ts",
     "start:server:no-debug:free": "SERVER_DEBUG_MODE=0 SERVER_SETTLEMENT_START_MODE=free tsx server/src/index.ts",
+    "external": "node scripts/start-external.mjs",
+    "external:https": "node scripts/start-https-proxy.mjs",
+    "start-external": "node scripts/start-external.mjs",
+    "start:external": "npm run start-external",
+    "hosting:tui": "node scripts/hosting-tui.mjs",
+    "frontend:deploy": "node scripts/hosting-tui.mjs publish-frontend",
+    "haos:deploy": "node scripts/hosting-tui.mjs haos-deploy",
     "typecheck:server": "tsc --noEmit --project tsconfig.server.json",
     "art:prompts": "python3 scripts/building_art_pipeline.py prompts",
     "art:process": "python3 scripts/building_art_pipeline.py",
@@ -32,7 +42,10 @@
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-ethers": "^1.8.19",
     "ethers": "^6.16.0",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    "tsx": "^4.21.0",
     "vue": "^3.5.24"
   },
   "devDependencies": {
@@ -41,13 +54,10 @@
     "@vue/tsconfig": "^0.8.1",
     "autoprefixer": "^10.4.22",
     "concurrently": "^9.2.1",
-    "express": "^5.2.1",
     "nodemon": "^3.1.11",
     "postcss": "^8.5.6",
-    "socket.io": "^4.8.1",
     "tailwindcss": "^3.4.14",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "vite": "^7.2.2",
     "vue-tsc": "^3.1.3"

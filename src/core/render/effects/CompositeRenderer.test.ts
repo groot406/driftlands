@@ -148,6 +148,7 @@ function createContext(): RenderPassContext {
 test('CompositeRenderer reuses the scratch world composite between effects and final composite', () => {
     const renderer = new CompositeRenderer<ReturnType<typeof createFrame>>();
     const frame = createFrame();
+    frame.quality.enableMotionBlur = true;
     const context = createContext();
 
     renderer.renderEffects(context, frame, {
@@ -157,5 +158,53 @@ test('CompositeRenderer reuses the scratch world composite between effects and f
 
     assert.equal(frame.worldCtx.calls.clearRect, 1);
     assert.equal(frame.worldCtx.calls.drawImage, 6);
+    assert.equal(frame.finalCtx.calls.drawImage, 2);
+});
+
+test('CompositeRenderer skips particle surfaces known to be empty', () => {
+    const renderer = new CompositeRenderer<ReturnType<typeof createFrame>>();
+    const frame = {
+        ...createFrame(),
+        surfaceContent: {
+            particleUnderlay: false,
+            particleOverlay: false,
+        },
+    };
+
+    renderer.compositeToFinal(frame, false);
+
+    assert.equal(frame.finalCtx.calls.drawImage, 4);
+});
+
+test('CompositeRenderer skips top overlay surface known to be empty', () => {
+    const renderer = new CompositeRenderer<ReturnType<typeof createFrame>>();
+    const frame = {
+        ...createFrame(),
+        surfaceContent: {
+            overlayTop: false,
+            particleUnderlay: false,
+            particleOverlay: false,
+        },
+    };
+
+    renderer.compositeToFinal(frame, false);
+
+    assert.equal(frame.finalCtx.calls.drawImage, 3);
+});
+
+test('CompositeRenderer skips underlay surface known to be empty', () => {
+    const renderer = new CompositeRenderer<ReturnType<typeof createFrame>>();
+    const frame = {
+        ...createFrame(),
+        surfaceContent: {
+            overlayUnderlay: false,
+            overlayTop: false,
+            particleUnderlay: false,
+            particleOverlay: false,
+        },
+    };
+
+    renderer.compositeToFinal(frame, false);
+
     assert.equal(frame.finalCtx.calls.drawImage, 2);
 });

@@ -165,6 +165,34 @@ test('inactive discovered tiles do not offer or start normal work tasks', () => 
   assert.equal(startTask(tileIndex['1,0']!, 'hunt', hero), null);
 });
 
+test('irrigation is available without a story unlock', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'dirt',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      variant: 'dirt_tilled_draught',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 0, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'irregateDirtTask'), true);
+});
+
 test('mission 1 offers hunt on forest but not on plains', () => {
   setStoryProgressionForMission(1);
   loadWorld([
@@ -418,6 +446,8 @@ test('plant trees turns base plains into a growing young forest', () => {
   assert.equal(tile.isBaseTile, false);
   assert.equal(typeof tile.variantSetMs, 'number');
   assert.equal(typeof tile.variantAgeMs, 'number');
+  assert.ok(tile.variantAgeMs! >= 90000);
+  assert.ok(tile.variantAgeMs! <= 240000);
   assert.ok(terrainPositions.forest.has(tile.id));
   assert.equal(terrainPositions.plains.has(tile.id), false);
 });
@@ -1027,6 +1057,7 @@ test('dock builds face the access tile where the hero starts construction', () =
     buildingCounts: { house: 1 },
     operationalBuildingCounts: {},
     discoveredTerrains: ['water'],
+    landingTerrains: ['water'],
     unlockedHeroIds: [],
     completedStudyKeys: [],
     heroAbilityChargesEarned: 0,
@@ -1328,6 +1359,101 @@ test('instant build completes zero-cost work immediately when test mode is enabl
   assert.equal(task?.progressXp, task?.requiredXp);
 });
 
+test('instant build reward tasks still deliver goods and resume deferred chains', async () => {
+  setStoryProgressionForMission(1);
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,2',
+      q: 0,
+      r: 2,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 1,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: true,
+    unlimitedResources: false,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const moveCalls: Array<{ target: { q: number; r: number }; task?: string }> = [];
+  configureGameRuntime({
+    moveHero: (_hero, target, task) => {
+      moveCalls.push({ target, task });
+    },
+  });
+
+  const task = startTask(tileIndex['0,1']!, 'chopWood', heroes[0]!);
+
+  assert.ok(task?.completedMs);
+  assert.deepEqual(heroes[0]?.carryingPayload, { type: 'wood', amount: 4 });
+  assert.deepEqual(moveCalls[0], { target: { q: 0, r: 0 }, task: undefined });
+
+  await new Promise((resolve) => setTimeout(resolve, 220));
+
+  assert.deepEqual(heroes[0]?.pendingChain, { sourceTileId: '0,1', taskType: 'chopWood' });
+
+  handleHeroArrival(heroes[0]!, tileIndex['0,0']!);
+
+  assert.equal(heroes[0]?.carryingPayload, undefined);
+  assert.equal(getStorageResourceAmount('0,0', 'wood'), 4);
+  assert.equal(moveCalls[1]?.task, 'chopWood');
+  assert.equal(moveCalls[1]?.target.q, 0);
+  assert.equal(moveCalls[1]?.target.r, 2);
+});
+
 test('unlimited resources removes build input requirements in test mode', () => {
   loadWorld([
     {
@@ -1377,6 +1503,7 @@ test('unlimited resources removes build input requirements in test mode', () => 
     buildingCounts: { house: 1 },
     operationalBuildingCounts: {},
     discoveredTerrains: ['water'],
+    landingTerrains: ['water'],
     unlockedHeroIds: [],
     completedStudyKeys: [],
     heroAbilityChargesEarned: 0,

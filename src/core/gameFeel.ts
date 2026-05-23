@@ -335,6 +335,10 @@ export function consumePendingTerrainBursts() {
     return pendingTerrainBursts.splice(0, pendingTerrainBursts.length);
 }
 
+export function hasPendingTerrainBursts() {
+    return pendingTerrainBursts.length > 0;
+}
+
 export function consumePendingCameraNudges() {
     return pendingCameraNudges.splice(0, pendingCameraNudges.length);
 }

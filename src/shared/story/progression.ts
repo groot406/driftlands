@@ -1,6 +1,7 @@
 import type { TerrainKey } from '../../core/terrainDefs.ts';
 import type { ResourceType } from '../../core/types/Resource.ts';
 import type { TaskType } from '../../core/types/Task.ts';
+import type { ObjectiveKind, ObjectiveSnapshot } from '../goals/types.ts';
 import { getResourceRequirementStock } from '../game/resourceDefinitions.ts';
 import type { StoryHeroId } from './heroRoster.ts';
 import { getStoryHeroTemplate } from './heroRoster.ts';
@@ -49,6 +50,7 @@ export type UpgradeKey =
 export type ProgressionNodeKey =
   | 'landfall'
   | 'shoreline'
+  | 'water_source'
   | 'farming'
   | 'irrigation'
   | 'stores'
@@ -587,7 +589,13 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
       { kind: 'population_at_least', amount: 2 },
-      { kind: 'landing_terrain_discovered', terrainKey: 'water' },
+      {
+        kind: 'any_of',
+        requirements: [
+          { kind: 'landing_terrain_discovered', terrainKey: 'water' },
+          { kind: 'terrain_discovered', terrainKey: 'water' },
+        ],
+      },
     ],
     sortOrder: 20,
     unlocks: [
@@ -603,6 +611,20 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     },
   },
   {
+    key: 'water_source',
+    label: 'Field Wells',
+    category: 'Food',
+    description: 'Sink a local water source before opening dry plots.',
+    requirements: [
+      { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
+      { kind: 'population_at_least', amount: 2 },
+    ],
+    sortOrder: 25,
+    unlocks: [
+      { kind: 'building', key: 'well' },
+    ],
+  },
+  {
     key: 'farming',
     label: 'Working Fields',
     category: 'Food',
@@ -610,6 +632,14 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     requirements: [
       { kind: 'building_count_at_least', buildingKey: 'house', amount: 1 },
       { kind: 'population_at_least', amount: 2 },
+      {
+        kind: 'any_of',
+        requirements: [
+          { kind: 'landing_terrain_discovered', terrainKey: 'water' },
+          { kind: 'terrain_discovered', terrainKey: 'water' },
+          { kind: 'building_count_at_least', buildingKey: 'well', amount: 1 },
+        ],
+      },
     ],
     sortOrder: 30,
     unlocks: [
@@ -630,8 +660,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 40,
     unlocks: [
       { kind: 'hero', key: 'h3' },
-      { kind: 'building', key: 'well' },
-      { kind: 'task', key: 'irregateDirtTask' },
     ],
   },
   {
@@ -1069,6 +1097,22 @@ function nodeRequirementsSatisfied(metrics: ProgressionMetrics, node: Progressio
   return node.requirements.every((requirement) => isRequirementSatisfied(metrics, requirement));
 }
 
+function isRequirementRelevantForRecommendation(metrics: ProgressionMetrics, requirement: RequirementDefinition): boolean {
+  switch (requirement.kind) {
+    case 'terrain_discovered':
+    case 'landing_terrain_discovered':
+      return isRequirementSatisfied(metrics, requirement);
+    case 'any_of':
+      return requirement.requirements.some((innerRequirement) => isRequirementRelevantForRecommendation(metrics, innerRequirement));
+    default:
+      return true;
+  }
+}
+
+function nodeCanBeRecommended(metrics: ProgressionMetrics, node: ProgressionNodeDefinition) {
+  return node.requirements.every((requirement) => isRequirementRelevantForRecommendation(metrics, requirement));
+}
+
 function flattenUnlockedDescriptors(nodeKeys: ProgressionNodeKey[]) {
   const seen = new Set<string>();
   const descriptors: ProgressionUnlockDescriptor[] = [];
@@ -1188,6 +1232,10 @@ export function evaluateProgression(
   }));
   const nextRecommendedNodeKeys = nodes
     .filter((node) => !node.unlocked)
+    .filter((node) => {
+      const definition = NODE_BY_KEY.get(node.key);
+      return !!definition && nodeCanBeRecommended(metrics, definition);
+    })
     .sort((a, b) => {
       const defA = NODE_BY_KEY.get(a.key);
       const defB = NODE_BY_KEY.get(b.key);
@@ -1408,6 +1456,132 @@ export function getStoryProgressionCategoryDescriptors(progression: ProgressionS
     terrains: progression.unlocked.terrains.map((terrainKey) => getStoryTerrainDescriptor(terrainKey)),
     upgrades: progression.unlocked.upgrades.map((upgradeKey) => getStoryUpgradeDescriptor(upgradeKey)),
   };
+}
+
+function clampObjectiveProgress(progress: RequirementProgress) {
+  return Math.min(progress.target, Math.max(0, Math.floor(progress.current)));
+}
+
+function describeRequirementRoute(requirement: RequirementDefinition, progress: RequirementProgress) {
+  switch (requirement.kind) {
+    case 'population_at_least':
+      return 'Grow the settlement by keeping beds and food available.';
+    case 'beds_at_least':
+      return 'Build or upgrade housing so more settlers have somewhere to live.';
+    case 'frontier_distance_at_least':
+      return 'Scout outward from active or controlled ground until the frontier reaches the next ring.';
+    case 'resource_stock_at_least':
+      return `Store ${requirement.amount} ${requirement.resourceType}. If this route is slow, improve the producer or work another recommended milestone while stock builds.`;
+    case 'food_source_stock_at_least':
+      return 'Store enough edible food from any route: hunting, fish, bread, beer, wine, or other food sources all count.';
+    case 'building_count_at_least':
+      return `Build ${progress.target} ${progress.label.replace(/ x\d+$/, '')}. If the terrain is awkward, extend reach with roads, towers, or depots first.`;
+    case 'building_operational_at_least':
+      return `Build and staff ${progress.target} ${progress.label.replace(/^Operational /, '').replace(/ x\d+$/, '')}. Check workers, input stock, and storage if it is idle.`;
+    case 'terrain_discovered':
+      if (requirement.terrainKey === 'mountain') {
+        return 'Scout toward ridges and keep food, roads, and storage improving while the search runs. Trade and ship routes can later cover short ore or stone gaps if the mountains are slow to appear.';
+      }
+      if (requirement.terrainKey === 'dessert') {
+        return 'Push past the safe rings until desert appears. If the route is long, build depots and roads first or keep food, mining, and trade milestones moving until the dry frontier is reachable.';
+      }
+      if (requirement.terrainKey === 'vulcano') {
+        return 'Volcanic ground is a late frontier target. A completed frontier study can also satisfy ancient-route progress when the volcano is still out of reach.';
+      }
+      return 'Scout outward until this terrain appears. If it is far away, keep another food, logistics, or settlement lane moving while the search continues.';
+    case 'landing_terrain_discovered':
+      return 'Look near the founding town center for this terrain. Inland starts can use another route when the landing terrain is missing.';
+    case 'study_completed':
+      return 'Complete the named study through a library or study source.';
+    case 'any_study_completed':
+      return 'Complete any available study to prove the colony can turn knowledge into progress.';
+    case 'any_hero_ability_charge_earned':
+      return 'Use heroes until at least one ability charge is earned.';
+    case 'any_of':
+      return `Choose any route that fits this map: ${requirement.requirements.map(getRequirementLabel).join(' or ')}.`;
+    default:
+      return 'Complete this requirement to open the next milestone.';
+  }
+}
+
+function objectiveKindForRequirement(requirement: RequirementDefinition): ObjectiveKind {
+  switch (requirement.kind) {
+    case 'population_at_least':
+    case 'beds_at_least':
+      return 'reach_population';
+    case 'frontier_distance_at_least':
+      return 'reach_distance';
+    case 'resource_stock_at_least':
+    case 'food_source_stock_at_least':
+      return 'deliver_resource';
+    case 'terrain_discovered':
+    case 'landing_terrain_discovered':
+      return 'discover_tiles';
+    case 'building_count_at_least':
+    case 'building_operational_at_least':
+    case 'study_completed':
+    case 'any_study_completed':
+    case 'any_hero_ability_charge_earned':
+    case 'any_of':
+    default:
+      return 'complete_task';
+  }
+}
+
+function objectiveTaskForRequirement(requirement: RequirementDefinition): TaskType | undefined {
+  switch (requirement.kind) {
+    case 'building_count_at_least':
+    case 'building_operational_at_least':
+      return getStoryBuildingTaskKey(requirement.buildingKey) ?? undefined;
+    default:
+      return undefined;
+  }
+}
+
+function objectiveResourceForRequirement(requirement: RequirementDefinition): ResourceType | undefined {
+  switch (requirement.kind) {
+    case 'resource_stock_at_least':
+      return requirement.resourceType;
+    case 'food_source_stock_at_least':
+      return 'food';
+    default:
+      return undefined;
+  }
+}
+
+export function getStoryProgressionObjectives(progression: ProgressionSnapshot): ObjectiveSnapshot[] {
+  const nextNodeKey = progression.nextRecommendedNodeKeys[0];
+  if (!nextNodeKey) {
+    return [];
+  }
+
+  const node = progression.nodes.find((candidate) => candidate.key === nextNodeKey);
+  const definition = getProgressionNodeDefinition(nextNodeKey);
+  if (!node || !definition) {
+    return [];
+  }
+
+  return node.requirements.map((progress, index): ObjectiveSnapshot => {
+    const requirement = definition.requirements[index];
+    const kind = requirement ? objectiveKindForRequirement(requirement) : 'complete_task';
+    const taskType = requirement ? objectiveTaskForRequirement(requirement) : undefined;
+    const resourceType = requirement ? objectiveResourceForRequirement(requirement) : undefined;
+
+    return {
+      id: `progression:${node.key}:${index}`,
+      title: progress.satisfied ? `${progress.label} ready` : progress.label,
+      description: requirement
+        ? describeRequirementRoute(requirement, progress)
+        : node.description,
+      kind,
+      required: true,
+      target: progress.target,
+      progress: clampObjectiveProgress(progress),
+      completed: progress.satisfied,
+      ...(taskType ? { taskType } : {}),
+      ...(resourceType ? { resourceType } : {}),
+    };
+  });
 }
 
 export function getUnlockingNodeForContent(kind: ProgressionUnlockKind, key: string) {

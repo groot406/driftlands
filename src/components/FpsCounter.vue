@@ -126,6 +126,7 @@ import {
 import {
   cycleGraphicsDiagnosticOverride,
   graphicsDiagnosticOverrideStore,
+  getEffectiveMapTargetFps,
   type GraphicsDiagnosticTechniqueKey,
   shouldUseBrowserLightRendering,
   shouldUseDesynchronizedCanvas,
@@ -275,11 +276,11 @@ const surfaceTitle = computed(() => (
 ));
 
 const modeSummary = computed(() => (
-  `safe:${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'} light:${shouldUseBrowserLightRendering() ? 'on' : 'off'} desync:${shouldUseDesynchronizedCanvas() ? 'on' : 'off'} rescue:${shouldUseWindowsRescueTimer() ? 'on' : 'off'}`
+  `safe:${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'} light:${shouldUseBrowserLightRendering() ? 'on' : 'off'} desync:${shouldUseDesynchronizedCanvas() ? 'on' : 'off'} rescue:${shouldUseWindowsRescueTimer() ? 'on' : 'off'} target:${getEffectiveMapTargetFps()}`
 ));
 
 const modeTitle = computed(() => (
-  `Windows presentation safe mode: ${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'}; browser-light effects: ${shouldUseBrowserLightRendering() ? 'on' : 'off'}; desynchronized canvas: ${shouldUseDesynchronizedCanvas() ? 'on' : 'off'}; rescue timer: ${shouldUseWindowsRescueTimer() ? 'on' : 'off'}`
+  `Windows presentation safe mode: ${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'}; browser-light effects: ${shouldUseBrowserLightRendering() ? 'on' : 'off'}; desynchronized canvas: ${shouldUseDesynchronizedCanvas() ? 'on' : 'off'}; rescue timer: ${shouldUseWindowsRescueTimer() ? 'on' : 'off'}; map target FPS: ${getEffectiveMapTargetFps()}`
 ));
 
 const techniques = computed(() => [

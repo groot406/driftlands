@@ -523,7 +523,7 @@ function tutorialMission3(): ObjectiveBlueprint[] {
 }
 
 function tutorialMission4(): ObjectiveBlueprint[] {
-  // Unlocks: h3, well, irregateDirtTask
+  // Unlocks: h3, well
   // Teaches: water management, irrigation, expanding the workforce
   return [
     surveyObjective(100, 45),

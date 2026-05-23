@@ -1,0 +1,153 @@
+- generic [ref=e60]:
+  - generic [ref=e275] [cursor=pointer]: Chop wood
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e171]:
+          - button "Open settler overview (0/15)" [ref=e276] [cursor=pointer]:
+            - generic [ref=e173]: 👥
+            - generic [ref=e174]:
+              - generic [ref=e175]: Settlers
+              - generic [ref=e176]: 0/15
+          - 'button "Food: 12" [ref=e277] [cursor=pointer]':
+            - generic [ref=e179]: 🍞
+            - generic [ref=e180]:
+              - generic [ref=e181]: Food
+              - generic [ref=e183]: "12"
+            - tooltip "Food 🍞 Bread 4 🐟 Fish 4 🍖 Meat 4":
+              - paragraph: Food
+              - generic:
+                - generic: 🍞 Bread
+                - generic: "4"
+              - generic:
+                - generic: 🐟 Fish
+                - generic: "4"
+              - generic:
+                - generic: 🍖 Meat
+                - generic: "4"
+          - 'button "Crops: 0" [ref=e184] [cursor=pointer]':
+            - generic [ref=e186]: 🌿
+            - generic [ref=e187]:
+              - generic [ref=e188]: Crops
+              - generic [ref=e190]: "0"
+            - tooltip "Crops 🌾 Grain 0":
+              - paragraph: Crops
+              - generic:
+                - generic: 🌾 Grain
+                - generic: "0"
+          - 'button "Materials: 0" [ref=e191] [cursor=pointer]':
+            - generic [ref=e193]: 🧱
+            - generic [ref=e194]:
+              - generic [ref=e195]: Materials
+              - generic [ref=e197]: "0"
+            - tooltip "Materials 🌲 Wood 0 🪨 Stone 0":
+              - paragraph: Materials
+              - generic:
+                - generic: 🌲 Wood
+                - generic: "0"
+              - generic:
+                - generic: 🪨 Stone
+                - generic: "0"
+          - 'button "Crafted: 0" [ref=e198] [cursor=pointer]':
+            - generic [ref=e200]: 🛠️
+            - generic [ref=e201]:
+              - generic [ref=e202]: Crafted
+              - generic [ref=e204]: "0"
+        - button "Menu" [ref=e206] [cursor=pointer]:
+          - generic [ref=e207]:
+            - generic: Menu
+      - generic:
+        - generic:
+          - generic [ref=e278] [cursor=pointer]:
+            - generic [ref=e279]:
+              - generic [ref=e280]: Harm
+              - generic [ref=e281]: Trailbreaker
+            - generic [ref=e287]:
+              - generic [ref=e288]: XP
+              - strong [ref=e289]: "100"
+            - generic [ref=e290]:
+              - button "Choose scout target" [ref=e292]:
+                - generic [ref=e297]: Choose
+              - button "Harm skill progress 0%" [ref=e299]:
+                - generic [ref=e300]: +
+                - generic [ref=e301]:
+                  - generic [ref=e302]: SP 0
+                  - generic [ref=e303]: XP 0%
+          - generic [ref=e304] [cursor=pointer]:
+            - generic [ref=e305]:
+              - generic [ref=e306]: Jess
+              - generic [ref=e307]: Surveyor
+            - generic [ref=e313]:
+              - generic [ref=e314]: XP
+              - strong [ref=e315]: "100"
+            - generic:
+              - generic:
+                - button "Choose scout target" [disabled]:
+                  - generic:
+                    - generic: Choose
+              - generic:
+                - button "Jess skill progress 0%" [disabled]:
+                  - generic: +
+                  - generic:
+                    - generic: SP 0
+                    - generic: XP 0%
+    - generic [ref=e208]:
+      - button "? 3" [ref=e316] [cursor=pointer]:
+        - generic [ref=e210]: "?"
+        - generic [ref=e211]: "3"
+      - button "3" [ref=e317] [cursor=pointer]:
+        - img [ref=e318]
+        - generic [ref=e320]: "3"
+      - button "Re-read conversation (C)" [ref=e321] [cursor=pointer]:
+        - img [ref=e322]
+      - button "Open music player" [ref=e213] [cursor=pointer]:
+        - img [ref=e214]
+      - button "1" [ref=e220] [cursor=pointer]:
+        - img [ref=e221]
+        - generic [ref=e223]: "1"
+    - generic [ref=e326] [cursor=pointer]:
+      - generic [ref=e327]:
+        - generic [ref=e328]: World Map
+        - button "Open" [ref=e329]
+      - generic "In-game minimap" [ref=e331]:
+        - button "Pioneer 1RKC's settlement" [ref=e333]
+        - 'button "Pioneer 1RKC: Harm" [ref=e335]'
+        - 'button "Pioneer 1RKC: Jess" [ref=e337]'
+    - complementary [ref=e224]:
+      - generic [ref=e225]:
+        - generic [ref=e226]:
+          - paragraph [ref=e227]: Field Guide
+          - heading "Gather first wood" [level=2] [ref=e339]
+        - button "x" [ref=e229] [cursor=pointer]
+      - tablist "Field guide sections" [ref=e230]:
+        - button "Steps" [ref=e231] [cursor=pointer]
+        - button "Topics" [ref=e232] [cursor=pointer]
+      - generic [ref=e233]:
+        - generic [ref=e234]: Current
+        - generic [ref=e235]: 3/18
+        - generic [ref=e236]: 2 done
+      - generic [ref=e239]:
+        - paragraph [ref=e240]: Bring in enough wood to start building.
+        - paragraph [ref=e241]: Wood is the first bottleneck for roads, houses, docks, and repairs.
+        - generic [ref=e242]:
+          - generic [ref=e243]: Next
+          - generic [ref=e244]: Find forest, choose Chop Wood, then let the hero deliver it home.
+      - generic [ref=e245]: 0/2 wood progress
+      - generic [ref=e247]:
+        - button "Back" [ref=e248] [cursor=pointer]
+        - button "Next" [ref=e249] [cursor=pointer]
+    - generic [ref=e342] [cursor=pointer]:
+      - generic [ref=e343]:
+        - generic [ref=e344]:
+          - generic [ref=e345]: Harm
+          - generic [ref=e346]: Story
+        - generic [ref=e347]: 1 / 1
+      - generic [ref=e348]:
+        - generic "Harm" [ref=e349]:
+          - generic "Harm" [ref=e351]
+        - generic [ref=e353]:
+          - paragraph [ref=e354]: Harm
+          - paragraph [ref=e355]: The convoy has broken apart in the drift, and only your charter reached the center stone intact. Before night closes over the shoals, you need a working camp, a mapped perimeter, and proof that Driftlands can be settled. Scout the frontier, clear the first stands, and lay a road so the next crew has something to follow.
+      - generic [ref=e356]:
+        - button "Close" [ref=e358]
+        - button "Skip all" [ref=e359]

@@ -1,24 +1,22 @@
 # syntax=docker/dockerfile:1
 
-# Use a small, modern Node.js base image
-FROM node:20-alpine AS base
+FROM node:20-alpine AS runtime
 
-# Set working directory
 WORKDIR /app
 
-# Install all dependencies (including dev) so tsx is available to run TS directly
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev --no-audit --no-fund; else npm install --omit=dev --no-audit --no-fund; fi
 
-# Copy project files
-COPY . .
+COPY server ./server
+COPY src ./src
+COPY tsconfig.server.json ./
 
-# The server listens on 3000 inside the container
 EXPOSE 3000
 
-# Environment defaults (can be overridden at runtime)
-ENV SERVER_TPS=10 \
-    NODE_ENV=production
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    SERVER_DEBUG_MODE=0 \
+    SERVER_TPS=10
 
-# Start the server
-CMD ["npm", "run", "start:server"]
+CMD ["npm", "run", "start:server:no-debug"]

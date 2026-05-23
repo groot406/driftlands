@@ -15,7 +15,26 @@
         </button>
       </header>
 
-      <div class="tutorial-panel__meta">
+      <div class="tutorial-panel__mode-tabs" role="tablist" aria-label="Field guide sections">
+        <button
+          class="tutorial-panel__mode-tab"
+          :class="{ 'tutorial-panel__mode-tab--active': activeMode === 'steps' }"
+          type="button"
+          @click="activeMode = 'steps'"
+        >
+          Steps
+        </button>
+        <button
+          class="tutorial-panel__mode-tab"
+          :class="{ 'tutorial-panel__mode-tab--active': activeMode === 'topics' }"
+          type="button"
+          @click="activeMode = 'topics'"
+        >
+          Topics
+        </button>
+      </div>
+
+      <div v-if="activeMode === 'steps'" class="tutorial-panel__meta">
         <span class="tutorial-panel__chip" :class="`tutorial-panel__chip--${visibleStep.status}`">
           {{ stepStatusLabel }}
         </span>
@@ -34,7 +53,7 @@
         />
       </div>
 
-      <section class="tutorial-panel__body">
+      <section v-if="activeMode === 'steps'" class="tutorial-panel__body">
         <p class="tutorial-panel__objective">{{ visibleStep.objective }}</p>
         <p class="tutorial-panel__why">{{ visibleStep.why }}</p>
         <div class="tutorial-panel__action">
@@ -43,7 +62,24 @@
         </div>
       </section>
 
-      <div class="tutorial-panel__step-progress">
+      <section v-else class="tutorial-panel__topics" aria-label="Field guide topics">
+        <article
+          v-for="topic in fieldGuideTopics"
+          :key="topic.id"
+          class="tutorial-panel__topic"
+        >
+          <div class="tutorial-panel__topic-head">
+            <span class="tutorial-panel__topic-category">{{ topic.category }}</span>
+            <h3>{{ topic.title }}</h3>
+          </div>
+          <p>{{ topic.summary }}</p>
+          <ul>
+            <li v-for="cue in topic.cues" :key="cue">{{ cue }}</li>
+          </ul>
+        </article>
+      </section>
+
+      <div v-if="activeMode === 'steps'" class="tutorial-panel__step-progress">
         <span>{{ visibleStep.progressLabel }}</span>
         <div class="tutorial-panel__step-bar" aria-hidden="true">
           <div
@@ -54,7 +90,7 @@
         </div>
       </div>
 
-      <footer class="tutorial-panel__footer">
+      <footer v-if="activeMode === 'steps'" class="tutorial-panel__footer">
         <button
           class="tutorial-panel__nav"
           type="button"
@@ -85,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
   closeTutorialPanel,
   isTutorialPanelOpen,
@@ -97,8 +133,11 @@ import {
   visibleTutorialStep,
   visibleTutorialStepNumber,
 } from '../store/tutorialStore.ts';
+import { getFieldGuideTopicDefinitions } from '../shared/tutorial/tutorialGuide.ts';
 
 const visibleStep = computed(() => visibleTutorialStep.value);
+const activeMode = ref<'steps' | 'topics'>('steps');
+const fieldGuideTopics = getFieldGuideTopicDefinitions();
 
 const stepStatusLabel = computed(() => {
   switch (visibleStep.value?.status) {
@@ -165,6 +204,8 @@ const canGoNext = computed(() => {
 .tutorial-panel__body,
 .tutorial-panel__footer,
 .tutorial-panel__meta,
+.tutorial-panel__mode-tabs,
+.tutorial-panel__topics,
 .tutorial-panel__step-progress {
   padding-left: 1rem;
   padding-right: 1rem;
@@ -217,6 +258,31 @@ const canGoNext = computed(() => {
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 0.75rem;
+}
+
+.tutorial-panel__mode-tabs {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.tutorial-panel__mode-tab {
+  min-height: 1.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.46);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(203 213 225);
+}
+
+.tutorial-panel__mode-tab:hover,
+.tutorial-panel__mode-tab--active {
+  border-color: rgba(252, 211, 77, 0.48);
+  color: rgb(254 240 138);
 }
 
 .tutorial-panel__chip {
@@ -296,6 +362,62 @@ const canGoNext = computed(() => {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgb(252 211 77);
+}
+
+.tutorial-panel__topics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: min(23rem, calc(100dvh - 12rem));
+  margin-top: 0.85rem;
+  overflow-y: auto;
+  padding-bottom: 0.9rem;
+}
+
+.tutorial-panel__topic {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.38);
+  padding: 0.75rem;
+}
+
+.tutorial-panel__topic-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tutorial-panel__topic-category {
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(252 211 77);
+}
+
+.tutorial-panel__topic h3 {
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: rgb(255 251 235);
+}
+
+.tutorial-panel__topic p,
+.tutorial-panel__topic li {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: rgb(203 213 225);
+}
+
+.tutorial-panel__topic p {
+  margin-top: 0.45rem;
+}
+
+.tutorial-panel__topic ul {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding-left: 1rem;
 }
 
 .tutorial-panel__step-progress {

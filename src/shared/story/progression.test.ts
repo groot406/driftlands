@@ -6,6 +6,7 @@ import {
   evaluateProgression,
   getAvailableStoryTaskKeys,
   getNewlyUnlockedStoryDescriptors,
+  getStoryProgressionObjectives,
   type ProgressionMetrics,
 } from './progression.ts';
 
@@ -72,15 +73,17 @@ test('shoreline and farming unlock from discovered water, housing, and populatio
   const taskKeys = getAvailableStoryTaskKeys(progression);
   const newUnlocks = getNewlyUnlockedStoryDescriptors(progression);
 
+  assert.ok(progression.unlockedNodeKeys.includes('water_source'));
   assert.ok(progression.unlockedNodeKeys.includes('shoreline'));
   assert.ok(progression.unlockedNodeKeys.includes('farming'));
+  assert.ok(taskKeys.includes('buildWell'));
   assert.ok(taskKeys.includes('buildDock'));
   assert.ok(taskKeys.includes('tillLand'));
   assert.ok(taskKeys.includes('seedGrain'));
   assert.ok(newUnlocks.some((unlock) => unlock.kind === 'building' && unlock.key === 'dock'));
 });
 
-test('shoreline stays locked when water is discovered outside landing reach', () => {
+test('shoreline unlocks when water is discovered outside landing reach', () => {
   const landfall = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({
     discoveredTerrains: ['water', 'forest'],
@@ -94,8 +97,106 @@ test('shoreline stays locked when water is discovered outside landing reach', ()
 
   const taskKeys = getAvailableStoryTaskKeys(progression);
 
+  assert.equal(progression.unlockedNodeKeys.includes('shoreline'), true);
+  assert.equal(progression.nextRecommendedNodeKeys.includes('shoreline'), false);
+  assert.equal(taskKeys.includes('buildDock'), true);
+});
+
+test('inland starts recommend field wells instead of shoreline works', () => {
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['forest', 'dirt'],
+    landingTerrains: ['forest', 'dirt'],
+  }));
+  const objectives = getStoryProgressionObjectives(progression);
+
   assert.equal(progression.unlockedNodeKeys.includes('shoreline'), false);
-  assert.equal(taskKeys.includes('buildDock'), false);
+  assert.equal(progression.nextRecommendedNodeKeys.includes('shoreline'), false);
+  assert.equal(progression.nextRecommendedNodeKeys[0], 'water_source');
+  assert.equal(getAvailableStoryTaskKeys(progression).includes('buildDock'), false);
+  assert.ok(objectives.some((objective) => objective.title === 'House x1'));
+  assert.ok(objectives.some((objective) => objective.title === 'Population 2'));
+});
+
+test('inland starts unlock wells before field work', () => {
+  const landfall = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['forest', 'dirt'],
+    landingTerrains: ['forest', 'dirt'],
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+    },
+  }), landfall.unlockedNodeKeys);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.equal(progression.unlockedNodeKeys.includes('water_source'), true);
+  assert.equal(progression.unlockedNodeKeys.includes('farming'), false);
+  assert.equal(taskKeys.includes('buildWell'), true);
+  assert.equal(taskKeys.includes('tillLand'), false);
+  assert.equal(progression.nextRecommendedNodeKeys[0], 'farming');
+});
+
+test('progression objectives explain alternate routes for any-of requirements', () => {
+  const landfall = evaluateProgression(metrics());
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['forest', 'dirt'],
+    landingTerrains: ['forest', 'dirt'],
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+    },
+  }), landfall.unlockedNodeKeys);
+
+  const objectives = getStoryProgressionObjectives(progression);
+  const routeObjective = objectives.find((objective) => objective.description.includes('Choose any route'));
+
+  assert.equal(progression.nextRecommendedNodeKeys[0], 'farming');
+  assert.ok(routeObjective);
+  assert.match(routeObjective?.description ?? '', /well/i);
+  assert.match(routeObjective?.description ?? '', /water/i);
+});
+
+test('inland farming unlocks once the colony builds a well', () => {
+  const landfall = evaluateProgression(metrics());
+  const wells = evaluateProgression(metrics({
+    discoveredTerrains: ['forest', 'dirt'],
+    landingTerrains: ['forest', 'dirt'],
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+    },
+  }), landfall.unlockedNodeKeys);
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['forest', 'dirt'],
+    landingTerrains: ['forest', 'dirt'],
+    population: 2,
+    beds: 2,
+    buildingCounts: {
+      house: 1,
+      well: 1,
+    },
+  }), wells.unlockedNodeKeys);
+
+  const taskKeys = getAvailableStoryTaskKeys(progression);
+
+  assert.equal(progression.unlockedNodeKeys.includes('farming'), true);
+  assert.equal(taskKeys.includes('buildWell'), true);
+  assert.equal(taskKeys.includes('tillLand'), true);
+  assert.equal(taskKeys.includes('seedGrain'), true);
+});
+
+test('shoreline remains recommended for starts with reachable landing water', () => {
+  const progression = evaluateProgression(metrics({
+    discoveredTerrains: ['water', 'forest'],
+    landingTerrains: ['water', 'forest'],
+  }));
+
+  assert.equal(progression.unlockedNodeKeys.includes('shoreline'), false);
+  assert.equal(progression.nextRecommendedNodeKeys[0], 'shoreline');
 });
 
 test('food economy chain unlocks irrigation, stores, and baking from real colony metrics', () => {

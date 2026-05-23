@@ -3,11 +3,9 @@ import { setBackgroundMusic } from '../store/soundStore';
 import { soundService } from './soundService';
 import { uiStore } from '../store/uiStore';
 
-// Import title music immediately, lazy load game music
-import peacefulFrontier from '../assets/sounds/music/Peaceful Frontier.mp3';
-
 // Music playlist - add your music tracks here
-// Tracks will play in order, then loop back to the first track
+// The first title track is randomized when the music manager starts.
+// Game tracks start from a random index, then play in order and loop back.
 // Each track plays for approximately 3.5 minutes before switching
 //
 // To add new tracks:
@@ -41,8 +39,6 @@ const MUSIC_PLAYLIST: TrackEntry[] = [
     { loader: () => import('../assets/sounds/music/Exploring the Unknown.mp3'), name: 'Exploring the Unknown' },
 ];
 
-const TITLE_MUSIC = peacefulFrontier;
-
 // Reactive state exposed to the UI
 export interface MusicPlayerState {
     trackName: string;
@@ -69,6 +65,7 @@ export class MusicManager {
     private isPaused = false;
     private loadedTracks: Map<number, string> = new Map(); // Cache loaded track URLs
     private stopPhaseWatch: WatchStopHandle | null = null;
+    private titlePlaylistIndex: number | null = null;
 
     initialize() {
         if (this.initialized) return;
@@ -86,16 +83,33 @@ export class MusicManager {
     }
 
     async playTitleMusic() {
-        if (this.currentTrack === TITLE_MUSIC && soundService.getCurrentMusic() === TITLE_MUSIC) return;
+        if (MUSIC_PLAYLIST.length < 1) return;
 
         this.stopPlaylist();
         this.isInGame = false;
         this.isPaused = false;
+
+        if (this.titlePlaylistIndex === null) {
+            this.titlePlaylistIndex = this.randomPlaylistIndex();
+        }
+
+        const titleIndex = this.titlePlaylistIndex;
+        const track = await this.loadPlaylistTrack(titleIndex);
+        const entry = MUSIC_PLAYLIST[titleIndex];
+        if (!track || !entry) return;
+
+        if (this.currentTrack === track && soundService.getCurrentMusic() === track) {
+            musicPlayerState.isPlaying = true;
+            musicPlayerState.trackName = entry.name;
+            return;
+        }
+
         this.syncState();
-        await setBackgroundMusic(TITLE_MUSIC, true);
-        this.currentTrack = TITLE_MUSIC;
+        await setBackgroundMusic(track, true);
+        this.currentTrack = track;
         musicPlayerState.isPlaying = true;
-        musicPlayerState.trackName = 'Peaceful Frontier';
+        musicPlayerState.trackName = entry.name;
+        musicPlayerState.trackIndex = titleIndex;
     }
 
     private async startGamePlaylist() {
@@ -104,10 +118,34 @@ export class MusicManager {
         this.isInGame = true;
         this.isPaused = false;
         // Random start index
-        this.currentPlaylistIndex = Math.floor(Math.random() * MUSIC_PLAYLIST.length);
+        this.currentPlaylistIndex = this.randomPlaylistIndex(this.titlePlaylistIndex ?? undefined);
         this.syncState();
         await this.playCurrentPlaylistTrack();
         this.scheduleNextTrack();
+    }
+
+    private randomPlaylistIndex(excludeIndex?: number) {
+        if (MUSIC_PLAYLIST.length <= 1) return 0;
+
+        let index = Math.floor(Math.random() * MUSIC_PLAYLIST.length);
+        while (index === excludeIndex) {
+            index = Math.floor(Math.random() * MUSIC_PLAYLIST.length);
+        }
+        return index;
+    }
+
+    private async loadPlaylistTrack(index: number) {
+        const entry = MUSIC_PLAYLIST[index];
+        if (!entry) return null;
+
+        let track = this.loadedTracks.get(index);
+        if (!track) {
+            const importedTrack = await entry.loader();
+            track = importedTrack.default;
+            this.loadedTracks.set(index, track);
+        }
+
+        return track;
     }
 
     private async playCurrentPlaylistTrack() {
@@ -122,15 +160,7 @@ export class MusicManager {
             const entry = MUSIC_PLAYLIST[this.currentPlaylistIndex];
             if (!entry) return;
 
-            // Check if track is already loaded
-            let track = this.loadedTracks.get(this.currentPlaylistIndex);
-
-            if (!track) {
-                // Lazy load the track
-                const importedTrack = await entry.loader();
-                track = importedTrack.default;
-                this.loadedTracks.set(this.currentPlaylistIndex, track);
-            }
+            const track = await this.loadPlaylistTrack(this.currentPlaylistIndex);
 
             if (track && track !== this.currentTrack) {
                 await setBackgroundMusic(track, true);
@@ -250,6 +280,7 @@ export class MusicManager {
             this.stopPhaseWatch = null;
         }
         this.loadedTracks.clear(); // Clear loaded track cache
+        this.titlePlaylistIndex = null;
         this.initialized = false;
         musicPlayerState.isPlaying = false;
         musicPlayerState.isInGame = false;

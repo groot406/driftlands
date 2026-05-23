@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateLooperlandsJoin } from './looperlandsAuth.ts';
+import { isLooperlandsAuthRequired, validateLooperlandsJoin } from './looperlandsAuth.ts';
 import type { LooperlandsJoinAuth } from '../../../src/shared/looperlands.ts';
 
 const originalFetch = globalThis.fetch;
 const originalApiUrl = process.env.LOOPERLANDS_API_URL;
 const originalViteApiUrl = process.env.VITE_LOOPERLANDS_API_URL;
+const originalRequireAuth = process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH;
 
 function auth(overrides: Partial<LooperlandsJoinAuth> = {}): LooperlandsJoinAuth {
   return {
@@ -53,6 +54,20 @@ test.afterEach(() => {
   } else {
     process.env.VITE_LOOPERLANDS_API_URL = originalViteApiUrl;
   }
+
+  if (originalRequireAuth === undefined) {
+    delete process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH;
+  } else {
+    process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH = originalRequireAuth;
+  }
+});
+
+test('isLooperlandsAuthRequired follows SERVER_REQUIRE_LOOPERLANDS_AUTH', () => {
+  process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH = '0';
+  assert.equal(isLooperlandsAuthRequired(), false);
+
+  process.env.SERVER_REQUIRE_LOOPERLANDS_AUTH = '1';
+  assert.equal(isLooperlandsAuthRequired(), true);
 });
 
 test('validateLooperlandsJoin accepts exactly two owned loopers', async () => {

@@ -95,6 +95,7 @@ test('ParticleRenderer renders underlay and overlay particles to separate surfac
     const underlayCanvas = { width: 640, height: 480 } as HTMLCanvasElement;
     const overlayCanvas = { width: 640, height: 480 } as HTMLCanvasElement;
     let updateCalls = 0;
+    let particleListCalls = 0;
     let lastParticleUpdateMs = 1000;
 
     const context: RenderPassContext = {
@@ -192,6 +193,10 @@ test('ParticleRenderer renders underlay and overlay particles to separate surfac
             },
             effectNowMs: 1040,
             visibleTiles: [],
+            surfaceContent: {
+                particleUnderlay: false,
+                particleOverlay: false,
+            },
         },
         {
             canvas: { width: 640, height: 480 } as HTMLCanvasElement,
@@ -205,43 +210,49 @@ test('ParticleRenderer renders underlay and overlay particles to separate surfac
             updateParticles: () => {
                 updateCalls += 1;
             },
+            hasGameplayBursts: () => false,
             spawnGameplayBursts: () => undefined,
+            allowAmbientParticles: () => true,
             spawnAmbientParticles: () => undefined,
             spawnTaskParticles: () => undefined,
             spawnHeroTrailParticles: () => undefined,
-            getParticles: () => [
-                {
-                    x: 160,
-                    y: 120,
-                    vx: 0,
-                    vy: 0,
-                    size: 3,
-                    bornMs: 1000,
-                    lifeMs: 1000,
-                    alpha: 0.4,
-                    glow: 0,
-                    color: [255, 255, 255] as const,
-                    twinkle: 0,
-                    shape: 'ring' as const,
-                    layer: 'underlay' as const,
-                    growth: 4,
-                },
-                {
-                    x: 240,
-                    y: 160,
-                    vx: 64,
-                    vy: -2,
-                    size: 8,
-                    bornMs: 1000,
-                    lifeMs: 2000,
-                    alpha: 0.35,
-                    glow: 0,
-                    color: [64, 56, 48] as const,
-                    twinkle: 120,
-                    shape: 'bird' as const,
-                    layer: 'overlay' as const,
-                },
-            ],
+            getParticles: () => {
+                particleListCalls += 1;
+                return [
+                    {
+                        x: 160,
+                        y: 120,
+                        vx: 0,
+                        vy: 0,
+                        size: 3,
+                        bornMs: 1000,
+                        lifeMs: 1000,
+                        alpha: 0.4,
+                        glow: 0,
+                        color: [255, 255, 255] as const,
+                        twinkle: 0,
+                        shape: 'ring' as const,
+                        layer: 'underlay' as const,
+                        growth: 4,
+                    },
+                    {
+                        x: 240,
+                        y: 160,
+                        vx: 64,
+                        vy: -2,
+                        size: 8,
+                        bornMs: 1000,
+                        lifeMs: 2000,
+                        alpha: 0.35,
+                        glow: 0,
+                        color: [64, 56, 48] as const,
+                        twinkle: 120,
+                        shape: 'bird' as const,
+                        layer: 'overlay' as const,
+                    },
+                ];
+            },
+            getParticleCount: () => 2,
             getLastParticleUpdateMs: () => lastParticleUpdateMs,
             setLastParticleUpdateMs: (now) => {
                 lastParticleUpdateMs = now;
@@ -250,10 +261,228 @@ test('ParticleRenderer renders underlay and overlay particles to separate surfac
     );
 
     assert.equal(updateCalls, 1);
+    assert.equal(particleListCalls, 1);
     assert.equal(lastParticleUpdateMs, 1040);
     assert.equal(underlayCtx.calls.clearRect, 1);
     assert.equal(overlayCtx.calls.clearRect, 1);
     assert.ok(underlayCtx.calls.arc > 0);
     assert.equal(underlayCtx.calls.quadraticCurveTo, 0);
     assert.ok(overlayCtx.calls.quadraticCurveTo > 0);
+});
+
+test('ParticleRenderer reports and preserves empty particle layers', () => {
+    const renderer = new ParticleRenderer();
+    const underlayCtx = createMockContext();
+    const overlayCtx = createMockContext();
+    const surfaceContent = {
+        particleUnderlay: true,
+        particleOverlay: true,
+    };
+    const context = {
+        particleUnderlaySurface: {
+            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            ctx: underlayCtx,
+        },
+        particleOverlaySurface: {
+            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            ctx: overlayCtx,
+        },
+        runtime: {},
+    } as RenderPassContext;
+
+    renderer.renderWorldLayer(
+        context,
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 1040,
+            visibleTiles: [],
+            surfaceContent,
+        },
+        {
+            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            dpr: 1,
+            getCanvasCenter: () => ({ cx: 320, cy: 240 }),
+            applyWorldTransform: () => undefined,
+            projectWorldToScreenPixels: (worldX, worldY) => ({ x: worldX, y: worldY }),
+            getParticleEdgeFade: () => 1,
+            toRgba: (_color, alpha) => `rgba(0, 0, 0, ${alpha})`,
+            resetParticles: () => undefined,
+            updateParticles: () => undefined,
+            hasGameplayBursts: () => false,
+            spawnGameplayBursts: () => undefined,
+            allowAmbientParticles: () => true,
+            spawnAmbientParticles: () => undefined,
+            spawnTaskParticles: () => undefined,
+            spawnHeroTrailParticles: () => undefined,
+            getParticles: () => [],
+            getParticleCount: () => 0,
+            getLastParticleUpdateMs: () => 1000,
+            setLastParticleUpdateMs: () => undefined,
+        },
+    );
+
+    assert.equal(surfaceContent.particleUnderlay, false);
+    assert.equal(surfaceContent.particleOverlay, false);
+    assert.equal(underlayCtx.calls.clearRect, 0);
+    assert.equal(overlayCtx.calls.clearRect, 0);
+});
+
+test('ParticleRenderer can skip ambient particle spawning while preserving gameplay particle sources', () => {
+    const renderer = new ParticleRenderer();
+    const underlayCtx = createMockContext();
+    const overlayCtx = createMockContext();
+    let ambientCalls = 0;
+    let gameplayCalls = 0;
+    let taskCalls = 0;
+    let heroTrailCalls = 0;
+    let lastParticleUpdateMs = 1000;
+
+    renderer.renderWorldLayer(
+        {
+            particleUnderlaySurface: {
+                canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+                ctx: underlayCtx,
+            },
+            particleOverlaySurface: {
+                canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+                ctx: overlayCtx,
+            },
+            runtime: {},
+        } as RenderPassContext,
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 1040,
+            visibleTiles: [],
+            surfaceContent: {
+                particleUnderlay: true,
+                particleOverlay: true,
+            },
+        },
+        {
+            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            dpr: 1,
+            getCanvasCenter: () => ({ cx: 320, cy: 240 }),
+            applyWorldTransform: () => undefined,
+            projectWorldToScreenPixels: (worldX, worldY) => ({ x: worldX, y: worldY }),
+            getParticleEdgeFade: () => 1,
+            toRgba: (_color, alpha) => `rgba(0, 0, 0, ${alpha})`,
+            resetParticles: () => undefined,
+            updateParticles: () => undefined,
+            hasGameplayBursts: () => false,
+            spawnGameplayBursts: () => {
+                gameplayCalls += 1;
+            },
+            allowAmbientParticles: () => false,
+            spawnAmbientParticles: () => {
+                ambientCalls += 1;
+            },
+            spawnTaskParticles: () => {
+                taskCalls += 1;
+            },
+            spawnHeroTrailParticles: () => {
+                heroTrailCalls += 1;
+            },
+            getParticles: () => [],
+            getParticleCount: () => 0,
+            getLastParticleUpdateMs: () => lastParticleUpdateMs,
+            setLastParticleUpdateMs: (now) => {
+                lastParticleUpdateMs = now;
+            },
+        },
+    );
+
+    assert.equal(gameplayCalls, 1);
+    assert.equal(ambientCalls, 0);
+    assert.equal(taskCalls, 1);
+    assert.equal(heroTrailCalls, 1);
+});
+
+test('ParticleRenderer throttles idle particle source scans without delaying gameplay bursts', () => {
+    const renderer = new ParticleRenderer();
+    const underlayCtx = createMockContext();
+    const overlayCtx = createMockContext();
+    let updateCalls = 0;
+    let gameplayCalls = 0;
+    let taskCalls = 0;
+    let heroTrailCalls = 0;
+    let burstPending = false;
+    let lastParticleUpdateMs = 1000;
+
+    const renderAt = (now: number) => renderer.renderWorldLayer(
+        {
+            particleUnderlaySurface: {
+                canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+                ctx: underlayCtx,
+            },
+            particleOverlaySurface: {
+                canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+                ctx: overlayCtx,
+            },
+            runtime: {},
+        } as RenderPassContext,
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: now,
+            visibleTiles: [],
+        },
+        {
+            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            dpr: 1,
+            getCanvasCenter: () => ({ cx: 320, cy: 240 }),
+            applyWorldTransform: () => undefined,
+            projectWorldToScreenPixels: (worldX, worldY) => ({ x: worldX, y: worldY }),
+            getParticleEdgeFade: () => 1,
+            toRgba: (_color, alpha) => `rgba(0, 0, 0, ${alpha})`,
+            resetParticles: () => undefined,
+            updateParticles: () => {
+                updateCalls += 1;
+            },
+            hasGameplayBursts: () => burstPending,
+            spawnGameplayBursts: () => {
+                gameplayCalls += 1;
+                burstPending = false;
+            },
+            allowAmbientParticles: () => false,
+            spawnAmbientParticles: () => undefined,
+            spawnTaskParticles: () => {
+                taskCalls += 1;
+            },
+            spawnHeroTrailParticles: () => {
+                heroTrailCalls += 1;
+            },
+            getParticles: () => [],
+            getParticleCount: () => 0,
+            getLastParticleUpdateMs: () => lastParticleUpdateMs,
+            setLastParticleUpdateMs: (next) => {
+                lastParticleUpdateMs = next;
+            },
+        },
+    );
+
+    renderAt(1040);
+    renderAt(1080);
+    burstPending = true;
+    renderAt(1100);
+    renderAt(1120);
+    renderAt(1241);
+
+    assert.equal(updateCalls, 3);
+    assert.equal(gameplayCalls, 3);
+    assert.equal(taskCalls, 3);
+    assert.equal(heroTrailCalls, 3);
 });

@@ -57,6 +57,37 @@ To play on an iPad or another device on your LAN:
 2. Find your computer's local IP address, for example with `ipconfig getifaddr en0` on macOS
 3. Open `http://<your-local-ip>:5173` on the iPad
 
+To run only the public-facing server for an online-hosted frontend:
+
+```bash
+npm run external
+```
+
+The first run asks for the online frontend origin, then saves the answer in `.env.external`. Later runs reuse that file, bind the server to `0.0.0.0:3000`, disable debug helpers, use the hosted Looperlands API, and allow the saved frontend origin for Socket.IO/API requests.
+
+If you installed the local `driftlands` command with `npm link`, the same launcher is available as:
+
+```bash
+driftlands external
+```
+
+For an HTTPS backend URL, use a real hostname such as `driftlands.looperlands.io`; browsers will not trust a certificate for the raw public IP address. Point that hostname at your public IP, forward public TCP `80` and `443` to this machine, start the Driftlands server, then start the local Caddy proxy:
+
+```bash
+npm run external
+npm run external:https
+```
+
+The HTTPS helper asks for the backend hostname once, writes `.env.https` and `.caddy/Caddyfile`, then runs a Caddy Docker container that proxies `https://<hostname>` to the local server on `localhost:3000`.
+
+To publish the backend as a Docker container on Home Assistant OS from this machine:
+
+```bash
+npm run haos:deploy
+```
+
+The guided flow builds `driftlands:latest`, exports it into `output/haos`, starts a temporary LAN bundle server, and prints one command to paste into Home Assistant WebSSH. It defaults to a `linux/amd64` image for HAOS. After that, point Nginx Proxy Manager at the Home Assistant host and the port you selected, usually `3000` or `3001`.
+
 To play from outside your network through router port forwarding:
 
 1. Start the client and server together with `npm start`, or run `npm run start:server:no-debug` next to `npm run preview`
@@ -80,6 +111,11 @@ Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards t
 - `npm run dev:server` keeps backward-compatible server startup
 - `npm run start:server` starts the server once without file watching
 - `npm run start:server:no-debug` starts the server once with debug/test helpers disabled
+- `npm run external` starts only the public-facing server on `0.0.0.0:3000`; it asks for the frontend origin once and stores it in `.env.external`
+- `npm run external:https` starts a local Caddy HTTPS proxy in Docker; it asks for the backend hostname once and stores it in `.env.https`
+- `npm run start-external` is a longer alias for `npm run external`
+- `npm run start:external` is an alias for `npm run start-external`
+- `npm run haos:deploy` builds and serves a Home Assistant Docker install bundle for WebSSH
 - `npm run test:unit` runs the automated test suite
 - `npm run build` builds the client for production
 - `npm run preview` previews the built client
@@ -131,9 +167,37 @@ Helpful notes:
 - the client talks to the local game server over Socket.IO
 - Vite proxies `/socket.io` requests to `http://localhost:3000` during development and preview, including when the page is opened via your LAN IP or a forwarded public `5173` port
 - the client can also target a custom server with `VITE_SERVER_URL`
+- `npm run external` uses `.env.external`; edit that file when you want to change the public server port, debug mode, auth requirement, world seed, or allowed frontend origin
+- `npm run external:https` uses `.env.https`; edit that file when you want to change the HTTPS backend hostname or Caddy container name
 - omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run
 - set `SERVER_DEBUG_MODE=0` to disable Tab helper panels, render/debug controls, test-mode controls, and debug restart handling for connected clients
 - `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost, common LAN origins, and ngrok-free.app by default
+
+## Backend Deployment
+
+For a backend-only host, run the Socket.IO/API server without the Vite client:
+
+```bash
+npm ci
+npm run external
+```
+
+Use `npm run external` for hosted environments. It creates `.env.external` on first run and starts the same one-shot server process each time. `npm run server:no-debug` uses `nodemon`, which is meant for local file-watching during development.
+
+Set these environment variables on the backend service:
+
+```bash
+HOST=0.0.0.0
+PORT=3000
+NODE_ENV=production
+SERVER_DEBUG_MODE=0
+SERVER_TPS=10
+FRONTEND_ORIGIN=https://your-frontend-domain.example
+LOOPERLANDS_API_URL=https://api.looperlands.io/api
+SERVER_REQUIRE_LOOPERLANDS_AUTH=1
+```
+
+The included `Procfile` starts the same non-debug server command for Node buildpack platforms. If you deploy with Docker, the `Dockerfile` also uses that command.
 
 ## What You Can Do In-Game
 

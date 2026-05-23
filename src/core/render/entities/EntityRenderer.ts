@@ -33,6 +33,7 @@ interface RenderFrameLike {
     effectNowMs: number;
     movementNowMs: number;
     visibleTiles: Tile[];
+    discoveredTileIds?: ReadonlySet<string>;
 }
 
 interface EntityRendererDependencies {
@@ -106,6 +107,11 @@ interface EntityRendererDependencies {
 }
 
 export class EntityRenderer {
+    private readonly visibleTileIds = new Set<string>();
+    private depthEdgeCanvas: HTMLCanvasElement | null = null;
+    private depthEdgeCtx: CanvasRenderingContext2D | null = null;
+    private depthEdgeCacheKey = '';
+
     private shouldRenderTileOverlayInline(tile: Tile, deps: EntityRendererDependencies) {
         const band = tile.supportBand ?? (tile.activationState === 'inactive' ? 'inactive' : null);
         return band === 'inactive' && !!deps.getTileOverlayKey(tile);
@@ -128,12 +134,27 @@ export class EntityRenderer {
         const translateX = cx - camPx.x;
         const translateY = cy - camPx.y;
 
+        const overlayRecords: HeroOverlayRecord[] = [];
+        this.prepareVisibleTileIds(context);
+
         surface.ctx.save();
         surface.ctx.scale(deps.dpr, deps.dpr);
         deps.applyWorldTransform(surface.ctx, translateX, translateY, frame.cameraFx);
+        this.drawTileOverlays(
+            surface.ctx,
+            overlayRecords,
+            frame.visibleTiles,
+            frame.effectNowMs,
+            opts.globalReachTileIds,
+            deps,
+        );
+        surface.ctx.restore();
 
-        const overlayRecords: HeroOverlayRecord[] = [];
-        this.drawTiles(surface.ctx, overlayRecords, frame.visibleTiles, frame.effectNowMs, opts.globalReachTileIds, deps);
+        this.drawDepthEdgeLayer(context, frame, deps, translateX, translateY);
+
+        surface.ctx.save();
+        surface.ctx.scale(deps.dpr, deps.dpr);
+        deps.applyWorldTransform(surface.ctx, translateX, translateY, frame.cameraFx);
         deps.drawDepthEdgeHighlights(surface.ctx, frame, opts);
         deps.heroRenderer.drawHeroes(
             surface.ctx,
@@ -148,7 +169,7 @@ export class EntityRenderer {
         surface.ctx.restore();
     }
 
-    private drawTiles(
+    private drawTileOverlays(
         ctx: CanvasRenderingContext2D,
         overlayRecords: HeroOverlayRecord[],
         tiles: Tile[],
@@ -223,12 +244,128 @@ export class EntityRenderer {
             // Chunked terrain already rendered the discovered ground layer.
             void deps.drawTile;
         }
+    }
 
-        const visibleTileIds = new Set(tiles.map((tile) => tile.id));
+    private drawDepthEdges(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        now: number,
+        deps: EntityRendererDependencies,
+        visibleTileIds: ReadonlySet<string>,
+    ) {
         for (const tile of tiles) {
             const dist = hexDistance(camera, tile);
             const opacity = deps.getSupportAwareTileOpacity(tile, deps.getTileOpacity(dist, false));
             deps.drawTileBottomEdges(tile, now, ctx, opacity, visibleTileIds);
+        }
+    }
+
+    private drawDepthEdgeLayer(
+        context: RenderPassContext,
+        frame: RenderFrameLike,
+        deps: EntityRendererDependencies,
+        translateX: number,
+        translateY: number,
+    ) {
+        const surface = context.entitySurface;
+        if (!surface) {
+            return;
+        }
+
+        const cacheKey = this.getDepthEdgeCacheKey(context, frame);
+        const cachedSurface = this.ensureDepthEdgeSurface(surface.canvas);
+        if (!cachedSurface) {
+            surface.ctx.save();
+            surface.ctx.scale(deps.dpr, deps.dpr);
+            deps.applyWorldTransform(surface.ctx, translateX, translateY, frame.cameraFx);
+            this.drawDepthEdges(surface.ctx, frame.visibleTiles, frame.effectNowMs, deps, this.visibleTileIds);
+            surface.ctx.restore();
+            return;
+        }
+
+        if (this.depthEdgeCacheKey !== cacheKey || this.hasDiscoveredTileChanges(frame)) {
+            cachedSurface.ctx.clearRect(0, 0, cachedSurface.canvas.width, cachedSurface.canvas.height);
+            cachedSurface.ctx.save();
+            cachedSurface.ctx.scale(deps.dpr, deps.dpr);
+            deps.applyWorldTransform(cachedSurface.ctx, translateX, translateY, frame.cameraFx);
+            this.drawDepthEdges(cachedSurface.ctx, frame.visibleTiles, frame.effectNowMs, deps, this.visibleTileIds);
+            cachedSurface.ctx.restore();
+            this.depthEdgeCacheKey = cacheKey;
+        }
+
+        surface.ctx.drawImage(cachedSurface.canvas, 0, 0);
+    }
+
+    private ensureDepthEdgeSurface(referenceCanvas: HTMLCanvasElement) {
+        if (
+            this.depthEdgeCanvas
+            && this.depthEdgeCtx
+            && this.depthEdgeCanvas.width === referenceCanvas.width
+            && this.depthEdgeCanvas.height === referenceCanvas.height
+        ) {
+            return {
+                canvas: this.depthEdgeCanvas,
+                ctx: this.depthEdgeCtx,
+            };
+        }
+
+        const ownerDocument = referenceCanvas.ownerDocument
+            ?? (typeof document === 'undefined' ? null : document);
+        if (!ownerDocument) {
+            this.depthEdgeCanvas = null;
+            this.depthEdgeCtx = null;
+            this.depthEdgeCacheKey = '';
+            return null;
+        }
+
+        this.depthEdgeCanvas = ownerDocument.createElement('canvas');
+        this.depthEdgeCanvas.width = referenceCanvas.width;
+        this.depthEdgeCanvas.height = referenceCanvas.height;
+        this.depthEdgeCtx = this.depthEdgeCanvas.getContext('2d');
+        if (this.depthEdgeCtx) {
+            this.depthEdgeCtx.imageSmoothingEnabled = false;
+        }
+        this.depthEdgeCacheKey = '';
+
+        return this.depthEdgeCanvas && this.depthEdgeCtx
+            ? {
+                canvas: this.depthEdgeCanvas,
+                ctx: this.depthEdgeCtx,
+            }
+            : null;
+    }
+
+    private getDepthEdgeCacheKey(context: RenderPassContext, frame: RenderFrameLike) {
+        const viewport = context.viewport;
+        const tileIds = context.scene.visibleTiles.map((tile) => tile.tileId).join('|');
+        return [
+            context.entitySurface?.canvas.width ?? 0,
+            context.entitySurface?.canvas.height ?? 0,
+            viewport.dpr,
+            viewport.cameraX,
+            viewport.cameraY,
+            viewport.cameraQ,
+            viewport.cameraR,
+            viewport.zoom,
+            viewport.roll,
+            viewport.offsetX,
+            viewport.offsetY,
+            frame.cameraFx.offsetX,
+            frame.cameraFx.offsetY,
+            frame.cameraFx.roll,
+            frame.cameraFx.zoom,
+            tileIds,
+        ].join(':');
+    }
+
+    private hasDiscoveredTileChanges(frame: RenderFrameLike) {
+        return (frame.discoveredTileIds?.size ?? 0) > 0;
+    }
+
+    private prepareVisibleTileIds(context: RenderPassContext) {
+        this.visibleTileIds.clear();
+        for (const tile of context.scene.visibleTiles) {
+            this.visibleTileIds.add(tile.tileId);
         }
     }
 }

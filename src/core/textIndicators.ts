@@ -184,6 +184,10 @@ export function getTextIndicators(): TextIndicator[] {
     return visibleIndicators;
 }
 
+export function hasTextIndicators(): boolean {
+    return _indicators.length > 0;
+}
+
 export function clearTextIndicators(): void {
     _indicators.splice(0, _indicators.length);
 }

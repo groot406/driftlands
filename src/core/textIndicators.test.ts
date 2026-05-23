@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { axialToPixel } from './camera';
 import { currentPlayer } from './socket';
-import { addTextIndicator, clearTextIndicators, getTextIndicators } from './textIndicators';
+import { addTextIndicator, clearTextIndicators, getTextIndicators, hasTextIndicators } from './textIndicators';
 import { currentPlayerSettlementId } from '../store/settlementStartStore';
 
 function resetIndicators() {
@@ -72,4 +72,15 @@ test('getTextIndicators hides indicators from other players and settlements', ()
     const indicators = getTextIndicators();
     assert.equal(indicators.length, 2);
     assert.deepEqual(indicators.map((indicator) => indicator.position.q), [0, 2]);
+});
+
+test('hasTextIndicators reports whether the registry can need a screen overlay pass', () => {
+    resetIndicators();
+    assert.equal(hasTextIndicators(), false);
+
+    addTextIndicator({ q: 1, r: 2 }, '+1 XP', '#ffd700', 1800);
+    assert.equal(hasTextIndicators(), true);
+
+    clearTextIndicators();
+    assert.equal(hasTextIndicators(), false);
 });

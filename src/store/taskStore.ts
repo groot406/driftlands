@@ -691,7 +691,7 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
 
     if (!def) return rewardedStats;
 
-    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
+    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0);
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedStats;
 
@@ -699,7 +699,9 @@ function rewardStatsToParticipants(instance: TaskInstance, participants: Hero[])
     for (const hero of participants) {
         rewardedStats[hero.id] = {}
         const contrib = instance.participants[hero.id] || 0;
-        const share = contrib / totalContrib;
+        const share = totalContrib > 0
+            ? contrib / totalContrib
+            : 1 / Math.max(1, participants.length);
         const statKeys: (keyof HeroStats)[] = ['xp', 'hp', 'atk', 'spd'];
         for (const stat of statKeys) {
             const statReward = rewards[stat] ?? 0;
@@ -737,20 +739,25 @@ function rewardResourcesToParticipants(instance: TaskInstance, participants: Her
     if (!def) return rewardedResources;
     if (!def.totalRewardedResources) return rewardedResources;
 
-    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0) || 1;
+    const totalContrib = Object.values(instance.participants).reduce((a, b) => a + b, 0);
     const tile = tileIndex[instance.tileId];
     if (!tile) return rewardedResources;
     for (const hero of participants) {
         rewardedResources[hero.id] = {};
 
         const contrib = instance.participants[hero.id] || 0;
-        const share = contrib / totalContrib;
+        const share = totalContrib > 0
+            ? contrib / totalContrib
+            : 1 / Math.max(1, participants.length);
 
         const totalRewards = def.totalRewardedResources(getTaskEconomyDistance(), tile);
         const reward = {
             type: totalRewards.type,
             amount: Math.ceil(totalRewards.amount * share),
         };
+        if (reward.amount <= 0) {
+            continue;
+        }
         hero.carryingPayload = reward;
 
         rewardedResources[hero.id] = reward;
@@ -803,7 +810,7 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
 
     for (const hero of participants) {
         // If hero is carrying resources/payload, defer chaining until after delivery and return.
-        if (hero.carryingPayload) {
+        if (hero.carryingPayload && hero.carryingPayload.amount > 0) {
             hero.pendingChain = {sourceTileId: tile.id, taskType: inst.type};
             continue;
         }

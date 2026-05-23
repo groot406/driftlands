@@ -13,6 +13,12 @@ interface CompositeFrameLike {
     effectSurface: RenderSurface;
     cameraFx: unknown;
     effectNowMs: number;
+    surfaceContent?: {
+        overlayUnderlay?: boolean;
+        overlayTop?: boolean;
+        particleUnderlay?: boolean;
+        particleOverlay?: boolean;
+    };
     quality: {
         enableMotionBlur: boolean;
         enableManualShadowComposite: boolean;
@@ -110,10 +116,18 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
 
     private drawWorldLayers(ctx: CanvasRenderingContext2D, frame: TFrame) {
         this.drawCanvasIfReady(ctx, frame.terrainSurface.canvas);
-        this.drawCanvasIfReady(ctx, frame.overlayUnderlaySurface.canvas);
-        this.drawCanvasIfReady(ctx, frame.particleUnderlaySurface.canvas);
+        if (frame.surfaceContent?.overlayUnderlay !== false) {
+            this.drawCanvasIfReady(ctx, frame.overlayUnderlaySurface.canvas);
+        }
+        if (frame.surfaceContent?.particleUnderlay !== false) {
+            this.drawCanvasIfReady(ctx, frame.particleUnderlaySurface.canvas);
+        }
         this.drawCanvasIfReady(ctx, frame.entitySurface.canvas);
-        this.drawCanvasIfReady(ctx, frame.overlayTopSurface.canvas);
-        this.drawCanvasIfReady(ctx, frame.particleOverlaySurface.canvas);
+        if (frame.surfaceContent?.overlayTop !== false) {
+            this.drawCanvasIfReady(ctx, frame.overlayTopSurface.canvas);
+        }
+        if (frame.surfaceContent?.particleOverlay !== false) {
+            this.drawCanvasIfReady(ctx, frame.particleOverlaySurface.canvas);
+        }
     }
 }

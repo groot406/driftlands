@@ -1,6 +1,32 @@
 import { normalizeWalletAddress } from '../../../src/shared/looperlands';
 import { getLooperlandsApiUrl, getLooperlandsWeb3Url } from './looperlandsAuth';
 
+function maskDebugValue(value: string | null | undefined, visible = 6): string {
+  if (!value) return '(empty)';
+  if (value.length <= visible * 2) return `${value.slice(0, 2)}...`;
+  return `${value.slice(0, visible)}...${value.slice(-visible)}`;
+}
+
+function requestMeta(req: any): Record<string, unknown> {
+  return {
+    origin: req.headers?.origin ?? '-',
+    ip: req.ip ?? req.socket?.remoteAddress ?? '-',
+  };
+}
+
+function logProxy(event: string, details: Record<string, unknown>): void {
+  console.log('[looperlands:proxy]', event, details);
+}
+
+function warnProxy(event: string, details: Record<string, unknown>): void {
+  console.warn('[looperlands:proxy]', event, details);
+}
+
+function getSiweWallet(message: unknown): string | null {
+  if (typeof message !== 'string') return null;
+  return message.split('\n')[1] ?? null;
+}
+
 function getHeader(req: any, name: string): string | undefined {
   const value = req.headers?.[name.toLowerCase()];
   if (Array.isArray(value)) {
@@ -40,18 +66,42 @@ function sendProxyError(res: any, error: unknown): void {
 }
 
 export function registerLooperlandsProxy(app: any): void {
-  app.get('/api/looperlands/web3/nonce', async (_req: any, res: any) => {
+  app.get('/api/looperlands/web3/nonce', async (req: any, res: any) => {
+    const startedAt = Date.now();
+    logProxy('nonce request', {
+      ...requestMeta(req),
+      upstream: `${getLooperlandsWeb3Url()}/web3/nonce`,
+    });
     try {
       const upstream = await fetch(`${getLooperlandsWeb3Url()}/web3/nonce`, {
         headers: { 'Accept': 'application/json' },
       });
+      logProxy('nonce response', {
+        status: upstream.status,
+        ok: upstream.ok,
+        durationMs: Date.now() - startedAt,
+      });
       await sendUpstreamResponse(res, upstream);
     } catch (error) {
+      warnProxy('nonce failed', {
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
       sendProxyError(res, error);
     }
   });
 
   app.post('/api/looperlands/web3/verify', async (req: any, res: any) => {
+    const startedAt = Date.now();
+    const walletAddress = getSiweWallet(req.body?.message);
+    logProxy('verify request', {
+      ...requestMeta(req),
+      upstream: `${getLooperlandsWeb3Url()}/web3/verify`,
+      walletAddress: maskDebugValue(walletAddress),
+      network: req.body?.network,
+      hasMessage: typeof req.body?.message === 'string',
+      hasSignature: typeof req.body?.signature === 'string',
+    });
     try {
       const upstream = await fetch(`${getLooperlandsWeb3Url()}/web3/verify`, {
         method: 'POST',
@@ -61,29 +111,63 @@ export function registerLooperlandsProxy(app: any): void {
         },
         body: JSON.stringify(req.body ?? {}),
       });
+      logProxy('verify response', {
+        status: upstream.status,
+        ok: upstream.ok,
+        durationMs: Date.now() - startedAt,
+        walletAddress: maskDebugValue(walletAddress),
+      });
       await sendUpstreamResponse(res, upstream);
     } catch (error) {
+      warnProxy('verify failed', {
+        durationMs: Date.now() - startedAt,
+        walletAddress: maskDebugValue(walletAddress),
+        error: error instanceof Error ? error.message : String(error),
+      });
       sendProxyError(res, error);
     }
   });
 
   app.get('/api/looperlands/game/wallet/:wallet/loopers', async (req: any, res: any) => {
+    const startedAt = Date.now();
+    let wallet = '(invalid)';
     try {
       const token = getHeader(req, 'x-auth-web3token');
       if (!token) {
+        warnProxy('loopers missing token', {
+          ...requestMeta(req),
+          walletAddress: maskDebugValue(String(req.params.wallet ?? '')),
+        });
         res.status(401).json({ message: 'Missing Looperlands auth token.' });
         return;
       }
 
-      const wallet = encodeURIComponent(normalizeWalletAddress(decodeURIComponent(String(req.params.wallet ?? ''))));
+      wallet = normalizeWalletAddress(decodeURIComponent(String(req.params.wallet ?? '')));
+      logProxy('loopers request', {
+        ...requestMeta(req),
+        upstream: `${getLooperlandsApiUrl()}/game/wallet/${maskDebugValue(wallet)}/loopers`,
+        walletAddress: maskDebugValue(wallet),
+        hasToken: token.length > 0,
+      });
       const upstream = await fetch(`${getLooperlandsApiUrl()}/game/wallet/${wallet}/loopers`, {
         headers: {
           'Accept': 'application/json',
           'X-AUTH-WEB3TOKEN': token,
         },
       });
+      logProxy('loopers response', {
+        status: upstream.status,
+        ok: upstream.ok,
+        durationMs: Date.now() - startedAt,
+        walletAddress: maskDebugValue(wallet),
+      });
       await sendWalletLoopersResponse(res, upstream);
     } catch (error) {
+      warnProxy('loopers failed', {
+        durationMs: Date.now() - startedAt,
+        walletAddress: maskDebugValue(wallet),
+        error: error instanceof Error ? error.message : String(error),
+      });
       sendProxyError(res, error);
     }
   });

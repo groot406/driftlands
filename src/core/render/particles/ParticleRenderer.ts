@@ -40,6 +40,10 @@ interface RenderFrameLike {
     cameraFx: CameraCompositeStateLike;
     effectNowMs: number;
     visibleTiles: Tile[];
+    surfaceContent?: {
+        particleUnderlay: boolean;
+        particleOverlay: boolean;
+    };
 }
 
 interface DrawableParticle {
@@ -74,16 +78,24 @@ interface ParticleRendererDependencies {
     toRgba(color: readonly [number, number, number], alpha: number): string;
     resetParticles(now: number): void;
     updateParticles(deltaMs: number, now: number): void;
+    hasGameplayBursts(): boolean;
     spawnGameplayBursts(now: number): void;
+    allowAmbientParticles(): boolean;
     spawnAmbientParticles(now: number, tiles: Tile[]): void;
     spawnTaskParticles(now: number, tiles: Tile[]): void;
     spawnHeroTrailParticles(now: number): void;
     getParticles(): ParticleLike[];
+    getParticleCount(): number;
     getLastParticleUpdateMs(): number;
     setLastParticleUpdateMs(now: number): void;
 }
 
 export class ParticleRenderer {
+    private hadUnderlayContent = false;
+    private hadOverlayContent = false;
+    private nextIdleSourceScanMs = 0;
+    private readonly idleSourceScanIntervalMs = 120;
+
     renderWorldLayer(
         context: RenderPassContext,
         frame: RenderFrameLike,
@@ -100,22 +112,30 @@ export class ParticleRenderer {
         const translateX = cx - camPx.x;
         const translateY = cy - camPx.y;
 
-        if (!this.updateParticles(frame.effectNowMs, frame.visibleTiles, deps)) {
-            if (underlaySurface) {
+        const particles = this.updateParticles(frame.effectNowMs, frame.visibleTiles, deps);
+        if (!particles.length) {
+            if (underlaySurface && this.hadUnderlayContent) {
                 underlaySurface.ctx.clearRect(0, 0, underlaySurface.canvas.width, underlaySurface.canvas.height);
             }
-            if (overlaySurface) {
+            if (overlaySurface && this.hadOverlayContent) {
                 overlaySurface.ctx.clearRect(0, 0, overlaySurface.canvas.width, overlaySurface.canvas.height);
             }
+            this.setLayerContent(frame, false, false);
+            this.hadUnderlayContent = false;
+            this.hadOverlayContent = false;
             return;
         }
 
+        let underlayHasContent = false;
+        let overlayHasContent = false;
+        const drawables = this.collectDrawableParticleLayers(particles, frame.effectNowMs, false, frame.cameraFx, deps);
+
         if (underlaySurface) {
-            this.drawParticleLayer(
+            underlayHasContent = this.drawParticleLayer(
                 underlaySurface.ctx,
                 underlaySurface.canvas,
+                drawables.underlay,
                 frame.effectNowMs,
-                false,
                 frame.cameraFx,
                 translateX,
                 translateY,
@@ -124,11 +144,11 @@ export class ParticleRenderer {
             );
         }
         if (overlaySurface) {
-            this.drawParticleLayer(
+            overlayHasContent = this.drawParticleLayer(
                 overlaySurface.ctx,
                 overlaySurface.canvas,
+                drawables.overlay,
                 frame.effectNowMs,
-                false,
                 frame.cameraFx,
                 translateX,
                 translateY,
@@ -136,72 +156,109 @@ export class ParticleRenderer {
                 deps,
             );
         }
+
+        this.setLayerContent(frame, underlayHasContent, overlayHasContent);
+        this.hadUnderlayContent = underlayHasContent;
+        this.hadOverlayContent = overlayHasContent;
+    }
+
+    private setLayerContent(frame: RenderFrameLike, underlay: boolean, overlay: boolean) {
+        if (!frame.surfaceContent) return;
+        frame.surfaceContent.particleUnderlay = underlay;
+        frame.surfaceContent.particleOverlay = overlay;
     }
 
     private updateParticles(
         now: number,
         tiles: Tile[],
         deps: ParticleRendererDependencies,
-    ) {
-        if (!deps.canvas) return false;
+    ): ParticleLike[] {
+        if (!deps.canvas) return [];
 
         if (!graphicsStore.particles) {
             consumePendingTerrainBursts();
             deps.resetParticles(now);
-            return false;
+            this.nextIdleSourceScanMs = 0;
+            return [];
+        }
+
+        const hasExistingParticles = deps.getParticleCount() > 0;
+        const allowAmbientParticles = deps.allowAmbientParticles();
+        const gameplayBurstsPending = deps.hasGameplayBursts();
+        if (
+            !hasExistingParticles
+            && !allowAmbientParticles
+            && !gameplayBurstsPending
+            && now < this.nextIdleSourceScanMs
+        ) {
+            return [];
         }
 
         const deltaMs = Math.max(0, Math.min(48, now - deps.getLastParticleUpdateMs()));
         deps.setLastParticleUpdateMs(now);
         deps.updateParticles(deltaMs, now);
         deps.spawnGameplayBursts(now);
-        deps.spawnAmbientParticles(now, tiles);
+        if (allowAmbientParticles) {
+            deps.spawnAmbientParticles(now, tiles);
+        }
         deps.spawnTaskParticles(now, tiles);
         deps.spawnHeroTrailParticles(now);
 
-        return deps.getParticles().length > 0;
+        const particles = deps.getParticles();
+        this.nextIdleSourceScanMs = particles.length > 0
+            ? 0
+            : now + this.idleSourceScanIntervalMs;
+        return particles;
     }
 
     private drawParticleLayer(
         ctx: CanvasRenderingContext2D,
         canvas: HTMLCanvasElement,
+        drawables: readonly DrawableParticle[],
         now: number,
-        applyCameraFade: boolean,
         cameraFx: CameraCompositeStateLike,
         translateX: number,
         translateY: number,
         layer: ParticleLayer,
         deps: ParticleRendererDependencies,
-    ) {
+    ): boolean {
+        const hadContent = layer === 'underlay' ? this.hadUnderlayContent : this.hadOverlayContent;
+        if (!drawables.length) {
+            if (hadContent) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            return false;
+        }
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
         ctx.scale(deps.dpr, deps.dpr);
         deps.applyWorldTransform(ctx, translateX, translateY, cameraFx);
 
-        const drawables = this.collectDrawableParticles(now, applyCameraFade, cameraFx, layer, deps);
         this.drawParticles(ctx, drawables, now, deps);
         ctx.restore();
+        return true;
     }
 
-    private collectDrawableParticles(
+    private collectDrawableParticleLayers(
+        particles: ParticleLike[],
         now: number,
         applyCameraFade: boolean,
         cameraFx: CameraCompositeStateLike,
-        layer: ParticleLayer,
         deps: ParticleRendererDependencies,
         predicate?: (particle: ParticleLike) => boolean,
     ) {
-        if (!deps.canvas) return [] as DrawableParticle[];
-
-        const particles = deps.getParticles();
-        if (!particles.length) return [] as DrawableParticle[];
+        const layers = {
+            underlay: [] as DrawableParticle[],
+            overlay: [] as DrawableParticle[],
+        };
+        if (!deps.canvas) return layers;
+        if (!particles.length) return layers;
 
         const canvasWidth = deps.canvas.width / deps.dpr;
         const canvasHeight = deps.canvas.height / deps.dpr;
-        const drawableParticles: DrawableParticle[] = [];
 
         for (const particle of particles) {
-            if ((particle.layer ?? 'underlay') !== layer) continue;
             if (predicate && !predicate(particle)) continue;
 
             const age = now - particle.bornMs;
@@ -247,10 +304,10 @@ export class ParticleRenderer {
             const alpha = particle.alpha * fade * flicker * edgeFade;
             if (alpha <= 0.02) continue;
 
-            drawableParticles.push({ particle, alpha, progress });
+            layers[particle.layer ?? 'underlay'].push({ particle, alpha, progress });
         }
 
-        return drawableParticles;
+        return layers;
     }
 
     private drawParticles(

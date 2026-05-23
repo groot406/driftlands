@@ -7,7 +7,7 @@ import type {ResourceAmount} from "../../../core/types/Resource.ts";
 
 const irregateDirtTask: TaskDefinition = {
     key: 'irregateDirtTask',
-    label: 'Irregate',
+    label: 'Irrigate',
     chainAdjacentSameTerrain: true,
 
     canStart(tile) {

@@ -1,0 +1,296 @@
+- generic [ref=e60]:
+  - generic [ref=e275] [cursor=pointer]: Chop wood
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e171]:
+          - button "Open settler overview (0/15)" [ref=e276] [cursor=pointer]:
+            - generic [ref=e173]: 👥
+            - generic [ref=e174]:
+              - generic [ref=e175]: Settlers
+              - generic [ref=e176]: 0/15
+          - 'button "Food: 12" [ref=e277] [cursor=pointer]':
+            - generic [ref=e179]: 🍞
+            - generic [ref=e180]:
+              - generic [ref=e181]: Food
+              - generic [ref=e183]: "12"
+            - tooltip "Food 🍞 Bread 4 🐟 Fish 4 🍖 Meat 4":
+              - paragraph: Food
+              - generic:
+                - generic: 🍞 Bread
+                - generic: "4"
+              - generic:
+                - generic: 🐟 Fish
+                - generic: "4"
+              - generic:
+                - generic: 🍖 Meat
+                - generic: "4"
+          - 'button "Crops: 0" [ref=e184] [cursor=pointer]':
+            - generic [ref=e186]: 🌿
+            - generic [ref=e187]:
+              - generic [ref=e188]: Crops
+              - generic [ref=e190]: "0"
+            - tooltip "Crops 🌾 Grain 0":
+              - paragraph: Crops
+              - generic:
+                - generic: 🌾 Grain
+                - generic: "0"
+          - 'button "Materials: 0" [ref=e191] [cursor=pointer]':
+            - generic [ref=e193]: 🧱
+            - generic [ref=e194]:
+              - generic [ref=e195]: Materials
+              - generic [ref=e197]: "0"
+            - tooltip "Materials 🌲 Wood 0 🪨 Stone 0":
+              - paragraph: Materials
+              - generic:
+                - generic: 🌲 Wood
+                - generic: "0"
+              - generic:
+                - generic: 🪨 Stone
+                - generic: "0"
+          - 'button "Crafted: 0" [ref=e198] [cursor=pointer]':
+            - generic [ref=e200]: 🛠️
+            - generic [ref=e201]:
+              - generic [ref=e202]: Crafted
+              - generic [ref=e204]: "0"
+        - button "Menu" [ref=e206] [cursor=pointer]:
+          - generic [ref=e207]:
+            - generic: Menu
+      - generic:
+        - generic:
+          - generic [ref=e278] [cursor=pointer]:
+            - generic [ref=e279]:
+              - generic [ref=e280]: Harm
+              - generic [ref=e281]: Trailbreaker
+            - generic [ref=e287]:
+              - generic [ref=e288]: XP
+              - strong [ref=e289]: "100"
+            - generic [ref=e290]:
+              - button "Choose scout target" [ref=e292]:
+                - generic [ref=e297]: Choose
+              - button "Harm skill progress 0%" [ref=e299]:
+                - generic [ref=e300]: +
+                - generic [ref=e301]:
+                  - generic [ref=e302]: SP 0
+                  - generic [ref=e303]: XP 0%
+          - generic [ref=e304] [cursor=pointer]:
+            - generic [ref=e305]:
+              - generic [ref=e306]: Jess
+              - generic [ref=e307]: Surveyor
+            - generic [ref=e313]:
+              - generic [ref=e314]: XP
+              - strong [ref=e315]: "100"
+            - generic:
+              - generic:
+                - button "Choose scout target" [disabled]:
+                  - generic:
+                    - generic: Choose
+              - generic:
+                - button "Jess skill progress 0%" [disabled]:
+                  - generic: +
+                  - generic:
+                    - generic: SP 0
+                    - generic: XP 0%
+    - generic [ref=e208]:
+      - button "? 3" [ref=e316] [cursor=pointer]:
+        - generic [ref=e210]: "?"
+        - generic [ref=e211]: "3"
+      - button "3" [ref=e317] [cursor=pointer]:
+        - img [ref=e318]
+        - generic [ref=e320]: "3"
+      - button "Re-read conversation (C)" [ref=e321] [cursor=pointer]:
+        - img [ref=e322]
+      - button "Open music player" [ref=e213] [cursor=pointer]:
+        - img [ref=e214]
+      - button "1" [ref=e220] [cursor=pointer]:
+        - img [ref=e221]
+        - generic [ref=e223]: "1"
+    - generic [ref=e326] [cursor=pointer]:
+      - generic [ref=e327]:
+        - generic [ref=e328]: World Map
+        - button "Open" [ref=e329]
+      - generic "In-game minimap" [ref=e331]:
+        - button "Pioneer 1RKC's settlement" [ref=e333]
+        - 'button "Pioneer 1RKC: Harm" [ref=e335]'
+        - 'button "Pioneer 1RKC: Jess" [ref=e337]'
+    - complementary [ref=e224]:
+      - generic [ref=e225]:
+        - generic [ref=e226]:
+          - paragraph [ref=e227]: Field Guide
+          - heading "Gather first wood" [level=2] [ref=e339]
+        - button "x" [ref=e229] [cursor=pointer]
+      - tablist "Field guide sections" [ref=e230]:
+        - button "Steps" [ref=e231] [cursor=pointer]
+        - button "Topics" [active] [ref=e232] [cursor=pointer]
+      - region "Field guide topics" [ref=e360]:
+        - article [ref=e361]:
+          - generic [ref=e362]:
+            - generic [ref=e363]: Basics
+            - heading "Heroes and orders" [level=3] [ref=e364]
+          - paragraph [ref=e365]: "Heroes do the direct tile work: scouting, chopping, digging, hunting, building, mining, and emergency fixes."
+          - list [ref=e366]:
+            - listitem [ref=e367]: Select a hero before choosing a tile order.
+            - listitem [ref=e368]: Put multiple heroes on the same urgent task when speed matters.
+            - listitem [ref=e369]: Settlers take over repeated work once a job site exists.
+        - article [ref=e370]:
+          - generic [ref=e371]:
+            - generic [ref=e372]: Frontier
+            - heading "Exploration" [level=3] [ref=e373]
+          - paragraph [ref=e374]: The world is procedural, so scouting is how the colony finds forests, shorelines, fields, ridges, and harsh late terrain.
+          - list [ref=e375]:
+            - listitem [ref=e376]: Click dark edge tiles to reveal the next ring.
+            - listitem [ref=e377]: If the terrain you need is missing, scout around similar ground and keep another progression lane moving.
+            - listitem [ref=e378]: Watchtowers and later town centers make distant discoveries easier to hold.
+        - article [ref=e379]:
+          - generic [ref=e380]:
+            - generic [ref=e381]: Settlement
+            - heading "Resources and storage" [level=3] [ref=e382]
+          - paragraph [ref=e383]: Wood, food, crops, stone, ore, tools, and special goods all flow through colony storage before buildings or settlers can use them.
+          - list [ref=e384]:
+            - listitem [ref=e385]: Construction waits when storage is missing a required resource.
+            - listitem [ref=e386]: Dedicated storehouses and depots keep bigger settlements from bottlenecking at the town center.
+            - listitem [ref=e387]: Open resource details to see production, demand, downtime, and repair pressure.
+        - article [ref=e388]:
+          - generic [ref=e389]:
+            - generic [ref=e390]: Settlement
+            - heading "Housing and population" [level=3] [ref=e391]
+          - paragraph [ref=e392]: Population grows when there are beds and food. More settlers unlock support, job sites, and deeper progression.
+          - list [ref=e393]:
+            - listitem [ref=e394]: Build houses before you expect new settlers.
+            - listitem [ref=e395]: Keep food stocked or population pressure will rise.
+            - listitem [ref=e396]: Population support determines how much frontier can stay active.
+        - article [ref=e397]:
+          - generic [ref=e398]:
+            - generic [ref=e399]: Settlement
+            - heading "Active support" [level=3] [ref=e400]
+          - paragraph [ref=e401]: Discovered tiles need enough population support to stay usable. Overexpansion can leave outer work sites inactive.
+          - list [ref=e402]:
+            - listitem [ref=e403]: If tiles go inactive, grow population or restore from adjacent active ground.
+            - listitem [ref=e404]: Do not scout much farther than your support can hold.
+            - listitem [ref=e405]: Town centers, watchtowers, and logistics help stabilize wider borders.
+        - article [ref=e406]:
+          - generic [ref=e407]:
+            - generic [ref=e408]: Logistics
+            - heading "Roads and reach" [level=3] [ref=e409]
+          - paragraph [ref=e410]: Roads make repeated travel less painful, while reach determines where the colony can build and restore safely.
+          - list [ref=e411]:
+            - listitem [ref=e412]: Start roads from the town center or another connected road.
+            - listitem [ref=e413]: Use roads between houses, storage, and busy job sites.
+            - listitem [ref=e414]: Use watchtowers when terrain exists but sits just beyond reliable reach.
+        - article [ref=e415]:
+          - generic [ref=e416]:
+            - generic [ref=e417]: Settlement
+            - heading "Building placement" [level=3] [ref=e418]
+          - paragraph [ref=e419]: Buildings block movement and many production sites care about nearby terrain, so placement is part of the puzzle.
+          - list [ref=e420]:
+            - listitem [ref=e421]: Leave paths around the town center.
+            - listitem [ref=e422]: Place job sites near houses and storage when possible.
+            - listitem [ref=e423]: "Build terrain-specific sites on the terrain they ask for: docks on water, mines on ridges, granaries on grain."
+        - article [ref=e424]:
+          - generic [ref=e425]:
+            - generic [ref=e426]: Food
+            - heading "Early food routes" [level=3] [ref=e427]
+          - paragraph [ref=e428]: "The first stable food source adapts to the landing: docks for shorelines, hunting for woodland, and planted groves for open fields."
+          - list [ref=e429]:
+            - listitem [ref=e430]: Use docks when reachable water appears.
+            - listitem [ref=e431]: Use hunting and hunter huts when forest is easier than shoreline.
+            - listitem [ref=e432]: On open starts, plant trees first so a local food route can exist.
+        - article [ref=e433]:
+          - generic [ref=e434]:
+            - generic [ref=e435]: Food
+            - heading "Farming and irrigation" [level=3] [ref=e436]
+          - paragraph [ref=e437]: "Farming moves the colony from emergency food into repeatable crop chains: dig, prepare, seed, grow, harvest."
+          - list [ref=e438]:
+            - listitem [ref=e439]: Water-adjacent plots are easiest early.
+            - listitem [ref=e440]: Wells and irrigation make inland farming reliable.
+            - listitem [ref=e441]: Grain leads to granaries, bakeries, bread, and later brewing.
+        - article [ref=e442]:
+          - generic [ref=e443]:
+            - generic [ref=e444]: Food
+            - heading "Job sites and settlers" [level=3] [ref=e445]
+          - paragraph [ref=e446]: Job sites are staffed buildings that turn repeated hero work into automatic colony production.
+          - list [ref=e447]:
+            - listitem [ref=e448]: Assign enough workers to production buildings.
+            - listitem [ref=e449]: Low happiness, long travel, missing input, or full output storage can create downtime.
+            - listitem [ref=e450]: Use resource details to spot why a site is not producing.
+        - article [ref=e451]:
+          - generic [ref=e452]:
+            - generic [ref=e453]: Logistics
+            - heading "Depots and hauling" [level=3] [ref=e454]
+          - paragraph [ref=e455]: Depots and storehouses stage materials near the work front so distant construction does not depend on a long walk home.
+          - list [ref=e456]:
+            - listitem [ref=e457]: Build depots before a far work front gets busy.
+            - listitem [ref=e458]: Pair depots with roads when possible.
+            - listitem [ref=e459]: Specialized storage keeps crops, food, materials, and crafted goods easier to manage.
+        - article [ref=e460]:
+          - generic [ref=e461]:
+            - generic [ref=e462]: Settlement
+            - heading "Repairs and maintenance" [level=3] [ref=e463]
+          - paragraph [ref=e464]: Buildings wear down, pause, or lose efficiency when the colony cannot keep repair stock and workers moving.
+          - list [ref=e465]:
+            - listitem [ref=e466]: Keep wood and stone in storage before the settlement grows wide.
+            - listitem [ref=e467]: Offline or paused job sites usually need repairs, workers, input resources, or storage room.
+            - listitem [ref=e468]: Use nearby roads and depots so repair pressure does not strand distant buildings.
+        - article [ref=e469]:
+          - generic [ref=e470]:
+            - generic [ref=e471]: Industry
+            - heading "Mining and tools" [level=3] [ref=e472]
+          - paragraph [ref=e473]: Ridges unlock stone, ore, quarries, mines, workshops, tools, and the first serious expansion projects.
+          - list [ref=e474]:
+            - listitem [ref=e475]: If mountains are hard to find, keep scouting while strengthening food, roads, and storage.
+            - listitem [ref=e476]: Quarries help with stone; mines feed ore and toolmaking.
+            - listitem [ref=e477]: Tools are the bridge to advanced construction and new town centers.
+        - article [ref=e478]:
+          - generic [ref=e479]:
+            - generic [ref=e480]: Logistics
+            - heading "Harbors and ship orders" [level=3] [ref=e481]
+          - paragraph [ref=e482]: Harbors turn surplus resources into timed cargo orders, trade goods, and Gold for the wider economy.
+          - list [ref=e483]:
+            - listitem [ref=e484]: Build a harbor beside a large water body once logistics and tools can support it.
+            - listitem [ref=e485]: Load only what the colony can spare before the ship leaves.
+            - listitem [ref=e486]: Partial orders still pay, while complete orders pay better and bring more trade goods.
+        - article [ref=e487]:
+          - generic [ref=e488]:
+            - generic [ref=e489]: Logistics
+            - heading "Market and trade" [level=3] [ref=e490]
+          - paragraph [ref=e491]: Trade Centers open resource exchange so a strong surplus can cover a weak local terrain route.
+          - list [ref=e492]:
+            - listitem [ref=e493]: Sell surplus goods to earn Gold before buying scarce ore, stone, food, or specialty goods.
+            - listitem [ref=e494]: Market stock and prices change, so buying everything is expensive and unreliable.
+            - listitem [ref=e495]: Use trade as a backup lane, not a replacement for a working local economy.
+        - article [ref=e496]:
+          - generic [ref=e497]:
+            - generic [ref=e498]: Progression
+            - heading "Studies and upgrades" [level=3] [ref=e499]
+          - paragraph [ref=e500]: Libraries, workshops, studies, and upgrades deepen the buildings you already have instead of only adding new ones.
+          - list [ref=e501]:
+            - listitem [ref=e502]: Use studies to unlock colony knowledge.
+            - listitem [ref=e503]: Use stone, glass, tools, and industry outputs to improve infrastructure.
+            - listitem [ref=e504]: Upgrades usually appear on eligible existing buildings.
+        - article [ref=e505]:
+          - generic [ref=e506]:
+            - generic [ref=e507]: Frontier
+            - heading "Calamities" [level=3] [ref=e508]
+          - paragraph [ref=e509]: Fires, spoilage, sickness, and harsh events test whether the settlement has reserves instead of only perfect plans.
+          - list [ref=e510]:
+            - listitem [ref=e511]: Warnings are a signal to stock food, repair materials, and active support.
+            - listitem [ref=e512]: Do not let one specialized food chain become the whole colony diet.
+            - listitem [ref=e513]: Recovery is faster when roads, storage, and job sites are already close to the trouble spot.
+        - article [ref=e514]:
+          - generic [ref=e515]:
+            - generic [ref=e516]: Progression
+            - heading "Story and roadmap" [level=3] [ref=e517]
+          - paragraph [ref=e518]: Story chapters explain the colony stakes, while the roadmap shows the exact milestone blocking the next unlock.
+          - list [ref=e519]:
+            - listitem [ref=e520]: Read the Chronicle when you want the current chapter goal in plain language.
+            - listitem [ref=e521]: Use the roadmap for exact requirements and unlock previews.
+            - listitem [ref=e522]: The guide gives immediate next actions; the roadmap gives the wider plan.
+        - article [ref=e523]:
+          - generic [ref=e524]:
+            - generic [ref=e525]: Frontier
+            - heading "Harsh frontier" [level=3] [ref=e526]
+          - paragraph [ref=e527]: "Snow, desert, and volcanic ground are late checks on the whole settlement loop: food, reach, roads, logistics, industry, and recovery."
+          - list [ref=e528]:
+            - listitem [ref=e529]: Push harsh terrain after the core economy is stable.
+            - listitem [ref=e530]: Use depots and roads before sending long projects outward.
+            - listitem [ref=e531]: If one route is slow, keep working another roadmap lane until the frontier opens.

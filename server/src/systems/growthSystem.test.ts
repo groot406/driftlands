@@ -47,8 +47,8 @@ test('growthSystem keeps ranged growth duration stable across ticks and matures 
   assert.equal(tile.variant, 'young_forest');
   assert.equal(typeof tile.variantSetMs, 'number');
   assert.equal(typeof tile.variantAgeMs, 'number');
-  assert.ok(tile.variantAgeMs! >= 480000);
-  assert.ok(tile.variantAgeMs! <= 4800000);
+  assert.ok(tile.variantAgeMs! >= 72000);
+  assert.ok(tile.variantAgeMs! <= 192000);
 
   broadcasts.length = 0;
 

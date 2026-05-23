@@ -5,9 +5,12 @@ import {
   normalizeWalletAddress,
   toLooperHeroSelection,
 } from '../shared/looperlands.ts';
+import { getDriftlandsServerUrl } from './driftlandsServerUrl.ts';
+import { describeWalletError, maskDebugValue, walletLog, walletWarn } from './walletDebug.ts';
 
 const TOKEN_STORAGE_KEY = 'driftlands-looperlands-token-v1';
 const WALLET_STORAGE_KEY = 'driftlands-looperlands-wallet-v1';
+const PLATFORM_TOKEN_STORAGE_KEY = 'token';
 const DEFAULT_LOOPERLANDS_API_URL = 'https://api.looperlands.io/api';
 const DRIFTLANDS_LOOPERLANDS_PROXY_PATH = '/api/looperlands';
 const DRIFTLANDS_API_PATH = '/api/driftlands';
@@ -30,18 +33,28 @@ export interface LooperlandsWalletSession {
 }
 
 export function getLooperlandsApiUrl(): string {
-  const apiUrl = (import.meta.env.VITE_LOOPERLANDS_API_URL || import.meta.env.VITE_API_URL || DEFAULT_LOOPERLANDS_API_URL).replace(/\/$/, '');
+  const apiUrl = (
+    import.meta.env.VITE_DRIFTLANDS_LOOPERLANDS_API_URL
+    || import.meta.env.VITE_LOOPERLANDS_API_URL
+    || DEFAULT_LOOPERLANDS_API_URL
+  ).replace(/\/$/, '');
   return apiUrl.endsWith('/api') ? apiUrl : `${apiUrl}/api`;
 }
 
+function getLooperlandsPlatformApiUrl(): string {
+  return (
+    import.meta.env.VITE_DRIFTLANDS_PLATFORM_API_URL
+    || import.meta.env.VITE_API_URL
+    || ''
+  ).replace(/\/$/, '');
+}
+
 function getDriftlandsLooperlandsProxyUrl(path: string): string {
-  const serverUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/$/, '');
-  return `${serverUrl}${DRIFTLANDS_LOOPERLANDS_PROXY_PATH}${path}`;
+  return `${getDriftlandsServerUrl()}${DRIFTLANDS_LOOPERLANDS_PROXY_PATH}${path}`;
 }
 
 function getDriftlandsApiUrl(path: string): string {
-  const serverUrl = (import.meta.env.VITE_SERVER_URL || '').replace(/\/$/, '');
-  return `${serverUrl}${DRIFTLANDS_API_PATH}${path}`;
+  return `${getDriftlandsServerUrl()}${DRIFTLANDS_API_PATH}${path}`;
 }
 
 export function getStoredLooperlandsSession(): LooperlandsWalletSession | null {
@@ -83,6 +96,169 @@ function storeSession(session: LooperlandsWalletSession): void {
   }));
 }
 
+function getPlatformAuthToken(): string {
+  try {
+    return window.localStorage.getItem(PLATFORM_TOKEN_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function decodeBase64Url(value: string): string {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  return window.atob(padded);
+}
+
+function getStringField(source: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getNumberLikeField(source: Record<string, unknown>, keys: string[]): string | number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function isLikelyEthereumAddress(value: string | undefined): value is string {
+  return !!value && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function readPlatformSessionFromToken(token: string): LooperlandsWalletSession | null {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) {
+      return null;
+    }
+
+    const tokenBody = JSON.parse(decodeBase64Url(payload)) as Record<string, unknown>;
+    const nestedUser = tokenBody.userdata && typeof tokenBody.userdata === 'object'
+      ? tokenBody.userdata as Record<string, unknown>
+      : {};
+    const walletAddress = getStringField(tokenBody, ['address', 'walletAddress', 'wallet'])
+      ?? getStringField(nestedUser, ['address', 'walletAddress', 'wallet']);
+    const chainId = getNumberLikeField(tokenBody, ['chainId', 'network'])
+      ?? getNumberLikeField(nestedUser, ['chainId', 'network']);
+
+    walletLog('platform token inspected', {
+      hasWalletAddress: isLikelyEthereumAddress(walletAddress),
+      hasChainId: chainId !== undefined,
+    });
+
+    if (!isLikelyEthereumAddress(walletAddress) || chainId === undefined) {
+      return null;
+    }
+
+    return {
+      walletAddress: normalizeWalletAddress(walletAddress),
+      chainId: toNumberChainId(chainId),
+      token,
+      apiUrl: getLooperlandsApiUrl(),
+    };
+  } catch (error) {
+    walletWarn('platform token inspect failed', { error: describeWalletError(error) });
+    return null;
+  }
+}
+
+export function hasLooperlandsPlatformSessionCandidate(): boolean {
+  return getPlatformAuthToken().length > 0 && getLooperlandsPlatformApiUrl().length > 0;
+}
+
+export async function restoreLooperlandsPlatformSession(): Promise<LooperlandsWalletSession | null> {
+  const token = getPlatformAuthToken();
+  const platformApiUrl = getLooperlandsPlatformApiUrl();
+  walletLog('platform session restore start', {
+    hasPlatformToken: token.length > 0,
+    platformApiUrl: platformApiUrl || '(missing)',
+  });
+
+  if (!token || !platformApiUrl) {
+    walletWarn('platform session restore skipped', {
+      reason: !token ? 'missing platform token' : 'missing platform api url',
+      hasPlatformToken: token.length > 0,
+      platformApiUrl: platformApiUrl || '(missing)',
+    });
+    return null;
+  }
+
+  const sessionUrl = `${platformApiUrl}/web3/session`;
+  walletLog('platform session request', { url: sessionUrl });
+  let response: Response;
+  try {
+    response = await fetch(sessionUrl, {
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+        'X-AUTH-WEB3TOKEN': token,
+      },
+    });
+  } catch (error) {
+    walletWarn('platform session request failed', {
+      url: sessionUrl,
+      error: describeWalletError(error),
+    });
+    return null;
+  }
+  walletLog('platform session response', { status: response.status, ok: response.ok });
+
+  if (!response.ok) {
+    const tokenSession = readPlatformSessionFromToken(token);
+    if (tokenSession) {
+      storeSession(tokenSession);
+      walletLog('platform session restored from token fallback', {
+        walletAddress: maskDebugValue(tokenSession.walletAddress),
+        chainId: tokenSession.chainId,
+        hasToken: tokenSession.token.length > 0,
+      });
+    }
+    return tokenSession;
+  }
+
+  const body = await response.json() as {
+    address?: string;
+    walletAddress?: string;
+    chainId?: number | string;
+    network?: number | string;
+  };
+  const walletAddress = body.address ?? body.walletAddress;
+  const chainId = body.chainId ?? body.network;
+
+  if (!walletAddress || chainId === undefined || chainId === null) {
+    walletWarn('platform session restore invalid response', {
+      hasAddress: !!walletAddress,
+      hasChainId: chainId !== undefined && chainId !== null,
+    });
+    return null;
+  }
+
+  const session = {
+    walletAddress: normalizeWalletAddress(walletAddress),
+    chainId: toNumberChainId(chainId),
+    token,
+    apiUrl: getLooperlandsApiUrl(),
+  };
+  storeSession(session);
+  walletLog('platform session restore success', {
+    walletAddress: maskDebugValue(session.walletAddress),
+    chainId: session.chainId,
+    hasToken: session.token.length > 0,
+  });
+  return session;
+}
+
 function buildSiweMessage(address: string, chainId: number, nonce: string): string {
   return [
     `${window.location.host} wants you to sign in with your Ethereum account:`,
@@ -116,18 +292,58 @@ function getInjectedEthereumProvider(): EthereumProvider | undefined {
 
 export async function connectLooperlandsWallet(providerOverride?: EthereumProvider): Promise<LooperlandsWalletSession> {
   const provider = providerOverride ?? getInjectedEthereumProvider();
+  walletLog('looperlands connect start', {
+    hasProviderOverride: !!providerOverride,
+    hasInjectedProvider: !!getInjectedEthereumProvider(),
+    providerSource: providerOverride ? 'appkit' : 'window.ethereum',
+    driftlandsServerUrl: getDriftlandsServerUrl() || '(same-origin)',
+    looperlandsApiUrl: getLooperlandsApiUrl(),
+  });
+
   if (!provider) {
+    walletWarn('looperlands connect missing provider');
     throw new Error('No Ethereum wallet was found in this browser.');
   }
 
-  const accounts = await provider.request<string[]>({ method: 'eth_requestAccounts' });
+  let accounts: string[];
+  try {
+    walletLog('provider request', { method: 'eth_requestAccounts' });
+    accounts = await provider.request<string[]>({ method: 'eth_requestAccounts' });
+    walletLog('provider response', {
+      method: 'eth_requestAccounts',
+      accountCount: accounts.length,
+      firstAccount: maskDebugValue(accounts[0]),
+    });
+  } catch (error) {
+    walletWarn('provider request failed', {
+      method: 'eth_requestAccounts',
+      error: describeWalletError(error),
+    });
+    throw error;
+  }
+
   const walletAddress = accounts[0];
   if (!walletAddress) {
     throw new Error('No wallet account was selected.');
   }
 
-  const chainId = toNumberChainId(await provider.request<string>({ method: 'eth_chainId' }));
-  const nonceResponse = await fetch(getDriftlandsLooperlandsProxyUrl('/web3/nonce'));
+  let chainId: number;
+  try {
+    walletLog('provider request', { method: 'eth_chainId' });
+    chainId = toNumberChainId(await provider.request<string>({ method: 'eth_chainId' }));
+    walletLog('provider response', { method: 'eth_chainId', chainId });
+  } catch (error) {
+    walletWarn('provider request failed', {
+      method: 'eth_chainId',
+      error: describeWalletError(error),
+    });
+    throw error;
+  }
+
+  const nonceUrl = getDriftlandsLooperlandsProxyUrl('/web3/nonce');
+  walletLog('proxy request', { step: 'nonce', url: nonceUrl });
+  const nonceResponse = await fetch(nonceUrl);
+  walletLog('proxy response', { step: 'nonce', status: nonceResponse.status, ok: nonceResponse.ok });
   if (!nonceResponse.ok) {
     throw new Error('Could not get a Looperlands sign-in nonce.');
   }
@@ -138,12 +354,34 @@ export async function connectLooperlandsWallet(providerOverride?: EthereumProvid
   }
 
   const message = buildSiweMessage(walletAddress, chainId, nonceBody.nonce);
-  const signature = await provider.request<string>({
-    method: 'personal_sign',
-    params: [message, walletAddress],
-  });
+  let signature: string;
+  try {
+    walletLog('provider request', {
+      method: 'personal_sign',
+      walletAddress: maskDebugValue(walletAddress),
+      chainId,
+    });
+    signature = await provider.request<string>({
+      method: 'personal_sign',
+      params: [message, walletAddress],
+    });
+    walletLog('provider response', { method: 'personal_sign', signature: maskDebugValue(signature) });
+  } catch (error) {
+    walletWarn('provider request failed', {
+      method: 'personal_sign',
+      error: describeWalletError(error),
+    });
+    throw error;
+  }
 
-  const verifyResponse = await fetch(getDriftlandsLooperlandsProxyUrl('/web3/verify'), {
+  const verifyUrl = getDriftlandsLooperlandsProxyUrl('/web3/verify');
+  walletLog('proxy request', {
+    step: 'verify',
+    url: verifyUrl,
+    walletAddress: maskDebugValue(walletAddress),
+    chainId,
+  });
+  const verifyResponse = await fetch(verifyUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -155,6 +393,7 @@ export async function connectLooperlandsWallet(providerOverride?: EthereumProvid
       hash: '0x',
     }),
   });
+  walletLog('proxy response', { step: 'verify', status: verifyResponse.status, ok: verifyResponse.ok });
 
   if (!verifyResponse.ok) {
     throw new Error('Looperlands wallet signature could not be verified.');
@@ -172,16 +411,30 @@ export async function connectLooperlandsWallet(providerOverride?: EthereumProvid
     apiUrl: getLooperlandsApiUrl(),
   };
   storeSession(session);
+  walletLog('looperlands connect success', {
+    walletAddress: maskDebugValue(session.walletAddress),
+    chainId: session.chainId,
+    hasToken: session.token.length > 0,
+  });
   return session;
 }
 
 export async function fetchLooperlandsLoopers(session: LooperlandsWalletSession): Promise<LooperlandsHeroSelection[]> {
-  const response = await fetch(getDriftlandsLooperlandsProxyUrl(`/game/wallet/${encodeURIComponent(session.walletAddress)}/loopers`), {
+  const url = getDriftlandsLooperlandsProxyUrl(`/game/wallet/${encodeURIComponent(session.walletAddress)}/loopers`);
+  walletLog('proxy request', {
+    step: 'loopers',
+    url,
+    walletAddress: maskDebugValue(session.walletAddress),
+    chainId: session.chainId,
+    hasToken: session.token.length > 0,
+  });
+  const response = await fetch(url, {
     headers: {
       'Accept': 'application/json',
       'X-AUTH-WEB3TOKEN': session.token,
     },
   });
+  walletLog('proxy response', { step: 'loopers', status: response.status, ok: response.ok });
 
   if (!response.ok) {
     if ([401, 403, 500].includes(response.status)) {

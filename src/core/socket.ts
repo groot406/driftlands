@@ -8,6 +8,7 @@ import { clientMessageRouter } from './messageRouter';
 import { initializeClientHandlers } from './messageHandlers';
 import { addPlayer, removePlayer } from '../store/playerStore';
 import { sanitizePlayerNickname } from '../shared/multiplayer/player.ts';
+import { getDriftlandsServerUrl } from './driftlandsServerUrl.ts';
 
 const PLAYER_ID_KEY = 'driftlands-player-id-v1';
 const PLAYER_NAME_KEY = 'driftlands-player-name-v1';
@@ -70,16 +71,17 @@ export function setStoredPlayerName(name: string) {
   return sanitized;
 }
 
-// Determine URL only in browser; Node lacks import.meta.env
 const isBrowser = typeof window !== 'undefined';
-const env = (isBrowser ? (import.meta as any)?.env : null) || {};
-// Prefer explicit VITE_SERVER_URL when provided. Otherwise use same-origin and
-// let Vite proxy `/socket.io` in development.
-const SOCKET_URL = isBrowser ? (env.VITE_SERVER_URL || undefined) : undefined;
+const SOCKET_URL = isBrowser ? (getDriftlandsServerUrl() || undefined) : undefined;
+const SOCKET_TRANSPORTS = SOCKET_URL ? ['websocket'] : undefined;
+if (isBrowser) {
+  console.info('[driftlands] socket server', SOCKET_URL || '(same-origin)');
+}
 
 export const socket = io(SOCKET_URL, {
   path: '/socket.io',
   autoConnect: false,
+  transports: SOCKET_TRANSPORTS,
 });
 export const currentPlayer = ref<{ id: string; name: string } | null>(null);
 export const currentPlayerId = computed(() => currentPlayer.value?.id ?? null);

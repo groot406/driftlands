@@ -12,7 +12,11 @@ dist
 dist-ssr
 .env
 .env.*
+.caddy/
 !.env.example
+!.env.external.example
+!.env.https.example
+!.env.hassio.example
 *.local
 __pycache__/
 *.pyc

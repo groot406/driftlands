@@ -43,11 +43,36 @@ function createMockContext(): MockCanvasContext {
     } as unknown as MockCanvasContext;
 }
 
-function createRenderPassContext(ctx: CanvasRenderingContext2D): RenderPassContext {
+function createSceneTile(tileId: string, q = 0, r = 0, discovered = true, terrainType: string | null = 'grain') {
+    return {
+        tileId,
+        q,
+        r,
+        worldX: 0,
+        worldY: 0,
+        terrainType,
+        variantKey: null,
+        activationState: 'active',
+        supportBand: null,
+        flags: {
+            discovered,
+            hasVariant: false,
+            inReach: false,
+            hasTileOverlay: false,
+            hasBuildingOverlay: false,
+        },
+    };
+}
+
+function createRenderPassContext(
+    ctx: CanvasRenderingContext2D,
+    sceneVisibleTiles: ReturnType<typeof createSceneTile>[] = [],
+    entityCanvas: HTMLCanvasElement = { width: 640, height: 480 } as HTMLCanvasElement,
+): RenderPassContext {
     return {
         finalCtx: {} as CanvasRenderingContext2D,
         entitySurface: {
-            canvas: { width: 640, height: 480 } as HTMLCanvasElement,
+            canvas: entityCanvas,
             ctx,
         },
         viewport: {
@@ -81,7 +106,7 @@ function createRenderPassContext(ctx: CanvasRenderingContext2D): RenderPassConte
                 offsetX: 0,
                 offsetY: 0,
             },
-            visibleTiles: [],
+            visibleTiles: sceneVisibleTiles,
             visibleChunks: [],
             visibleEntities: [],
             overlays: [],
@@ -184,6 +209,19 @@ function createDependencies(capturedOverlayCounts: number[], drawOrder: string[]
     };
 }
 
+function createTile(id: string, q: number, r: number) {
+    return {
+        id,
+        q,
+        r,
+        biome: null,
+        terrain: 'grain',
+        discovered: true,
+        isBaseTile: true,
+        activationState: 'active',
+    };
+}
+
 test('EntityRenderer keeps inactive terrain overlays inside the tile composite path', () => {
     const renderer = new EntityRenderer();
     const ctx = createMockContext();
@@ -223,6 +261,306 @@ test('EntityRenderer keeps inactive terrain overlays inside the tile composite p
 
     assert.deepEqual(capturedOverlayCounts, [0]);
     assert.deepEqual(drawOrder, ['depth-edges', 'highlights', 'overlays-and-actors']);
+});
+
+test('EntityRenderer reuses visible tile id set between frames', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const receivedSets: ReadonlySet<string>[] = [];
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: (
+            _tile: unknown,
+            _now: number,
+            _ctx: CanvasRenderingContext2D,
+            _opacity: number,
+            visibleTileIds: ReadonlySet<string>,
+        ) => {
+            receivedSets.push(visibleTileIds);
+        },
+    };
+
+    const renderFrame = (tiles: any[]) => renderer.renderWorldLayer(
+        createRenderPassContext(ctx, tiles.map((tile) => createSceneTile(tile.id, tile.q, tile.r))),
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 0,
+            movementNowMs: 0,
+            visibleTiles: tiles,
+        },
+        {
+            hoveredHero: null,
+            pathCoords: [],
+        },
+        deps as any,
+    );
+
+    renderFrame([createTile('0,0', 0, 0)]);
+    renderFrame([createTile('1,0', 1, 0), createTile('1,1', 1, 1)]);
+
+    assert.equal(receivedSets.length, 3);
+    assert.equal(receivedSets[0], receivedSets[1]);
+    assert.equal(receivedSets[1], receivedSets[2]);
+    assert.equal(receivedSets[2]?.has('0,0'), false);
+    assert.equal(receivedSets[2]?.has('1,0'), true);
+    assert.equal(receivedSets[2]?.has('1,1'), true);
+});
+
+test('EntityRenderer uses viewport-filtered terrain tiles for bottom edge adjacency', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const receivedSets: ReadonlySet<string>[] = [];
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: (
+            _tile: unknown,
+            _now: number,
+            _ctx: CanvasRenderingContext2D,
+            _opacity: number,
+            visibleTileIds: ReadonlySet<string>,
+        ) => {
+            receivedSets.push(visibleTileIds);
+        },
+    };
+
+    renderer.renderWorldLayer(
+        createRenderPassContext(ctx, [createSceneTile('0,0', 0, 0)]),
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 0,
+            movementNowMs: 0,
+            visibleTiles: [
+                createTile('0,0', 0, 0),
+                createTile('0,1', 0, 1),
+            ],
+        },
+        {
+            hoveredHero: null,
+            pathCoords: [],
+        },
+        deps as any,
+    );
+
+    assert.equal(receivedSets.length, 2);
+    assert.equal(receivedSets[0]?.has('0,0'), true);
+    assert.equal(receivedSets[0]?.has('0,1'), false);
+    assert.equal(receivedSets[0], receivedSets[1]);
+});
+
+test('EntityRenderer includes visible frontier tiles in bottom edge adjacency', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const receivedSets: ReadonlySet<string>[] = [];
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: (
+            _tile: unknown,
+            _now: number,
+            _ctx: CanvasRenderingContext2D,
+            _opacity: number,
+            visibleTileIds: ReadonlySet<string>,
+        ) => {
+            receivedSets.push(visibleTileIds);
+        },
+    };
+
+    renderer.renderWorldLayer(
+        createRenderPassContext(ctx, [
+            createSceneTile('0,0', 0, 0, true, 'grain'),
+            createSceneTile('0,1', 0, 1, false, null),
+        ]),
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 0,
+            movementNowMs: 0,
+            visibleTiles: [
+                createTile('0,0', 0, 0),
+                {
+                    ...createTile('0,1', 0, 1),
+                    terrain: null,
+                    discovered: false,
+                },
+            ],
+        },
+        {
+            hoveredHero: null,
+            pathCoords: [],
+        },
+        deps as any,
+    );
+
+    assert.equal(receivedSets.length, 2);
+    assert.equal(receivedSets[0]?.has('0,0'), true);
+    assert.equal(receivedSets[0]?.has('0,1'), true);
+});
+
+test('EntityRenderer caches unchanged bottom edge layer', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const edgeCtx = createMockContext();
+    const edgeCanvas = {
+        width: 640,
+        height: 480,
+        getContext: () => edgeCtx,
+    } as unknown as HTMLCanvasElement;
+    const entityCanvas = {
+        width: 640,
+        height: 480,
+        ownerDocument: {
+            createElement: () => edgeCanvas,
+        },
+    } as unknown as HTMLCanvasElement;
+    let edgeDraws = 0;
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: () => {
+            edgeDraws += 1;
+        },
+    };
+    const context = createRenderPassContext(ctx, [createSceneTile('0,0', 0, 0)], entityCanvas);
+    const frame = {
+        cameraFx: {
+            offsetX: 0,
+            offsetY: 0,
+            roll: 0,
+            zoom: 1,
+        },
+        effectNowMs: 0,
+        movementNowMs: 0,
+        visibleTiles: [
+            createTile('0,0', 0, 0),
+        ],
+    };
+    const opts = {
+        hoveredHero: null,
+        pathCoords: [],
+    };
+
+    renderer.renderWorldLayer(context, frame, opts, deps as any);
+    renderer.renderWorldLayer(context, frame, opts, deps as any);
+
+    assert.equal(edgeDraws, 1);
+    assert.equal(ctx.calls.drawImage, 2);
+});
+
+test('EntityRenderer keeps cached bottom edges across non-discovery world updates', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const edgeCtx = createMockContext();
+    const edgeCanvas = {
+        width: 640,
+        height: 480,
+        getContext: () => edgeCtx,
+    } as unknown as HTMLCanvasElement;
+    const entityCanvas = {
+        width: 640,
+        height: 480,
+        ownerDocument: {
+            createElement: () => edgeCanvas,
+        },
+    } as unknown as HTMLCanvasElement;
+    let edgeDraws = 0;
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: () => {
+            edgeDraws += 1;
+        },
+    };
+    const frame = {
+        cameraFx: {
+            offsetX: 0,
+            offsetY: 0,
+            roll: 0,
+            zoom: 1,
+        },
+        effectNowMs: 0,
+        movementNowMs: 0,
+        visibleTiles: [
+            createTile('0,0', 0, 0),
+        ],
+    };
+    const opts = {
+        hoveredHero: null,
+        pathCoords: [],
+    };
+    const firstContext = createRenderPassContext(ctx, [createSceneTile('0,0', 0, 0)], entityCanvas);
+    const updateContext = createRenderPassContext(ctx, [createSceneTile('0,0', 0, 0)], entityCanvas);
+    updateContext.scene.frameInfo.worldRenderVersion = 1;
+
+    renderer.renderWorldLayer(firstContext, frame, opts, deps as any);
+    renderer.renderWorldLayer(updateContext, frame, opts, deps as any);
+
+    assert.equal(edgeDraws, 1);
+    assert.equal(ctx.calls.drawImage, 2);
+});
+
+test('EntityRenderer rebuilds cached bottom edges when a tile is discovered', () => {
+    const renderer = new EntityRenderer();
+    const ctx = createMockContext();
+    const edgeCtx = createMockContext();
+    const edgeCanvas = {
+        width: 640,
+        height: 480,
+        getContext: () => edgeCtx,
+    } as unknown as HTMLCanvasElement;
+    const entityCanvas = {
+        width: 640,
+        height: 480,
+        ownerDocument: {
+            createElement: () => edgeCanvas,
+        },
+    } as unknown as HTMLCanvasElement;
+    let edgeDraws = 0;
+    const deps = {
+        ...createDependencies([]),
+        drawTileBottomEdges: () => {
+            edgeDraws += 1;
+        },
+    };
+    const context = createRenderPassContext(ctx, [createSceneTile('0,0', 0, 0)], entityCanvas);
+    const frame = {
+        cameraFx: {
+            offsetX: 0,
+            offsetY: 0,
+            roll: 0,
+            zoom: 1,
+        },
+        effectNowMs: 0,
+        movementNowMs: 0,
+        visibleTiles: [
+            createTile('0,0', 0, 0),
+        ],
+    };
+    const discoveryFrame = {
+        ...frame,
+        discoveredTileIds: new Set(['0,0']),
+    };
+    const opts = {
+        hoveredHero: null,
+        pathCoords: [],
+    };
+
+    renderer.renderWorldLayer(context, frame, opts, deps as any);
+    renderer.renderWorldLayer(context, discoveryFrame, opts, deps as any);
+    renderer.renderWorldLayer(context, frame, opts, deps as any);
+
+    assert.equal(edgeDraws, 2);
+    assert.equal(ctx.calls.drawImage, 3);
 });
 
 test('EntityRenderer still defers active terrain overlays for hero layering', () => {
