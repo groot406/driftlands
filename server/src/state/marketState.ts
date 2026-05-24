@@ -49,11 +49,18 @@ export interface MarketTradeResult {
   overview: MarketOverviewSnapshot;
 }
 
-interface WalletState {
+export interface WalletState {
   actorId: string;
   actorType: MarketActorType;
   gold: number;
   updatedAt: number;
+}
+
+export interface MarketPersistenceSnapshot {
+  resources: MarketResourceState[];
+  wallets: WalletState[];
+  transactions: MarketTransaction[];
+  transactionSequence: number;
 }
 
 class ResourceMarketState {
@@ -71,6 +78,54 @@ class ResourceMarketState {
     this.wallets.clear();
     this.transactions = [];
     this.transactionSequence = 0;
+  }
+
+  getPersistenceSnapshot(): MarketPersistenceSnapshot {
+    return {
+      resources: Array.from(this.resources.values()).map((resource) => ({ ...resource })),
+      wallets: Array.from(this.wallets.values()).map((wallet) => ({ ...wallet })),
+      transactions: this.transactions.map((transaction) => ({ ...transaction })),
+      transactionSequence: this.transactionSequence,
+    };
+  }
+
+  loadPersistenceSnapshot(snapshot: MarketPersistenceSnapshot | null | undefined, now: number = Date.now()) {
+    this.reset(now);
+    if (!snapshot) {
+      return;
+    }
+
+    this.resources.clear();
+    for (const config of DEFAULT_MARKET_RESOURCE_CONFIGS) {
+      const saved = snapshot.resources?.find((resource) => resource.resourceType === config.resourceType);
+      this.resources.set(config.resourceType, {
+        ...config,
+        currentStock: Math.max(0, Math.floor(saved?.currentStock ?? config.initialStock)),
+        updatedAt: saved?.updatedAt ?? now,
+      });
+    }
+
+    this.wallets.clear();
+    for (const wallet of snapshot.wallets ?? []) {
+      if (!wallet.actorId) {
+        continue;
+      }
+      this.wallets.set(this.getWalletKey(wallet.actorId, wallet.actorType), {
+        actorId: wallet.actorId,
+        actorType: wallet.actorType === 'AI' ? 'AI' : 'PLAYER',
+        gold: Math.max(0, Math.floor(wallet.gold ?? 0)),
+        updatedAt: wallet.updatedAt ?? now,
+      });
+    }
+
+    this.transactions = (snapshot.transactions ?? []).map((transaction) => ({ ...transaction })).slice(-MAX_TRANSACTION_HISTORY);
+    this.transactionSequence = Math.max(
+      snapshot.transactionSequence ?? 0,
+      ...this.transactions.map((transaction) => {
+        const sequence = Number(transaction.id.split('-').pop());
+        return Number.isFinite(sequence) ? sequence : 0;
+      }),
+    );
   }
 
   tick(now: number = Date.now()) {

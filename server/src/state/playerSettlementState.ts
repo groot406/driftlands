@@ -16,6 +16,19 @@ interface PlayerEntityState {
   settlementId: string | null;
 }
 
+export interface PlayerSettlementPersistenceSnapshot {
+  players: Array<{
+    id: string;
+    nickname: string;
+    color: string;
+    settlementId: string | null;
+  }>;
+  settlements: Array<{
+    playerId: string;
+    settlementId: string;
+  }>;
+}
+
 class PlayerSettlementState {
   private readonly players = new Map<string, PlayerEntityState>();
   private readonly playerIdBySocketId = new Map<string, string>();
@@ -104,6 +117,70 @@ class PlayerSettlementState {
     this.starterHeroesByPlayerId.clear();
     this.starterStoryHeroIdsByPlayerId.clear();
     this.spectatorSocketIds.clear();
+  }
+
+  getPersistenceSnapshot(): PlayerSettlementPersistenceSnapshot {
+    return {
+      players: Array.from(this.players.values()).map((player) => ({
+        id: player.id,
+        nickname: player.nickname,
+        color: player.color,
+        settlementId: player.settlementId,
+      })),
+      settlements: Array.from(this.settlementByPlayerId.entries()).map(([playerId, settlementId]) => ({
+        playerId,
+        settlementId,
+      })),
+    };
+  }
+
+  loadPersistenceSnapshot(snapshot: PlayerSettlementPersistenceSnapshot | null | undefined) {
+    this.reset();
+    if (!snapshot) {
+      return;
+    }
+
+    for (const playerSnapshot of snapshot.players ?? []) {
+      if (!playerSnapshot.id) {
+        continue;
+      }
+
+      this.players.set(playerSnapshot.id, {
+        id: playerSnapshot.id,
+        nickname: sanitizePlayerNickname(playerSnapshot.nickname || 'Pioneer'),
+        color: playerSnapshot.color || getPlayerColor(playerSnapshot.id),
+        connectedSocketIds: new Set<string>(),
+        settlementId: playerSnapshot.settlementId ?? null,
+      });
+    }
+
+    for (const assignment of snapshot.settlements ?? []) {
+      if (!assignment.playerId || !assignment.settlementId) {
+        continue;
+      }
+
+      let player = this.players.get(assignment.playerId);
+      if (!player) {
+        player = {
+          id: assignment.playerId,
+          nickname: 'Pioneer',
+          color: getPlayerColor(assignment.playerId),
+          connectedSocketIds: new Set<string>(),
+          settlementId: null,
+        };
+        this.players.set(assignment.playerId, player);
+      }
+
+      player.settlementId = assignment.settlementId;
+      this.settlementByPlayerId.set(assignment.playerId, assignment.settlementId);
+      this.ownerBySettlementId.set(assignment.settlementId, {
+        playerId: assignment.playerId,
+        playerName: player.nickname,
+        playerColor: player.color,
+      });
+    }
+
+    this.ensureDistinctPlayerColors();
   }
 
   clearAssignments() {

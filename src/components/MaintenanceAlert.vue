@@ -1,7 +1,13 @@
 <template>
   <div v-if="showAlert" class="maintenance-widget">
     <transition name="fade-menu">
-      <aside v-if="expanded" class="maintenance-alert pointer-events-auto">
+      <aside
+        v-if="expanded"
+        ref="panelEl"
+        class="maintenance-alert pointer-events-auto"
+        :style="popoverStyle"
+        aria-live="polite"
+      >
         <div class="maintenance-alert__header">
           <div>
             <p class="maintenance-alert__kicker pixel-font">Maintenance</p>
@@ -43,6 +49,8 @@
       class="maintenance-toggle-btn"
       :class="{ 'maintenance-toggle-btn--active': expanded, 'maintenance-toggle-btn--danger': summary.offlineCount > 0 || summary.damagedCount > 0 }"
       type="button"
+      :aria-expanded="expanded"
+      :aria-label="`Maintenance: ${summary.statusText}`"
       :title="`Maintenance: ${summary.statusText}`"
       @click.stop="toggleMaintenancePanel"
     >
@@ -64,8 +72,14 @@ import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import { getMaintenanceOverview } from '../shared/buildings/maintenanceDetails.ts';
 import { formatResourceType } from '../shared/buildings/jobSiteDetails.ts';
 import { activeToolbarPanel, closeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore.ts';
+import { useToolbarPopoverPosition } from '../composables/useToolbarPopoverPosition.ts';
 
 const expanded = ref(false);
+const panelEl = ref<HTMLElement | null>(null);
+const { popoverStyle } = useToolbarPopoverPosition({
+  isOpen: expanded,
+  panel: panelEl,
+});
 
 function formatAmount(value: number) {
   return `${Math.floor(value)}`;
@@ -136,6 +150,9 @@ watch(activeToolbarPanel, (panel) => {
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
 }
 
 .maintenance-toggle-btn {
@@ -145,14 +162,15 @@ watch(activeToolbarPanel, (panel) => {
   justify-content: center;
   width: 42px;
   height: 42px;
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid rgba(245, 158, 11, 0.28);
   background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.2), transparent 42%),
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.18), transparent 44%),
     rgba(2, 6, 23, 0.78);
   color: rgb(253 230 138);
-  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.28);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -161,7 +179,7 @@ watch(activeToolbarPanel, (panel) => {
   transform: translateY(-1px);
   border-color: rgba(245, 158, 11, 0.48);
   background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.28), transparent 42%),
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.28), transparent 44%),
     rgba(15, 23, 42, 0.92);
 }
 
@@ -193,20 +211,19 @@ watch(activeToolbarPanel, (panel) => {
 }
 
 .maintenance-alert {
-  position: absolute;
+  position: fixed;
   z-index: 60;
-  right: 0;
-  bottom: calc(100% + 10px);
   width: min(320px, calc(100vw - 32px));
   padding: 14px 16px;
-  border-radius: 22px;
   border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: 22px;
   background:
     radial-gradient(circle at top left, rgba(248, 113, 113, 0.16), transparent 36%),
-    radial-gradient(circle at 85% 20%, rgba(245, 158, 11, 0.14), transparent 26%),
+    radial-gradient(circle at 85% 20%, rgba(34, 211, 238, 0.12), transparent 26%),
     linear-gradient(180deg, rgba(16, 24, 39, 0.92), rgba(15, 23, 42, 0.9));
   box-shadow: 0 20px 38px rgba(2, 6, 23, 0.28);
   backdrop-filter: blur(18px);
+  color: rgb(248 250 252);
 }
 
 .maintenance-alert__header {
@@ -256,6 +273,13 @@ watch(activeToolbarPanel, (panel) => {
   color: rgba(248, 250, 252, 0.86);
   font-size: 12px;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.maintenance-alert__close:hover {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(15, 23, 42, 0.68);
+  color: rgb(254 243 199);
 }
 
 .maintenance-alert__copy {
@@ -303,10 +327,7 @@ watch(activeToolbarPanel, (panel) => {
 }
 @media (max-width: 640px) {
   .maintenance-alert {
-    position: fixed;
     width: min(300px, calc(100vw - 24px));
-    right: 12px;
-    bottom: 72px;
   }
 }
 </style>

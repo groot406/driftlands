@@ -18,6 +18,7 @@ import {
   withdrawResourceAcrossStoragesForSettlement,
 } from '../../../src/shared/game/state/resourceStore.ts';
 import { isUnlimitedResourcesEnabled, testModeSettings } from '../../../src/shared/game/testMode.ts';
+import { getShipSchedulePaceMultiplier } from '../../../src/shared/game/gameplayPace.ts';
 import { playerSettlementState } from './playerSettlementState';
 import { marketState } from './marketState';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events.ts';
@@ -148,13 +149,15 @@ function normalizedRange(minMs: number, maxMs: number) {
 
 function getShipOrderTuning() {
   const gameplay = seasonState.getCurrentStageConfig()?.gameplay;
+  const scheduleSpeed = getShipSchedulePaceMultiplier();
+  const paceDuration = (value: number) => Math.max(1_000, Math.trunc(value / scheduleSpeed));
   const firstArrival = normalizedRange(
-    gameplay?.shipFirstArrivalMinMs ?? FIRST_SHIP_ARRIVAL_MIN_MS,
-    gameplay?.shipFirstArrivalMaxMs ?? FIRST_SHIP_ARRIVAL_MAX_MS,
+    paceDuration(gameplay?.shipFirstArrivalMinMs ?? FIRST_SHIP_ARRIVAL_MIN_MS),
+    paceDuration(gameplay?.shipFirstArrivalMaxMs ?? FIRST_SHIP_ARRIVAL_MAX_MS),
   );
   const nextArrival = normalizedRange(
-    gameplay?.shipNextArrivalMinMs ?? NEXT_SHIP_ARRIVAL_MIN_MS,
-    gameplay?.shipNextArrivalMaxMs ?? NEXT_SHIP_ARRIVAL_MAX_MS,
+    paceDuration(gameplay?.shipNextArrivalMinMs ?? NEXT_SHIP_ARRIVAL_MIN_MS),
+    paceDuration(gameplay?.shipNextArrivalMaxMs ?? NEXT_SHIP_ARRIVAL_MAX_MS),
   );
 
   return {
@@ -162,16 +165,16 @@ function getShipOrderTuning() {
     firstArrivalMaxMs: firstArrival.max,
     nextArrivalMinMs: nextArrival.min,
     nextArrivalMaxMs: nextArrival.max,
-    approachMs: Math.max(1_000, Math.trunc(gameplay?.shipApproachMs ?? SHIP_APPROACH_MS)),
-    dockedDurationMs: Math.max(1_000, Math.trunc(gameplay?.shipDockedDurationMs ?? SHIP_DURATION_MS)),
-    departureMs: Math.max(1_000, Math.trunc(gameplay?.shipDepartureMs ?? SHIP_DEPARTURE_MS)),
+    approachMs: paceDuration(gameplay?.shipApproachMs ?? SHIP_APPROACH_MS),
+    dockedDurationMs: paceDuration(gameplay?.shipDockedDurationMs ?? SHIP_DURATION_MS),
+    departureMs: paceDuration(gameplay?.shipDepartureMs ?? SHIP_DEPARTURE_MS),
     orderSizeMultiplier: Math.max(0.1, Number(gameplay?.shipOrderSizeMultiplier ?? 1)),
     rewardGoldMultiplier: Math.max(0, Number(gameplay?.shipRewardGoldMultiplier ?? 1)),
     rewardGoodsMultiplier: Math.max(0, Number(gameplay?.shipRewardGoodsMultiplier ?? 1)),
   };
 }
 
-interface HarborShipState {
+export interface HarborShipState {
   harborTileId: string;
   settlementId: string;
   approachingOrder: ShipOrderSnapshot | null;
@@ -179,6 +182,12 @@ interface HarborShipState {
   departingShip: ShipOrderVisualSnapshot | null;
   lastDepartedOrder: ShipOrderSnapshot | null;
   nextArrivalAt: number | null;
+}
+
+export interface ShipOrderPersistenceSnapshot {
+  harborStates: HarborShipState[];
+  previousShipName: string | null;
+  sequence: number;
 }
 
 class ShipOrderState {
@@ -190,6 +199,47 @@ class ShipOrderState {
     this.harborStates.clear();
     this.previousShipName = null;
     this.sequence = 0;
+  }
+
+  getPersistenceSnapshot(): ShipOrderPersistenceSnapshot {
+    return {
+      harborStates: Array.from(this.harborStates.values()).map((state) => ({
+        harborTileId: state.harborTileId,
+        settlementId: state.settlementId,
+        approachingOrder: state.approachingOrder ? cloneOrder(state.approachingOrder) : null,
+        activeOrder: state.activeOrder ? cloneOrder(state.activeOrder) : null,
+        departingShip: state.departingShip ? { ...state.departingShip } : null,
+        lastDepartedOrder: state.lastDepartedOrder ? cloneOrder(state.lastDepartedOrder) : null,
+        nextArrivalAt: state.nextArrivalAt,
+      })),
+      previousShipName: this.previousShipName,
+      sequence: this.sequence,
+    };
+  }
+
+  loadPersistenceSnapshot(snapshot: ShipOrderPersistenceSnapshot | null | undefined) {
+    this.reset();
+    if (!snapshot) {
+      return;
+    }
+
+    for (const state of snapshot.harborStates ?? []) {
+      if (!state.harborTileId || !state.settlementId) {
+        continue;
+      }
+      this.harborStates.set(state.harborTileId, {
+        harborTileId: state.harborTileId,
+        settlementId: state.settlementId,
+        approachingOrder: state.approachingOrder ? cloneOrder(state.approachingOrder) : null,
+        activeOrder: state.activeOrder ? cloneOrder(state.activeOrder) : null,
+        departingShip: state.departingShip ? { ...state.departingShip } : null,
+        lastDepartedOrder: state.lastDepartedOrder ? cloneOrder(state.lastDepartedOrder) : null,
+        nextArrivalAt: state.nextArrivalAt ?? null,
+      });
+    }
+
+    this.previousShipName = snapshot.previousShipName ?? null;
+    this.sequence = Math.max(0, Math.floor(snapshot.sequence ?? 0));
   }
 
   tick(now: number) {

@@ -3,7 +3,7 @@
     <header class="debug-panel-header">
       <div>
         <p class="debug-kicker">{{ showDebugSections ? 'Debug Helpers' : 'Admin Tools' }}</p>
-        <h3 class="debug-title">{{ showDebugSections ? 'Test Mode' : 'Season Control' }}</h3>
+        <h3 class="debug-title">{{ panelTitle }}</h3>
       </div>
       <div class="debug-status-row">
         <span class="debug-badge">Seed {{ activeWorldSeed }}</span>
@@ -45,6 +45,7 @@
 
       <nav class="debug-tabs" aria-label="Debug sections">
         <button v-if="showDebugSections" class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'quick' }" type="button" @click="activeDebugTab = 'quick'">Quick</button>
+        <button v-if="canUsePersistenceControls" class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'saves' }" type="button" @click="activeDebugTab = 'saves'">Saves</button>
         <button class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'season' }" type="button" @click="activeDebugTab = 'season'">Season</button>
         <button v-if="showDebugSections" class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'progression' }" type="button" @click="activeDebugTab = 'progression'">Progress</button>
         <button v-if="showDebugSections" class="debug-tab" :class="{ 'debug-tab--active': activeDebugTab === 'studies' }" type="button" @click="activeDebugTab = 'studies'">Studies</button>
@@ -130,6 +131,68 @@
             </div>
           </section>
         </template>
+
+        <section v-else-if="activeDebugTab === 'saves' && canUsePersistenceControls" class="test-mode-section test-mode-section--fill">
+          <div class="test-mode-section-header">
+            <div>
+              <p class="test-mode-section-title">Persistence</p>
+              <p class="test-mode-section-subtitle">{{ persistenceStatusText }}</p>
+            </div>
+          </div>
+
+          <div class="persistence-debug-card">
+            <div class="persistence-debug-grid">
+              <span>Path</span>
+              <strong :title="persistenceStatus?.path ?? ''">{{ persistenceStatus?.path ?? 'No save path' }}</strong>
+              <span>File</span>
+              <strong>{{ persistenceStatus?.fileExists ? 'Found' : 'Missing' }}</strong>
+              <span>Last save</span>
+              <strong>{{ lastPersistenceSaveLabel }}</strong>
+              <span>World</span>
+              <strong>{{ persistenceSummaryLabel }}</strong>
+            </div>
+
+            <div class="test-mode-section-actions">
+              <button class="mini-btn mini-btn--strong" type="button" :disabled="persistenceBusy || !persistenceStatus?.enabled" @click="savePersistenceNow">
+                {{ persistenceBusyAction === 'save' ? 'Saving...' : 'Save Now' }}
+              </button>
+              <button class="mini-btn" type="button" :disabled="persistenceBusy" @click="requestPersistenceStatus">Refresh</button>
+            </div>
+          </div>
+
+          <div class="persistence-debug-card">
+            <label class="persistence-save-as">
+              <span>Save as</span>
+              <input
+                v-model="persistenceSaveName"
+                type="text"
+                maxlength="64"
+                placeholder="Before testing docks"
+                :disabled="persistenceBusy || !persistenceStatus?.enabled"
+                @keydown.enter.prevent="savePersistenceAs"
+              />
+            </label>
+            <div class="test-mode-section-actions">
+              <button class="mini-btn mini-btn--strong" type="button" :disabled="persistenceBusy || !persistenceStatus?.enabled || !persistenceSaveName.trim()" @click="savePersistenceAs">
+                {{ persistenceBusyAction === 'save-as' ? 'Saving...' : 'Save As' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="persistence-saved-list">
+            <article v-for="savedState in persistenceSavedStates" :key="savedState.id" class="persistence-saved-item">
+              <div class="persistence-saved-item__copy">
+                <strong :title="savedState.path">{{ savedState.name }}</strong>
+                <span>{{ formatSavedStateLabel(savedState) }}</span>
+              </div>
+              <div class="persistence-saved-item__actions">
+                <button class="mini-btn" type="button" :disabled="persistenceBusy" @click="loadPersistenceSavedState(savedState.id, savedState.name)">Load</button>
+                <button class="mini-btn mini-btn--danger" type="button" :disabled="persistenceBusy" @click="removePersistenceSavedState(savedState.id, savedState.name)">Remove</button>
+              </div>
+            </article>
+            <p v-if="persistenceSavedStates.length === 0" class="test-mode-section-subtitle">No named saves yet.</p>
+          </div>
+        </section>
 
         <section v-else-if="activeDebugTab === 'season'" class="test-mode-section test-mode-section--fill">
           <div class="test-mode-section-header">
@@ -493,13 +556,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import type { CalamityKind } from '../shared/protocol';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import type { CalamityKind, PersistenceSavedStateSummary, PersistenceStatusMessage } from '../shared/protocol';
 import { centerCamera } from '../core/camera';
 import { sendMessage } from '../core/socket';
+import { clientMessageRouter } from '../core/messageRouter';
 import { getWorldGenerationSeed } from '../core/worldVariation';
 import { runSnapshot } from '../store/runStore';
-import { serverDebugModeEnabled } from '../store/serverConfigStore.ts';
+import { currentPlayerIsAdmin, serverDebugModeEnabled } from '../store/serverConfigStore.ts';
 import { seasonSnapshot } from '../store/seasonStore.ts';
 import { currentPlayerSettlementId } from '../store/settlementStartStore.ts';
 import {
@@ -527,6 +591,7 @@ import {
 const MAX_UINT32 = 0xffffffff;
 const DEBUG_SEED_STORAGE_KEY = 'driftlands-restart-seed-v1';
 const LARGE_WORLD_DISABLED_TITLE = 'Disabled for now: 200-ring worlds can overwhelm the server snapshot path.';
+const PERSISTENCE_RESPONSE_TIMEOUT_MS = 8_000;
 
 const props = defineProps<{
   adminFocus?: boolean;
@@ -543,12 +608,28 @@ const calamityButtons: { kind: CalamityKind; label: string }[] = [
   { kind: 'outbreak', label: 'Outbreak' },
 ];
 
+type WorldControlTab = 'quick' | 'saves' | 'season' | 'progression' | 'studies';
+
 const showDebugSections = computed(() => serverDebugModeEnabled.value && !props.adminFocus);
-const activeDebugTab = ref<'quick' | 'season' | 'progression' | 'studies'>(showDebugSections.value ? 'quick' : 'season');
+const canUsePersistenceControls = computed(() => serverDebugModeEnabled.value || currentPlayerIsAdmin.value);
+const activeDebugTab = ref<WorldControlTab>(showDebugSections.value ? 'quick' : 'season');
+const panelTitle = computed(() => {
+  if (activeDebugTab.value === 'saves') {
+    return 'Saved Worlds';
+  }
+
+  return showDebugSections.value ? 'Test Mode' : 'Season Control';
+});
 const storySeed = computed(() => runSnapshot.value?.seed ?? null);
 const season = computed(() => seasonSnapshot.value);
 const activeWorldSeed = ref(getWorldGenerationSeed());
 const seedDraft = ref(loadInitialSeedDraft());
+const persistenceStatus = ref<PersistenceStatusMessage | null>(null);
+const persistenceBusy = ref(false);
+const persistenceBusyAction = ref<'save' | 'save-as' | 'load' | 'remove' | null>(null);
+const persistenceClientError = ref('');
+const persistenceSaveName = ref('');
+let persistenceResponseTimeout: number | null = null;
 const fixedRestartSeed = computed(() => resolveDraftSeed());
 const currentSettlementId = computed(() => currentPlayerSettlementId.value);
 const currentProgressionOverrides = computed(() => {
@@ -595,6 +676,41 @@ const nextSeasonChangeDescription = computed(() => {
   const nextStage = getNextEnabledStageKey(snapshot.currentStage);
   return nextStage ? `When the timer runs out, ${stageLabel(nextStage)} will begin.` : 'When the timer runs out, the season will finish.';
 });
+const persistenceStatusText = computed(() => {
+  if (persistenceClientError.value) {
+    return persistenceClientError.value;
+  }
+
+  const status = persistenceStatus.value;
+  if (!status) {
+    return 'Waiting for save status.';
+  }
+  if (!status.enabled) {
+    return 'Saving is disabled on this server.';
+  }
+  if (status.lastSaveOk === false) {
+    return status.lastSaveError ? `Last save failed: ${status.lastSaveError}` : 'Last save failed.';
+  }
+  if (status.fileExists) {
+    return 'Save file is present.';
+  }
+  return 'Save path is configured, but no file exists yet.';
+});
+const lastPersistenceSaveLabel = computed(() => {
+  const status = persistenceStatus.value;
+  if (!status?.lastSaveAt) {
+    return 'Not yet';
+  }
+  return `${formatShortTime(status.lastSaveAt)} (${status.lastSaveReason ?? 'save'})`;
+});
+const persistenceSummaryLabel = computed(() => {
+  const summary = persistenceStatus.value?.summary;
+  if (!summary) {
+    return 'Waiting';
+  }
+  return `seed ${summary.seed}, ${summary.settlements} settlements, ${summary.discoveredTiles}/${summary.tiles} tiles`;
+});
+const persistenceSavedStates = computed(() => persistenceStatus.value?.savedStates ?? []);
 
 function normalizeSeed(value: string | number | null | undefined) {
   const raw = String(value ?? '').trim();
@@ -685,6 +801,107 @@ function restartWorldStory(forceRandom: boolean = false, radius?: number) {
   } else {
     persistSeedDraft(seedDraft.value);
   }
+}
+
+function requestPersistenceStatus() {
+  sendMessage({
+    type: 'persistence:request_status',
+    timestamp: Date.now(),
+  });
+}
+
+function clearPersistenceResponseTimeout() {
+  if (persistenceResponseTimeout === null || typeof window === 'undefined') {
+    persistenceResponseTimeout = null;
+    return;
+  }
+
+  window.clearTimeout(persistenceResponseTimeout);
+  persistenceResponseTimeout = null;
+}
+
+function startPersistenceAction(action: NonNullable<typeof persistenceBusyAction.value>) {
+  persistenceBusy.value = true;
+  persistenceBusyAction.value = action;
+  persistenceClientError.value = '';
+  clearPersistenceResponseTimeout();
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  persistenceResponseTimeout = window.setTimeout(() => {
+    if (!persistenceBusy.value || persistenceBusyAction.value !== action) {
+      return;
+    }
+
+    persistenceBusy.value = false;
+    persistenceBusyAction.value = null;
+    persistenceClientError.value = 'No response from server. Restart the server if it was running before this save feature was added.';
+  }, PERSISTENCE_RESPONSE_TIMEOUT_MS);
+}
+
+function savePersistenceNow() {
+  startPersistenceAction('save');
+  sendMessage({
+    type: 'persistence:save_now',
+    timestamp: Date.now(),
+  });
+}
+
+function savePersistenceAs() {
+  const name = persistenceSaveName.value.trim();
+  if (!name) {
+    return;
+  }
+
+  startPersistenceAction('save-as');
+  sendMessage({
+    type: 'persistence:save_as',
+    name,
+    timestamp: Date.now(),
+  });
+  persistenceSaveName.value = '';
+}
+
+function loadPersistenceSavedState(id: string, name: string) {
+  if (typeof window !== 'undefined') {
+    const confirmed = window.confirm(`Load "${name}" now? This replaces the live world for everyone.`);
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  startPersistenceAction('load');
+  sendMessage({
+    type: 'persistence:load_saved',
+    id,
+    timestamp: Date.now(),
+  });
+}
+
+function removePersistenceSavedState(id: string, name: string) {
+  if (typeof window !== 'undefined') {
+    const confirmed = window.confirm(`Remove saved state "${name}"? This does not affect the live world.`);
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  startPersistenceAction('remove');
+  sendMessage({
+    type: 'persistence:remove_saved',
+    id,
+    timestamp: Date.now(),
+  });
+}
+
+function handlePersistenceStatus(message: PersistenceStatusMessage) {
+  clearPersistenceResponseTimeout();
+  persistenceStatus.value = message;
+  persistenceBusy.value = false;
+  persistenceBusyAction.value = null;
+  persistenceClientError.value = '';
 }
 
 function restartSeasonNow(forceRandom: boolean) {
@@ -790,6 +1007,19 @@ function formatSeasonDuration(ms: number) {
   if (days > 0) return `in ${days}d ${hours}h`;
   if (hours > 0) return `in ${hours}h ${minutes}m`;
   return `in ${minutes}m`;
+}
+
+function formatShortTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatSavedStateLabel(savedState: PersistenceSavedStateSummary) {
+  const summary = savedState.summary;
+  return `${formatShortTime(savedState.savedAt)} · seed ${summary.seed} · ${summary.settlements} settlements · ${summary.discoveredTiles}/${summary.tiles} tiles`;
 }
 
 function getNextEnabledStageKey(currentStage: string) {
@@ -1161,7 +1391,7 @@ watch(storySeed, (seed) => {
 }, { immediate: true });
 
 watch(showDebugSections, (enabled) => {
-  if (!enabled && activeDebugTab.value !== 'season') {
+  if (!enabled && activeDebugTab.value !== 'season' && activeDebugTab.value !== 'saves') {
     activeDebugTab.value = 'season';
   } else if (enabled && activeDebugTab.value === 'season' && !props.adminFocus) {
     activeDebugTab.value = 'quick';
@@ -1174,6 +1404,22 @@ watch(() => props.adminFocus, (adminFocus) => {
   } else if (showDebugSections.value && activeDebugTab.value === 'season') {
     activeDebugTab.value = 'quick';
   }
+});
+
+watch(canUsePersistenceControls, (enabled) => {
+  if (!enabled && activeDebugTab.value === 'saves') {
+    activeDebugTab.value = showDebugSections.value ? 'quick' : 'season';
+  }
+});
+
+onMounted(() => {
+  clientMessageRouter.on('persistence:status', handlePersistenceStatus);
+  requestPersistenceStatus();
+});
+
+onUnmounted(() => {
+  clearPersistenceResponseTimeout();
+  clientMessageRouter.off('persistence:status', handlePersistenceStatus);
 });
 </script>
 
@@ -1318,6 +1564,64 @@ watch(() => props.adminFocus, (adminFocus) => {
 
 .test-mode-section {
   @apply flex min-h-0 flex-col gap-2 rounded-md border border-slate-800/70 bg-slate-950/60 p-2;
+}
+
+.persistence-debug-card {
+  @apply grid gap-2 rounded-md border border-slate-800/70 bg-slate-950/45 p-2;
+}
+
+.persistence-debug-grid {
+  @apply grid gap-x-2 gap-y-1 text-[10px];
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.persistence-debug-grid span {
+  @apply text-slate-400;
+}
+
+.persistence-debug-grid strong {
+  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-slate-100;
+}
+
+.persistence-save-as {
+  @apply grid gap-1 text-[10px] text-slate-300;
+}
+
+.persistence-save-as span {
+  @apply text-slate-400;
+}
+
+.persistence-save-as input {
+  @apply h-8 min-w-0 rounded-md border border-slate-600 bg-slate-950/80 px-2 text-xs font-medium text-white outline-none transition-colors;
+}
+
+.persistence-save-as input:focus {
+  @apply border-amber-300/60;
+}
+
+.persistence-saved-list {
+  @apply grid min-h-0 gap-1.5 overflow-y-auto pr-1;
+}
+
+.persistence-saved-item {
+  @apply grid gap-2 rounded-md border border-slate-800/80 bg-slate-900/60 p-2;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.persistence-saved-item__copy {
+  @apply min-w-0;
+}
+
+.persistence-saved-item__copy strong {
+  @apply block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-slate-100;
+}
+
+.persistence-saved-item__copy span {
+  @apply mt-1 block text-[10px] leading-4 text-slate-300/75;
+}
+
+.persistence-saved-item__actions {
+  @apply flex items-start gap-1.5;
 }
 
 .test-mode-section--fill {

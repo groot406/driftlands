@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getFoodSourceStock, getHungerFoodMealValue, getResourceRequirementStock } from './resourceDefinitions.ts';
+import {
+  FOOD_SOURCE_TYPES,
+  HUNGER_FOOD_TYPES,
+  getFoodSourceStock,
+  getHungerFoodMealValue,
+  getResourceRequirementStock,
+} from './resourceDefinitions.ts';
 
 test('hunger food meal value includes edible resource nutrition', () => {
   assert.equal(getHungerFoodMealValue({
@@ -25,4 +31,8 @@ test('shared food requirements count fish, meat, and bread', () => {
   assert.equal(getFoodSourceStock(inventory), 9);
   assert.equal(getResourceRequirementStock(inventory, 'food'), 9);
   assert.equal(getResourceRequirementStock(inventory, 'grain'), 99);
+});
+
+test('shared food requirements stay aligned with hunger food types', () => {
+  assert.deepEqual(FOOD_SOURCE_TYPES, HUNGER_FOOD_TYPES);
 });

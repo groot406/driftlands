@@ -111,6 +111,7 @@ export const WINDOW_IDS = {
   SETTLER_MODAL: 'settler-modal',
   POPULATION_MODAL: 'population-modal',
   RESOURCE_MODAL: 'resource-modal',
+  DEBUG_TOOLS_PANEL: 'debug-tools-panel',
 } as const;
 
 // Register common windows with default configurations
@@ -177,5 +178,11 @@ registerWindow({
 registerWindow({
   id: WINDOW_IDS.RESOURCE_MODAL,
   priority: 85,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.DEBUG_TOOLS_PANEL,
+  priority: 190,
   blocksKeyboard: true,
 });

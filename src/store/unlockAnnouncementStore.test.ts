@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   buildProgressionUnlockAnnouncementItems,
-  buildStudyUnlockAnnouncementItems,
   dismissUnlockAnnouncement,
   queueUnlockAnnouncement,
   resetUnlockAnnouncements,
@@ -41,8 +40,15 @@ test('progression unlock announcements explain newly available buildings and tas
   assert.match(tillLand.summary, /farm plots/i);
 });
 
-test('study unlock announcements include buildings unlocked by completed studies', () => {
-  const items = buildStudyUnlockAnnouncementItems([], ['defensive_construction']);
+test('progression unlock announcements include walls unlocked by perimeter security', () => {
+  const previous = createInitialProgressionSnapshot();
+  const metrics = createEmptyProgressionMetrics();
+  metrics.population = 4;
+  metrics.resourceStock.meat = 4;
+  metrics.resourceStock.fish = 4;
+
+  const next = evaluateProgression(metrics, previous.unlockedNodeKeys);
+  const items = buildProgressionUnlockAnnouncementItems(previous, next);
   const wall = items.find((item) => item.kind === 'building' && item.key === 'wall');
 
   assert.ok(wall);

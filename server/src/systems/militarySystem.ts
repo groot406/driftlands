@@ -416,6 +416,7 @@ function processRaids(ctx: TickContext) {
 
 export const militarySystem = {
   name: 'military',
+  intervalMs: 1_000,
   tick: (ctx: TickContext) => {
     if (seasonState.isCompleted()) {
       return;

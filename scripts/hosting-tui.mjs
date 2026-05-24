@@ -1365,6 +1365,7 @@ MAX_PUBLISH_PORT=$((START_PUBLISH_PORT + 50))
 
 echo "[driftlands] creating $CONFIG_DIR"
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR/state"
 
 echo "[driftlands] downloading env"
 curl -fsSL "$BASE_URL/driftlands.env" -o "$CONFIG_DIR/.env"
@@ -1379,12 +1380,14 @@ docker load -i "$IMAGE_TAR"
 
 echo "[driftlands] recreating container"
 while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
-  docker rm -f driftlands >/dev/null 2>&1 || true
+  docker stop driftlands >/dev/null 2>&1 || true
+  docker rm driftlands >/dev/null 2>&1 || true
   echo "[driftlands] trying host port $PUBLISH_PORT"
   if docker run -d \\
     --name driftlands \\
     --restart unless-stopped \\
     --env-file "$CONFIG_DIR/.env" \\
+    -v "$CONFIG_DIR/state:/data" \\
     -p "$PUBLISH_PORT:3000" \\
     driftlands:latest; then
     break
@@ -1434,6 +1437,7 @@ MAX_PUBLISH_PORT=$((START_PUBLISH_PORT + 50))
 
 echo "[driftlands] using $CONFIG_DIR"
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR/state"
 
 if [ -f "$CONFIG_DIR/driftlands.env" ]; then
   echo "[driftlands] installing env"
@@ -1448,12 +1452,14 @@ docker load -i "$IMAGE_TAR"
 
 echo "[driftlands] recreating container"
 while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
-  docker rm -f driftlands >/dev/null 2>&1 || true
+  docker stop driftlands >/dev/null 2>&1 || true
+  docker rm driftlands >/dev/null 2>&1 || true
   echo "[driftlands] trying host port $PUBLISH_PORT"
   if docker run -d \\
     --name driftlands \\
     --restart unless-stopped \\
     --env-file "$CONFIG_DIR/.env" \\
+    -v "$CONFIG_DIR/state:/data" \\
     -p "$PUBLISH_PORT:3000" \\
     driftlands:latest; then
     break
@@ -1718,6 +1724,7 @@ async function showDeploymentSnippets() {
   --restart unless-stopped \\
   --network ${config.network} \\
   --env-file ${config.envFile} \\
+  -v /config/driftlands/state:/data \\
   ${config.image}`, ansi.yellow));
   console.log('');
   console.log(color(`docker run -d \\

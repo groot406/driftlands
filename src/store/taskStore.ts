@@ -15,7 +15,11 @@ import type {
     ResourceWithdrawMessage,
 } from "../shared/protocol.ts";
 import { broadcastGameMessage as broadcast, moveHeroWithRuntime } from '../shared/game/runtime';
-import { activateTaskInstance, broadcastTaskProgress, deactivateTaskInstance } from '../shared/game/taskProgress';
+import {
+    activateTaskInstance as setTaskInstanceActive,
+    broadcastTaskProgress,
+    deactivateTaskInstance as setTaskInstanceInactive,
+} from '../shared/game/taskProgress';
 import { clearHeroPayload, setHeroFetchIntent, setHeroPayload } from '../shared/game/heroPayload';
 import { collectTerrainCluster } from '../shared/game/terrainCluster';
 import { emitGameplayEvent } from '../shared/gameplay/events';
@@ -32,10 +36,13 @@ import { applyHeroTaskRateMultiplier } from '../shared/heroes/heroSkills.ts';
 import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
 import { isInstantBuildEnabled, isUnlimitedResourcesEnabled, testModeSettings } from '../shared/game/testMode.ts';
 import { FOOD_SOURCE_TYPES, isFoodSourceResource } from '../shared/game/resourceDefinitions.ts';
+import { getTaskProgressSpeedMultiplier } from '../shared/game/gameplayPace.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
 const TASK_PROGRESS_MULTIPLIER = 1.2;
+const TASK_PROGRESS_BROADCAST_INTERVAL_MS = 300;
+const TASK_PROGRESS_BROADCAST_MIN_DELTA_XP = 1;
 const HERO_ABILITY_PROGRESS_TASK_XP_DIVISOR = 250;
 const HERO_ABILITY_PROGRESS_MIN_PER_COMPLETED_TASK = 1;
 
@@ -43,6 +50,8 @@ interface TaskState {
     tasks: TaskInstance[];
     taskIndex: Record<string, TaskInstance>; // id -> instance
     tasksByTile: Record<string, Record<string, string>>; // tileId -> (taskType -> taskId)
+    tasksByRequiredResource: Map<ResourceType, Set<string>>;
+    activeTaskIds: Set<string>;
     nextId: number;
 }
 
@@ -51,21 +60,69 @@ function createState(): TaskState {
         tasks: [],
         taskIndex: {},
         tasksByTile: {},
+        tasksByRequiredResource: new Map(),
+        activeTaskIds: new Set(),
         nextId: 1,
     };
 }
 
 export const taskStore = createState();
+const lastProgressBroadcastByTaskId = new Map<string, { atMs: number; progressXp: number }>();
+
+function getRequirementIndexResourceTypes(resourceType: ResourceType): ResourceType[] {
+    if (resourceType === 'food') {
+        return ['food', ...FOOD_SOURCE_TYPES];
+    }
+
+    return [resourceType];
+}
+
+function indexTaskRequiredResources(task: TaskInstance) {
+    for (const required of task.requiredResources ?? []) {
+        for (const resourceType of getRequirementIndexResourceTypes(required.type)) {
+            if (!taskStore.tasksByRequiredResource.has(resourceType)) {
+                taskStore.tasksByRequiredResource.set(resourceType, new Set());
+            }
+            taskStore.tasksByRequiredResource.get(resourceType)!.add(task.id);
+        }
+    }
+}
+
+function unindexTaskRequiredResources(task: TaskInstance) {
+    for (const required of task.requiredResources ?? []) {
+        for (const resourceType of getRequirementIndexResourceTypes(required.type)) {
+            const taskIds = taskStore.tasksByRequiredResource.get(resourceType);
+            if (!taskIds) continue;
+            taskIds.delete(task.id);
+            if (taskIds.size === 0) {
+                taskStore.tasksByRequiredResource.delete(resourceType);
+            }
+        }
+    }
+}
 
 export function loadTasks(tasks: TaskInstance[]) {
     taskStore.tasks = tasks;
     taskStore.taskIndex = {};
     taskStore.tasksByTile = {};
+    taskStore.tasksByRequiredResource.clear();
+    taskStore.activeTaskIds.clear();
+    lastProgressBroadcastByTaskId.clear();
+    let nextId = 1;
     for (const task of tasks) {
         taskStore.taskIndex[task.id] = task;
         taskStore.tasksByTile[task.tileId] = taskStore.tasksByTile[task.tileId] || {};
         taskStore.tasksByTile[task.tileId]![task.type] = task.id;
+        if (task.active && !task.completedMs) {
+            taskStore.activeTaskIds.add(task.id);
+        }
+        indexTaskRequiredResources(task);
+        const numericId = /^task_(\d+)$/.exec(task.id)?.[1];
+        if (numericId) {
+            nextId = Math.max(nextId, Number.parseInt(numericId, 10) + 1);
+        }
     }
+    taskStore.nextId = nextId;
 }
 
 export function addTask(task: TaskInstance) {
@@ -73,6 +130,10 @@ export function addTask(task: TaskInstance) {
     taskStore.taskIndex[task.id] = task;
     taskStore.tasksByTile[task.tileId] = taskStore.tasksByTile[task.tileId] || {};
     taskStore.tasksByTile[task.tileId]![task.type] = task.id;
+    if (task.active && !task.completedMs) {
+        taskStore.activeTaskIds.add(task.id);
+    }
+    indexTaskRequiredResources(task);
 }
 
 export function doRemoveTask(inst: TaskInstance) {
@@ -90,6 +151,9 @@ export function doRemoveTask(inst: TaskInstance) {
     if (tileTasks) {
         delete tileTasks[inst.type];
     }
+    taskStore.activeTaskIds.delete(inst.id);
+    unindexTaskRequiredResources(inst);
+    lastProgressBroadcastByTaskId.delete(inst.id);
 }
 
 function makeId(state: TaskState) {
@@ -151,6 +215,35 @@ function getCollectedAmountForRequirement(task: TaskInstance, requiredType: Reso
             ? sum + collected.amount
             : sum
     ), 0);
+}
+
+function activateTaskInstance(task: TaskInstance, nowMs: number = Date.now()) {
+    setTaskInstanceActive(task, nowMs);
+    taskStore.activeTaskIds.add(task.id);
+}
+
+function deactivateTaskInstance(task: TaskInstance) {
+    setTaskInstanceInactive(task);
+    taskStore.activeTaskIds.delete(task.id);
+}
+
+function shouldBroadcastRoutineTaskProgress(task: TaskInstance, nowMs: number) {
+    const previous = lastProgressBroadcastByTaskId.get(task.id);
+    if (!previous) {
+        lastProgressBroadcastByTaskId.set(task.id, { atMs: nowMs, progressXp: task.progressXp });
+        return true;
+    }
+
+    if ((nowMs - previous.atMs) < TASK_PROGRESS_BROADCAST_INTERVAL_MS) {
+        return false;
+    }
+
+    if (Math.abs(task.progressXp - previous.progressXp) < TASK_PROGRESS_BROADCAST_MIN_DELTA_XP) {
+        return false;
+    }
+
+    lastProgressBroadcastByTaskId.set(task.id, { atMs: nowMs, progressXp: task.progressXp });
+    return true;
 }
 
 export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount): number {
@@ -426,6 +519,10 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     taskStore.tasks.push(inst);
     taskStore.taskIndex[inst.id] = inst;
     taskStore.tasksByTile[tile.id]![type] = inst.id;
+    if (inst.active && !inst.completedMs) {
+        taskStore.activeTaskIds.add(inst.id);
+    }
+    indexTaskRequiredResources(inst);
 
     broadcast({
         type: 'task:created',
@@ -520,8 +617,17 @@ export function getTaskById(taskId: string): TaskInstance | undefined {
 
 export function resumeWaitingTasksForResource(resourceType: ResourceType, storageTileId?: string) {
     const storageTile = storageTileId ? tileIndex[storageTileId] : undefined;
+    const candidateTaskIds = taskStore.tasksByRequiredResource.get(resourceType);
+    if (!candidateTaskIds?.size) {
+        return;
+    }
 
-    for (const inst of taskStore.tasks) {
+    for (const taskId of Array.from(candidateTaskIds)) {
+        const inst = taskStore.taskIndex[taskId];
+        if (!inst) {
+            candidateTaskIds.delete(taskId);
+            continue;
+        }
         if (inst.completedMs) continue;
         if (!inst.requiredResources?.some((resource) => resourceFulfillsRequirement(resource.type, resourceType))) continue;
 
@@ -571,8 +677,14 @@ export function resumeWaitingTasksForResource(resourceType: ResourceType, storag
 // Time-based update; call frequently (e.g. each frame) with current hero roster
 export function updateActiveTasks(heroes: Hero[]) {
     const nowMs = Date.now();
-    for (const inst of taskStore.tasks.slice()) { // slice to avoid mutation issues
-        if (!inst.active || inst.completedMs) continue;
+    const heroesById = new Map(heroes.map((hero) => [hero.id, hero]));
+    const activeTaskIds = Array.from(taskStore.activeTaskIds);
+    for (const taskId of activeTaskIds) {
+        const inst = taskStore.taskIndex[taskId];
+        if (!inst || !inst.active || inst.completedMs) {
+            taskStore.activeTaskIds.delete(taskId);
+            continue;
+        }
         const def = getTaskDefinition(inst.type);
         if (!def) continue;
         const tile: Tile | undefined = tileIndex[inst.tileId];
@@ -584,7 +696,7 @@ export function updateActiveTasks(heroes: Hero[]) {
 
         const participants: Hero[] = [];
         for (const heroId of Object.keys(inst.participants)) {
-            const h = heroes.find(hh => hh.id === heroId);
+            const h = heroesById.get(heroId);
             if (h && isHeroWorkingTask(h, inst)) participants.push(h);
         }
         if (!participants.length) { // no participants -> remove task
@@ -603,7 +715,7 @@ export function updateActiveTasks(heroes: Hero[]) {
                 inst.type,
                 participants.length,
             ); // treat as per-second rate now
-            const contrib = ratePerSecond * elapsedSeconds * TASK_PROGRESS_MULTIPLIER;
+            const contrib = ratePerSecond * elapsedSeconds * TASK_PROGRESS_MULTIPLIER * getTaskProgressSpeedMultiplier();
             inst.participants[hero.id] = (inst.participants[hero.id] || 0) + contrib;
             totalContributionThisUpdate += contrib;
         }
@@ -612,7 +724,7 @@ export function updateActiveTasks(heroes: Hero[]) {
         def.onProgress?.(tile, inst);
         if (inst.progressXp >= inst.requiredXp) {
             completeTask(inst, def, tile, participants);
-        } else {
+        } else if (shouldBroadcastRoutineTaskProgress(inst, nowMs)) {
             broadcastTaskProgress(inst);
         }
     }
@@ -620,9 +732,14 @@ export function updateActiveTasks(heroes: Hero[]) {
 
 function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, participants: Hero[]) {
     const nowMs = Date.now();
+    const chainOriginTile = def.chainAdjacentSameTerrain
+        ? ({ ...tile, neighbors: tile.neighbors } as Tile)
+        : tile;
     inst.progressXp = inst.requiredXp;
     inst.completedMs = nowMs;
     inst.active = false;
+    taskStore.activeTaskIds.delete(inst.id);
+    lastProgressBroadcastByTaskId.delete(inst.id);
 
     const rewardedStats = rewardStatsToParticipants(inst, participants);
     const rewardedResources = rewardResourcesToParticipants(inst, participants);
@@ -655,7 +772,7 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
     dispatchRewardResourceDeliveries(participants);
 
     // Keep a tiny completion beat for feedback without reading as a freeze.
-    let timer = setTimeout(() => autoChainInCluster(inst, tile, participants), TASK_CHAIN_DELAY_MS);
+    let timer = setTimeout(() => autoChainInCluster(inst, chainOriginTile, participants), TASK_CHAIN_DELAY_MS);
     for (const hero of participants) {
         hero.delayedMovementTimer = timer;
     }

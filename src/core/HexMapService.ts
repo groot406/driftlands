@@ -208,6 +208,7 @@ interface DrawOptions {
         dashed?: boolean;
     }>;
     storyHintTiles?: Tile[];
+    sideQuestHeroes?: Hero[];
     showSupportOverlay?: boolean;
     hoveredTileInReach?: boolean; // whether the hovered tile is within TC reach
 }
@@ -843,7 +844,9 @@ export class HexMapService {
         if (!this._canvas) return null;
         const rect = this._canvas.getBoundingClientRect();
         // Iterate in reverse of draw order so visually top hero is picked first
-        const layer = this._sortedHeroes.length ? this._sortedHeroes : heroes;
+        const realHeroIds = new Set(heroes.map((hero) => hero.id));
+        const layer = (this._sortedHeroes.length ? this._sortedHeroes : heroes)
+            .filter((hero) => realHeroIds.has(hero.id));
         const bounds = layer.map((hero) => {
             const {x, y} = this.worldToScreen(hero.q, hero.r);
             const layout = this._heroLayouts.get(axialKey(hero.q, hero.r)) || {};
@@ -1119,7 +1122,8 @@ export class HexMapService {
                         },
                         heroRenderer: this._heroRenderer,
                         heroRenderDependencies: {
-                            queueMissingHeroAssets: () => this.queueMissingHeroAssets(),
+                            queueMissingHeroAssets: () => this.queueMissingHeroAssets(opts.sideQuestHeroes ?? []),
+                            extraHeroes: opts.sideQuestHeroes ?? [],
                             heroImagesLoaded: this._heroImagesLoaded,
                             heroImages: this._heroImages,
                             toolImagesLoaded: this._toolImagesLoaded,
@@ -1463,6 +1467,7 @@ export class HexMapService {
         this._currentRenderQuality = quality;
         this.registerTileRevealAnimations(dirtyTiles, effectNowMs, discoveredTileIds);
         this.applyPendingCameraNudges(cameraFx);
+        const sideQuestHeroes = opts.sideQuestHeroes ?? [];
         const scene = this._sceneBuilder.build({
             viewport,
             quality,
@@ -1471,7 +1476,7 @@ export class HexMapService {
             frameTimes,
             cameraMoving,
             candidateTiles: visibleTiles,
-            candidateHeroes: heroes,
+            candidateHeroes: [...heroes, ...sideQuestHeroes],
             candidateSettlers: settlers,
             selectedHeroId: selectedHeroId.value,
             worldRenderVersion: getWorldRenderVersion(),
@@ -2866,7 +2871,7 @@ export class HexMapService {
         }
 
         // Heroes & overlays combined layering
-        this.drawHeroes(ctx, forMotionBlur ? null : opts.hoveredHero, overlayRecords, applyCameraFade, movementNowMs);
+        this.drawHeroes(ctx, forMotionBlur ? null : opts.hoveredHero, overlayRecords, applyCameraFade, movementNowMs, opts.sideQuestHeroes ?? []);
         if (allowPersistentWorldUi) {
             this.drawTaskIndicators(ctx, visibleTiles, applyCameraFade, forMotionBlur ? null : opts.hoveredTile);
         }
@@ -6143,8 +6148,9 @@ export class HexMapService {
         ctx.restore();
     }
 
-    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, overlayRecords: OverlayRecord[] = [], applyCameraFade: boolean = true, now: number = Date.now()) {
-        this.queueMissingHeroAssets();
+    private drawHeroes(ctx: CanvasRenderingContext2D, hoveredHero: Hero | null, overlayRecords: OverlayRecord[] = [], applyCameraFade: boolean = true, now: number = Date.now(), extraHeroes: readonly Hero[] = []) {
+        this.queueMissingHeroAssets(extraHeroes);
+        const renderHeroes = [...heroes, ...extraHeroes];
 
         // If hero assets not yet loaded, just draw overlays and return
         if (!this._heroImagesLoaded) {
@@ -6160,7 +6166,7 @@ export class HexMapService {
         const radius = camera.radius + 1;
         // Rebuild layout map (group heroes by tile first)
         const map = new Map<string, Hero[]>();
-        for (const h of heroes) {
+        for (const h of renderHeroes) {
             const key = axialKey(h.q, h.r);
             let list = map.get(key);
             if (!list) {
@@ -6188,7 +6194,7 @@ export class HexMapService {
             frameIndex: number;
         }> = [];
 
-        for (const h of heroes) {
+        for (const h of renderHeroes) {
             const dist = hexDistance(camera, h);
             if (dist > radius) continue;
             const img = this._heroImages[h.avatar];
@@ -6731,8 +6737,8 @@ export class HexMapService {
         return promise;
     }
 
-    private queueMissingHeroAssets() {
-        const uniqueAvatars = Array.from(new Set(heroes.map((hero) => hero.avatar)));
+    private queueMissingHeroAssets(extraHeroes: readonly Hero[] = []) {
+        const uniqueAvatars = Array.from(new Set([...heroes, ...extraHeroes].map((hero) => hero.avatar)));
         for (const avatar of uniqueAvatars) {
             if (this._heroImages[avatar] || this._pendingHeroImageLoads.has(avatar)) {
                 continue;

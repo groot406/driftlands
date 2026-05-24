@@ -4,6 +4,12 @@ import { worldState } from '../worldState';
 import type { Socket } from 'socket.io';
 import type {
   CoopSnapshotMessage,
+  PersistenceLoadSavedMessage,
+  PersistenceRemoveSavedMessage,
+  PersistenceRequestStatusMessage,
+  PersistenceSaveAsMessage,
+  PersistenceSaveNowMessage,
+  PersistenceStatusMessage,
   PlayerJoinMessage,
   RunSnapshotMessage,
   SeasonSnapshotMessage,
@@ -24,7 +30,11 @@ import { isAdminSocket } from '../config/admin';
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
 export class ServerGameStateHandler {
-  constructor(_io: Server) {}
+  private io: Server;
+
+  constructor(io: Server) {
+    this.io = io;
+  }
 
   init(): void {
     worldState.init();
@@ -32,6 +42,11 @@ export class ServerGameStateHandler {
     if (serverDebugModeEnabled) {
       serverMessageRouter.on('world:restart', this.handleWorldRestart.bind(this));
     }
+    serverMessageRouter.on('persistence:request_status', this.handlePersistenceStatusRequest.bind(this));
+    serverMessageRouter.on('persistence:save_now', this.handlePersistenceSaveNow.bind(this));
+    serverMessageRouter.on('persistence:save_as', this.handlePersistenceSaveAs.bind(this));
+    serverMessageRouter.on('persistence:load_saved', this.handlePersistenceLoadSaved.bind(this));
+    serverMessageRouter.on('persistence:remove_saved', this.handlePersistenceRemoveSaved.bind(this));
     serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
@@ -94,6 +109,12 @@ export class ServerGameStateHandler {
     }, false);
   }
 
+  private sendFullWorldStateToConnectedSockets(): void {
+    this.io.sockets.sockets.forEach((socket) => {
+      this.handleWorldRequest(socket, { type: 'world:request' });
+    });
+  }
+
   private buildRunSnapshotMessage(socket?: Socket): RunSnapshotMessage | null {
     const playerId = socket ? playerSettlementState.getSocketPlayerId(socket.id) : null;
     const settlementId = playerId ? playerSettlementState.getPlayerSettlement(playerId) : null;
@@ -130,6 +151,68 @@ export class ServerGameStateHandler {
     };
   }
 
+  private buildPersistenceStatusMessage(): PersistenceStatusMessage {
+    return {
+      type: 'persistence:status',
+      ...worldState.getPersistenceStatus(),
+      timestamp: Date.now(),
+    };
+  }
+
+  private canUsePersistenceControls(socket: Socket) {
+    return serverDebugModeEnabled || isAdminSocket(socket);
+  }
+
+  private handlePersistenceStatusRequest(socket: Socket, _message: PersistenceRequestStatusMessage): void {
+    if (!this.canUsePersistenceControls(socket)) {
+      return;
+    }
+
+    sendToSocket(socket, this.buildPersistenceStatusMessage());
+  }
+
+  private handlePersistenceSaveNow(socket: Socket, _message: PersistenceSaveNowMessage): void {
+    if (!this.canUsePersistenceControls(socket)) {
+      return;
+    }
+
+    worldState.saveNow('debug-button');
+    sendToSocket(socket, this.buildPersistenceStatusMessage());
+  }
+
+  private handlePersistenceSaveAs(socket: Socket, message: PersistenceSaveAsMessage): void {
+    if (!this.canUsePersistenceControls(socket)) {
+      return;
+    }
+
+    worldState.saveAs(message.name);
+    sendToSocket(socket, this.buildPersistenceStatusMessage());
+  }
+
+  private handlePersistenceLoadSaved(socket: Socket, message: PersistenceLoadSavedMessage): void {
+    if (!this.canUsePersistenceControls(socket)) {
+      return;
+    }
+
+    if (worldState.loadSavedState(message.id)) {
+      testModeState.reapplyWorldState();
+      coopState.resetHeroClaims();
+      this.sendFullWorldStateToConnectedSockets();
+      return;
+    }
+
+    sendToSocket(socket, this.buildPersistenceStatusMessage());
+  }
+
+  private handlePersistenceRemoveSaved(socket: Socket, message: PersistenceRemoveSavedMessage): void {
+    if (!this.canUsePersistenceControls(socket)) {
+      return;
+    }
+
+    worldState.removeSavedState(message.id);
+    sendToSocket(socket, this.buildPersistenceStatusMessage());
+  }
+
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     this.sendWorldSnapshotToSocket(socket);
     testModeState.sendUpdate(socket);
@@ -140,6 +223,9 @@ export class ServerGameStateHandler {
     const seasonSnapshot = this.buildSeasonSnapshotMessage();
     if (seasonSnapshot) {
       sendToSocket(socket, seasonSnapshot);
+    }
+    if (this.canUsePersistenceControls(socket)) {
+      sendToSocket(socket, this.buildPersistenceStatusMessage());
     }
     sendToSocket(socket, this.buildCoopSnapshotMessage());
   }

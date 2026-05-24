@@ -153,6 +153,69 @@ export interface WorldRestartMessage extends BaseMessage {
     radius?: number;
 }
 
+export interface PersistenceRequestStatusMessage extends BaseMessage {
+    type: 'persistence:request_status';
+}
+
+export interface PersistenceSaveNowMessage extends BaseMessage {
+    type: 'persistence:save_now';
+}
+
+export interface PersistenceSaveAsMessage extends BaseMessage {
+    type: 'persistence:save_as';
+    name: string;
+}
+
+export interface PersistenceLoadSavedMessage extends BaseMessage {
+    type: 'persistence:load_saved';
+    id: string;
+}
+
+export interface PersistenceRemoveSavedMessage extends BaseMessage {
+    type: 'persistence:remove_saved';
+    id: string;
+}
+
+export interface PersistenceSavedStateSummary {
+    id: string;
+    name: string;
+    savedAt: number;
+    fileName: string;
+    path: string;
+    summary: {
+        seed: number;
+        tiles: number;
+        discoveredTiles: number;
+        settlements: number;
+        heroes: number;
+        settlers: number;
+        tasks: number;
+        storages: number;
+    };
+}
+
+export interface PersistenceStatusMessage extends BaseMessage {
+    type: 'persistence:status';
+    enabled: boolean;
+    path: string | null;
+    fileExists: boolean;
+    lastSaveAt: number | null;
+    lastSaveReason: string | null;
+    lastSaveOk: boolean | null;
+    lastSaveError: string | null;
+    summary: {
+        seed: number;
+        tiles: number;
+        discoveredTiles: number;
+        settlements: number;
+        heroes: number;
+        settlers: number;
+        tasks: number;
+        storages: number;
+    };
+    savedStates: PersistenceSavedStateSummary[];
+}
+
 export interface SettlementStartOptionsMessage extends BaseMessage {
     type: 'settlement:start_options';
     playerId: string;
@@ -586,6 +649,11 @@ export type ClientMessage =
     | CoopPingRequestMessage
     | WorldRequestMessage
     | WorldRestartMessage
+    | PersistenceRequestStatusMessage
+    | PersistenceSaveNowMessage
+    | PersistenceSaveAsMessage
+    | PersistenceLoadSavedMessage
+    | PersistenceRemoveSavedMessage
     | SettlementStartRequestOptionsMessage
     | SettlementFoundRequestMessage
     | SetJobSiteEnabledMessage
@@ -622,6 +690,7 @@ export type ServerMessage =
     | SettlementStartOptionsMessage
     | SettlementFoundResultMessage
     | SettlementPlayerFoundMessage
+    | PersistenceStatusMessage
     | WorldSnapshotMessage
     | WorldSnapshotStartMessage
     | WorldSnapshotChunkMessage

@@ -10,9 +10,7 @@ export type StudyKey =
   | 'frontier_almanacs'
   | 'field_medicine'
   | 'border_management'
-  | 'defensive_construction'
-  | 'guard_training'
-  | 'weapon_smithing';
+  | 'defensive_construction';
 
 export type StudyUnlockKind = 'task' | 'building' | 'upgrade' | 'buff';
 
@@ -72,6 +70,36 @@ const STUDY_DEFINITIONS: readonly StudyDefinition[] = [
         key: 'stone_wall_upgrade',
         label: 'Stone Wall',
         description: 'Rebuilds timber walls into heavier stone fortifications.',
+      },
+    ],
+    effects: [],
+  },
+  {
+    key: 'border_management',
+    label: 'Border Management',
+    summary: 'Surveyors and clerks standardize where the colony draws its line, when it opens those lines, and how basic defenses should connect.',
+    requiredProgressMs: 6 * STUDY_WORK_CYCLE_MS,
+    unlocks: [
+      {
+        kind: 'buff',
+        key: 'border_mode_controls',
+        label: 'Border Controls',
+        description: 'Unlocks open and closed border policy, tower threat warnings, and settlement military readouts.',
+      },
+    ],
+    effects: [],
+  },
+  {
+    key: 'defensive_construction',
+    label: 'Defensive Construction',
+    summary: 'Builders practice layered timber screens and reinforced tower platforms that buy time against raids.',
+    requiredProgressMs: 7 * STUDY_WORK_CYCLE_MS,
+    unlocks: [
+      {
+        kind: 'buff',
+        key: 'watchtower_palisades',
+        label: 'Tower Palisades',
+        description: 'Unlocks wooden palisade protection for watchtowers, increasing capture resistance.',
       },
     ],
     effects: [],
@@ -153,72 +181,6 @@ const STUDY_DEFINITIONS: readonly StudyDefinition[] = [
         key: 'outbreak_response',
         label: 'Outbreak Response',
         description: 'Fever outbreaks can be contained during the warning window, preventing population loss.',
-      },
-    ],
-    effects: [],
-  },
-  {
-    key: 'border_management',
-    label: 'Border Management',
-    summary: 'Surveyors and clerks standardize where the colony draws its line, when it opens those lines, and how tower threats are reported.',
-    requiredProgressMs: 10 * STUDY_WORK_CYCLE_MS,
-    unlocks: [
-      {
-        kind: 'buff',
-        key: 'border_mode_controls',
-        label: 'Border Controls',
-        description: 'Unlocks open and closed border policy, tower threat warnings, and settlement military readouts.',
-      },
-    ],
-    effects: [],
-  },
-  {
-    key: 'defensive_construction',
-    label: 'Defensive Construction',
-    summary: 'Builders practice layered timber screens and reinforced tower platforms that buy time against raids.',
-    requiredProgressMs: 12 * STUDY_WORK_CYCLE_MS,
-    unlocks: [
-      {
-        kind: 'building',
-        key: 'wall',
-        label: 'Wooden Walls',
-        description: 'Unlocks linked timber wall segments that can be built from towers, town centers, and existing walls.',
-      },
-      {
-        kind: 'buff',
-        key: 'watchtower_palisades',
-        label: 'Tower Palisades',
-        description: 'Unlocks wooden palisade protection for watchtowers, increasing capture resistance.',
-      },
-    ],
-    effects: [],
-  },
-  {
-    key: 'guard_training',
-    label: 'Guard Training',
-    summary: 'The settlement formalizes rotating guard drills so barracks can turn surplus population into tower defenders.',
-    requiredProgressMs: 12 * STUDY_WORK_CYCLE_MS,
-    unlocks: [
-      {
-        kind: 'building',
-        key: 'barracks',
-        label: 'Barracks',
-        description: 'Builds a training hall that turns food into reserve guards for tower defense and raids.',
-      },
-    ],
-    effects: [],
-  },
-  {
-    key: 'weapon_smithing',
-    label: 'Weapon Smithing',
-    summary: 'Smiths standardize spearheads, blades, and fittings so the colony can arm trained guards from stored ore and timber.',
-    requiredProgressMs: 12 * STUDY_WORK_CYCLE_MS,
-    unlocks: [
-      {
-        kind: 'building',
-        key: 'weaponSmith',
-        label: 'Weapon Smith',
-        description: 'Builds a smithy that turns ore and wood into weapons for guard training.',
       },
     ],
     effects: [],

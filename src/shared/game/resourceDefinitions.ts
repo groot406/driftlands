@@ -89,7 +89,7 @@ export function getResourceDefinition(type: ResourceType): ResourceDefinition {
 }
 
 export const HUNGER_FOOD_TYPES = ['bread', 'meat', 'fish'] as const satisfies readonly ResourceType[];
-export const FOOD_SOURCE_TYPES = ['fish', 'meat', 'bread'] as const satisfies readonly ResourceType[];
+export const FOOD_SOURCE_TYPES = HUNGER_FOOD_TYPES;
 export const TRADE_GOOD_TYPES = ['tea', 'pottery', 'spices', 'silk'] as const satisfies readonly ResourceType[];
 
 export function getResourceHungerRelief(type: ResourceType) {

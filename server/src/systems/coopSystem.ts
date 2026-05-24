@@ -20,6 +20,7 @@ function broadcastSnapshot() {
 
 export const coopSystem = {
   name: 'coop',
+  intervalMs: CHECK_INTERVAL_MS,
 
   tick: (ctx: TickContext) => {
     if (ctx.now - lastCheckAt < CHECK_INTERVAL_MS) {

@@ -87,6 +87,7 @@ function snapshotsEqual(a: WorkforceSnapshot, b: WorkforceSnapshot) {
 
 export const jobSystem = {
     name: 'jobs',
+    intervalMs: 1_000,
 
     init: () => {
         setWorkforceSnapshot(createSnapshot());

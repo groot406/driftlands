@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import type { Hero } from '../../src/core/types/Hero.ts';
 import type { TaskInstance } from '../../src/core/types/Task.ts';
-import { hexDistance, tileIndex, tiles } from '../../src/shared/game/world.ts';
+import { hexDistance, loadWorld, tileIndex, tiles } from '../../src/shared/game/world.ts';
 import { getWorldGenerationSeed } from '../../src/core/worldVariation.ts';
 import {
   isWorldGenerationSpawnSafetyEnabled,
@@ -251,6 +254,98 @@ test('worldState.foundSettlementAt can spawn a founder hero for the owning playe
   assert.equal(founder.r, -5);
   assert.equal(founder.playerId, 'player-ada');
   assert.equal(founder.playerName, 'Ada');
+});
+
+test('worldState restores persisted settlement progress from SERVER_SAVE_PATH', async () => {
+  const originalSavePath = process.env.SERVER_SAVE_PATH;
+  const originalSaveInterval = process.env.SERVER_SAVE_INTERVAL_MS;
+  const saveDir = mkdtempSync(join(tmpdir(), 'driftlands-save-'));
+  const savePath = join(saveDir, 'world-save.json');
+  setIo({ emit() {} });
+
+  try {
+    process.env.SERVER_SAVE_PATH = savePath;
+    process.env.SERVER_SAVE_INTERVAL_MS = '1000';
+
+    await worldState.init(42);
+    const founded = worldState.foundSettlementAt(18, -4, {
+      playerId: 'player-one',
+      playerName: 'Ada',
+    });
+    assert.ok(founded);
+    assert.equal(playerSettlementState.assignPlayerSettlement('player-one', founded.settlementId), true);
+    assert.equal(worldState.saveNow(), true);
+
+    loadWorld([]);
+    loadHeroes([]);
+    loadSettlers([]);
+    loadTasks([]);
+    playerSettlementState.reset();
+
+    await worldState.init();
+
+    assert.equal(worldState.getSeed(), 42);
+    assert.equal(tileIndex['18,-4']?.terrain, 'towncenter');
+    assert.equal(getStorageResourceAmount('18,-4', 'bread'), 4);
+    assert.equal(playerSettlementState.getPlayerSettlement('player-one'), '18,-4');
+    assert.equal(heroes.some((hero) => hero.playerId === 'player-one' && hero.settlementId === '18,-4'), true);
+  } finally {
+    if (originalSavePath === undefined) {
+      delete process.env.SERVER_SAVE_PATH;
+    } else {
+      process.env.SERVER_SAVE_PATH = originalSavePath;
+    }
+    if (originalSaveInterval === undefined) {
+      delete process.env.SERVER_SAVE_INTERVAL_MS;
+    } else {
+      process.env.SERVER_SAVE_INTERVAL_MS = originalSaveInterval;
+    }
+    rmSync(saveDir, { recursive: true, force: true });
+  }
+});
+
+test('worldState can save, load, and remove named saved states', async () => {
+  const originalSavePath = process.env.SERVER_SAVE_PATH;
+  const saveDir = mkdtempSync(join(tmpdir(), 'driftlands-save-as-'));
+  const savePath = join(saveDir, 'world-save.json');
+  setIo({ emit() {} });
+
+  try {
+    process.env.SERVER_SAVE_PATH = savePath;
+
+    await worldState.init(77);
+    const founded = worldState.foundSettlementAt(18, -4, {
+      playerId: 'player-save-as',
+      playerName: 'Ada',
+    });
+    assert.ok(founded);
+    assert.equal(playerSettlementState.assignPlayerSettlement('player-save-as', founded.settlementId), true);
+    assert.equal(worldState.saveAs('Before docks'), true);
+
+    const savedStates = worldState.listSavedStates();
+    assert.equal(savedStates.length, 1);
+    assert.equal(savedStates[0]?.name, 'Before docks');
+    assert.equal(savedStates[0]?.summary.seed, 77);
+
+    await worldState.init(99);
+    assert.equal(worldState.getSeed(), 99);
+    assert.notEqual(tileIndex['18,-4']?.terrain, 'towncenter');
+
+    assert.equal(worldState.loadSavedState(savedStates[0]!.id), true);
+    assert.equal(worldState.getSeed(), 77);
+    assert.equal(tileIndex['18,-4']?.terrain, 'towncenter');
+    assert.equal(playerSettlementState.getPlayerSettlement('player-save-as'), '18,-4');
+
+    assert.equal(worldState.removeSavedState(savedStates[0]!.id), true);
+    assert.equal(worldState.listSavedStates().length, 0);
+  } finally {
+    if (originalSavePath === undefined) {
+      delete process.env.SERVER_SAVE_PATH;
+    } else {
+      process.env.SERVER_SAVE_PATH = originalSavePath;
+    }
+    rmSync(saveDir, { recursive: true, force: true });
+  }
 });
 
 test('worldState.foundSettlementAt uses selected starter heroes as story dialogue speakers', async () => {

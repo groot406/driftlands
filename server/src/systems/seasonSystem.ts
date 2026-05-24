@@ -96,6 +96,7 @@ async function restartSeasonWorld() {
 
 export const seasonSystem = {
   name: 'season',
+  intervalMs: 1_000,
   tick: (ctx: TickContext) => {
     seasonState.tick(ctx.now);
     const stageTps = seasonState.getCurrentStageConfig()?.gameplay?.serverTickRate;

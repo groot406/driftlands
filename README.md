@@ -164,6 +164,8 @@ Available variables:
 - `FRONTEND_ORIGIN`: comma-separated Socket.IO/API CORS allowlist; leave empty for localhost, LAN origins, and ngrok-free.app
 - `SERVER_TPS`: server simulation ticks per second, default `10`
 - `SERVER_SEED`: fixed world seed; leave empty for a random world
+- `SERVER_SAVE_PATH`: JSON snapshot path for persistent server progress; local non-production runs default to `.driftlands/world-save.json`, HAOS uses `/data/world-save.json`
+- `SERVER_SAVE_INTERVAL_MS`: autosave interval for `SERVER_SAVE_PATH`, default `5000`
 - `SERVER_DEBUG_MODE`: debug/test helpers toggle, default enabled; set `0`, `false`, `no`, or `off` to disable
 - `SERVER_SETTLEMENT_START_MODE`: settlement placement mode, `candidates` or `free`
 - `SERVER_SPAWN_SAFETY`: safer world-generation spawn constraints toggle, default disabled
@@ -180,6 +182,7 @@ Helpful notes:
 - `npm run external` uses `.env.external`; edit that file when you want to change the public server port, debug mode, auth requirement, world seed, or allowed frontend origin
 - `npm run external:https` uses `.env.https`; edit that file when you want to change the HTTPS backend hostname or Caddy container name
 - omit `SERVER_SEED` to let the server roll a fresh random world/story seed on startup; set it only when you want a fixed run
+- set `SERVER_SAVE_PATH` to keep the current world, settlements, resources, workers, tasks, ownership, market, ship orders, run state, and season state across server restarts; local non-production runs use `.driftlands/world-save.json` when this is empty
 - set `SERVER_DEBUG_MODE=0` to disable Tab helper panels, render/debug controls, test-mode controls, and debug restart handling for connected clients
 - `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost, common LAN origins, and ngrok-free.app by default
 
@@ -209,6 +212,18 @@ DRIFTLANDS_ADMIN_WALLETS=0xfE49e5c384f5FddDFc52e9610BfAB3d49D86847D
 ```
 
 The included `Procfile` starts the same non-debug server command for Node buildpack platforms. If you deploy with Docker, the `Dockerfile` also uses that command.
+
+### Persistent Server Progress
+
+The server can persist the active world to a JSON snapshot. Local non-production runs default to `.driftlands/world-save.json`; production runs should set `SERVER_SAVE_PATH` explicitly. The server restores that file on startup, saves every `SERVER_SAVE_INTERVAL_MS`, and flushes once more on `SIGTERM`/`SIGINT`.
+
+For Docker/HAOS deployments, mount a host directory to `/data` and use:
+
+```bash
+SERVER_SAVE_PATH=/data/world-save.json
+```
+
+The included HAOS deploy scripts now create `/config/driftlands/state`, mount it as `/data`, and stop the old container before recreating it so the final save can be written.
 
 ## What You Can Do In-Game
 

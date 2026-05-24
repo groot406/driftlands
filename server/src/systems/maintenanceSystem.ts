@@ -13,6 +13,7 @@ import { hasActivePlayers } from '../state/attendanceState';
 
 export const maintenanceSystem = {
     name: 'maintenance',
+    intervalMs: 5_000,
 
     init: () => {
         const now = Date.now();

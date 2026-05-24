@@ -10,7 +10,7 @@ import {
   setStudyOverrides,
   selectActiveStudy,
 } from './studyStore.ts';
-import { STUDY_WORK_CYCLE_MS } from '../shared/studies/studies.ts';
+import { listStudyDefinitions, STUDY_WORK_CYCLE_MS } from '../shared/studies/studies.ts';
 
 test.afterEach(() => {
   resetStudyState();
@@ -72,4 +72,22 @@ test('study overrides can be applied and cleared without changing underlying pro
   assert.deepEqual(getStudySnapshot().completedStudyKeys, []);
   assert.equal(getStudySnapshot().activeStudyKey, 'field_notebooks');
   assert.equal(getStudyJobOutputMultiplier(), 1);
+});
+
+test('default study queue keeps military command improvements before late economy buffs', () => {
+  const studies = listStudyDefinitions();
+  const studyIndex = new Map(studies.map((study, index) => [study.key, index]));
+  const totalCyclesThroughPalisades = studies
+    .slice(0, (studyIndex.get('defensive_construction') ?? -1) + 1)
+    .reduce((total, study) => total + (study.requiredProgressMs / STUDY_WORK_CYCLE_MS), 0);
+
+  assert.ok((studyIndex.get('border_management') ?? Infinity) < (studyIndex.get('warehouse_ledgers') ?? -1));
+  assert.ok((studyIndex.get('defensive_construction') ?? Infinity) < (studyIndex.get('warehouse_ledgers') ?? -1));
+  assert.equal(isContentUnlockedByStudies({ kind: 'building', key: 'wall' }), false);
+  assert.equal(isContentUnlockedByStudies({ kind: 'building', key: 'barracks' }), false);
+  assert.equal(isContentUnlockedByStudies({ kind: 'building', key: 'weaponSmith' }), false);
+
+  setStudyOverrides(['border_management']);
+  assert.equal(isContentUnlockedByStudies({ kind: 'building', key: 'wall' }), false);
+  assert.ok(totalCyclesThroughPalisades <= 30);
 });

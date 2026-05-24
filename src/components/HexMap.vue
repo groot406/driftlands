@@ -194,6 +194,7 @@ import {canControlHero, getActiveCoopPings, getHeroOwnerName, getPlayerEntities,
 import {populationVersion} from '../store/clientPopulationStore';
 import {runSnapshot, runVersion} from '../store/runStore';
 import {clearStoryTileHint, getActiveStoryTileHints, setStoryTileHint} from '../store/storyHintStore';
+import { activeSideQuests } from '../store/sideQuestStore.ts';
 import { tutorialMapHints, type TutorialMapHintAction } from '../store/tutorialStore';
 import {getForestDiscoveryHintTile, getWaterDiscoveryHintTile} from '../shared/game/waterDiscoveryHint';
 import { isUndiscoveredFrontierTile, listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier';
@@ -225,7 +226,6 @@ import {
   resolveWatchtowerConflictState,
 } from '../shared/game/military.ts';
 import { isWallTile } from '../shared/game/walls.ts';
-import { isStudyCompleted } from '../store/studyStore.ts';
 import { isTileWalkable } from '../shared/game/navigation.ts';
 
 import { detachHeroFromCurrentTask } from '../store/taskStore';
@@ -234,6 +234,7 @@ import { isTaskUnlockedForUse } from '../shared/tasks/taskUnlocks.ts';
 import { findHarborShipRoute, isHarborTile } from '../shared/game/harbor.ts';
 import { shipOrderOverview, toggleShipOrderPanel } from '../store/shipOrderStore.ts';
 import { seasonSnapshot } from '../store/seasonStore.ts';
+import { getSideQuestDefinition } from '../shared/sideQuests/definitions.ts';
 import tradingShipDirectionsUrl from '../assets/tiles/trading_ship_directions.png';
 
 const emit = defineEmits<{
@@ -545,13 +546,51 @@ const militaryHud = computed(() => {
 
 const militaryHudUnlocked = computed(() => {
   const settlementId = currentPlayerSettlementId.value;
-  return !!settlementId
-    && (
-      isStudyCompleted('guard_training', settlementId)
-      || isStudyCompleted('defensive_construction', settlementId)
-      || isStudyCompleted('border_management', settlementId)
-      || isStudyCompleted('weapon_smithing', settlementId)
-    );
+  if (!settlementId) {
+    return false;
+  }
+
+  return Object.values(tileIndex).some((tile) => tile.ownerSettlementId === settlementId && (
+    isWatchtowerTile(tile)
+    || isWallTile(tile)
+    || tile.variant === 'plains_barracks'
+    || tile.variant === 'dirt_barracks'
+  ));
+});
+
+const sideQuestDistressHeroes = computed<Hero[]>(() => {
+  const settlementId = currentPlayerSettlementId.value;
+
+  return activeSideQuests.value.flatMap((quest) => {
+    if (quest.status !== 'active') {
+      return [];
+    }
+    if (settlementId && quest.ownerSettlementId && quest.ownerSettlementId !== settlementId) {
+      return [];
+    }
+
+    const tile = tileIndex[quest.signalTileId] ?? ensureTileExists(quest.q, quest.r);
+    if (!tile.discovered) {
+      return [];
+    }
+
+    const definition = getSideQuestDefinition(quest.definitionId);
+    if (!definition) {
+      return [];
+    }
+
+    return [{
+      id: `sidequest-distress:${quest.id}`,
+      name: definition.npc.name,
+      avatar: definition.npc.avatar,
+      storyTemplateId: null,
+      settlementId: quest.ownerSettlementId ?? quest.spawnSettlementId ?? null,
+      q: quest.q,
+      r: quest.r,
+      stats: { xp: 0, hp: 100, atk: 0, spd: 1 },
+      facing: 'down',
+    }];
+  });
 });
 
 const mapHintTiles = computed(() => {
@@ -1035,7 +1074,7 @@ function requestSelectedHeroOpenTutorialTaskHint(hint: RenderedTileHint, target:
     addNotification({
       type: 'run_state',
       title: 'Order unavailable',
-      message: 'That tutorial order is no longer available on this tile.',
+      message: 'That order is no longer available on this tile.',
       duration: 3200,
     });
     return false;
@@ -1144,6 +1183,7 @@ function drawAnimationFrame(frameNowMs = performance.now()) {
       globalReachDashed: getEffectiveSettlementBorderMode(getSettlementTownCenterTile(Object.values(tileIndex), currentPlayerSettlementId.value), seasonSnapshot.value) === 'open',
       settlementReachOutlines: settlementReachOutlines.value,
       storyHintTiles: mapHintTiles.value,
+      sideQuestHeroes: sideQuestDistressHeroes.value,
       showSupportOverlay: showSupportOverlay.value,
       hoveredTileInReach: hoveredTile.value
         ? (hoveredTile.value.discovered

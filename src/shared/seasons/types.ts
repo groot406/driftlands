@@ -11,6 +11,15 @@ export interface ScoreBreakdown extends Record<ScoreCategory, number> {}
 
 export interface SeasonStageGameplayConfig {
   serverTickRate?: number;
+  gameSpeedMultiplier?: number;
+  heroMovementSpeedMultiplier?: number;
+  taskProgressSpeedMultiplier?: number;
+  growthSpeedMultiplier?: number;
+  populationGrowthSpeedMultiplier?: number;
+  settlerCycleSpeedMultiplier?: number;
+  guardTrainingSpeedMultiplier?: number;
+  shipScheduleSpeedMultiplier?: number;
+  calamityScheduleSpeedMultiplier?: number;
   calamityInitialDelayMs?: number;
   calamityRollIntervalMs?: number;
   calamityRollChance?: number;
@@ -221,6 +230,15 @@ export function createDefaultSeasonConfig(): SeasonConfig {
         scoreMultiplier: { charter: 1.15, frontier: 0.8, military: 0.35 },
         gameplay: {
           serverTickRate: 10,
+          gameSpeedMultiplier: 1,
+          heroMovementSpeedMultiplier: 1,
+          taskProgressSpeedMultiplier: 1,
+          growthSpeedMultiplier: 1,
+          populationGrowthSpeedMultiplier: 1,
+          settlerCycleSpeedMultiplier: 1,
+          guardTrainingSpeedMultiplier: 1,
+          shipScheduleSpeedMultiplier: 1,
+          calamityScheduleSpeedMultiplier: 1,
           calamityInitialDelayMs: 12 * 60_000,
           calamityRollIntervalMs: 9 * 60_000,
           calamityRollChance: 0.28,
@@ -246,6 +264,15 @@ export function createDefaultSeasonConfig(): SeasonConfig {
         allowNewHeroTasks: true,
         gameplay: {
           serverTickRate: 10,
+          gameSpeedMultiplier: 1,
+          heroMovementSpeedMultiplier: 1,
+          taskProgressSpeedMultiplier: 1,
+          growthSpeedMultiplier: 1,
+          populationGrowthSpeedMultiplier: 1,
+          settlerCycleSpeedMultiplier: 1,
+          guardTrainingSpeedMultiplier: 1,
+          shipScheduleSpeedMultiplier: 1,
+          calamityScheduleSpeedMultiplier: 1,
           calamityInitialDelayMs: 12 * 60_000,
           calamityRollIntervalMs: 9 * 60_000,
           calamityRollChance: 0.28,
@@ -272,6 +299,15 @@ export function createDefaultSeasonConfig(): SeasonConfig {
         scoreMultiplier: { military: 1.35, frontier: 1.2, logistics: 1.1 },
         gameplay: {
           serverTickRate: 10,
+          gameSpeedMultiplier: 1,
+          heroMovementSpeedMultiplier: 1,
+          taskProgressSpeedMultiplier: 1,
+          growthSpeedMultiplier: 1,
+          populationGrowthSpeedMultiplier: 1,
+          settlerCycleSpeedMultiplier: 1,
+          guardTrainingSpeedMultiplier: 1,
+          shipScheduleSpeedMultiplier: 1,
+          calamityScheduleSpeedMultiplier: 1,
           calamityInitialDelayMs: 12 * 60_000,
           calamityRollIntervalMs: 9 * 60_000,
           calamityRollChance: 0.28,

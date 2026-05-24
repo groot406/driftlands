@@ -23,6 +23,7 @@ import {
 } from '../../../src/shared/game/state/resourceStore.ts';
 import { recalculateSettlementSupport } from '../../../src/shared/game/state/settlementSupportStore.ts';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events.ts';
+import { getCalamitySchedulePaceMultiplier } from '../../../src/shared/game/gameplayPace.ts';
 import { isStudyCompleted } from '../../../src/shared/game/state/studyStore.ts';
 import { isWaterSourceBuildingTile } from '../../../src/shared/buildings/water.ts';
 import {
@@ -838,11 +839,13 @@ function processPendingCalamities(ctx: TickContext) {
 
 function getCalamityTiming() {
   const gameplay = seasonState.getCurrentStageConfig()?.gameplay;
+  const scheduleSpeed = getCalamitySchedulePaceMultiplier();
+  const paceDuration = (value: number) => Math.max(0, Math.trunc(value / scheduleSpeed));
   return {
-    initialDelayMs: Math.max(0, Math.trunc(gameplay?.calamityInitialDelayMs ?? INITIAL_CALAMITY_DELAY_MS)),
-    rollIntervalMs: Math.max(1_000, Math.trunc(gameplay?.calamityRollIntervalMs ?? CALAMITY_ROLL_INTERVAL_MS)),
+    initialDelayMs: paceDuration(gameplay?.calamityInitialDelayMs ?? INITIAL_CALAMITY_DELAY_MS),
+    rollIntervalMs: Math.max(1_000, paceDuration(gameplay?.calamityRollIntervalMs ?? CALAMITY_ROLL_INTERVAL_MS)),
     rollChance: Math.max(0, Math.min(1, Number(gameplay?.calamityRollChance ?? CALAMITY_ROLL_CHANCE))),
-    warningLeadMs: Math.max(0, Math.trunc(gameplay?.calamityWarningLeadMs ?? CALAMITY_WARNING_LEAD_MS)),
+    warningLeadMs: paceDuration(gameplay?.calamityWarningLeadMs ?? CALAMITY_WARNING_LEAD_MS),
   };
 }
 
@@ -873,6 +876,7 @@ function triggerRandomCalamity(ctx: TickContext) {
 
 export const calamitySystem = {
   name: 'calamities',
+  intervalMs: 1_000,
 
   init: () => {
     resetCalamitySystem();

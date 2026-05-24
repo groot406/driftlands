@@ -164,7 +164,7 @@ export class ServerMilitaryHandler {
 
     const settlementId = this.resolveSettlementId(socket);
     const barracks = tileIndex[message.barracksTileId] ?? null;
-    if (!settlementId || !isBarracksTile(barracks) || !canManageTile(barracks, settlementId) || !isStudyCompleted('guard_training', settlementId)) {
+    if (!settlementId || !isBarracksTile(barracks) || !canManageTile(barracks, settlementId)) {
       return;
     }
 

@@ -9,6 +9,7 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev --no-audit --no-fund; el
 
 COPY server ./server
 COPY src ./src
+COPY public ./public
 COPY tsconfig.server.json ./
 
 EXPOSE 3000

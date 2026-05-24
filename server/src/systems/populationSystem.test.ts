@@ -11,6 +11,7 @@ import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { onGameplayEvent } from '../../../src/shared/gameplay/events';
 import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
 import { DRINK_PREFERENCES, SETTLER_TRAITS } from '../../../src/shared/game/settlerPreferences.ts';
+import { HUNGER_FOOD_TYPES, getResourceHungerRelief } from '../../../src/shared/game/resourceDefinitions.ts';
 import { settlerSystem } from './settlerSystem';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
@@ -191,6 +192,62 @@ test('passive growth creates the settler in the settlement that grew', () => {
   assert.equal(settlers[0]?.q, 20);
   assert.equal(settlers[0]?.r, 0);
 });
+
+for (const resourceType of HUNGER_FOOD_TYPES) {
+  test(`passive growth counts stored ${resourceType} as available food`, () => {
+    loadWorld([
+      createTowncenterTile(),
+      createTowncenterTile({ id: '20,0', q: 20, r: 0 }),
+    ]);
+    loadPopulationSnapshot({
+      current: 0,
+      max: 30,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      pressureState: 'stable',
+      settlements: [
+        {
+          settlementId: '0,0',
+          current: 0,
+          max: 15,
+          beds: 0,
+          hungerMs: 0,
+          supportCapacity: 0,
+          ownedTileCount: 0,
+          activeTileCount: 0,
+          inactiveTileCount: 0,
+          fragileTileCount: 0,
+          uncontrolledTileCount: 0,
+          pressureState: 'stable',
+        },
+        {
+          settlementId: '20,0',
+          current: 0,
+          max: 15,
+          beds: 1,
+          hungerMs: 0,
+          supportCapacity: 0,
+          ownedTileCount: 0,
+          activeTileCount: 0,
+          inactiveTileCount: 0,
+          fragileTileCount: 0,
+          uncontrolledTileCount: 0,
+          pressureState: 'stable',
+        },
+      ],
+    });
+    depositResourceToStorage('20,0', resourceType, 1);
+    settlerSystem.init();
+
+    tickAt(Date.now() + 61_000, 1_000);
+
+    assert.equal(settlers.length, 1);
+    assert.equal(settlers[0]?.settlementId, '20,0');
+  });
+}
 
 test('passive growth skips multiplayer settlements that are still cooling down', () => {
   loadWorld([
@@ -758,10 +815,52 @@ test('settlers only consume food after they arrive at storage', () => {
 
   tickAt(6_000, 5_000);
   assert.equal(resourceInventory.bread, 1);
-  assert.equal(settlers[0]?.hungerMs, 0);
+  assert.equal(settlers[0]?.hungerMs, 5_000);
   assert.equal(settlers[0]?.q, 0);
   assert.equal(settlers[0]?.r, 0);
 });
+
+for (const resourceType of HUNGER_FOOD_TYPES) {
+  test(`settlers can take ${resourceType} from storage to stave hunger`, () => {
+    loadWorld([
+      createTowncenterTile(),
+      createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains' }),
+    ]);
+    loadPopulation(1, 1);
+    loadSettlers([
+      {
+        id: 'settler-1',
+        q: 1,
+        r: 0,
+        facing: 'left',
+        appearanceSeed: 1,
+        homeTileId: '0,0',
+        homeAccessTileId: '0,0',
+        settlementId: '0,0',
+        assignedWorkTileId: null,
+        activity: 'idle',
+        stateSinceMs: 0,
+        hungerMs: 90_000,
+        fatigueMs: 0,
+        happiness: 100,
+        workProgressMs: 0,
+        carryingKind: null,
+      },
+    ]);
+    depositResourceToStorage('0,0', resourceType, 1);
+    settlerSystem.init();
+
+    tickAt(1_000, 1_000);
+    assert.equal(settlers[0]?.activity, 'fetching_food');
+    assert.equal(settlers[0]?.movement?.target.q, 0);
+    assert.equal(settlers[0]?.movement?.target.r, 0);
+
+    tickAt(6_000, 5_000);
+    assert.equal(resourceInventory[resourceType], 0);
+    const expectedHungerMs = Math.max(0, 91_000 - (getResourceHungerRelief(resourceType) * 60_000)) + 5_000;
+    assert.equal(settlers[0]?.hungerMs, expectedHungerMs);
+  });
+}
 
 test('job output reaches inventory only after a settler returns to storage', () => {
   loadWorld([

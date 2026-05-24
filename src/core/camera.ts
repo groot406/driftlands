@@ -328,9 +328,18 @@ export function isCameraMoving(): boolean {
     return Math.hypot(camera.screenVelocityX, camera.screenVelocityY) > 24;
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    const element = target as { isContentEditable?: boolean; tagName?: string } | null;
+    const tagName = typeof element?.tagName === 'string' ? element.tagName.toUpperCase() : '';
+    return element?.isContentEditable === true || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName);
+}
+
 export function keyDown(e: KeyboardEvent) {
     if (isPaused()) return; // suppress movement key capture while paused
-    if (isKeyboardBlocked.value) return; // don't capture keys when any modal is blocking input
+    if (isKeyboardBlocked.value || isEditableKeyboardTarget(e.target)) {
+        heldKeys.clear();
+        return;
+    }
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(key)) {
         heldKeys.add(key);
@@ -340,8 +349,11 @@ export function keyDown(e: KeyboardEvent) {
 
 export function keyUp(e: KeyboardEvent) {
     if (isPaused()) return; // suppress release processing while paused
-    if (isKeyboardBlocked.value) return; // don't process key releases when any modal is blocking input
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (isKeyboardBlocked.value || isEditableKeyboardTarget(e.target)) {
+        heldKeys.delete(key);
+        return;
+    }
     if (heldKeys.delete(key)) e.preventDefault();
 }
 
@@ -377,6 +389,9 @@ export async function animateCamera() {
         lastR = camera.r;
         rafId = requestAnimationFrame(animateCamera);
         return;
+    }
+    if (isKeyboardBlocked.value) {
+        heldKeys.clear();
     }
     let dqInput = 0, drInput = 0;
     for (const k of heldKeys) {

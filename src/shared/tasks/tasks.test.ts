@@ -12,7 +12,7 @@ import { addResourcesToTask, loadTasks, startTask } from '../../store/taskStore.
 import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
 import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
-import { evaluateProgression } from '../story/progression.ts';
+import { createInitialProgressionSnapshot, evaluateProgression } from '../story/progression.ts';
 import { getTaskDefinition } from './taskRegistry.ts';
 import { getAvailableTasks, handleHeroArrival } from './tasks.ts';
 import { loadWorld, tileIndex } from '../game/world.ts';
@@ -428,6 +428,100 @@ test('deferred chop wood chaining skips young forest targets', () => {
   }
   assert.equal(target.q, 1);
   assert.equal(target.r, 0);
+});
+
+test('seed grain chains across prepared irrigated dirt and skips dry plots', async () => {
+  const progression = createInitialProgressionSnapshot();
+  loadStoryProgression({
+    ...progression,
+    unlocked: {
+      ...progression.unlocked,
+      tasks: [...progression.unlocked.tasks, 'seedGrain'],
+    },
+  }, '0,0');
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'dirt',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'dirt_tilled_hydrated',
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'dirt',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'dirt_tilled',
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'dirt',
+      terrain: 'dirt',
+      discovered: true,
+      isBaseTile: false,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'dirt_tilled_draught',
+    } satisfies Tile,
+  ]);
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: true,
+    unlimitedResources: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+
+  const moveCalls: Array<{ target: { q: number; r: number }; task?: string }> = [];
+  configureGameRuntime({
+    moveHero: (_hero, target, task) => {
+      moveCalls.push({ target, task });
+    },
+  });
+
+  const task = startTask(tileIndex['0,0']!, 'seedGrain', heroes[0]!);
+
+  assert.ok(task?.completedMs);
+  assert.equal(tileIndex['0,0']?.terrain, 'grain');
+
+  await new Promise((resolve) => setTimeout(resolve, 220));
+
+  assert.equal(moveCalls.length, 1);
+  assert.equal(moveCalls[0]?.task, 'seedGrain');
+  assert.equal(moveCalls[0]?.target.q, 1);
+  assert.equal(moveCalls[0]?.target.r, 0);
 });
 
 test('plant trees turns base plains into a growing young forest', () => {

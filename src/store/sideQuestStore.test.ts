@@ -3,16 +3,18 @@ import assert from 'node:assert/strict';
 
 import type { Hero } from '../core/types/Hero.ts';
 import type { Tile } from '../core/types/Tile.ts';
+import { currentPlayer } from '../core/socket.ts';
 import type { RunSnapshot } from '../shared/goals/types.ts';
 import { emitGameplayEvent } from '../shared/gameplay/events.ts';
 import { createInitialProgressionSnapshot } from '../shared/story/progression.ts';
 import { RESCUE_HERO_TASK_KEY } from '../shared/sideQuests/definitions.ts';
 import '../shared/tasks/taskDefinitions.ts';
 import { getTaskDefinition } from '../shared/tasks/taskRegistry.ts';
-import { loadWorld, tileIndex } from '../shared/game/world.ts';
+import { discoverTile, loadWorld, tileIndex } from '../shared/game/world.ts';
 import { heroes, loadHeroes } from './heroStore.ts';
 import { resetPopulationState } from './populationStore.ts';
 import { runSnapshot, runVersion } from './runStore.ts';
+import { loadTasks } from './taskStore.ts';
 import {
   getActiveSideQuestForTask,
   initializeSideQuestRuntime,
@@ -161,8 +163,10 @@ test.afterEach(() => {
   clearStoryTileHints();
   loadWorld([]);
   loadHeroes([]);
+  loadTasks([]);
   resetPopulationState();
   currentPlayerSettlementId.value = null;
+  currentPlayer.value = null;
   runSnapshot.value = null;
   runVersion.value++;
 });
@@ -225,6 +229,59 @@ test('exploring a signal tile reveals and assigns the quest to the discovering h
   assert.equal(quest.discoveredByHeroId, 'h1');
   assert.equal(getActiveStoryTileHints.value.length, 0);
   assert.equal(runSnapshot.value?.dialogue.entries.length, 2);
+});
+
+test('discovering a signal tile through a watchtower reveal activates the rescue quest', () => {
+  const quest = setupSideQuestWorld();
+  const tile = tileIndex[quest.signalTileId]!;
+  currentPlayer.value = { id: 'player-1', name: 'Player 1' };
+
+  discoverTile(tile, { q: 1, r: 0, settlementId: '0,0' });
+  syncSideQuestSignals();
+
+  assert.equal(quest.status, 'active');
+  assert.equal(quest.ownerPlayerId, 'player-1');
+  assert.equal(quest.ownerSettlementId, '0,0');
+  assert.equal(quest.discoveredByHeroId, null);
+  assert.equal(getActiveStoryTileHints.value.length, 0);
+
+  const rescueTask = getTaskDefinition(RESCUE_HERO_TASK_KEY);
+  assert.ok(rescueTask);
+  assert.equal(rescueTask.canStart(tile, heroes[0]!), true);
+  assert.equal(runSnapshot.value?.dialogue.entries.length, 2);
+});
+
+test('discovering a signal tile with a pending explore task waits for explore completion hero credit', () => {
+  const quest = setupSideQuestWorld();
+  const tile = tileIndex[quest.signalTileId]!;
+  loadTasks([{
+    id: 'task_1',
+    type: 'explore',
+    tileId: quest.signalTileId,
+    progressXp: 0,
+    requiredXp: 10,
+    createdMs: nowMs,
+    lastUpdateMs: nowMs,
+    participants: { h1: 0 },
+    active: true,
+  }]);
+
+  discoverTile(tile, { q: 1, r: 0, settlementId: '0,0' });
+  syncSideQuestSignals();
+
+  assert.equal(quest.status, 'signaled');
+
+  emitGameplayEvent({
+    type: 'task:completed',
+    taskType: 'explore',
+    tileId: quest.signalTileId,
+    participantIds: ['h1'],
+  });
+
+  assert.equal(quest.status, 'active');
+  assert.equal(quest.ownerPlayerId, 'player-1');
+  assert.equal(quest.ownerSettlementId, '0,0');
+  assert.equal(quest.discoveredByHeroId, 'h1');
 });
 
 test('rescue task is available only for active side quest tiles and carries quest resources', () => {

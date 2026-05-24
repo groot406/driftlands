@@ -1805,7 +1805,7 @@ const selectedJobSiteDetail = computed(() => {
       attackLabel: currentBorderTownCenter?.raidTargetTileId === tile.id && currentBorderTownCenter?.raidBlockedReason
         ? currentBorderTownCenter.raidBlockedReason
         : tile.towerAttackerSettlementId ? 'Hostile guards are engaging this watchtower.' : 'No active raid',
-      canAssignGuards: canManage && completedStudyKeys.value.has('guard_training'),
+      canAssignGuards: canManage,
       canBuildPalisade: canManage && completedStudyKeys.value.has('defensive_construction') && (tile.towerWallLevel ?? 0) <= 0,
       canToggleRaid: !canManage && !raidLockReason,
       raidLockReason,
@@ -1825,7 +1825,7 @@ const selectedJobSiteDetail = computed(() => {
       queue: tile.barracksTrainingQueue ?? 0,
       progressPercent: Math.min(100, Math.round(((tile.barracksTrainingProgressMs ?? 0) / GUARD_TRAINING_DURATION_MS) * 100)),
       progressLabel: `${formatCountdown(Date.now() + Math.max(0, Math.ceil(remainingProgressMs / speedMultiplier)))} to next guard`,
-      canTrain: canManage && completedStudyKeys.value.has('guard_training'),
+      canTrain: canManage,
     };
     })()
     : null;

@@ -94,6 +94,7 @@ export interface HeroOverlayRecord {
 
 interface HeroRendererDependencies {
     queueMissingHeroAssets(): void;
+    extraHeroes?: readonly Hero[];
     heroImagesLoaded: boolean;
     heroImages: Record<string, HTMLImageElement>;
     toolImagesLoaded: boolean;
@@ -167,8 +168,9 @@ export class HeroRenderer {
         }
 
         const radius = camera.radius + 1;
+        const renderHeroes = [...heroes, ...(deps.extraHeroes ?? [])];
         const visibleHeroCandidates: Array<{ hero: Hero; dist: number }> = [];
-        for (const hero of heroes) {
+        for (const hero of renderHeroes) {
             const dist = hexDistance(camera, hero);
             if (dist > radius) {
                 continue;

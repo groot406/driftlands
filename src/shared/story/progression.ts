@@ -731,6 +731,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 70,
     unlocks: [
       { kind: 'building', key: 'watchtower' },
+      { kind: 'building', key: 'wall' },
     ],
   },
   {
@@ -840,7 +841,6 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     category: 'Upgrades',
     description: 'The crew turns hard-won experience into shared hero actions for urgent colony work.',
     requirements: [
-      { kind: 'any_study_completed' },
       { kind: 'any_hero_ability_charge_earned' },
     ],
     sortOrder: 123,
@@ -860,6 +860,8 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     unlocks: [
       { kind: 'building', key: 'workshop' },
       { kind: 'building', key: 'tradeCenter' },
+      { kind: 'building', key: 'weaponSmith' },
+      { kind: 'building', key: 'barracks' },
     ],
   },
   {

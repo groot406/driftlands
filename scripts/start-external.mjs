@@ -21,6 +21,8 @@ const defaults = {
   SERVER_SPAWN_SAFETY: '0',
   SERVER_REQUIRE_LOOPERLANDS_AUTH: '0',
   SERVER_SEED: '',
+  SERVER_SAVE_PATH: '.driftlands/world-save.json',
+  SERVER_SAVE_INTERVAL_MS: '5000',
   LOOPERLANDS_API_URL: 'https://api.looperlands.io/api',
   FRONTEND_ORIGIN: '',
 };

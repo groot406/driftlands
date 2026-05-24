@@ -281,6 +281,7 @@ test('frontier and logistics milestones unlock mining, depots, and the fourth he
   assert.ok(progression.unlockedNodeKeys.includes('timber_industry'));
   assert.ok(progression.unlocked.heroes.includes('h4'));
   assert.ok(progression.unlocked.buildings.includes('watchtower'));
+  assert.ok(progression.unlocked.buildings.includes('wall'));
   assert.ok(progression.unlocked.buildings.includes('mine'));
   assert.ok(progression.unlocked.buildings.includes('quarry'));
   assert.ok(progression.unlocked.buildings.includes('supplyDepot'));
@@ -324,6 +325,8 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.ok(progression.unlockedNodeKeys.includes('deep_frontier'));
   assert.ok(progression.unlocked.buildings.includes('workshop'));
   assert.ok(progression.unlocked.buildings.includes('tradeCenter'));
+  assert.ok(progression.unlocked.buildings.includes('weaponSmith'));
+  assert.ok(progression.unlocked.buildings.includes('barracks'));
   assert.equal(progression.unlocked.upgrades.includes('stone_house_upgrade'), false);
   assert.equal(progression.unlocked.upgrades.includes('warehouse_upgrade'), false);
   assert.ok(progression.unlocked.upgrades.includes('stone_road_upgrade'));
@@ -336,6 +339,8 @@ test('masonry, expansion, and deep frontier unlock upgrades and late terrain ban
   assert.equal(taskKeys.includes('upgradeDepotToWarehouse'), false);
   assert.ok(taskKeys.includes('upgradeMineToReinforced'));
   assert.ok(taskKeys.includes('buildTradeCenter'));
+  assert.ok(taskKeys.includes('buildWeaponSmith'));
+  assert.ok(taskKeys.includes('buildBarracks'));
 });
 
 test('desert industry unlocks sand, ovens, and glass housing after harsh frontier discovery', () => {
@@ -361,14 +366,11 @@ test('desert industry unlocks sand, ovens, and glass housing after harsh frontie
   assert.ok(taskKeys.includes('upgradeHouseToGlass'));
 });
 
-test('hero methods require a completed study and an earned hero charge', () => {
-  const locked = evaluateProgression(metrics({
-    completedStudyKeys: ['field_notebooks'],
-  }));
+test('hero methods require an earned hero charge without needing studies', () => {
+  const locked = evaluateProgression(metrics());
   assert.equal(locked.unlockedNodeKeys.includes('hero_methods'), false);
 
   const unlocked = evaluateProgression(metrics({
-    completedStudyKeys: ['field_notebooks'],
     heroAbilityChargesEarned: 1,
   }));
   assert.ok(unlocked.unlockedNodeKeys.includes('hero_methods'));

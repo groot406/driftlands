@@ -55,10 +55,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import FpsCounter from './FpsCounter.vue';
 import WorldControls from './WorldControls.vue';
 import PanelModalShell from './ui/PanelModalShell.vue';
+import { closeWindow, openWindow, WINDOW_IDS } from '../core/windowManager';
 
 type DebugToolsTab = 'tools' | 'fps' | 'season';
 
@@ -95,6 +96,14 @@ watch(() => props.mode, () => {
 });
 
 watch(() => [props.showDebugTools, props.showAdminTools], ensureAvailableTab);
+
+onMounted(() => {
+  openWindow(WINDOW_IDS.DEBUG_TOOLS_PANEL);
+});
+
+onUnmounted(() => {
+  closeWindow(WINDOW_IDS.DEBUG_TOOLS_PANEL);
+});
 </script>
 
 <style scoped>

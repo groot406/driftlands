@@ -58,6 +58,7 @@ test('gatherSand only starts on active desert tiles and respects sand-rich modif
   assert.equal(canStartTaskDefinition(def, desert, hero), true);
   assert.equal(canStartTaskDefinition(def, inactiveDesert, hero), false);
   assert.equal(canStartTaskDefinition(def, plains, hero), false);
+  assert.equal(def.chainAdjacentSameTerrain, false);
   assert.deepEqual(def.totalRewardedResources?.(0, richDesert), { type: 'sand', amount: 3 });
 });
 

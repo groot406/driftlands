@@ -15,11 +15,13 @@ import {
 } from './testMode.ts';
 import { HERO_MOVEMENT_SPEED_ADJ } from './movementBalance.ts';
 import type { ProgressionNodeKey } from '../story/progression.ts';
+import { configureGameplayPaceProvider, resetGameplayPaceProvider } from './gameplayPace.ts';
 
 const INVALID_PROGRESSION_NODE = 'not-a-node' as ProgressionNodeKey;
 
 test.afterEach(() => {
   resetTestModeSettings();
+  resetGameplayPaceProvider();
 });
 
 test('progression overrides stay settlement-scoped and only apply while test mode is enabled', () => {
@@ -81,6 +83,21 @@ test('fast hero movement reduces the effective movement timing by 5x only in tes
   });
 
   assert.equal(getHeroMovementSpeedAdj(getTestModeSettingsSnapshot()), HERO_MOVEMENT_SPEED_ADJ / 5);
+});
+
+test('stage pace multipliers scale live gameplay speed helpers', () => {
+  configureGameplayPaceProvider(() => ({
+    gameSpeedMultiplier: 2,
+    heroMovementSpeedMultiplier: 4,
+    growthSpeedMultiplier: 3,
+    guardTrainingSpeedMultiplier: 5,
+  }));
+
+  assert.equal(getHeroMovementSpeedAdj(getTestModeSettingsSnapshot()), HERO_MOVEMENT_SPEED_ADJ / 4);
+  assert.equal(getGrowthSpeedMultiplier(getTestModeSettingsSnapshot()), 3);
+  assert.equal(getPopulationGrowthMultiplier(getTestModeSettingsSnapshot()), 2);
+  assert.equal(getSettlerCycleSpeedMultiplier(getTestModeSettingsSnapshot()), 2);
+  assert.equal(getGuardTrainingSpeedMultiplier(getTestModeSettingsSnapshot()), 5);
 });
 
 test('fast growth speeds tile aging up by 60x only in test mode', () => {

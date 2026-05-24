@@ -45,6 +45,21 @@ interface RunMetrics {
   inactiveTiles: number;
 }
 
+export interface RunPersistenceSnapshot {
+  activeSeed: number;
+  activeSettlementId: string | null;
+  activeSnapshot: RunSnapshot | null;
+  snapshotsBySettlementId: Array<{
+    settlementId: string;
+    snapshot: RunSnapshot;
+  }>;
+  restoredTilesBySettlementId: Array<[string, number]>;
+  dialogueSequenceBySettlementId: Array<[string, number]>;
+  naturalUnlockedNodeKeysBySettlementId: Array<[string, ProgressionNodeKey[]]>;
+  restoredTiles: number;
+  dialogueSequence: number;
+}
+
 const DEFAULT_SPEAKER: DialogueSpeakerSnapshot = {
   id: 'advisor',
   name: 'Quartermaster',
@@ -270,6 +285,100 @@ class RunState {
     this.dialogueSequence = 0;
     this.activeSettlementId = null;
     this.snapshot = null;
+  }
+
+  getPersistenceSnapshot(): RunPersistenceSnapshot {
+    return {
+      activeSeed: this.activeSeed,
+      activeSettlementId: this.activeSettlementId,
+      activeSnapshot: this.snapshot ? this.getSnapshot() : null,
+      snapshotsBySettlementId: Array.from(this.snapshotsBySettlementId.entries()).map(([settlementId, snapshot]) => ({
+        settlementId,
+        snapshot: {
+          ...snapshot,
+          mutator: { ...snapshot.mutator },
+          chapter: { ...snapshot.chapter },
+          progression: cloneProgression(snapshot.progression),
+          objectives: snapshot.objectives.map(cloneObjective),
+          dialogue: cloneDialogue(snapshot.dialogue),
+          chapterArchive: snapshot.chapterArchive.map((chapter) => ({
+            ...chapter,
+            mutator: { ...chapter.mutator },
+            chapter: { ...chapter.chapter },
+            objectives: chapter.objectives.map(cloneObjective),
+          })),
+        },
+      })),
+      restoredTilesBySettlementId: Array.from(this.restoredTilesBySettlementId.entries()),
+      dialogueSequenceBySettlementId: Array.from(this.dialogueSequenceBySettlementId.entries()),
+      naturalUnlockedNodeKeysBySettlementId: Array.from(this.naturalUnlockedNodeKeysBySettlementId.entries()).map(([settlementId, nodeKeys]) => [
+        settlementId,
+        nodeKeys.slice(),
+      ]),
+      restoredTiles: this.restoredTiles,
+      dialogueSequence: this.dialogueSequence,
+    };
+  }
+
+  loadPersistenceSnapshot(snapshot: RunPersistenceSnapshot | null | undefined) {
+    this.initialize(snapshot?.activeSeed ?? this.activeSeed);
+    if (!snapshot) {
+      return;
+    }
+
+    this.snapshotsBySettlementId.clear();
+    for (const entry of snapshot.snapshotsBySettlementId ?? []) {
+      if (!entry.settlementId || !entry.snapshot) {
+        continue;
+      }
+      this.snapshotsBySettlementId.set(entry.settlementId, {
+        ...entry.snapshot,
+        mutator: { ...entry.snapshot.mutator },
+        chapter: { ...entry.snapshot.chapter },
+        progression: cloneProgression(entry.snapshot.progression),
+        objectives: entry.snapshot.objectives.map(cloneObjective),
+        dialogue: cloneDialogue(entry.snapshot.dialogue),
+        chapterArchive: entry.snapshot.chapterArchive.map((chapter) => ({
+          ...chapter,
+          mutator: { ...chapter.mutator },
+          chapter: { ...chapter.chapter },
+          objectives: chapter.objectives.map(cloneObjective),
+        })),
+      });
+      loadStoryProgression(entry.snapshot.progression, entry.settlementId);
+    }
+
+    this.restoredTilesBySettlementId = new Map(snapshot.restoredTilesBySettlementId ?? []);
+    this.dialogueSequenceBySettlementId = new Map(snapshot.dialogueSequenceBySettlementId ?? []);
+    this.naturalUnlockedNodeKeysBySettlementId = new Map<string, ProgressionNodeKey[]>(
+      (snapshot.naturalUnlockedNodeKeysBySettlementId ?? []).map(([settlementId, nodeKeys]): [string, ProgressionNodeKey[]] => [
+        settlementId,
+        nodeKeys.slice(),
+      ]),
+    );
+    this.restoredTiles = snapshot.restoredTiles ?? 0;
+    this.dialogueSequence = snapshot.dialogueSequence ?? 0;
+    this.activeSettlementId = snapshot.activeSettlementId ?? null;
+    this.snapshot = this.activeSettlementId
+      ? this.snapshotsBySettlementId.get(this.activeSettlementId) ?? null
+      : null;
+
+    if (!this.snapshot && snapshot.activeSnapshot) {
+      this.snapshot = {
+        ...snapshot.activeSnapshot,
+        mutator: { ...snapshot.activeSnapshot.mutator },
+        chapter: { ...snapshot.activeSnapshot.chapter },
+        progression: cloneProgression(snapshot.activeSnapshot.progression),
+        objectives: snapshot.activeSnapshot.objectives.map(cloneObjective),
+        dialogue: cloneDialogue(snapshot.activeSnapshot.dialogue),
+        chapterArchive: snapshot.activeSnapshot.chapterArchive.map((chapter) => ({
+          ...chapter,
+          mutator: { ...chapter.mutator },
+          chapter: { ...chapter.chapter },
+          objectives: chapter.objectives.map(cloneObjective),
+        })),
+      };
+    }
   }
 
   initializeSettlement(settlementId: string, seed: number = this.activeSeed) {

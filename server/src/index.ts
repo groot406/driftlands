@@ -1,9 +1,12 @@
 import './config/envFile';
 import express from 'express';
 import { createServer } from 'http';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { Server } from 'socket.io';
 import type { BaseMessage } from '../../src/shared/protocol';
 import { configureGameRuntime } from '../../src/shared/game/runtime';
+import { configureGameplayPaceProvider } from '../../src/shared/game/gameplayPace';
 import { configureGameplayEventRuntime } from '../../src/shared/gameplay/events';
 import { broadcast, serverMessageRouter, setIo } from './messages/messageRouter';
 import { initializeServerHandlers } from './messages/messageHandlers';
@@ -32,6 +35,7 @@ import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGenera
 import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
 import { playerSettlementState } from './state/playerSettlementState';
 import { registerMarketRoutes } from './market/marketRoutes';
+import { worldState } from './worldState';
 
 setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
 
@@ -71,6 +75,16 @@ app.use((req: any, _res: any, next: any) => {
   console.log(`[http] ${req.method} ${req.originalUrl ?? req.url} origin=${req.headers.origin ?? '-'} ip=${req.ip ?? req.socket?.remoteAddress ?? '-'}`);
   next();
 });
+const soundAssetsDir = resolve(process.cwd(), 'public', 'sounds');
+if (existsSync(soundAssetsDir)) {
+  app.use('/sounds', express.static(soundAssetsDir, {
+    immutable: true,
+    maxAge: '30d',
+  }));
+  console.log(`[http] serving sound assets from ${soundAssetsDir}`);
+} else {
+  console.warn(`[http] sound assets directory not found: ${soundAssetsDir}`);
+}
 app.get('/', (_req: any, res: any) => {
   res.json({
     name: 'driftlands-server',
@@ -104,6 +118,7 @@ app.get('/api/driftlands/player/:playerId/settlement', (req: any, res: any) => {
   const playerId = String(req.params.playerId ?? '');
   const settlementId = playerSettlementState.getPlayerSettlement(playerId);
   console.log(`[driftlands:player] settlement lookup playerId=${playerId} settlementId=${settlementId ?? '-'}`);
+  res.set('Cache-Control', 'no-store');
   res.json({
     playerId,
     settlementId,
@@ -140,18 +155,18 @@ configureGameplayEventRuntime((event) => {
   runState.recordEvent(event);
   seasonState.recordEvent(event);
 });
+configureGameplayPaceProvider(() => seasonState.getCurrentStageConfig()?.gameplay ?? null);
 
 // Apply message logging middleware
 messageLogger.wrapServer(io);
 
 // Initialize message handlers
 const { playerHandler } = initializeServerHandlers(io);
+worldState.startAutosave();
 
 // Register systems and start tick engine
 tickEngine.setTPS(Number(process.env.SERVER_TPS ?? 10));
 
-tickEngine.register(movementSystem);
-tickEngine.register(taskSystem);
 tickEngine.register(growthSystem);
 tickEngine.register(populationSystem);
 tickEngine.register(maintenanceSystem);
@@ -160,11 +175,13 @@ tickEngine.register(calamitySystem);
 tickEngine.register(marketSystem);
 tickEngine.register(shipOrderSystem);
 tickEngine.register(seasonSystem);
-tickEngine.register(settlerSystem);
 tickEngine.register(supportSystem);
 tickEngine.register(jobSystem);
 tickEngine.register(coopSystem);
 tickEngine.register(runSystem);
+tickEngine.register(settlerSystem);
+tickEngine.register(movementSystem);
+tickEngine.register(taskSystem);
 
 tickEngine.start();
 
@@ -204,3 +221,21 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`Allowed frontend origins: ${configuredFrontendOrigins.join(', ') || '(default local/LAN only)'}`);
   console.log(`Debug mode: ${serverDebugModeEnabled ? 'on' : 'off'}; settlement start mode: ${settlementStartMode}; spawn safety: ${spawnSafetyEnabled ? 'on' : 'off'}`);
 });
+
+function shutdown(signal: NodeJS.Signals) {
+  console.log(`[server] received ${signal}; saving world and shutting down`);
+  worldState.stopAutosave();
+  worldState.saveNow('shutdown');
+  tickEngine.stop();
+  io.close(() => {
+    httpServer.close(() => {
+      process.exit(0);
+    });
+  });
+  setTimeout(() => {
+    process.exit(0);
+  }, 5_000).unref();
+}
+
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

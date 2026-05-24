@@ -19,6 +19,9 @@ import type { TileUpdatedMessage } from '../../../src/shared/protocol';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import { taskUsesAdjacentActiveAccess } from '../../../src/shared/tasks/taskAccess';
 
+const SUPPORT_RECALC_INTERVAL_MS = 1_000;
+let lastSupportRecalcMs = Number.NEGATIVE_INFINITY;
+
 function snapshotsEqual(a: ReturnType<typeof getPopulationSnapshot>, b: ReturnType<typeof getPopulationSnapshot>) {
     return a.current === b.current
         && a.max === b.max
@@ -89,7 +92,16 @@ function isHeroEscapingDisconnectedTile(heroId: string) {
 
 export const supportSystem = {
     name: 'support',
-    tick: (_ctx: TickContext) => {
+    intervalMs: SUPPORT_RECALC_INTERVAL_MS,
+    init: () => {
+        lastSupportRecalcMs = Number.NEGATIVE_INFINITY;
+    },
+    tick: (ctx: TickContext) => {
+        if ((ctx.now - lastSupportRecalcMs) < SUPPORT_RECALC_INTERVAL_MS) {
+            return;
+        }
+        lastSupportRecalcMs = ctx.now;
+
         for (const task of taskStore.tasks.slice()) {
             if (task.type === 'restoreTile') {
                 removeTask(task);

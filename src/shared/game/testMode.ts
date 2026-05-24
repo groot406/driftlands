@@ -8,6 +8,13 @@ import {
   type StudyKey,
 } from '../studies/studies.ts';
 import { HERO_MOVEMENT_SPEED_ADJ } from './movementBalance.ts';
+import {
+  getGrowthPaceMultiplier,
+  getGuardTrainingPaceMultiplier,
+  getHeroMovementSpeedMultiplier,
+  getPopulationGrowthPaceMultiplier,
+  getSettlerCyclePaceMultiplier,
+} from './gameplayPace.ts';
 
 export interface TestModeSettingsSnapshot {
   enabled: boolean;
@@ -184,9 +191,10 @@ export function isFastHeroMovementEnabled(snapshot: TestModeSettingsSnapshot | n
 }
 
 export function getHeroMovementSpeedAdj(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
-  return isFastHeroMovementEnabled(snapshot)
+  const base = isFastHeroMovementEnabled(snapshot)
     ? HERO_MOVEMENT_SPEED_ADJ / 5
     : HERO_MOVEMENT_SPEED_ADJ;
+  return base / getHeroMovementSpeedMultiplier();
 }
 
 export function isFastGrowthEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
@@ -194,7 +202,7 @@ export function isFastGrowthEnabled(snapshot: TestModeSettingsSnapshot | null | 
 }
 
 export function getGrowthSpeedMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
-  return isFastGrowthEnabled(snapshot) ? 60 : 1;
+  return (isFastGrowthEnabled(snapshot) ? 60 : 1) * getGrowthPaceMultiplier();
 }
 
 export function isFastPopulationGrowthEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
@@ -202,7 +210,7 @@ export function isFastPopulationGrowthEnabled(snapshot: TestModeSettingsSnapshot
 }
 
 export function getPopulationGrowthMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
-  return isFastPopulationGrowthEnabled(snapshot) ? 10 : 1;
+  return (isFastPopulationGrowthEnabled(snapshot) ? 10 : 1) * getPopulationGrowthPaceMultiplier();
 }
 
 export function isFastSettlerCyclesEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
@@ -210,7 +218,7 @@ export function isFastSettlerCyclesEnabled(snapshot: TestModeSettingsSnapshot | 
 }
 
 export function getSettlerCycleSpeedMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
-  return isFastSettlerCyclesEnabled(snapshot) ? 5 : 1;
+  return (isFastSettlerCyclesEnabled(snapshot) ? 5 : 1) * getSettlerCyclePaceMultiplier();
 }
 
 export function isFastGuardTrainingEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
@@ -218,7 +226,7 @@ export function isFastGuardTrainingEnabled(snapshot: TestModeSettingsSnapshot | 
 }
 
 export function getGuardTrainingSpeedMultiplier(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {
-  return isFastGuardTrainingEnabled(snapshot) ? 10 : 1;
+  return (isFastGuardTrainingEnabled(snapshot) ? 10 : 1) * getGuardTrainingPaceMultiplier();
 }
 
 export function isTileSupportEnabled(snapshot: TestModeSettingsSnapshot | null | undefined = testModeSettings) {

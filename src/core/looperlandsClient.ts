@@ -15,6 +15,7 @@ const PLATFORM_TOKEN_STORAGE_KEY = 'token';
 const DEFAULT_LOOPERLANDS_API_URL = 'https://api.looperlands.io/api';
 const DRIFTLANDS_LOOPERLANDS_PROXY_PATH = '/api/looperlands';
 const DRIFTLANDS_API_PATH = '/api/driftlands';
+const DRIFTLANDS_WALLET_SETTLEMENT_TIMEOUT_MS = 4500;
 
 export interface EthereumProvider {
   request<T = unknown>(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<T>;
@@ -60,6 +61,10 @@ function getDriftlandsLooperlandsProxyUrl(path: string): string {
 
 function getDriftlandsApiUrl(path: string): string {
   return `${getDriftlandsServerUrl()}${DRIFTLANDS_API_PATH}${path}`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 export function getStoredLooperlandsSession(): LooperlandsWalletSession | null {
@@ -514,14 +519,51 @@ export function getLooperlandsPlayerId(session: LooperlandsWalletSession): strin
 
 export async function fetchDriftlandsWalletSettlement(session: LooperlandsWalletSession): Promise<string | null> {
   const playerId = getLooperlandsPlayerId(session);
-  const response = await fetch(getDriftlandsApiUrl(`/player/${encodeURIComponent(playerId)}/settlement`), {
-    headers: { 'Accept': 'application/json' },
+  const url = getDriftlandsApiUrl(`/player/${encodeURIComponent(playerId)}/settlement`);
+  const startedAt = performance.now();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, DRIFTLANDS_WALLET_SETTLEMENT_TIMEOUT_MS);
+
+  walletLog('driftlands settlement lookup request', {
+    url,
+    playerId: maskDebugValue(playerId),
+    timeoutMs: DRIFTLANDS_WALLET_SETTLEMENT_TIMEOUT_MS,
   });
 
-  if (!response.ok) {
-    throw new Error('Could not check existing Driftlands colony for this wallet.');
-  }
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const durationMs = Math.round(performance.now() - startedAt);
+    walletLog('driftlands settlement lookup response', {
+      status: response.status,
+      ok: response.ok,
+      durationMs,
+    });
 
-  const body = await response.json() as { settlementId?: string | null };
-  return body.settlementId ?? null;
+    if (!response.ok) {
+      walletWarn('driftlands settlement lookup failed; continuing without cached settlement', {
+        status: response.status,
+        durationMs,
+      });
+      return null;
+    }
+
+    const body = await response.json() as { settlementId?: string | null };
+    return body.settlementId ?? null;
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - startedAt);
+    walletWarn('driftlands settlement lookup unavailable; continuing without cached settlement', {
+      durationMs,
+      timedOut: isAbortError(error),
+      error: describeWalletError(error),
+    });
+    return null;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }

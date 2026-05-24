@@ -189,6 +189,17 @@ function getSettlementIdForTile(tile: typeof tiles[number]) {
     : (tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null);
 }
 
+export interface SeasonPersistenceSnapshot {
+  snapshot: SeasonSnapshot | null;
+  archive: SeasonArchiveEntry[];
+  shipOrdersCompletedBySettlementId: Array<[string, number]>;
+  shipOrderValueBySettlementId: Array<[string, number]>;
+  towerCapturesBySettlementId: Array<[string, number]>;
+  towerDefensesBySettlementId: Array<[string, number]>;
+  calamitiesSurvivedBySettlementId: Array<[string, number]>;
+  scoreBaselinesBySettlementId: Array<[string, SeasonScoreBaseline]>;
+}
+
 class SeasonState {
   private snapshot: SeasonSnapshot | null = null;
   private archive: SeasonArchiveEntry[] = [];
@@ -240,6 +251,61 @@ class SeasonState {
 
   getSnapshot() {
     return this.snapshot ? cloneSnapshot(this.snapshot) : null;
+  }
+
+  getPersistenceSnapshot(): SeasonPersistenceSnapshot {
+    return {
+      snapshot: this.getSnapshot(),
+      archive: this.cloneArchive(),
+      shipOrdersCompletedBySettlementId: Array.from(this.shipOrdersCompletedBySettlementId.entries()),
+      shipOrderValueBySettlementId: Array.from(this.shipOrderValueBySettlementId.entries()),
+      towerCapturesBySettlementId: Array.from(this.towerCapturesBySettlementId.entries()),
+      towerDefensesBySettlementId: Array.from(this.towerDefensesBySettlementId.entries()),
+      calamitiesSurvivedBySettlementId: Array.from(this.calamitiesSurvivedBySettlementId.entries()),
+      scoreBaselinesBySettlementId: Array.from(this.scoreBaselinesBySettlementId.entries()).map(([settlementId, baseline]) => [
+        settlementId,
+        {
+          ...baseline,
+          buildings: { ...baseline.buildings },
+        },
+      ]),
+    };
+  }
+
+  loadPersistenceSnapshot(persistence: SeasonPersistenceSnapshot | null | undefined) {
+    if (!persistence?.snapshot) {
+      this.snapshot = null;
+      this.archive = [];
+      this.shipOrdersCompletedBySettlementId.clear();
+      this.shipOrderValueBySettlementId.clear();
+      this.towerCapturesBySettlementId.clear();
+      this.towerDefensesBySettlementId.clear();
+      this.calamitiesSurvivedBySettlementId.clear();
+      this.scoreBaselinesBySettlementId.clear();
+      this.lastBroadcastScoreKey = '';
+      this.lastScoreBroadcastAt = 0;
+      return;
+    }
+
+    this.snapshot = cloneSnapshot(persistence.snapshot);
+    this.archive = persistence.archive?.map((entry) => ({ ...entry })) ?? cloneSnapshot(persistence.snapshot).archive;
+    this.shipOrdersCompletedBySettlementId = new Map(persistence.shipOrdersCompletedBySettlementId ?? []);
+    this.shipOrderValueBySettlementId = new Map(persistence.shipOrderValueBySettlementId ?? []);
+    this.towerCapturesBySettlementId = new Map(persistence.towerCapturesBySettlementId ?? []);
+    this.towerDefensesBySettlementId = new Map(persistence.towerDefensesBySettlementId ?? []);
+    this.calamitiesSurvivedBySettlementId = new Map(persistence.calamitiesSurvivedBySettlementId ?? []);
+    this.scoreBaselinesBySettlementId = new Map(
+      (persistence.scoreBaselinesBySettlementId ?? []).map(([settlementId, baseline]): [string, SeasonScoreBaseline] => [
+        settlementId,
+        {
+          ...baseline,
+          buildings: { ...baseline.buildings },
+        },
+      ]),
+    );
+    this.lastBroadcastScoreKey = '';
+    this.lastScoreBroadcastAt = 0;
+    this.recompute(Date.now());
   }
 
   getCurrentStageConfig() {

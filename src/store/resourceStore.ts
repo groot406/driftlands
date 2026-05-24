@@ -1,6 +1,7 @@
 import type {Tile} from "../core/types/Tile.ts";
 import type {ResourceAmount, ResourceType} from "../core/types/Resource.ts";
 import { getStorageKindForBuildingTile } from '../shared/buildings/state.ts';
+import { listBuildingDefinitions } from '../shared/buildings/registry.ts';
 import { getTileSettlementId } from '../shared/game/settlement';
 import { canStorageKindStoreResource, getStorageCapacity, type StorageKind, type StorageSnapshot } from '../shared/game/storage.ts';
 import {
@@ -9,6 +10,7 @@ import {
     TEST_MODE_VIRTUAL_RESOURCE_AMOUNT,
 } from '../shared/game/testMode.ts';
 import { tileIndex } from '../core/world.ts';
+import { getVariantSet, terrainPositions } from '../core/terrainRegistry.ts';
 import { reactive, ref } from 'vue';
 
 const RESOURCE_TYPES: ResourceType[] = [
@@ -316,17 +318,38 @@ function compareStorageWithdrawalPriority(a: string, b: string) {
     return a.localeCompare(b);
 }
 
-function getPrioritizedStorageIdsForSettlement(settlementId: string | null | undefined) {
-    if (settlementId) {
-        for (const tile of Object.values(tileIndex)) {
-            if (getTileSettlementId(tile) === settlementId) {
-                ensureStorageSnapshotForTileInternal(tile);
+function collectPotentialStorageIds(): string[] {
+    const storageIds = new Set<string>(Object.keys(storageInventories));
+
+    for (const tileId of terrainPositions.towncenter) {
+        storageIds.add(tileId);
+    }
+
+    for (const building of listBuildingDefinitions()) {
+        if (!building.providesWarehouse) {
+            continue;
+        }
+
+        for (const variantKey of building.variantKeys) {
+            for (const tileId of getVariantSet(variantKey)) {
+                storageIds.add(tileId);
             }
         }
     }
 
-    return Object.keys(storageInventories)
-        .filter((storageTileId) => !settlementId || getStorageSettlementId(storageTileId) === settlementId)
+    return Array.from(storageIds);
+}
+
+function getPrioritizedStorageIdsForSettlement(settlementId: string | null | undefined) {
+    return collectPotentialStorageIds()
+        .filter((storageTileId) => {
+            const tile = tileIndex[storageTileId];
+            if (settlementId && getTileSettlementId(tile) !== settlementId) {
+                return false;
+            }
+
+            return !!ensureStorageSnapshotForTileInternal(tile);
+        })
         .sort(compareStorageWithdrawalPriority);
 }
 

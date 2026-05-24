@@ -7,7 +7,7 @@ import { hasRevealedModifier } from '../../game/tileFeatures.ts';
 const gatherSandTask: TaskDefinition = {
     key: 'gatherSand',
     label: 'Gather Sand',
-    chainAdjacentSameTerrain: true,
+    chainAdjacentSameTerrain: false,
 
     canStart(tile: Tile) {
         return tile.terrain === 'dessert' && tile.isBaseTile;

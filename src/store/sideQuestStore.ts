@@ -22,6 +22,7 @@ import { addNotification } from './notificationStore.ts';
 import { appendRunDialogueEntries, runSnapshot, runVersion } from './runStore.ts';
 import { clearStoryTileHint, setStoryTileHint } from './storyHintStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
+import { taskStore } from './taskStore.ts';
 
 interface SideQuestState {
   instances: SideQuestInstance[];
@@ -269,6 +270,28 @@ function spawnSideQuest(definition: SideQuestDefinition, settlementId: string | 
   return instance;
 }
 
+function hasPendingExploreTask(tileId: string) {
+  const taskId = taskStore.tasksByTile[tileId]?.explore;
+  return !!taskId && !!taskStore.taskIndex[taskId];
+}
+
+function revealDiscoveredSignalTiles(settlementId: string | null | undefined) {
+  for (const quest of sideQuestState.instances) {
+    if (
+      quest.status !== 'signaled'
+      || (quest.spawnSettlementId ?? null) !== (settlementId ?? null)
+      || hasPendingExploreTask(quest.signalTileId)
+    ) {
+      continue;
+    }
+
+    const tile = tileIndex[quest.signalTileId];
+    if (tile?.discovered) {
+      revealSideQuest(quest, null);
+    }
+  }
+}
+
 export function syncSideQuestSignals() {
   const settlementId = currentPlayerSettlementId.value;
   const runKey = runSnapshot.value ? `${runSnapshot.value.seed}:${runSnapshot.value.startedAt}` : null;
@@ -289,6 +312,8 @@ export function syncSideQuestSignals() {
       spawnSideQuest(definition, settlementId);
     }
   }
+
+  revealDiscoveredSignalTiles(settlementId);
 
   for (const quest of sideQuestState.instances) {
     const hintId = hintIdForQuest(quest);

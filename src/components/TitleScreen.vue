@@ -84,7 +84,12 @@
             <div v-else class="title-loopers__status">No Looper avatars found for this wallet.</div>
           </div>
 
-          <div v-if="startMode === 'default'" class="title-loopers" aria-label="Choose two default heroes">
+          <div v-if="startMode === 'default' && existingDefaultSettlementId" class="title-wallet">
+            <p class="title-wallet__notice">This browser already founded a colony. Continue to rejoin it.</p>
+          </div>
+
+          <div v-else-if="startMode === 'default'" class="title-loopers" aria-label="Choose two default heroes">
+            <p v-if="defaultSettlementLoading" class="title-wallet__notice">Checking existing colony...</p>
             <p class="title-loopers__label">{{ defaultPickerLabel }}</p>
             <div class="title-loopers__grid title-loopers__grid--default">
               <button
@@ -138,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from '@reown/appkit/vue';
 import type { ProviderType } from '@reown/appkit-adapter-ethers';
 import TitleBackground from './TitleBackground.vue';
@@ -146,7 +151,8 @@ import Sprite from './Sprite.vue';
 import { resumeGame } from '../store/uiStore.ts';
 import { runSnapshot } from '../store/runStore.ts';
 import { musicManager } from '../core/musicManager.ts';
-import { connectWithNickname, getStoredPlayerName } from '../core/socket.ts';
+import { connectWithNickname, getStoredPlayerId, getStoredPlayerName } from '../core/socket.ts';
+import { getDriftlandsServerUrl } from '../core/driftlandsServerUrl.ts';
 import {
   buildLooperlandsContinueAuth,
   buildLooperlandsJoinAuth,
@@ -215,6 +221,8 @@ const walletLoading = ref(false);
 const walletError = ref('');
 const walletSettlementLoading = ref(false);
 const existingWalletSettlementId = ref<string | null>(null);
+const defaultSettlementLoading = ref(false);
+const existingDefaultSettlementId = ref<string | null>(null);
 const looperLoading = ref(false);
 const loopers = ref<LooperlandsHeroSelection[]>([]);
 const selectedLooperIds = ref<string[]>([]);
@@ -225,8 +233,13 @@ const defaultHeroes = computed(() => listStoryHeroTemplates().map((hero) => ({
   ...hero,
   avatar: avatarByKey[hero.avatar] ?? santaAvatar,
 })));
+const existingSettlementId = computed(() => (
+  startMode.value === 'wallet'
+    ? existingWalletSettlementId.value
+    : existingDefaultSettlementId.value
+));
 const primaryActionLabel = computed(() => {
-  if (startMode.value === 'wallet' && existingWalletSettlementId.value) {
+  if (existingSettlementId.value) {
     return 'Continue Colony';
   }
 
@@ -240,7 +253,7 @@ const selectedDefaultHeroes = computed(() => selectedDefaultHeroIds.value
   .filter((hero): hero is NonNullable<typeof hero> => !!hero));
 const canStart = computed(() => {
   if (startMode.value === 'default') {
-    return selectedDefaultHeroes.value.length === 2;
+    return !!existingDefaultSettlementId.value || selectedDefaultHeroes.value.length === 2;
   }
 
   if (!walletSession.value || walletLoading.value || walletSettlementLoading.value || looperLoading.value) {
@@ -274,12 +287,20 @@ const defaultPickerLabel = computed(() => {
 });
 onMounted(() => {
   musicManager.initialize();
+  void refreshExistingDefaultSettlement();
+
   if (walletSession.value) {
     void prepareWalletStart();
   }
 
   window.addEventListener('pointerdown', retryTitleMusic, { once: true });
   window.addEventListener('keydown', retryTitleMusic, { once: true });
+});
+
+watch(startMode, (mode) => {
+  if (mode === 'default') {
+    void refreshExistingDefaultSettlement();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -603,6 +624,33 @@ async function loadLoopers(session = walletSession.value, runId = walletPreparat
   }
 }
 
+async function refreshExistingDefaultSettlement() {
+  const playerId = getStoredPlayerId();
+  defaultSettlementLoading.value = true;
+  try {
+    const serverUrl = getDriftlandsServerUrl();
+    const response = await fetch(`${serverUrl}/api/driftlands/player/${encodeURIComponent(playerId)}/settlement`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      existingDefaultSettlementId.value = null;
+      return null;
+    }
+
+    const body = await response.json() as { settlementId?: string | null };
+    existingDefaultSettlementId.value = body.settlementId ?? null;
+    return existingDefaultSettlementId.value;
+  } catch (error) {
+    console.warn('[driftlands] default settlement lookup failed:', error);
+    existingDefaultSettlementId.value = null;
+    return null;
+  } finally {
+    defaultSettlementLoading.value = false;
+  }
+}
+
 function toggleLooper(id: string) {
   if (selectedLooperIds.value.includes(id)) {
     selectedLooperIds.value = selectedLooperIds.value.filter((selectedId) => selectedId !== id);
@@ -633,6 +681,12 @@ function toggleDefaultHero(id: StoryHeroId) {
 
 function joinGame() {
   if (startMode.value === 'default') {
+    if (existingDefaultSettlementId.value) {
+      connectWithNickname(nickname.value, null);
+      resumeGame();
+      return;
+    }
+
     if (selectedDefaultHeroes.value.length !== 2) {
       walletError.value = 'Choose two default heroes first.';
       return;

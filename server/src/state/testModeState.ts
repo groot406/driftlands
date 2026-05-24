@@ -181,8 +181,6 @@ class TestModeState {
           ...next.completedStudyKeys,
           'border_management',
           'defensive_construction',
-          'guard_training',
-          'weapon_smithing',
           'masonry_treatises',
         ]));
         loadTestModeSettings(next);

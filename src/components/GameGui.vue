@@ -4,31 +4,33 @@
       <div class="game-gui-resources min-w-0 flex-1 flex flex-col gap-4">
         <ResourceBar/>
       </div>
-      <SeasonStageHud />
+      <div class="season-hud-stack">
+        <SeasonStageHud />
+        <Transition name="calamity-countdown">
+          <button
+            v-if="calamityCountdown"
+            class="calamity-countdown-hud"
+            type="button"
+            :style="{ '--calamity-progress': `${calamityCountdown.progress}%` }"
+            :aria-label="`Open ${calamityCountdown.name} warning. Impact in ${calamityCountdown.time}.`"
+            @click="reopenActiveCalamityWarning"
+          >
+            <span class="calamity-countdown-icon" aria-hidden="true">!</span>
+            <span class="calamity-countdown-copy">
+              <span class="calamity-countdown-kicker">Disaster warning</span>
+              <span class="calamity-countdown-name">Incoming {{ calamityCountdown.name }}</span>
+            </span>
+            <strong>{{ calamityCountdown.time }}</strong>
+            <span class="calamity-countdown-track" aria-hidden="true">
+              <span></span>
+            </span>
+          </button>
+        </Transition>
+      </div>
       <div class="game-gui-menu pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
         <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
     </div>
-    <Transition name="calamity-countdown">
-      <button
-        v-if="calamityCountdown"
-        class="calamity-countdown-hud"
-        type="button"
-        :style="{ '--calamity-progress': `${calamityCountdown.progress}%` }"
-        :aria-label="`Open ${calamityCountdown.name} warning. Impact in ${calamityCountdown.time}.`"
-        @click="reopenActiveCalamityWarning"
-      >
-        <span class="calamity-countdown-icon" aria-hidden="true">!</span>
-        <span class="calamity-countdown-copy">
-          <span class="calamity-countdown-kicker">Disaster warning</span>
-          <span class="calamity-countdown-name">Incoming {{ calamityCountdown.name }}</span>
-        </span>
-        <strong>{{ calamityCountdown.time }}</strong>
-        <span class="calamity-countdown-track" aria-hidden="true">
-          <span></span>
-        </span>
-      </button>
-    </Transition>
     <HeroesBar />
   </div>
   <OnlinePlayersStatus />
@@ -381,9 +383,18 @@ watch(activeToolbarPanel, (panel) => {
   min-width: 0;
 }
 
-.game-gui-top .season-stage-hud {
+.season-hud-stack {
   justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
   width: min(32rem, 100%);
+  pointer-events: none;
+}
+
+.season-hud-stack .season-stage-hud {
+  width: 100%;
 }
 
 .game-gui-menu {
@@ -392,26 +403,27 @@ watch(activeToolbarPanel, (panel) => {
 
 .calamity-countdown-hud {
   position: relative;
-  z-index: 6;
+  z-index: 34;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.7rem;
-  align-self: center;
-  width: min(28rem, calc(100vw - 1.5rem));
-  min-height: 3.35rem;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: 2.35rem;
   overflow: hidden;
-  border: 1px solid rgba(250, 204, 21, 0.58);
-  border-radius: 8px;
+  border: 1px solid rgba(178, 137, 53, 0.74);
+  border-radius: 5px;
   background:
-    linear-gradient(180deg, rgba(78, 42, 20, 0.94), rgba(31, 18, 12, 0.96)),
-    rgba(30, 18, 12, 0.94);
-  box-shadow: 0 12px 28px rgba(20, 12, 8, 0.34), inset 0 1px 0 rgba(255, 247, 207, 0.12);
+    linear-gradient(180deg, rgba(28, 40, 34, 0.94), rgba(12, 18, 17, 0.96)),
+    rgba(14, 18, 16, 0.94);
+  box-shadow:
+    0 8px 20px rgba(4, 8, 7, 0.34),
+    inset 0 1px 0 rgba(255, 247, 207, 0.1);
   color: rgb(255 244 207);
-  padding: 0.55rem 0.75rem 0.72rem;
+  padding: 0.42rem 0.58rem 0.54rem;
   appearance: none;
   pointer-events: auto;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(6px);
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -419,8 +431,11 @@ watch(activeToolbarPanel, (panel) => {
 
 .calamity-countdown-hud:hover,
 .calamity-countdown-hud:focus-visible {
-  border-color: rgba(253, 230, 138, 0.88);
-  box-shadow: 0 14px 32px rgba(20, 12, 8, 0.42), 0 0 0 2px rgba(250, 204, 21, 0.16), inset 0 1px 0 rgba(255, 247, 207, 0.16);
+  border-color: rgba(222, 180, 80, 0.92);
+  box-shadow:
+    0 10px 24px rgba(4, 8, 7, 0.42),
+    0 0 0 2px rgba(178, 137, 53, 0.15),
+    inset 0 1px 0 rgba(255, 247, 207, 0.15);
   transform: translateY(-1px);
 }
 
@@ -428,28 +443,28 @@ watch(activeToolbarPanel, (panel) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid rgba(253, 230, 138, 0.58);
-  border-radius: 8px;
-  background: rgba(127, 29, 29, 0.6);
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid rgba(204, 158, 58, 0.62);
+  border-radius: 4px;
+  background: rgba(83, 45, 28, 0.78);
   color: rgb(254 243 199);
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
 }
 
 .calamity-countdown-copy {
   min-width: 0;
   display: grid;
-  gap: 0.16rem;
+  gap: 0.08rem;
 }
 
 .calamity-countdown-kicker {
   min-width: 0;
   overflow: hidden;
-  color: rgba(255, 244, 207, 0.62);
-  font-size: 0.58rem;
+  color: rgba(216, 190, 128, 0.78);
+  font-size: 0.5rem;
   font-weight: 800;
   letter-spacing: 0;
   text-overflow: ellipsis;
@@ -460,8 +475,8 @@ watch(activeToolbarPanel, (panel) => {
 .calamity-countdown-name {
   min-width: 0;
   overflow: hidden;
-  color: rgb(255 244 207);
-  font-size: 0.82rem;
+  color: rgb(255 239 198);
+  font-size: 0.72rem;
   font-weight: 900;
   line-height: 1.12;
   text-overflow: ellipsis;
@@ -469,35 +484,33 @@ watch(activeToolbarPanel, (panel) => {
 }
 
 .calamity-countdown-hud strong {
-  min-width: 3.7rem;
-  border-radius: 6px;
-  background: rgba(17, 24, 39, 0.48);
-  border: 1px solid rgba(253, 230, 138, 0.28);
-  padding: 0.32rem 0.48rem;
+  min-width: 3.25rem;
+  border-radius: 4px;
+  background: rgba(7, 10, 13, 0.5);
+  border: 1px solid rgba(204, 158, 58, 0.34);
+  padding: 0.24rem 0.38rem;
   color: rgb(254 243 199);
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.76rem;
+  font-size: 0.62rem;
   letter-spacing: 0;
   text-align: center;
 }
 
 .calamity-countdown-track {
   position: absolute;
-  left: 0.75rem;
-  right: 0.75rem;
-  bottom: 0.42rem;
-  height: 0.18rem;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.14rem;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 244, 207, 0.16);
+  background: rgba(255, 244, 207, 0.1);
 }
 
 .calamity-countdown-track span {
   display: block;
   width: var(--calamity-progress);
   height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #facc15, #fb923c);
+  background: linear-gradient(90deg, #b88b2e, #e0b54f);
 }
 
 .calamity-countdown-enter-active,
@@ -516,7 +529,7 @@ watch(activeToolbarPanel, (panel) => {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .game-gui-top .season-stage-hud {
+  .season-hud-stack {
     grid-column: 1 / -1;
     grid-row: 2;
     justify-self: end;
@@ -554,29 +567,27 @@ watch(activeToolbarPanel, (panel) => {
   }
 
   .calamity-countdown-hud {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 0.5rem;
-    width: min(100%, calc(100vw - 0.7rem));
-    min-height: 3.2rem;
-    padding-inline: 0.58rem;
+    gap: 0.45rem;
+    min-height: 2.35rem;
+    padding: 0.4rem 0.5rem 0.52rem;
   }
 
   .calamity-countdown-kicker {
-    font-size: 0.52rem;
+    font-size: 0.48rem;
   }
 
   .calamity-countdown-name {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
   }
 
   .calamity-countdown-icon {
-    width: 1.7rem;
-    height: 1.7rem;
+    width: 1.45rem;
+    height: 1.45rem;
   }
 
   .calamity-countdown-hud strong {
-    min-width: 3.2rem;
-    font-size: 0.62rem;
+    min-width: 3rem;
+    font-size: 0.56rem;
   }
 }
 

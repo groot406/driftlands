@@ -5,6 +5,7 @@ import { marketState } from '../state/marketState';
 
 export const marketSystem = {
   name: 'market',
+  intervalMs: 1_000,
   tick: (ctx: TickContext) => {
     if (!marketState.tick(ctx.now)) {
       return;
