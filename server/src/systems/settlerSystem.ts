@@ -1,12 +1,17 @@
 import type { TickContext } from '../tick';
-import { PathService } from '../../../src/shared/game/PathService';
-import { canUseWarehouseAtTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../../../src/shared/buildings/storage';
+import { PathService, type PathCoord } from '../../../src/shared/game/PathService';
+import {
+    canUseWarehouseAtTile,
+    listUsableWarehousesWithCapacityForResource,
+    listUsableWarehousesWithResource,
+} from '../../../src/shared/buildings/storage';
 import { HOUSE_VARIANT_KEYS, HUNGER_GRACE_MINUTES, FOOD_PER_SETTLER_PER_MINUTE, broadcastPopulationState, getPopulationState, growPopulation, killSettler, setHungerMs, setSettlementHungerMs } from '../../../src/shared/game/state/populationStore';
 import { broadcastSettlersState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import { resolveJobResources } from './jobSiteRuntime';
 import {
     computePathTimings,
+    isEdgeBlocked,
     isTileWalkable,
 } from '../../../src/shared/game/navigation';
 import { SETTLER_MOVEMENT_SPEED_ADJ } from '../../../src/shared/game/movementBalance';
@@ -40,15 +45,19 @@ import {
 import { resumeWaitingTasksForResource } from '../../../src/shared/game/state/taskStore';
 import type { ResourceAmount, ResourceType } from '../../../src/shared/game/types/Resource';
 import type { Settler, SettlerActivity, SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
-import type { Tile } from '../../../src/shared/game/types/Tile';
+import type { Tile, TileSide } from '../../../src/shared/game/types/Tile';
 import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol';
 import type { PopulationIncidentMessage } from '../../../src/shared/protocol';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../../../src/shared/tasks/taskAccess';
-import { tileIndex } from '../../../src/shared/game/world';
+import { getWorldRenderVersion, tileIndex } from '../../../src/shared/game/world';
 import { canAssignWorkersToSite, compareResolvedSites, finalizeMineExtraction, getJobSiteSettlementId, isVirtualJobInput, listResolvedJobSites } from './jobSiteRuntime';
 import { addStudyProgress, broadcastStudyState, hasActiveStudy } from '../../../src/store/studyStore';
 import { consumeTileProductionBoost } from '../../../src/shared/game/tileFeatures';
-import { isTileActive } from '../../../src/shared/game/state/settlementSupportStore';
+import {
+    isTileActive,
+    isTileControlled,
+    isTileControlledBySettlement,
+} from '../../../src/shared/game/state/settlementSupportStore';
 import {
     getRepairNeededAmount,
     getTileJobPresentation,
@@ -69,7 +78,7 @@ import {
     isUnlimitedResourcesEnabled,
     testModeSettings,
 } from '../../../src/shared/game/testMode.ts';
-import { isWatchtowerTile } from '../../../src/shared/game/military.ts';
+import { canSettlementUseOpenBorderTransit, isRaidableMilitaryTarget, isWatchtowerTile } from '../../../src/shared/game/military.ts';
 import { HUNGER_FOOD_TYPES, TRADE_GOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, getTradeGoodHappinessGain, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
 
 const pathService = new PathService();
@@ -86,6 +95,23 @@ const SETTLER_SOCIAL_VISIT_MS = 20_000;
 const SETTLER_SHOP_VISIT_MS = 16_000;
 const HOUSE_GOOD_CONSUME_INTERVAL_MS = 3 * 60_000;
 const SETTLER_MAX_HAPPINESS = 100;
+const SETTLER_BROADCAST_MIN_INTERVAL_MS = 250;
+const POPULATION_BROADCAST_MIN_INTERVAL_MS = 250;
+const SETTLER_ROUTE_CACHE_MAX_ENTRIES = 16;
+const SHARED_SETTLER_ROUTE_CACHE_MAX_ENTRIES = 2048;
+const SHARED_SETTLER_REACHABILITY_FAILURE_CACHE_MAX_ENTRIES = 2048;
+const SETTLER_REACHABILITY_FAILURE_RETRY_MS = 10_000;
+const SETTLER_PLANNING_MIN_INTERVAL_MS = 750;
+const SETTLER_PLANNING_STAGGER_WINDOW_MS = 250;
+const SETTLER_BLOCKED_PLANNING_MIN_INTERVAL_MS = 5_000;
+const SETTLER_ROUTE_SIDES: Array<{ dq: number; dr: number; side: TileSide }> = [
+    { dq: 0, dr: -1, side: 'a' },
+    { dq: 1, dr: -1, side: 'b' },
+    { dq: 1, dr: 0, side: 'c' },
+    { dq: 0, dr: 1, side: 'd' },
+    { dq: -1, dr: 1, side: 'e' },
+    { dq: -1, dr: 0, side: 'f' },
+];
 const SOCIAL_DRINKS = [
     { type: 'wine', happiness: 30 },
     { type: 'beer', happiness: 20 },
@@ -93,6 +119,61 @@ const SOCIAL_DRINKS = [
 
 let nextSettlerId = 1;
 let lastGrowthCheckMsPerSettlement: Record<string, number> = {};
+let lastSettlerBroadcastMs = Number.NEGATIVE_INFINITY;
+let settlerBroadcastPending = false;
+let lastPopulationBroadcastMs = Number.NEGATIVE_INFINITY;
+let populationBroadcastPending = false;
+
+interface SettlerRouteCacheEntry {
+    startQ: number;
+    startR: number;
+    targetId: string;
+    targetQ: number;
+    targetR: number;
+    settlementId: string | null;
+    worldVersion: number;
+    path: PathCoord[];
+}
+
+interface SettlerReachabilityFailureCacheEntry {
+    startQ: number;
+    startR: number;
+    targetId: string;
+    targetQ: number;
+    targetR: number;
+    settlementId: string | null;
+    worldVersion: number;
+    retryAtMs: number;
+}
+
+interface SettlerRouteIdentity {
+    startQ: number;
+    startR: number;
+    targetId: string;
+    targetQ: number;
+    targetR: number;
+    settlementId: string | null;
+    worldVersion: number;
+}
+
+interface SettlerComponentCacheEntry {
+    worldVersion: number;
+    settlementId: string | null;
+    componentByTileId: Map<string, number>;
+}
+
+interface SettlerPlanningCacheEntry {
+    accumulatedDt: number;
+    nextPlanAtMs: number;
+}
+
+const settlerRouteCache = new Map<string, SettlerRouteCacheEntry[]>();
+const settlerReachabilityFailureCache = new Map<string, SettlerReachabilityFailureCacheEntry>();
+const settlerPlanningCache = new Map<string, SettlerPlanningCacheEntry>();
+const sharedSettlerRouteCache = new Map<string, SettlerRouteCacheEntry>();
+const sharedSettlerReachabilityFailureCache = new Map<string, SettlerReachabilityFailureCacheEntry>();
+const settlerComponentCache = new Map<string, SettlerComponentCacheEntry>();
+let currentSettlerTickNow = 0;
 
 function getEffectivePopulationGrowthIntervalMs() {
     return Math.max(1, Math.round(POPULATION_GROWTH_INTERVAL_MS / getPopulationGrowthMultiplier(testModeSettings)));
@@ -108,6 +189,40 @@ function getEffectiveSettlerHappinessProgress(dt: number) {
 
 function getEffectiveSettlerCycleIntervalMs(intervalMs: number) {
     return Math.max(1, Math.round(intervalMs / getSettlerCycleSpeedMultiplier(testModeSettings)));
+}
+
+function resetSettlerBroadcastThrottle() {
+    lastSettlerBroadcastMs = Number.NEGATIVE_INFINITY;
+    settlerBroadcastPending = false;
+}
+
+function resetPopulationBroadcastThrottle() {
+    lastPopulationBroadcastMs = Number.NEGATIVE_INFINITY;
+    populationBroadcastPending = false;
+}
+
+function queueSettlerBroadcast(now: number) {
+    settlerBroadcastPending = true;
+    if (now - lastSettlerBroadcastMs < SETTLER_BROADCAST_MIN_INTERVAL_MS) {
+        return false;
+    }
+
+    broadcastSettlersState(now);
+    lastSettlerBroadcastMs = now;
+    settlerBroadcastPending = false;
+    return true;
+}
+
+function queuePopulationBroadcast(now: number) {
+    populationBroadcastPending = true;
+    if (now - lastPopulationBroadcastMs < POPULATION_BROADCAST_MIN_INTERVAL_MS) {
+        return false;
+    }
+
+    broadcastPopulationState();
+    lastPopulationBroadcastMs = now;
+    populationBroadcastPending = false;
+    return true;
 }
 
 function seedFromString(value: string) {
@@ -226,10 +341,13 @@ function getGuardTowerAccessTile(
         ?? (isTileWalkable(tower) ? tower : null);
 }
 
-function createGuardSettler(now: number, settlementId: string, tower: Tile, accessTile: Tile): Settler {
+function createGuardSettler(now: number, settlementId: string, tower: Tile, accessTile: Tile, originTile?: Tile | null): Settler {
     const guard = createSettler(now, settlementId);
-    guard.homeTileId = settlementId;
-    guard.homeAccessTileId = settlementId;
+    const homeTile = originTile?.discovered && isTileWalkable(originTile) ? originTile : getHomeFallbackTile(settlementId);
+    guard.q = homeTile?.q ?? guard.q;
+    guard.r = homeTile?.r ?? guard.r;
+    guard.homeTileId = homeTile?.id ?? settlementId;
+    guard.homeAccessTileId = homeTile?.id ?? settlementId;
     guard.settlementId = settlementId;
     guard.assignedRole = 'guard';
     guard.guardTowerTileId = tower.id;
@@ -480,6 +598,408 @@ function updateFacing(settler: Settler, from: { q: number; r: number }, to: { q:
     }
 }
 
+function clonePath(path: PathCoord[]) {
+    return path.map((step) => ({ q: step.q, r: step.r }));
+}
+
+function getSettlerRouteKey(route: SettlerRouteIdentity) {
+    return [
+        route.startQ,
+        route.startR,
+        route.targetId,
+        route.targetQ,
+        route.targetR,
+        route.settlementId ?? '',
+        route.worldVersion,
+    ].join(':');
+}
+
+function getCurrentSettlerRouteIdentity(settler: Settler, target: Tile, settlementId: string | null): SettlerRouteIdentity {
+    return {
+        startQ: settler.q,
+        startR: settler.r,
+        targetId: target.id,
+        targetQ: target.q,
+        targetR: target.r,
+        settlementId,
+        worldVersion: getWorldRenderVersion(),
+    };
+}
+
+function matchesSettlerRoute(
+    cached: Pick<SettlerRouteCacheEntry, 'startQ' | 'startR' | 'targetId' | 'targetQ' | 'targetR' | 'settlementId'>,
+    settler: Settler,
+    target: Tile,
+    settlementId: string | null,
+) {
+    return cached.startQ === settler.q
+        && cached.startR === settler.r
+        && cached.targetId === target.id
+        && cached.targetQ === target.q
+        && cached.targetR === target.r
+        && cached.settlementId === settlementId;
+}
+
+function getSettlerRouteSide(from: PathCoord, to: PathCoord) {
+    return SETTLER_ROUTE_SIDES.find(({ dq, dr }) => from.q + dq === to.q && from.r + dr === to.r)?.side ?? null;
+}
+
+function isRouteStepWalkable(tile: Tile | null | undefined, settlementId: string | null) {
+    if (
+        settlementId
+        && isTileControlled(tile)
+        && !isTileControlledBySettlement(tile, settlementId)
+        && !canSettlementUseOpenBorderTransit(tile, settlementId, tileIndex)
+    ) {
+        return false;
+    }
+
+    return isTileWalkable(tile);
+}
+
+function getSettlerComponentCacheKey(settlementId: string | null) {
+    return `${settlementId ?? ''}:${getWorldRenderVersion()}`;
+}
+
+function getSettlerComponentCache(settlementId: string | null) {
+    const worldVersion = getWorldRenderVersion();
+    const key = getSettlerComponentCacheKey(settlementId);
+    const cached = settlerComponentCache.get(key);
+    if (cached && cached.worldVersion === worldVersion && cached.settlementId === settlementId) {
+        return cached;
+    }
+
+    for (const [cacheKey, entry] of settlerComponentCache) {
+        if (entry.worldVersion !== worldVersion) {
+            settlerComponentCache.delete(cacheKey);
+        }
+    }
+
+    const componentByTileId = new Map<string, number>();
+    let nextComponent = 1;
+
+    for (const tile of Object.values(tileIndex)) {
+        if (!tile?.id || componentByTileId.has(tile.id) || !isRouteStepWalkable(tile, settlementId)) {
+            continue;
+        }
+
+        const componentId = nextComponent++;
+        const queue: Tile[] = [tile];
+        componentByTileId.set(tile.id, componentId);
+
+        for (let index = 0; index < queue.length; index++) {
+            const current = queue[index]!;
+            for (const { dq, dr, side } of SETTLER_ROUTE_SIDES) {
+                const neighbor = tileIndex[`${current.q + dq},${current.r + dr}`] ?? null;
+                if (!neighbor?.id || componentByTileId.has(neighbor.id) || !isRouteStepWalkable(neighbor, settlementId)) {
+                    continue;
+                }
+                if (isEdgeBlocked(current, neighbor, side)) {
+                    continue;
+                }
+
+                componentByTileId.set(neighbor.id, componentId);
+                queue.push(neighbor);
+            }
+        }
+    }
+
+    const entry = {
+        worldVersion,
+        settlementId,
+        componentByTileId,
+    };
+    settlerComponentCache.set(key, entry);
+    return entry;
+}
+
+function areSettlerTilesConnected(start: Tile | null | undefined, target: Tile | null | undefined, settlementId: string | null) {
+    if (!start || !target) {
+        return false;
+    }
+    if (start.q === target.q && start.r === target.r) {
+        return true;
+    }
+    if (!isRouteStepWalkable(start, settlementId) || !isRouteStepWalkable(target, settlementId)) {
+        return false;
+    }
+
+    const componentByTileId = getSettlerComponentCache(settlementId).componentByTileId;
+    const startComponent = componentByTileId.get(start.id);
+    return startComponent !== undefined && startComponent === componentByTileId.get(target.id);
+}
+
+function isSettlerRouteStillUsable(cached: SettlerRouteCacheEntry) {
+    if (cached.worldVersion !== getWorldRenderVersion() || cached.path.length === 0) {
+        return false;
+    }
+
+    let previous = { q: cached.startQ, r: cached.startR };
+    for (const step of cached.path) {
+        const side = getSettlerRouteSide(previous, step);
+        if (!side) {
+            return false;
+        }
+
+        const previousTile = tileIndex[`${previous.q},${previous.r}`] ?? null;
+        const stepTile = tileIndex[`${step.q},${step.r}`] ?? null;
+        if (isEdgeBlocked(previousTile, stepTile, side)) {
+            return false;
+        }
+
+        const isTarget = step.q === cached.targetQ && step.r === cached.targetR;
+        if (!isTarget && !isRouteStepWalkable(stepTile, cached.settlementId)) {
+            return false;
+        }
+
+        previous = step;
+    }
+
+    return previous.q === cached.targetQ && previous.r === cached.targetR;
+}
+
+function putSettlerRouteCacheEntry(settlerId: string, entry: SettlerRouteCacheEntry) {
+    const routes = (settlerRouteCache.get(settlerId) ?? [])
+        .filter((cached) => !(
+            cached.startQ === entry.startQ
+            && cached.startR === entry.startR
+            && cached.targetId === entry.targetId
+            && cached.targetQ === entry.targetQ
+            && cached.targetR === entry.targetR
+            && cached.settlementId === entry.settlementId
+        ));
+
+    routes.unshift(entry);
+    settlerRouteCache.set(settlerId, routes.slice(0, SETTLER_ROUTE_CACHE_MAX_ENTRIES));
+
+    const sharedKey = getSettlerRouteKey(entry);
+    sharedSettlerRouteCache.delete(sharedKey);
+    sharedSettlerRouteCache.set(sharedKey, {
+        ...entry,
+        path: clonePath(entry.path),
+    });
+    while (sharedSettlerRouteCache.size > SHARED_SETTLER_ROUTE_CACHE_MAX_ENTRIES) {
+        const oldest = sharedSettlerRouteCache.keys().next().value;
+        if (oldest === undefined) break;
+        sharedSettlerRouteCache.delete(oldest);
+    }
+}
+
+function forgetSettlerRoute(
+    settler: Settler,
+    target: Tile,
+    settlementId: string | null,
+) {
+    const routes = settlerRouteCache.get(settler.id);
+    if (!routes) {
+        return;
+    }
+
+    const remaining = routes.filter((cached) => !matchesSettlerRoute(cached, settler, target, settlementId));
+    if (remaining.length === 0) {
+        settlerRouteCache.delete(settler.id);
+    } else if (remaining.length !== routes.length) {
+        settlerRouteCache.set(settler.id, remaining);
+    }
+}
+
+function rememberSettlerRoutePath(
+    settler: Settler,
+    target: Tile,
+    settlementId: string | null,
+    path: PathCoord[],
+) {
+    if (!path.length) {
+        forgetSettlerRoute(settler, target, settlementId);
+        return;
+    }
+
+    putSettlerRouteCacheEntry(settler.id, {
+        startQ: settler.q,
+        startR: settler.r,
+        targetId: target.id,
+        targetQ: target.q,
+        targetR: target.r,
+        settlementId,
+        worldVersion: getWorldRenderVersion(),
+        path: clonePath(path),
+    });
+}
+
+function getCachedSettlerRoutePath(
+    settler: Settler,
+    target: Tile,
+    settlementId: string | null,
+) {
+    const routeIdentity = getCurrentSettlerRouteIdentity(settler, target, settlementId);
+    const sharedKey = getSettlerRouteKey(routeIdentity);
+    const shared = sharedSettlerRouteCache.get(sharedKey);
+    if (shared) {
+        if (isSettlerRouteStillUsable(shared)) {
+            sharedSettlerRouteCache.delete(sharedKey);
+            sharedSettlerRouteCache.set(sharedKey, shared);
+            return clonePath(shared.path);
+        }
+        sharedSettlerRouteCache.delete(sharedKey);
+    }
+
+    const routes = settlerRouteCache.get(settler.id);
+    if (!routes) {
+        return null;
+    }
+
+    const routeIndex = routes.findIndex((cached) => matchesSettlerRoute(cached, settler, target, settlementId));
+    if (routeIndex < 0) {
+        return null;
+    }
+
+    const cached = routes[routeIndex]!;
+    if (!isSettlerRouteStillUsable(cached)) {
+        routes.splice(routeIndex, 1);
+        if (routes.length === 0) {
+            settlerRouteCache.delete(settler.id);
+        }
+        return null;
+    }
+
+    routes.splice(routeIndex, 1);
+    routes.unshift(cached);
+    return clonePath(cached.path);
+}
+
+function clearReachabilityFailure(settler: Settler, target: Tile, settlementId: string | null) {
+    const sharedKey = getSettlerRouteKey(getCurrentSettlerRouteIdentity(settler, target, settlementId));
+    sharedSettlerReachabilityFailureCache.delete(sharedKey);
+
+    const cached = settlerReachabilityFailureCache.get(settler.id);
+    if (cached && matchesSettlerRoute(cached, settler, target, settlementId)) {
+        settlerReachabilityFailureCache.delete(settler.id);
+    }
+}
+
+function rememberReachabilityFailure(settler: Settler, target: Tile, settlementId: string | null, now: number) {
+    const entry = {
+        startQ: settler.q,
+        startR: settler.r,
+        targetId: target.id,
+        targetQ: target.q,
+        targetR: target.r,
+        settlementId,
+        worldVersion: getWorldRenderVersion(),
+        retryAtMs: now + SETTLER_REACHABILITY_FAILURE_RETRY_MS,
+    };
+    settlerReachabilityFailureCache.set(settler.id, entry);
+
+    const sharedKey = getSettlerRouteKey(entry);
+    sharedSettlerReachabilityFailureCache.delete(sharedKey);
+    sharedSettlerReachabilityFailureCache.set(sharedKey, entry);
+    while (sharedSettlerReachabilityFailureCache.size > SHARED_SETTLER_REACHABILITY_FAILURE_CACHE_MAX_ENTRIES) {
+        const oldest = sharedSettlerReachabilityFailureCache.keys().next().value;
+        if (oldest === undefined) break;
+        sharedSettlerReachabilityFailureCache.delete(oldest);
+    }
+}
+
+function isReachabilityFailureCoolingDown(settler: Settler, target: Tile, settlementId: string | null, now: number) {
+    const sharedKey = getSettlerRouteKey(getCurrentSettlerRouteIdentity(settler, target, settlementId));
+    const shared = sharedSettlerReachabilityFailureCache.get(sharedKey);
+    if (shared) {
+        if (shared.worldVersion === getWorldRenderVersion() && now < shared.retryAtMs) {
+            return true;
+        }
+        sharedSettlerReachabilityFailureCache.delete(sharedKey);
+    }
+
+    const cached = settlerReachabilityFailureCache.get(settler.id);
+    if (!cached || !matchesSettlerRoute(cached, settler, target, settlementId)) {
+        return false;
+    }
+
+    if (cached.worldVersion !== getWorldRenderVersion() || now >= cached.retryAtMs) {
+        settlerReachabilityFailureCache.delete(settler.id);
+        return false;
+    }
+
+    return true;
+}
+
+function getSettlerPlanningStaggerMs(settlerId: string) {
+    let hash = 0;
+    for (let index = 0; index < settlerId.length; index++) {
+        hash = ((hash * 31) + settlerId.charCodeAt(index)) >>> 0;
+    }
+    return hash % SETTLER_PLANNING_STAGGER_WINDOW_MS;
+}
+
+function getSettlerPlanningCache(settler: Settler) {
+    let cached = settlerPlanningCache.get(settler.id);
+    if (!cached) {
+        cached = {
+            accumulatedDt: 0,
+            nextPlanAtMs: 0,
+        };
+        settlerPlanningCache.set(settler.id, cached);
+    }
+    return cached;
+}
+
+function isLongRunningPlanningActivity(settler: Settler) {
+    return settler.activity === 'working' || settler.activity === 'repairing';
+}
+
+function shouldRunSettlerPlanning(settler: Settler, now: number, justArrived: boolean) {
+    if (
+        !justArrived
+        && settler.activity === 'waiting'
+        && settler.blockerReason
+        && now < getSettlerPlanningCache(settler).nextPlanAtMs
+    ) {
+        return false;
+    }
+
+    if (
+        justArrived
+        || !isLongRunningPlanningActivity(settler)
+        || settler.activity === 'waiting'
+        || !!settler.blockerReason
+        || settler.carryingKind !== null
+        || needsFood(settler)
+        || needsSleep(settler)
+    ) {
+        return true;
+    }
+
+    return now >= getSettlerPlanningCache(settler).nextPlanAtMs;
+}
+
+function deferSettlerPlanning(settler: Settler, dt: number) {
+    getSettlerPlanningCache(settler).accumulatedDt += dt;
+}
+
+function consumeSettlerPlanningDt(settler: Settler, dt: number) {
+    const cached = getSettlerPlanningCache(settler);
+    const planningDt = cached.accumulatedDt + dt;
+    cached.accumulatedDt = 0;
+    return planningDt;
+}
+
+function scheduleNextSettlerPlanning(settler: Settler, now: number) {
+    if (settler.activity === 'waiting' && settler.blockerReason) {
+        getSettlerPlanningCache(settler).nextPlanAtMs = now
+            + SETTLER_BLOCKED_PLANNING_MIN_INTERVAL_MS
+            + getSettlerPlanningStaggerMs(settler.id);
+        return;
+    }
+
+    if (!isLongRunningPlanningActivity(settler)) {
+        return;
+    }
+
+    getSettlerPlanningCache(settler).nextPlanAtMs = now
+        + SETTLER_PLANNING_MIN_INTERVAL_MS
+        + getSettlerPlanningStaggerMs(settler.id);
+}
+
 function isMovementComplete(settler: Settler, now: number) {
     const movement = settler.movement;
     if (!movement?.cumulative.length) {
@@ -498,10 +1018,25 @@ function startMovement(settler: Settler, target: Tile, activity: SettlerActivity
     }
 
     const pathSettlementId = getSettlerPathSettlementId(settler);
-    const path = pathService.findWalkablePath(settler.q, settler.r, target.q, target.r, pathSettlementId ? { settlementId: pathSettlementId } : {});
+    const pathSettlementKey = pathSettlementId ?? null;
+    let path = getCachedSettlerRoutePath(settler, target, pathSettlementKey);
+    if (!path) {
+        const startTile = tileIndex[`${settler.q},${settler.r}`] ?? null;
+        if (!areSettlerTilesConnected(startTile, target, pathSettlementKey)) {
+            rememberReachabilityFailure(settler, target, pathSettlementKey, now);
+            return false;
+        }
+        path = pathService.findWalkablePath(settler.q, settler.r, target.q, target.r, {
+            settlementId: pathSettlementKey,
+            allowOpenBorders: true,
+            telemetrySource: 'settler_movement',
+        });
+        rememberSettlerRoutePath(settler, target, pathSettlementKey, path);
+    }
     if (!path.length) {
         return false;
     }
+    clearReachabilityFailure(settler, target, pathSettlementKey);
 
     const origin = { q: settler.q, r: settler.r };
     const timings = computePathTimings(path, origin, SETTLER_MOVEMENT_SPEED_ADJ, SETTLER_STEP_BASE_MS);
@@ -529,32 +1064,65 @@ function canSettlerReachTile(settler: Settler, target: Tile | null | undefined) 
     }
 
     const pathSettlementId = getSettlerPathSettlementId(settler);
-    return pathService.findWalkablePath(settler.q, settler.r, target.q, target.r, pathSettlementId ? { settlementId: pathSettlementId } : {}).length > 0;
+    const pathSettlementKey = pathSettlementId ?? null;
+    if (getCachedSettlerRoutePath(settler, target, pathSettlementKey)) {
+        clearReachabilityFailure(settler, target, pathSettlementKey);
+        return true;
+    }
+
+    if (isReachabilityFailureCoolingDown(settler, target, pathSettlementKey, currentSettlerTickNow)) {
+        return false;
+    }
+
+    const startTile = tileIndex[`${settler.q},${settler.r}`] ?? null;
+    if (!areSettlerTilesConnected(startTile, target, pathSettlementKey)) {
+        rememberReachabilityFailure(settler, target, pathSettlementKey, currentSettlerTickNow);
+        return false;
+    }
+
+    const path = pathService.findWalkablePath(settler.q, settler.r, target.q, target.r, {
+        settlementId: pathSettlementKey,
+        allowOpenBorders: true,
+        telemetrySource: 'settler_reachability',
+    });
+    rememberSettlerRoutePath(settler, target, pathSettlementKey, path);
+    if (path.length > 0) {
+        clearReachabilityFailure(settler, target, pathSettlementKey);
+    } else {
+        rememberReachabilityFailure(settler, target, pathSettlementKey, currentSettlerTickNow);
+    }
+    return path.length > 0;
 }
 
 function chooseNearestReachableTile(settler: Settler, candidates: Tile[]) {
-    let best: Tile | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    const sortedCandidates = candidates
+        .slice()
+        .sort((a, b) => {
+            const distanceDelta = pathService.axialDistance(settler.q, settler.r, a.q, a.r)
+                - pathService.axialDistance(settler.q, settler.r, b.q, b.r);
+            if (distanceDelta !== 0) {
+                return distanceDelta;
+            }
 
-    for (const candidate of candidates) {
-        if (!canSettlerReachTile(settler, candidate)) {
-            continue;
-        }
+            return a.id.localeCompare(b.id);
+        });
 
-        const distance = pathService.axialDistance(settler.q, settler.r, candidate.q, candidate.r);
-        if (distance < bestDistance || (distance === bestDistance && candidate.id.localeCompare(best?.id ?? candidate.id) < 0)) {
-            best = candidate;
-            bestDistance = distance;
+    for (const candidate of sortedCandidates) {
+        if (canSettlerReachTile(settler, candidate)) {
+            return candidate;
         }
     }
 
-    return best;
+    return null;
 }
 
 function removeSettler(settlerId: string) {
     const index = settlers.findIndex((candidate) => candidate.id === settlerId);
     if (index >= 0) {
         settlers.splice(index, 1);
+        settlerRouteCache.delete(settlerId);
+        settlerReachabilityFailureCache.delete(settlerId);
+        settlerPlanningCache.delete(settlerId);
         return true;
     }
 
@@ -632,7 +1200,7 @@ function getHomeAccessTile(settler: Settler) {
     return getHomeFallbackTile(settler.settlementId);
 }
 
-function getWorkAccessTile(settler: Settler, tile: Tile | null | undefined) {
+function getWorkAccessTileResult(settler: Settler, tile: Tile | null | undefined) {
     if (!tile) {
         return null;
     }
@@ -640,11 +1208,30 @@ function getWorkAccessTile(settler: Settler, tile: Tile | null | undefined) {
     const accessTaskType = tile.terrain === 'water' && tile.variant?.startsWith('water_dock_') ? 'buildDock' : null;
     const candidates = listTaskAccessTiles(accessTaskType, tile, settler.settlementId);
     if (candidates.length > 0) {
-        return chooseNearestReachableTile(settler, candidates);
+        const accessTile = chooseNearestReachableTile(settler, candidates);
+        return accessTile ? { tile: accessTile, reachable: true } : null;
     }
 
-    return findNearestTaskAccessTile(accessTaskType, tile, settler.q, settler.r, settler.settlementId)
+    const accessTile = findNearestTaskAccessTile(accessTaskType, tile, settler.q, settler.r, settler.settlementId)
         ?? (isTileWalkable(tile) ? tile : null);
+    return accessTile ? { tile: accessTile, reachable: false } : null;
+}
+
+function getWorkAccessTile(settler: Settler, tile: Tile | null | undefined) {
+    return getWorkAccessTileResult(settler, tile)?.tile ?? null;
+}
+
+function getReachableWorkAccessTile(settler: Settler, tile: Tile | null | undefined) {
+    const result = getWorkAccessTileResult(settler, tile);
+    if (!result) {
+        return null;
+    }
+
+    if (result.reachable || canSettlerReachTile(settler, result.tile)) {
+        return result.tile;
+    }
+
+    return null;
 }
 
 function resolvePrimaryResource(resources: ResourceAmount[]) {
@@ -712,11 +1299,17 @@ function canProduceFood(settler: Settler) {
 }
 
 function chooseReachableWarehouseWithFood(settler: Settler) {
+    let blockedStorage: Tile | null = null;
+    let blockedResourceType: ResourceAmount['type'] | null = null;
     for (const resourceType of HUNGER_FOOD_TYPES) {
         const result = chooseReachableWarehouseWithResource(settler, {
             type: resourceType,
             amount: FOOD_PER_SETTLER_PER_MINUTE,
         });
+        if (!blockedStorage && result.blockedStorage) {
+            blockedStorage = result.blockedStorage;
+            blockedResourceType = resourceType;
+        }
         if (result.storage) {
             return {
                 storage: result.storage,
@@ -728,8 +1321,8 @@ function chooseReachableWarehouseWithFood(settler: Settler) {
 
     return {
         storage: null,
-        blockedStorage: null as Tile | null,
-        resourceType: null as ResourceAmount['type'] | null,
+        blockedStorage,
+        resourceType: blockedResourceType,
     };
 }
 
@@ -772,6 +1365,32 @@ function tryEatFromStorage(settler: Settler, storageTile: Tile) {
         }
 
         broadcastWithdrawal(settler, storageTile.id, { type: resourceType, amount: withdrawn });
+        const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_MEAL_INTERVAL_MS;
+        settler.hungerMs = Math.max(0, settler.hungerMs - reliefMs);
+        return true;
+    }
+
+    return false;
+}
+
+function tryEatFromSettlementStorage(settler: Settler) {
+    const mealAmount = 1;
+    for (const resourceType of HUNGER_FOOD_TYPES) {
+        const planned = planResourceWithdrawalsAcrossStoragesForSettlement(settler.settlementId, resourceType, mealAmount);
+        const plannedAmount = planned.reduce((sum, transfer) => sum + transfer.amount, 0);
+        if (plannedAmount < mealAmount) {
+            continue;
+        }
+
+        const transfers = withdrawResourceAcrossStoragesForSettlement(settler.settlementId, resourceType, mealAmount);
+        const withdrawn = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+        if (withdrawn < mealAmount) {
+            continue;
+        }
+
+        for (const transfer of transfers) {
+            broadcastWithdrawal(settler, transfer.storageTileId, { type: resourceType, amount: transfer.amount });
+        }
         const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_MEAL_INTERVAL_MS;
         settler.hungerMs = Math.max(0, settler.hungerMs - reliefMs);
         return true;
@@ -1187,6 +1806,14 @@ function canSettlerServeTile(settler: Settler, tile: Tile | null | undefined) {
     return !tileSettlementId || settler.settlementId === tileSettlementId;
 }
 
+function assignSettlerToRepair(settler: Settler, repairTile: Tile, assignedRepairTargetIds: Set<string>) {
+    settler.assignedWorkTileId = repairTile.id;
+    settler.assignedRole = 'repair';
+    resetSettlerWorkProgress(settler);
+    assignedRepairTargetIds.add(repairTile.id);
+    refreshSettlerWorkPresentation(settler);
+}
+
 function reconcileAssignments() {
     const sites = listResolvedJobSites();
     const siteById = new Map(sites.map((site) => [site.tile.id, site]));
@@ -1231,9 +1858,33 @@ function reconcileAssignments() {
             continue;
         }
 
+        const homeRepairTile = settler.homeTileId ? tileIndex[settler.homeTileId] ?? null : null;
+        if (
+            homeRepairTile
+            && isHouseTile(homeRepairTile)
+            && isBuildingOfflineFromCondition(homeRepairTile)
+            && repairTargetIds.has(homeRepairTile.id)
+            && !assignedRepairTargetIds.has(homeRepairTile.id)
+            && canSettlerServeTile(settler, homeRepairTile)
+        ) {
+            assignSettlerToRepair(settler, homeRepairTile, assignedRepairTargetIds);
+            changed = true;
+            continue;
+        }
+
         const site = settler.assignedWorkTileId ? siteById.get(settler.assignedWorkTileId) : null;
         if (!site || !canSettlerServeTile(settler, site.tile)) {
             changed = clearSettlerAssignment(settler) || changed;
+            continue;
+        }
+
+        if (
+            isBuildingOfflineFromCondition(site.tile)
+            && repairTargetIds.has(site.tile.id)
+            && !assignedRepairTargetIds.has(site.tile.id)
+        ) {
+            assignSettlerToRepair(settler, site.tile, assignedRepairTargetIds);
+            changed = true;
             continue;
         }
 
@@ -1357,7 +2008,9 @@ function reconcileMilitaryGuards(now: number) {
         }
 
         for (let index = currentGuards.length; index < desiredCount; index++) {
-            settlers.push(createGuardSettler(now, settlementId, tower, accessTile));
+            const originTileId = tower.towerGuardOriginTileIds?.[index] ?? null;
+            const originTile = originTileId ? tileIndex[originTileId] ?? null : null;
+            settlers.push(createGuardSettler(now, settlementId, tower, accessTile, originTile));
             changed = true;
         }
 
@@ -1375,7 +2028,7 @@ function reconcileMilitaryGuards(now: number) {
             .filter((guard) => guard.settlementId === settlementId && isRaidSettler(guard))
             .sort((a, b) => a.id.localeCompare(b.id));
 
-        if (!targetTower || !isWatchtowerTile(targetTower) || desiredRaiders <= 0) {
+        if (!targetTower || !isRaidableMilitaryTarget(targetTower) || desiredRaiders <= 0) {
             if (townCenter.raidBlockedReason) {
                 townCenter.raidBlockedReason = null;
                 broadcastTileUpdate(townCenter);
@@ -1389,8 +2042,10 @@ function reconcileMilitaryGuards(now: number) {
         const accessTile = getGuardTowerAccessTile(settlementId, targetTower, true);
         const homeTile = getHomeFallbackTile(settlementId);
         const hasPath = !!accessTile && !!homeTile
-            && pathService.findWalkablePath(homeTile.q, homeTile.r, accessTile.q, accessTile.r).length > 0;
-        const nextBlockedReason = hasPath ? null : 'No path to the target watchtower.';
+            && pathService.findWalkablePath(homeTile.q, homeTile.r, accessTile.q, accessTile.r, {
+                telemetrySource: 'settler_guard_reachability',
+            }).length > 0;
+        const nextBlockedReason = hasPath ? null : 'No path to the raid target.';
         if ((townCenter.raidBlockedReason ?? null) !== nextBlockedReason) {
             townCenter.raidBlockedReason = nextBlockedReason;
             broadcastTileUpdate(townCenter);
@@ -1414,7 +2069,9 @@ function reconcileMilitaryGuards(now: number) {
             if (!fallbackAccessTile) {
                 break;
             }
-            settlers.push(createGuardSettler(now, settlementId, targetTower, fallbackAccessTile));
+            const originTileId = townCenter.raidGuardOriginTileIds?.[index] ?? null;
+            const originTile = originTileId ? tileIndex[originTileId] ?? null : null;
+            settlers.push(createGuardSettler(now, settlementId, targetTower, fallbackAccessTile, originTile));
             changed = true;
         }
 
@@ -1431,55 +2088,34 @@ function reconcileMilitaryGuards(now: number) {
 }
 
 function chooseReachableWarehouseWithCapacity(settler: Settler, requiredFreeCapacity: number) {
-    const excluded = new Set<string>();
-    let blockedStorage: Tile | null = null;
-
-    while (true) {
-        const storage = findNearestWarehouseWithCapacityForResource(
-            settler.q,
-            settler.r,
-            settler.settlementId,
-            settler.carryingPayload?.type ?? null,
-            requiredFreeCapacity,
-            excluded,
-        );
-        if (!storage) {
-            return { storage: null, blockedStorage };
-        }
-
-        if (canSettlerReachTile(settler, storage)) {
-            return { storage, blockedStorage };
-        }
-
-        blockedStorage ??= storage;
-        excluded.add(storage.id);
-    }
+    const candidates = listUsableWarehousesWithCapacityForResource(
+        settler.q,
+        settler.r,
+        settler.settlementId,
+        settler.carryingPayload?.type ?? null,
+        requiredFreeCapacity,
+    );
+    const storage = chooseNearestReachableTile(settler, candidates);
+    return {
+        storage,
+        blockedStorage: storage ? null : candidates[0] ?? null,
+    };
 }
 
 function chooseReachableWarehouseWithResource(settler: Settler, resource: ResourceAmount) {
-    const excluded = new Set<string>();
-    let blockedStorage: Tile | null = null;
-
-    while (true) {
-        const storage = findNearestWarehouseWithResource(
-            settler.q,
-            settler.r,
-            settler.settlementId,
-            resource.type,
-            resource.amount,
-            excluded,
-        );
-        if (!storage) {
-            return { storage: null, blockedStorage };
-        }
-
-        if (canSettlerReachTile(settler, storage)) {
-            return { storage, blockedStorage };
-        }
-
-        blockedStorage ??= storage;
-        excluded.add(storage.id);
-    }
+    const candidates = listUsableWarehousesWithResource(
+        settler.q,
+        settler.r,
+        settler.settlementId,
+        resource.type,
+        resource.amount,
+        resource.type && isHungerFoodResource(resource.type) ? { allowInactive: true } : {},
+    );
+    const storage = chooseNearestReachableTile(settler, candidates);
+    return {
+        storage,
+        blockedStorage: storage ? null : candidates[0] ?? null,
+    };
 }
 
 function handleStorageArrival(settler: Settler, storageTile: Tile, now: number) {
@@ -1588,8 +2224,8 @@ function chooseSocialVenue(settler: Settler) {
             continue;
         }
 
-        const accessTile = getWorkAccessTile(settler, site.tile);
-        if (!accessTile || !canSettlerReachTile(settler, accessTile)) {
+        const accessTile = getReachableWorkAccessTile(settler, site.tile);
+        if (!accessTile) {
             continue;
         }
 
@@ -1660,7 +2296,7 @@ function getTradeGoodAmount(settlementId: string | null | undefined, resourceTyp
     return Math.max(0, inventory[resourceType] ?? 0);
 }
 
-function isHouseTile(tile: Tile | null | undefined) {
+function isHouseTile(tile: Tile | null | undefined): tile is Tile {
     return !!tile?.variant && (HOUSE_VARIANT_KEYS as readonly string[]).includes(tile.variant);
 }
 
@@ -1821,8 +2457,8 @@ function chooseShopVenue(settler: Settler) {
             continue;
         }
 
-        const accessTile = getWorkAccessTile(settler, site.tile);
-        if (!accessTile || !canSettlerReachTile(settler, accessTile)) {
+        const accessTile = getReachableWorkAccessTile(settler, site.tile);
+        if (!accessTile) {
             continue;
         }
 
@@ -2078,7 +2714,7 @@ function maybeWork(settler: Settler, now: number, dt: number) {
     if (settler.assignedRole === 'guard') {
         const accessTile = getAssignedWorkTile(settler);
         const tower = getGuardTower(settler);
-        if (!accessTile || !tower || !isWatchtowerTile(tower)) {
+        if (!accessTile || !tower || !isRaidableMilitaryTarget(tower)) {
             clearSettlerAssignment(settler);
             return false;
         }
@@ -2217,7 +2853,10 @@ function handleArrival(settler: Settler, now: number) {
         return false;
     }
 
-    if (canUseWarehouseAtTile(tile)) {
+    if (
+        canUseWarehouseAtTile(tile)
+        || (settler.activity === 'fetching_food' && canUseWarehouseAtTile(tile, { allowInactive: true }))
+    ) {
         return handleStorageArrival(settler, tile, now);
     }
 
@@ -2463,9 +3102,19 @@ export const settlerSystem = {
     init: () => {
         refreshSettlerIdCounter();
         lastGrowthCheckMsPerSettlement = {};
+        settlerRouteCache.clear();
+        settlerReachabilityFailureCache.clear();
+        settlerPlanningCache.clear();
+        sharedSettlerRouteCache.clear();
+        sharedSettlerReachabilityFailureCache.clear();
+        settlerComponentCache.clear();
+        currentSettlerTickNow = 0;
+        resetSettlerBroadcastThrottle();
+        resetPopulationBroadcastThrottle();
     },
 
     tick: (ctx: TickContext) => {
+        currentSettlerTickNow = ctx.now;
         refreshSettlerIdCounter();
         let changed = false;
         changed = ensureSettlerNameSeeds(ctx.now) || changed;
@@ -2480,7 +3129,8 @@ export const settlerSystem = {
         const settlersToKill: Array<{ id: string; settlementId: string | null }> = [];
 
         for (const settler of settlers) {
-            changed = updateMovement(settler, ctx.now) || changed;
+            const justArrived = updateMovement(settler, ctx.now);
+            changed = justArrived || changed;
 
             if (isGuardSettler(settler)) {
                 if (settler.movement) {
@@ -2492,7 +3142,7 @@ export const settlerSystem = {
 
             applyNeeds(settler, ctx.dt);
 
-            if (getStarvationMs(settler) >= SETTLER_STARVATION_MS) {
+            if (getStarvationMs(settler) >= SETTLER_STARVATION_MS && !tryEatFromSettlementStorage(settler)) {
                 settlersToKill.push({ id: settler.id, settlementId: settler.settlementId });
                 continue;
             }
@@ -2513,7 +3163,13 @@ export const settlerSystem = {
                 continue;
             }
 
-            changed = planSettler(settler, ctx.now, ctx.dt) || changed;
+            if (!shouldRunSettlerPlanning(settler, ctx.now, justArrived)) {
+                deferSettlerPlanning(settler, ctx.dt);
+                continue;
+            }
+
+            changed = planSettler(settler, ctx.now, consumeSettlerPlanningDt(settler, ctx.dt)) || changed;
+            scheduleNextSettlerPlanning(settler, ctx.now);
         }
 
         const starvationLossBySettlement = new Map<string | null, number>();
@@ -2556,12 +3212,18 @@ export const settlerSystem = {
             hungerChanged = setHungerMs(nextHunger);
         }
         if (hungerChanged) {
-            broadcastPopulationState();
+            populationBroadcastPending = true;
             changed = true;
+        }
+        if (populationBroadcastPending) {
+            queuePopulationBroadcast(ctx.now);
         }
 
         if (changed) {
-            broadcastSettlersState(ctx.now);
+            settlerBroadcastPending = true;
+        }
+        if (settlerBroadcastPending) {
+            queueSettlerBroadcast(ctx.now);
         }
     },
 };

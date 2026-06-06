@@ -88,6 +88,10 @@ const RESOURCE_META: Record<ResourceType, {icon: string; color: string}> = {
     hops: {icon: getInventoryEntryDefinition('hops').icon, color: '#7ccb70'},
     grapes: {icon: getInventoryEntryDefinition('grapes').icon, color: '#aa77ec'},
     water_lily: {icon: getInventoryEntryDefinition('water_lily').icon, color: '#8fd9a8'},
+    tea: {icon: getInventoryEntryDefinition('tea').icon, color: '#78b779'},
+    pottery: {icon: getInventoryEntryDefinition('pottery').icon, color: '#cf9270'},
+    spices: {icon: getInventoryEntryDefinition('spices').icon, color: '#d78342'},
+    silk: {icon: getInventoryEntryDefinition('silk').icon, color: '#d9b7f1'},
 };
 
 const hitStopByKind: Record<GameplayImpactKind, number> = {
@@ -205,7 +209,6 @@ export function triggerGameplayImpact(options: GameplayImpactOptions) {
     const palette = getImpactPalette(options.kind, options.resourceType);
     const baseAmount = Math.max(1, options.amount ?? 1);
     const ringStrength = options.kind === 'complete' ? 1.15 : options.kind === 'handin' ? 0.9 : options.kind === 'work' ? 0.65 : 0.78;
-    const isWorkImpact = options.kind === 'work';
 
     impactRings.push({
         id: makeId(),

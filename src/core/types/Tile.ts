@@ -59,8 +59,10 @@ export interface Tile {
     borderModeCooldownUntilMs?: number | null;
     borderLockedUntilMs?: number | null;
     guardReserve?: number | null;
+    guardReserveOriginTileIds?: string[];
     raidTargetTileId?: string | null;
     raidCommittedGuards?: number | null;
+    raidGuardOriginTileIds?: string[];
     raidBlockedReason?: string | null;
     towerDurability?: number | null;
     towerDurabilityMax?: number | null;
@@ -68,6 +70,7 @@ export interface Tile {
     towerConflictState?: WatchtowerConflictState | null;
     towerAttackerSettlementId?: string | null;
     towerAssignedGuards?: number | null;
+    towerGuardOriginTileIds?: string[];
     towerWallLevel?: number | null;
     towerAttackerCasualtyProgress?: number | null;
     towerDefenderCasualtyProgress?: number | null;

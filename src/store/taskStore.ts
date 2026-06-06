@@ -2,7 +2,7 @@ import {getTaskDefinition} from '../shared/tasks/taskRegistry';
 import {ensureTileExists, tileIndex} from '../core/world';
 import {getDistanceToNearestTowncenter} from '../shared/game/worldQueries';
 import {getStorageResourceAmount, withdrawResourceFromStorage} from './resourceStore';
-import {PathService} from "../core/PathService";
+import {invalidatePathCaches, PathService} from "../core/PathService";
 import {heroes} from "./heroStore";
 import type {Hero, HeroStats} from "../core/types/Hero";
 import type {Tile} from "../core/types/Tile";
@@ -37,6 +37,7 @@ import { getTaskRewardedStats } from '../shared/tasks/taskRewards.ts';
 import { isInstantBuildEnabled, isUnlimitedResourcesEnabled, testModeSettings } from '../shared/game/testMode.ts';
 import { FOOD_SOURCE_TYPES, isFoodSourceResource } from '../shared/game/resourceDefinitions.ts';
 import { getTaskProgressSpeedMultiplier } from '../shared/game/gameplayPace.ts';
+import { isBuildingTask } from '../shared/buildings/registry.ts';
 
 const service = new PathService();
 const TASK_CHAIN_DELAY_MS = 180;
@@ -45,6 +46,10 @@ const TASK_PROGRESS_BROADCAST_INTERVAL_MS = 300;
 const TASK_PROGRESS_BROADCAST_MIN_DELTA_XP = 1;
 const HERO_ABILITY_PROGRESS_TASK_XP_DIVISOR = 250;
 const HERO_ABILITY_PROGRESS_MIN_PER_COMPLETED_TASK = 1;
+
+function isConstructionTask(type: TaskType) {
+    return isBuildingTask(type) || type.startsWith('build') || type.startsWith('upgrade');
+}
 
 interface TaskState {
     tasks: TaskInstance[];
@@ -144,16 +149,109 @@ export function doRemoveTask(inst: TaskInstance) {
         hero.currentTaskId = undefined;
     }
 
+    for (const hero of heroes) {
+        if (hero.currentTaskId === inst.id) {
+            hero.currentTaskId = undefined;
+        }
+
+        if (hero.pendingTask?.tileId === inst.tileId && hero.pendingTask.taskType === inst.type) {
+            hero.pendingTask = undefined;
+            hero.returnPos = undefined;
+            if (hero.carryingPayload && hero.carryingPayload.amount < 0) {
+                clearHeroPayload(hero);
+            }
+        }
+    }
+
     const idx = taskStore.tasks.findIndex(t => t.id === inst.id);
     if (idx >= 0) taskStore.tasks.splice(idx, 1);
     delete taskStore.taskIndex[inst.id];
     const tileTasks = taskStore.tasksByTile[inst.tileId];
     if (tileTasks) {
-        delete tileTasks[inst.type];
+        if (tileTasks[inst.type] === inst.id) {
+            delete tileTasks[inst.type];
+        }
+        if (Object.keys(tileTasks).length === 0) {
+            delete taskStore.tasksByTile[inst.tileId];
+        }
     }
     taskStore.activeTaskIds.delete(inst.id);
     unindexTaskRequiredResources(inst);
     lastProgressBroadcastByTaskId.delete(inst.id);
+}
+
+function removeOtherOpenTasksOnTile(tileId: string, keepTaskId?: string) {
+    const tileTasks = taskStore.tasksByTile[tileId];
+    if (!tileTasks) return;
+
+    const tasksToRemove = Object.values(tileTasks)
+        .map((taskId) => taskStore.taskIndex[taskId])
+        .filter((task): task is TaskInstance => !!task && !task.completedMs && task.id !== keepTaskId);
+
+    for (const task of tasksToRemove) {
+        removeTask(task);
+    }
+}
+
+function createTaskValidationHero(tile: Tile): Hero {
+    return {
+        id: '__task_validation__',
+        name: 'Task validation',
+        avatar: 'boy',
+        q: tile.q,
+        r: tile.r,
+        stats: { xp: 0, hp: 1, atk: 1, spd: 1 },
+        facing: 'down',
+        settlementId: tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null,
+    };
+}
+
+function getTaskValidationHero(task: TaskInstance, tile: Tile): Hero | null {
+    for (const heroId of Object.keys(task.participants)) {
+        const hero = heroes.find((candidate) => candidate.id === heroId);
+        if (hero) {
+            return hero;
+        }
+    }
+
+    const assignedHero = heroes.find((hero) => hero.currentTaskId === task.id);
+    if (assignedHero) {
+        return assignedHero;
+    }
+
+    const pendingHero = heroes.find((hero) => (
+        hero.pendingTask?.tileId === task.tileId
+        && hero.pendingTask.taskType === task.type
+    ));
+    if (pendingHero) {
+        return pendingHero;
+    }
+
+    if (getTaskAccessMode(task.type, tile) !== 'tile') {
+        return null;
+    }
+
+    return createTaskValidationHero(tile);
+}
+
+function isTaskStillValidForTile(task: TaskInstance) {
+    if (task.completedMs) return true;
+
+    const def = getTaskDefinition(task.type);
+    const tile = tileIndex[task.tileId];
+    if (!def || !tile) return false;
+    if (!canTaskUseTileState(def, tile)) return false;
+
+    const validationHero = getTaskValidationHero(task, tile);
+    return validationHero ? canStartTaskDefinition(def, tile, validationHero) : true;
+}
+
+function removeInvalidOpenTasks() {
+    for (const task of taskStore.tasks.slice()) {
+        if (!isTaskStillValidForTile(task)) {
+            removeTask(task);
+        }
+    }
 }
 
 function makeId(state: TaskState) {
@@ -217,6 +315,31 @@ function getCollectedAmountForRequirement(task: TaskInstance, requiredType: Reso
     ), 0);
 }
 
+function hasDroppedResources(task: TaskInstance) {
+    return (task.collectedResources ?? []).some((resource) => resource.amount > 0);
+}
+
+function hasResourceRequirements(task: TaskInstance) {
+    return (task.requiredResources ?? []).some((resource) => resource.amount > 0);
+}
+
+function hasAssignedResourceFetcher(task: TaskInstance) {
+    return heroes.some((hero) => (
+        hero.pendingTask?.tileId === task.tileId
+        && hero.pendingTask.taskType === task.type
+        && !!hero.carryingPayload
+        && hero.carryingPayload.amount !== 0
+    ));
+}
+
+function hasParticipants(task: TaskInstance) {
+    return Object.keys(task.participants).length > 0;
+}
+
+function shouldReuseExistingTask(task: TaskInstance) {
+    return hasResourceRequirements(task) || hasDroppedResources(task) || (task.active && hasParticipants(task));
+}
+
 function activateTaskInstance(task: TaskInstance, nowMs: number = Date.now()) {
     setTaskInstanceActive(task, nowMs);
     taskStore.activeTaskIds.add(task.id);
@@ -225,6 +348,35 @@ function activateTaskInstance(task: TaskInstance, nowMs: number = Date.now()) {
 function deactivateTaskInstance(task: TaskInstance) {
     setTaskInstanceInactive(task);
     taskStore.activeTaskIds.delete(task.id);
+}
+
+function pauseUnattendedTask(task: TaskInstance, nowMs: number = Date.now()) {
+    if (task.completedMs) return;
+    task.lastUpdateMs = nowMs;
+    deactivateTaskInstance(task);
+    broadcastTaskProgress(task);
+}
+
+function resolveUnattendedTask(task: TaskInstance, nowMs: number = Date.now()) {
+    if (hasResourceRequirements(task) || hasDroppedResources(task) || hasAssignedResourceFetcher(task)) {
+        pauseUnattendedTask(task, nowMs);
+    } else {
+        removeTask(task);
+    }
+}
+
+function removeUncontinuableOpenTasks() {
+    for (const task of taskStore.tasks.slice()) {
+        if (
+            !task.completedMs
+            && !task.active
+            && !hasResourceRequirements(task)
+            && !hasDroppedResources(task)
+            && !hasAssignedResourceFetcher(task)
+        ) {
+            removeTask(task);
+        }
+    }
 }
 
 function shouldBroadcastRoutineTaskProgress(task: TaskInstance, nowMs: number) {
@@ -345,6 +497,8 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
         if (hasRequired) {
             return false; // Hero has resource, can start task
         }
+
+        return false; // Keep existing payload instead of overwriting it with a fetch intent.
     }
 
     // Find the first required resource and fetch location
@@ -371,7 +525,10 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
 
         if (fetchLocation) {
             // Find path to fetch location
-            const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r, { settlementId: hero.settlementId ?? null });
+            const pathToFetch = service.findWalkablePath(hero.q, hero.r, fetchLocation.q, fetchLocation.r, {
+                settlementId: hero.settlementId ?? null,
+                telemetrySource: 'task_resource_fetch',
+            });
             if (pathToFetch && pathToFetch.length > 0) {
                 const returnTile = findNearestTaskAccessTile(taskType, targetTile, hero.q, hero.r, hero.settlementId) ?? targetTile;
                 // Store task info so hero can return after fetching
@@ -452,17 +609,20 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
  * Determines whether a hero carrying resources is allowed to start a given task.
  * Rules:
  *  1. Not carrying (or fetch-intent) → always allowed.
- *  2. Task requires resources and the carried type matches → allowed (payload
+ *  2. Construction tasks → allowed so players can place build work even when
+ *     storage is full and the hero is carrying unrelated cargo.
+ *  3. Task requires resources and the carried type matches → allowed (payload
  *     will be consumed as the first delivery).
- *  3. Task requires resources but the carried type does NOT match → blocked
+ *  4. Task requires resources but the carried type does NOT match → blocked
  *     (fetching the required resource would overwrite the payload).
- *  4. Task produces resource rewards (totalRewardedResources) → blocked
+ *  5. Task produces resource rewards (totalRewardedResources) → blocked
  *     (completion would overwrite the payload).
- *  5. Otherwise (no requirements, no resource rewards) → allowed (hero can
+ *  6. Otherwise (no requirements, no resource rewards) → allowed (hero can
  *     do useful work while still holding resources).
  */
 export function canStartTaskWhileCarrying(hero: Hero, def: TaskDefinition, _tile: Tile): boolean {
     if (!hero.carryingPayload || hero.carryingPayload.amount <= 0) return true;
+    if (isConstructionTask(def.key)) return true;
 
     const required = def.requiredResources?.(getTaskEconomyDistance());
 
@@ -482,8 +642,6 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     if (!canStartTaskDefinition(def, tile, starter)) return null;
     if (!canStartTaskWhileCarrying(starter, def, tile)) return null;
 
-    detachHeroFromCurrentTask(starter);
-
     const economyDistance = getTaskEconomyDistance();
     const tileDistance = getDistanceToNearestTowncenter(tile.q, tile.r);
     const requiredResources = isUnlimitedResourcesEnabled(testModeSettings)
@@ -496,7 +654,25 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
     }
 
     const tasksForTile = taskStore.tasksByTile[tile.id]!;
-    if (tasksForTile[type]) return taskStore.taskIndex[tasksForTile[type]] || null;
+    if (tasksForTile[type]) {
+        const existingTask = taskStore.taskIndex[tasksForTile[type]] || null;
+        if (existingTask && shouldReuseExistingTask(existingTask)) {
+            removeOtherOpenTasksOnTile(tile.id, existingTask.id);
+            return existingTask;
+        }
+        if (existingTask) {
+            removeTask(existingTask);
+        }
+    }
+
+    removeOtherOpenTasksOnTile(tile.id);
+
+    detachHeroFromCurrentTask(starter);
+
+    if (!taskStore.tasksByTile[tile.id]) {
+        taskStore.tasksByTile[tile.id] = {};
+    }
+
     const nowMs = Date.now();
     const taskId = makeId(taskStore);
 
@@ -551,9 +727,15 @@ export function startTask(tile: Tile, type: TaskType, starter: Hero): TaskInstan
 export function joinTask(taskId: string, hero: Hero) {
     const inst = taskStore.taskIndex[taskId];
     if (!inst || inst.completedMs) return;
+    if (!shouldReuseExistingTask(inst)) {
+        removeTask(inst);
+        return;
+    }
     const def = getTaskDefinition(inst.type);
     const tile = tileIndex[inst.tileId];
     if (!canStartTaskDefinition(def, tile, hero)) return;
+
+    removeOtherOpenTasksOnTile(inst.tileId, inst.id);
 
     if (hero.currentTaskId !== inst.id) {
         detachHeroFromCurrentTask(hero);
@@ -563,6 +745,7 @@ export function joinTask(taskId: string, hero: Hero) {
     hero.pendingTask = undefined;
 
     fetchResourcesIfNeeded(hero, inst);
+    broadcastTaskProgress(inst);
 }
 
 function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
@@ -584,15 +767,15 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
         // If consumed === 0, payload stays unchanged (resource not needed by this task)
     }
 
-    // See if there are some resources still to be gathered, and send the hero to fetch the first needed resource
-    if (requiredResources && requiredResources.length > 0) {
-        const stillNeeded = getRemainingResources(inst);
-        if (stillNeeded.length > 0) {
-            deactivateTaskInstance(inst);
-            checkAndInitiateResourceFetch(tile, stillNeeded, hero, type, inst);
-        } else {
-            activateTaskInstance(inst);
-        }
+    // See if there are some resources still to be gathered, and send the hero to fetch the first needed resource.
+    const stillNeeded = requiredResources && requiredResources.length > 0
+        ? getRemainingResources(inst)
+        : [];
+    if (stillNeeded.length > 0) {
+        deactivateTaskInstance(inst);
+        checkAndInitiateResourceFetch(tile, stillNeeded, hero, type, inst);
+    } else if (!inst.active) {
+        activateTaskInstance(inst);
     }
 }
 
@@ -602,6 +785,9 @@ export function leaveTask(taskId: string, hero: Hero) { // fixed typing
 
     delete inst.participants[hero.id];
     if (hero.currentTaskId === taskId) hero.currentTaskId = undefined;
+    if (Object.keys(inst.participants).length === 0) {
+        resolveUnattendedTask(inst);
+    }
 }
 
 export function getTaskByTile(tileId: string, taskType: TaskType): TaskInstance | undefined {
@@ -677,6 +863,8 @@ export function resumeWaitingTasksForResource(resourceType: ResourceType, storag
 // Time-based update; call frequently (e.g. each frame) with current hero roster
 export function updateActiveTasks(heroes: Hero[]) {
     const nowMs = Date.now();
+    removeInvalidOpenTasks();
+    removeUncontinuableOpenTasks();
     const heroesById = new Map(heroes.map((hero) => [hero.id, hero]));
     const activeTaskIds = Array.from(taskStore.activeTaskIds);
     for (const taskId of activeTaskIds) {
@@ -699,8 +887,8 @@ export function updateActiveTasks(heroes: Hero[]) {
             const h = heroesById.get(heroId);
             if (h && isHeroWorkingTask(h, inst)) participants.push(h);
         }
-        if (!participants.length) { // no participants -> remove task
-            removeTask(inst);
+        if (!participants.length) {
+            resolveUnattendedTask(inst, nowMs);
             continue;
         }
         const elapsedMs = nowMs - inst.lastUpdateMs;
@@ -747,6 +935,7 @@ function completeTask(inst: TaskInstance, def: TaskDefinition, tile: Tile, parti
 
     // Call task's onComplete hook
     def.onComplete?.(tile, inst, participants);
+    invalidatePathCaches();
     emitGameplayEvent({
         type: 'task:completed',
         taskType: inst.type,
@@ -945,10 +1134,10 @@ function autoChainInCluster(inst: TaskInstance, tile: Tile, participants: Hero[]
         }
         if (!candidates.length) continue;
 
-        // Sort by tile level relative to the nearest town center (tie-break by q then r for determinism)
+        // Sort by distance from the completed task origin (tie-break by q then r for determinism)
         candidates.sort((a, b) => {
-            const da = getDistanceToNearestTowncenter(a.q, a.r);
-            const db = getDistanceToNearestTowncenter(b.q, b.r);
+            const da = axialDistanceCoords(a.q, a.r, tile.q, tile.r);
+            const db = axialDistanceCoords(b.q, b.r, tile.q, tile.r);
             if (da !== db) return da - db;
             if (a.q !== b.q) return a.q - b.q;
             return a.r - b.r;

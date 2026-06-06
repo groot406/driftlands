@@ -352,7 +352,7 @@ const activeResource = computed(() => {
   if (isResourceGroupKey(selection)) {
     const group = getResourceGroupDefinition(selection);
     const breakdown = listResourceDefinitions()
-      .filter((resource) => resource.group === selection)
+      .filter((resource) => getInventoryEntryDefinition(resource.type).topBarGroup === selection)
       .map((resource) => buildResourceInsight(resource.type))
       .filter((resource) => resource.stock > 0 || resource.produced > 0 || resource.consumed > 0 || resource.potentialProducers.length > 0);
     const produced = breakdown.reduce((sum, entry) => sum + entry.produced, 0);

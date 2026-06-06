@@ -1,6 +1,7 @@
 import type {Server, Socket} from 'socket.io';
 import {serverMessageRouter} from '../messages/messageRouter';
 import type {StartTaskRequestMessage } from '../../../src/shared/protocol';
+import '../../../src/shared/tasks/taskDefinitions';
 import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../src/shared/game/state/taskStore';
 import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
@@ -23,9 +24,6 @@ export class ServerTaskHandler {
     }
 
     private handleStartRequest(_socket: Socket, message: StartTaskRequestMessage): void {
-        if (!seasonState.allowsNewHeroActions()) {
-            return;
-        }
         if (playerSettlementState.isSocketSpectator(_socket.id)) {
             return;
         }
@@ -35,6 +33,7 @@ export class ServerTaskHandler {
         if (!hero || !location) return;
         if (!coopState.canControlHero(_socket.id, heroId)) return;
         const playerId = playerSettlementState.getSocketPlayerId(_socket.id);
+        if (!seasonState.canPlayerTakeNewActions(playerId)) return;
         if (!playerSettlementState.canPlayerControlHero(playerId, hero)) return;
 
         coopState.touchHeroActivity(heroId);

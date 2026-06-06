@@ -91,7 +91,7 @@ const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
 };
 
 const scoutPathService = new PathService();
-const scoutPathOptions = { allowScouted: true };
+const scoutPathOptions = { allowScouted: true, telemetrySource: 'scout_resource' };
 
 export function shouldStopScoutResourceForMovement(
     hero: Pick<Hero, 'scoutResourceIntent'>,

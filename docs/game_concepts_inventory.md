@@ -154,7 +154,7 @@ The bakery turns grain into bread. Bread is intended to become a stronger and mo
 Bread is a higher-quality food output from the grain and bakery chain. It stabilizes the settlement and reduces dependence on manual hunting.
 
 ### Brewery
-A brewery was proposed as a future use for grain and water. It would create entertainment or another settler-need resource, giving more purpose to wells and excess grain.
+A brewery uses grain and hops to create beer. It supports entertainment or another settler-need resource without requiring warehouse-stored water.
 
 ### Pub
 A pub was proposed as a building that provides entertainment for settlers, likely connected to brewery output.
@@ -210,7 +210,7 @@ A lumber camp provides automated wood production and becomes a durable source of
 A hunter hut provides automated food production on forest tiles. It helps reduce dependence on manual hero hunting.
 
 ### Well
-A well provides water to surrounding tiles. Its immediate usefulness is limited, but it becomes more valuable when farming, brewing, and irrigation systems need local water access.
+A well provides water to surrounding tiles. Its immediate usefulness is limited, but it becomes more valuable when farming and irrigation systems need local water access.
 
 ### Watchtower
 Watchtowers extend the settlement's reach and allow expansion near the edge of controlled territory. They may also become defensive job sites in future PvP systems.

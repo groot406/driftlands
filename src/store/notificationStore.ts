@@ -10,6 +10,7 @@ export type NotificationType =
   | 'coop_ping'
   | 'coop_state'
   | 'settlement'
+  | 'defeat'
   | 'calamity'
   | 'stewardship';
 

@@ -18,6 +18,9 @@ import { detachHeroFromCurrentTask, removeTask, taskStore } from '../../../src/s
 import type { TileUpdatedMessage } from '../../../src/shared/protocol';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events';
 import { taskUsesAdjacentActiveAccess } from '../../../src/shared/tasks/taskAccess';
+import { axialDistanceCoords } from '../../../src/shared/game/hex';
+import { getTileSettlementId } from '../../../src/shared/game/settlement';
+import type { Tile } from '../../../src/shared/game/types/Tile';
 
 const SUPPORT_RECALC_INTERVAL_MS = 1_000;
 let lastSupportRecalcMs = Number.NEGATIVE_INFINITY;
@@ -60,6 +63,57 @@ function rerouteHeroToActiveSettlementTile(heroId: string) {
     moveHeroWithRuntime(hero, fallbackTile);
 }
 
+function findClosestTownCenterForSettlement(fromQ: number, fromR: number, settlementId: string | null | undefined) {
+    if (!settlementId) {
+        return null;
+    }
+
+    let best: Tile | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const tile of Object.values(tileIndex)) {
+        if (!tile?.discovered || tile.terrain !== 'towncenter') {
+            continue;
+        }
+
+        if (getTileSettlementId(tile) !== settlementId) {
+            continue;
+        }
+
+        const distance = axialDistanceCoords(fromQ, fromR, tile.q, tile.r);
+        if (distance < bestDistance || (distance === bestDistance && (!best || tile.id < best.id))) {
+            best = tile;
+            bestDistance = distance;
+        }
+    }
+
+    return best;
+}
+
+function rerouteHeroToOwnTownCenter(heroId: string) {
+    const hero = heroes.find((candidate) => candidate.id === heroId);
+    if (!hero) return;
+
+    const townCenter = findClosestTownCenterForSettlement(hero.q, hero.r, hero.settlementId);
+    detachHeroFromCurrentTask(hero);
+    hero.pendingTask = undefined;
+    hero.pendingExploreTarget = undefined;
+
+    if (!townCenter) {
+        hero.movement = undefined;
+        return;
+    }
+
+    if (hero.q === townCenter.q && hero.r === townCenter.r) {
+        hero.movement = undefined;
+        return;
+    }
+
+    moveHeroWithRuntime(hero, townCenter, undefined, undefined, {
+        ignoreTerritoryRestrictions: true,
+    });
+}
+
 function isDisconnectedTile(tileId: string | null | undefined) {
     if (!tileId) {
         return false;
@@ -88,6 +142,27 @@ function isHeroEscapingDisconnectedTile(heroId: string) {
 
     const firstTile = tileIndex[`${firstStep.q},${firstStep.r}`] ?? null;
     return !!firstTile?.discovered && !!firstTile.controlledBySettlementId;
+}
+
+function isEnemyControlledTileForHero(tileId: string | null | undefined, hero: { settlementId?: string | null }) {
+    if (!tileId || !hero.settlementId) {
+        return false;
+    }
+
+    const tile = tileIndex[tileId] ?? null;
+    return !!tile?.discovered
+        && !!tile.controlledBySettlementId
+        && tile.controlledBySettlementId !== hero.settlementId;
+}
+
+function isHeroMovingToOwnGround(hero: { movement?: { target: { q: number; r: number } } | undefined; settlementId?: string | null }) {
+    if (!hero.movement || !hero.settlementId) {
+        return false;
+    }
+
+    const targetTile = tileIndex[`${hero.movement.target.q},${hero.movement.target.r}`] ?? null;
+    return !!targetTile
+        && targetTile.controlledBySettlementId === hero.settlementId;
 }
 
 export const supportSystem = {
@@ -144,8 +219,16 @@ export const supportSystem = {
         }
 
         const heroIdsToReroute = new Set<string>();
+        const heroIdsToReturnHome = new Set<string>();
         for (const hero of heroes) {
             const currentTile = tileIndex[`${hero.q},${hero.r}`] ?? null;
+            if (isEnemyControlledTileForHero(currentTile?.id, hero)) {
+                if (!isHeroMovingToOwnGround(hero)) {
+                    heroIdsToReturnHome.add(hero.id);
+                }
+                continue;
+            }
+
             if (currentTile?.discovered && !currentTile.controlledBySettlementId) {
                 if (isHeroEscapingDisconnectedTile(hero.id)) {
                     continue;
@@ -161,8 +244,20 @@ export const supportSystem = {
                 continue;
             }
 
+            if (!isHeroMovingToOwnGround(hero) && hero.movement?.path.some((step) => {
+                return isEnemyControlledTileForHero(`${step.q},${step.r}`, hero);
+            })) {
+                heroIdsToReturnHome.add(hero.id);
+                continue;
+            }
+
             if (hero.pendingTask?.taskType) {
                 const pendingTaskTile = tileIndex[hero.pendingTask.tileId] ?? null;
+                if (isEnemyControlledTileForHero(pendingTaskTile?.id, hero)) {
+                    heroIdsToReturnHome.add(hero.id);
+                    continue;
+                }
+
                 if (
                     pendingTaskTile?.discovered
                     && !pendingTaskTile.controlledBySettlementId
@@ -175,6 +270,10 @@ export const supportSystem = {
 
         for (const heroId of heroIdsToReroute) {
             rerouteHeroToActiveSettlementTile(heroId);
+        }
+
+        for (const heroId of heroIdsToReturnHome) {
+            rerouteHeroToOwnTownCenter(heroId);
         }
 
         const nextPopulation = getPopulationSnapshot();

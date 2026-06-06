@@ -1,4 +1,5 @@
 import { serverRNG } from './rng';
+import { performanceMonitor, type TickSystemTiming } from './telemetry/performanceMonitor';
 
 export type TickContext = {
   now: number; // ms timestamp
@@ -101,7 +102,9 @@ class TickEngine {
     this.lastTickTime = now;
     this.tickCount += 1;
     const ctx: TickContext = { now, dt, tick: this.tickCount, rng: serverRNG };
-    const tickStartedAt = tickProfilingEnabled ? Date.now() : 0;
+    const collectTiming = tickProfilingEnabled || performanceMonitor.isEnabled();
+    const tickStartedAt = collectTiming ? Date.now() : 0;
+    const systemTimings: TickSystemTiming[] = [];
     try {
       for (const sys of this.systems) {
         const intervalMs = Math.max(0, Math.floor(sys.intervalMs ?? 0));
@@ -119,24 +122,33 @@ class TickEngine {
           };
         }
 
-        const systemStartedAt = tickProfilingEnabled ? Date.now() : 0;
+        const systemStartedAt = collectTiming ? Date.now() : 0;
         try {
           await sys.tick(systemCtx);
         } catch (e) {
           console.error(`[TickEngine] System '${sys.name}' tick error:`, e);
         }
-        if (tickProfilingEnabled) {
+        if (collectTiming) {
           const elapsedMs = Date.now() - systemStartedAt;
-          if (elapsedMs >= slowSystemWarnMs) {
+          const timing = { name: sys.name, durationMs: elapsedMs, dt: systemCtx.dt };
+          systemTimings.push(timing);
+          performanceMonitor.recordSystem({ ...timing, tick: this.tickCount });
+          if (tickProfilingEnabled && elapsedMs >= slowSystemWarnMs) {
             console.warn(`[TickEngine] slow system '${sys.name}' ${elapsedMs}ms tick=${this.tickCount} dt=${systemCtx.dt}ms`);
           }
         }
 
         await yieldToEventLoop();
       }
-      if (tickProfilingEnabled) {
+      if (collectTiming) {
         const elapsedMs = Date.now() - tickStartedAt;
-        if (elapsedMs >= slowTickWarnMs) {
+        performanceMonitor.recordTick({
+          tick: this.tickCount,
+          dt,
+          durationMs: elapsedMs,
+          systems: systemTimings,
+        });
+        if (tickProfilingEnabled && elapsedMs >= slowTickWarnMs) {
           console.warn(`[TickEngine] slow tick ${elapsedMs}ms tick=${this.tickCount} dt=${dt}ms`);
         }
       }

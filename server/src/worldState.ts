@@ -64,6 +64,7 @@ import type { ShipOrderOverviewSnapshot } from '../../src/shared/game/shipOrders
 import { resetAttendanceState } from './state/attendanceState';
 import { setWorldGenerationSeed } from '../../src/core/worldVariation';
 import type { PersistenceSavedStateSummary } from '../../src/shared/protocol';
+import { performanceMonitor } from './telemetry/performanceMonitor';
 
 const STARTING_BREAD = 4;
 const STARTING_FISH = 4;
@@ -243,8 +244,10 @@ function serializeTile(tile: Tile): Tile {
     borderModeCooldownUntilMs: tile.borderModeCooldownUntilMs ?? null,
     borderLockedUntilMs: tile.borderLockedUntilMs ?? null,
     guardReserve: tile.guardReserve ?? null,
+    guardReserveOriginTileIds: tile.guardReserveOriginTileIds ? tile.guardReserveOriginTileIds.slice() : undefined,
     raidTargetTileId: tile.raidTargetTileId ?? null,
     raidCommittedGuards: tile.raidCommittedGuards ?? null,
+    raidGuardOriginTileIds: tile.raidGuardOriginTileIds ? tile.raidGuardOriginTileIds.slice() : undefined,
     raidBlockedReason: tile.raidBlockedReason ?? null,
     towerDurability: tile.towerDurability ?? null,
     towerDurabilityMax: tile.towerDurabilityMax ?? null,
@@ -252,6 +255,7 @@ function serializeTile(tile: Tile): Tile {
     towerConflictState: tile.towerConflictState ?? null,
     towerAttackerSettlementId: tile.towerAttackerSettlementId ?? null,
     towerAssignedGuards: tile.towerAssignedGuards ?? null,
+    towerGuardOriginTileIds: tile.towerGuardOriginTileIds ? tile.towerGuardOriginTileIds.slice() : undefined,
     towerWallLevel: tile.towerWallLevel ?? null,
     towerAttackerCasualtyProgress: tile.towerAttackerCasualtyProgress ?? null,
     towerDefenderCasualtyProgress: tile.towerDefenderCasualtyProgress ?? null,
@@ -388,6 +392,10 @@ class WorldState {
       return Promise.resolve();
     }
 
+    return this.initFresh(seed, radius);
+  }
+
+  initFresh(seed?: number | null, radius?: number | null): Promise<void> {
     const resolvedSeed = normalizeSeed(seed) ?? resolveConfiguredSeed() ?? createRandomSeed();
     const worldRadius = normalizeWorldRadius(radius);
     this.activeSeed = resolvedSeed;
@@ -662,6 +670,7 @@ class WorldState {
   }
 
   saveNow(reason: string = 'manual') {
+    const startedAt = Date.now();
     const savePath = resolveSavePath();
     if (!savePath || this.saving) {
       if (!savePath) {
@@ -673,15 +682,18 @@ class WorldState {
       } else {
         console.log(`[persistence] save skipped reason=${reason}; save already in progress`);
       }
+      performanceMonitor.recordPersistenceSave(reason, Date.now() - startedAt, 'skipped');
       return false;
     }
 
+    let status: 'ok' | 'failed' = 'ok';
     try {
       this.saving = true;
       const snapshot = this.createPersistenceSnapshot();
       this.writePersistenceSnapshot(savePath, snapshot, reason);
       return true;
     } catch (error) {
+      status = 'failed';
       this.lastSaveAt = Date.now();
       this.lastSaveReason = reason;
       this.lastSaveOk = false;
@@ -690,6 +702,7 @@ class WorldState {
       return false;
     } finally {
       this.saving = false;
+      performanceMonitor.recordPersistenceSave(reason, Date.now() - startedAt, status);
     }
   }
 

@@ -23,6 +23,17 @@
         </div>
         <div class="quick-action-menu__list">
           <button
+            v-if="quickActionMenu.continueTask"
+            type="button"
+            class="quick-action-menu__item quick-action-menu__item--continue"
+            @click.stop="handleQuickActionContinueClick(quickActionMenu.continueTask)"
+            @pointerenter="handleQuickActionContinueHover(quickActionMenu.continueTask)"
+            @pointerleave="handleQuickActionHover(null)"
+          >
+            <span class="quick-action-menu__glyph">↻</span>
+            <span class="quick-action-menu__label">{{ getQuickActionContinueLabel(quickActionMenu.continueTask) }}</span>
+          </button>
+          <button
             v-for="task in quickActionMenu.tasks"
             :key="task.key"
             type="button"
@@ -175,6 +186,7 @@ import {requestHeroClaim} from '../core/coopService';
 import {currentPlayerId} from '../core/socket';
 import {getAvailableTasks} from "../shared/tasks/tasks";
 import { getTaskDefinition, listTaskDefinitions } from '../shared/tasks/taskRegistry.ts';
+import { formatContinueTaskLabel } from '../shared/tasks/taskLabels.ts';
 import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
 import {PathService} from "../core/PathService";
 import type {Tile} from "../core/types/Tile.ts";
@@ -220,10 +232,13 @@ import {
 import { findNearestTaskAccessTile, getTaskAccessMode } from '../shared/tasks/taskAccess';
 import type { SettlementStartMarker } from '../shared/multiplayer/settlementStart';
 import {
-  getAvailableGuardReserve,
   getEffectiveSettlementBorderMode,
+  getSettlementGuardReserve,
+  isBarracksTile,
+  isRaidableMilitaryTarget,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
+  shouldOpenTownCenterRaidDetail,
 } from '../shared/game/military.ts';
 import { isWallTile } from '../shared/game/walls.ts';
 import { isTileWalkable } from '../shared/game/navigation.ts';
@@ -261,12 +276,14 @@ const taskMenuTile = ref<Tile | null>(null);
 const quickActionMenu = ref<{
   visible: boolean;
   tile: Tile | null;
+  continueTask: TaskInstance | null;
   tasks: TaskDefinition[];
   x: number;
   y: number;
 }>({
   visible: false,
   tile: null,
+  continueTask: null,
   tasks: [],
   x: 0,
   y: 0,
@@ -519,7 +536,7 @@ const militaryHud = computed(() => {
     return state === 'under_attack' || state === 'contested' || state === 'captured';
   }).length;
   const wallCount = ownedTiles.filter((tile) => isWallTile(tile)).length;
-  const barracksTiles = ownedTiles.filter((tile) => tile.variant === 'plains_barracks' || tile.variant === 'dirt_barracks');
+  const barracksTiles = ownedTiles.filter((tile) => isBarracksTile(tile));
   const trainingQueue = barracksTiles.reduce((total, tile) => {
     const queued = Math.max(0, tile.barracksTrainingQueue ?? 0);
     const active = (tile.barracksTrainingProgressMs ?? 0) > 0 ? 1 : 0;
@@ -529,7 +546,7 @@ const militaryHud = computed(() => {
 
   return {
     modeLabel: modeOpen ? 'Open' : 'Closed',
-    reserveGuards: getAvailableGuardReserve(townCenter),
+    reserveGuards: getSettlementGuardReserve(Object.values(tileIndex), settlementId),
     threatenedTowers,
     wallCount,
     trainingQueue,
@@ -539,8 +556,8 @@ const militaryHud = computed(() => {
         ? 'Borders exposed to raids'
         : 'Borders protected',
     actionHint: modeOpen
-      ? 'Attack by selecting an enemy border watchtower and choosing Start Capture Raid.'
-      : 'Open your borders, train guards, then target an enemy border watchtower.',
+      ? 'Attack by selecting an enemy watchtower or town center and choosing Start Capture Raid.'
+      : 'Open your borders, train guards, then target an enemy watchtower or town center.',
   };
 });
 
@@ -933,6 +950,7 @@ function closeQuickActionMenu() {
   quickActionMenu.value = {
     visible: false,
     tile: null,
+    continueTask: null,
     tasks: [],
     x: 0,
     y: 0,
@@ -970,6 +988,7 @@ function openQuickActionMenu(tile: Tile, tasks: TaskDefinition[], clientX: numbe
   quickActionMenu.value = {
     visible: true,
     tile,
+    continueTask: getContinuableTaskForTile(tile),
     tasks,
     x: position.x,
     y: position.y,
@@ -1037,8 +1056,31 @@ function getQuickActionGlyph(task: TaskDefinition) {
   return '•';
 }
 
+function getContinuableTaskForTile(tile: Tile) {
+  const tileTasks = taskStore.tasksByTile[tile.id];
+  if (!tileTasks) return null;
+
+  return Object.values(tileTasks)
+    .map((taskId) => taskStore.taskIndex[taskId])
+    .filter((task): task is TaskInstance => !!task && !task.completedMs && !!getTaskDefinition(task.type))
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.createdMs - b.createdMs || a.type.localeCompare(b.type))
+    [0] ?? null;
+}
+
+function getQuickActionContinueDefinition(task: TaskInstance) {
+  return getTaskDefinition(task.type) ?? null;
+}
+
+function getQuickActionContinueLabel(task: TaskInstance) {
+  return formatContinueTaskLabel(getQuickActionContinueDefinition(task), task.type);
+}
+
 function handleQuickActionHover(task: TaskDefinition | null) {
   hoveredTask.value = task;
+}
+
+function handleQuickActionContinueHover(task: TaskInstance) {
+  handleQuickActionHover(getQuickActionContinueDefinition(task));
 }
 
 function requestSelectedHeroOpenTutorialTaskHint(hint: RenderedTileHint, target: Tile) {
@@ -1369,18 +1411,51 @@ function toggleMilitaryHudPopup() {
 }
 
 function isInspectableBuildingTile(tile: Tile) {
-  return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
+  return !!getBuildingDefinitionForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile) || isRaidableMilitaryTarget(tile);
 }
 
 function getTileSettlementId(tile: Tile) {
   return getSettlementIdForTile(tile) ?? currentPlayerSettlementId.value;
 }
 
+function logTownCenterDebug(event: string, tile: Tile | null | undefined, extra: Record<string, unknown> = {}) {
+  if (tile?.terrain !== 'towncenter') {
+    return;
+  }
+
+  console.info('[driftlands:town-center-click]', event, {
+    tileId: tile.id,
+    q: tile.q,
+    r: tile.r,
+    terrain: tile.terrain,
+    ownerSettlementId: tile.ownerSettlementId ?? null,
+    controlledBySettlementId: tile.controlledBySettlementId ?? null,
+    derivedSettlementId: getSettlementIdForTile(tile),
+    currentPlayerSettlementId: currentPlayerSettlementId.value,
+    shouldOpenRaidDetail: shouldOpenTownCenterRaidDetail(tile, currentPlayerSettlementId.value),
+    showTownCenterPanel: showTownCenterPanel.value,
+    selectedTownCenterTileId: selectedTownCenterTileId.value,
+    selectedBuildingDetailTileId: selectedBuildingDetailTileId.value,
+    ...extra,
+  });
+}
+
 function openJobSiteDetailFromTile(tile: Tile) {
+  logTownCenterDebug('open-detail-request', tile, {
+    panelRefReady: !!townCenterPanel.value,
+  });
   selectedTownCenterTileId.value = getTileSettlementId(tile);
   selectedBuildingDetailTileId.value = tile.id;
   showTownCenterPanel.value = true;
   openWindow(WINDOW_IDS.TOWN_CENTER_PANEL);
+  void nextTick(() => {
+    logTownCenterDebug('open-detail-next-tick', tile, {
+      panelRefReady: !!townCenterPanel.value,
+      selectedTownCenterTileId: selectedTownCenterTileId.value,
+      selectedBuildingDetailTileId: selectedBuildingDetailTileId.value,
+    });
+    townCenterPanel.value?.openStandaloneBuildingDetail(tile.id);
+  });
 }
 
 function getJoinableActiveTask(tile: Tile, hero: Hero): TaskInstance | null {
@@ -1436,6 +1511,7 @@ function requestSelectedHeroJoinActiveTask(tile: Tile) {
 
 function handleClick(e: PointerEvent) {
   if (e.type !== 'pointerup') return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (isPaused()) return;
   if (dragged) return;
 
@@ -1446,6 +1522,9 @@ function handleClick(e: PointerEvent) {
   const dblTile = service.pickTile(e.clientX, e.clientY);
   const isDoubleClick = (nowTs - lastClickTime) < 300;
   if (isDoubleClick && dblTile) {
+    logTownCenterDebug('double-click-detected', dblTile, {
+      selectedHeroId: getSelectedHero()?.id ?? null,
+    });
     lastClickTime = 0; // consume
     cancelPendingMenu();
     if (requestSelectedHeroExploreStoryHint(dblTile)) {
@@ -1526,6 +1605,11 @@ function handleClick(e: PointerEvent) {
   const tile = service.pickTile(e.clientX, e.clientY);
   if (!tile) return;
   const selHero = getSelectedHero();
+  logTownCenterDebug('single-click-picked', tile, {
+    pointerX: e.clientX,
+    pointerY: e.clientY,
+    selectedHeroId: selHero?.id ?? null,
+  });
 
   // Track click time for double-click detection (handled at top of function)
   lastClickTime = nowTs;
@@ -1539,6 +1623,12 @@ function handleClick(e: PointerEvent) {
   // Town center click — toggle the info panel or drop off goods
   if (tile.terrain === 'towncenter') {
     const selHero = getSelectedHero();
+    if (shouldOpenTownCenterRaidDetail(tile, currentPlayerSettlementId.value)) {
+      logTownCenterDebug('foreign-town-center-branch', tile);
+      openJobSiteDetailFromTile(tile);
+      return;
+    }
+
     const isWorking = selHero && selHero.currentTaskId && isHeroWorkingTask(selHero, taskStore.taskIndex[selHero.currentTaskId]);
     const isCarrying = selHero && selHero.carryingPayload && selHero.carryingPayload.amount > 0;
 
@@ -1553,8 +1643,10 @@ function handleClick(e: PointerEvent) {
     }
 
     if (showTownCenterPanel.value && selectedTownCenterTileId.value === tile.id) {
+      logTownCenterDebug('toggle-close-town-center-panel', tile);
       closeTownCenterPanel();
     } else {
+      logTownCenterDebug('open-town-center-overview-branch', tile);
       selectedTownCenterTileId.value = tile.id;
       selectedBuildingDetailTileId.value = null;
       showTownCenterPanel.value = true;
@@ -1802,6 +1894,16 @@ function handleQuickActionClick(def: TaskDefinition) {
   clearPathPreview();
 }
 
+function handleQuickActionContinueClick(task: TaskInstance) {
+  const definition = getQuickActionContinueDefinition(task);
+  if (!definition) {
+    closeQuickActionMenu();
+    return;
+  }
+
+  handleQuickActionClick(definition);
+}
+
 function handleContextMenu(e: MouseEvent) {
   e.preventDefault();
   if (isPaused() || isKeyboardBlocked.value) {
@@ -1833,7 +1935,8 @@ function handleContextMenu(e: MouseEvent) {
   }
 
   const tasks = getQuickActionTasks(tile, selectedHero);
-  if (!tasks.length) {
+  const continueTask = getContinuableTaskForTile(tile);
+  if (!tasks.length && !continueTask) {
     closeQuickActionMenu();
     return;
   }
@@ -2293,6 +2396,19 @@ onBeforeUnmount(() => {
   border-color: rgba(250, 204, 107, 0.72);
   background: rgba(143, 98, 43, 0.62);
   outline: none;
+}
+
+.quick-action-menu__item--continue {
+  border-color: rgba(134, 239, 172, 0.48);
+  background:
+    linear-gradient(180deg, rgba(40, 95, 58, 0.54), rgba(65, 51, 27, 0.46));
+}
+
+.quick-action-menu__item--continue:hover,
+.quick-action-menu__item--continue:focus-visible {
+  border-color: rgba(187, 247, 208, 0.82);
+  background:
+    linear-gradient(180deg, rgba(52, 132, 80, 0.68), rgba(101, 77, 34, 0.58));
 }
 
 .quick-action-menu__glyph {

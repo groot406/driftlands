@@ -9,6 +9,7 @@ import { getStoryHeroTemplate } from './heroRoster.ts';
 export type BuildingKey =
   | 'well'
   | 'watchtower'
+  | 'beacon'
   | 'wall'
   | 'townCenter'
   | 'supplyDepot'
@@ -200,6 +201,11 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
     description: 'Raises a lookout that reveals nearby frontier at once.',
     taskKey: 'buildWatchtower',
   },
+  beacon: {
+    label: 'Beacon',
+    description: 'Anchors a water lookout that reveals and secures nearby waters.',
+    taskKey: 'buildBeacon',
+  },
   wall: {
     label: 'Wall',
     description: 'Raises a connected defensive barrier that can later be rebuilt in stone.',
@@ -272,7 +278,7 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
   },
   brewery: {
     label: 'Brewery',
-    description: 'Turns grain, hops, and water into beer for the colony.',
+    description: 'Turns grain and hops into beer for the colony.',
     taskKey: 'buildBrewery',
   },
   winery: {
@@ -731,6 +737,7 @@ const NODE_DEFINITIONS: readonly ProgressionNodeDefinition[] = [
     sortOrder: 70,
     unlocks: [
       { kind: 'building', key: 'watchtower' },
+      { kind: 'building', key: 'beacon' },
       { kind: 'building', key: 'wall' },
     ],
   },

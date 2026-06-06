@@ -159,18 +159,28 @@ export function startHeroMovement(
         const nextBoundary = m.cumulative[Math.min(completedSteps, m.cumulative.length - 1)] || 0;
         delay = Math.max(0, nextBoundary - elapsed);
 
-        if (hero.delayedMovementTimer) {
-            clearTimeout(hero.delayedMovementTimer);
-            hero.delayedMovementTimer = undefined;
-        }
+        clearDelayedMovementTimer(hero);
+        const scheduledMovement = m;
         hero.delayedMovementTimer = setTimeout(() => {
-            // Ensure we still want to move and not already at target
             const h = heroes.find(hh => hh.id === heroId);
             if (!h) return;
-            if (h.q === target.q && h.r === target.r) return;
-            // Proceed to start movement from current tile at boundary
-            actuallyStartHeroMovement(h, normalizedPath, target, taskType, options);
             h.delayedMovementTimer = undefined;
+            if (h.movement !== scheduledMovement) return;
+            updateHeroTileForMovementProgress(h, scheduledMovement, Date.now());
+            if (h.q === target.q && h.r === target.r) return;
+
+            const deferredOrigin = { q: h.q, r: h.r };
+            const deferredPath = trimMovementPathFromOrigin(normalizedPath, deferredOrigin);
+            if (!deferredPath.length) return;
+
+            actuallyStartHeroMovement(h, deferredPath, target, taskType, {
+                ...options,
+                origin: deferredOrigin,
+                startAt: undefined,
+                startDelayMs: undefined,
+                stepDurations: undefined,
+                cumulative: undefined,
+            });
         }, delay);
         return;
     }
@@ -186,10 +196,7 @@ function actuallyStartHeroMovement(
     taskType?: string,
     options?: StartHeroMovementOptions
 ) {
-    if (hero.delayedMovementTimer) {
-        clearTimeout(hero.delayedMovementTimer);
-        hero.delayedMovementTimer = undefined;
-    }
+    clearDelayedMovementTimer(hero);
 
     const originTile = ensureTileExists(hero.q, hero.r);
     const targetTile = ensureTileExists(target.q, target.r);
@@ -207,7 +214,10 @@ function actuallyStartHeroMovement(
         for (const neighborIdx in neighbors) {
             const neighbor = neighbors[neighborIdx];
             if (neighbor && (neighbor.discovered || neighbor.scouted)) {
-                const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r, { allowScouted: true });
+                const p = service.findWalkablePath(neighbor.q, neighbor.r, target.q, target.r, {
+                    allowScouted: true,
+                    telemetrySource: 'hero_scout_reachability',
+                });
                 if (p.length > 0) {
                     allow = true;
                     break;
@@ -262,6 +272,7 @@ export function requestHeroMovement(
 
     const origin = { q: hero.q, r: hero.r };
     const normalizedPath = sanitizeMovementPath(path, origin);
+    clearDelayedMovementTimer(hero);
     const stopsScouting = shouldStopScoutResourceForMovement(hero, taskType);
     if (stopsScouting) {
         hero.scoutResourceIntent = undefined;
@@ -453,6 +464,14 @@ function samePath(a: AxialCoord[], b: AxialCoord[]) {
     return true;
 }
 
+function trimMovementPathFromOrigin(path: AxialCoord[], origin: AxialCoord) {
+    const originIndex = path.findIndex((step) => sameCoord(step, origin));
+    const remainingPath = originIndex >= 0
+        ? path.slice(originIndex + 1)
+        : path;
+    return sanitizeMovementPath(remainingPath, origin);
+}
+
 function hasMovementAlreadyElapsed(hero: Hero, path: AxialCoord[], origin: AxialCoord, options?: StartHeroMovementOptions) {
     const totalDuration = options?.cumulative?.[options.cumulative.length - 1]
         ?? options?.stepDurations?.reduce((sum, duration) => sum + duration, 0)
@@ -461,6 +480,35 @@ function hasMovementAlreadyElapsed(hero: Hero, path: AxialCoord[], origin: Axial
         ? options.startAt
         : Date.now() + (options?.startDelayMs || 0);
     return Date.now() >= startMs + totalDuration;
+}
+
+function clearDelayedMovementTimer(hero: Hero) {
+    if (!hero.delayedMovementTimer) return;
+    clearTimeout(hero.delayedMovementTimer);
+    hero.delayedMovementTimer = undefined;
+}
+
+function updateHeroTileForMovementProgress(hero: Hero, movement: NonNullable<Hero['movement']>, nowMs: number) {
+    const elapsed = nowMs - movement.startMs;
+    if (elapsed < 0) {
+        hero.q = movement.origin.q;
+        hero.r = movement.origin.r;
+        return;
+    }
+
+    let completedSteps = 0;
+    for (let i = 0; i < movement.cumulative.length; i++) {
+        if (elapsed >= movement.cumulative[i]!) completedSteps = i + 1;
+        else break;
+    }
+
+    if (completedSteps <= 0) return;
+
+    const currentCoord = completedSteps >= movement.path.length
+        ? movement.target
+        : movement.path[completedSteps - 1]!;
+    hero.q = currentCoord.q;
+    hero.r = currentCoord.r;
 }
 
 function syncPendingTask(

@@ -11,10 +11,12 @@ import { RESCUE_HERO_TASK_KEY } from '../shared/sideQuests/definitions.ts';
 import '../shared/tasks/taskDefinitions.ts';
 import { getTaskDefinition } from '../shared/tasks/taskRegistry.ts';
 import { discoverTile, loadWorld, tileIndex } from '../shared/game/world.ts';
+import { configureGameRuntime, resetGameRuntime } from '../shared/game/runtime.ts';
 import { heroes, loadHeroes } from './heroStore.ts';
 import { resetPopulationState } from './populationStore.ts';
+import { depositResourceToStorage, resetResourceState } from './resourceStore.ts';
 import { runSnapshot, runVersion } from './runStore.ts';
-import { loadTasks } from './taskStore.ts';
+import { addResourcesToTask, boostTaskProgress, loadTasks, startTask } from './taskStore.ts';
 import {
   getActiveSideQuestForTask,
   initializeSideQuestRuntime,
@@ -164,6 +166,8 @@ test.afterEach(() => {
   loadWorld([]);
   loadHeroes([]);
   loadTasks([]);
+  resetGameRuntime();
+  resetResourceState();
   resetPopulationState();
   currentPlayerSettlementId.value = null;
   currentPlayer.value = null;
@@ -306,6 +310,99 @@ test('rescue task is available only for active side quest tiles and carries ques
     { type: 'tools', amount: 2 },
   ]);
   assert.equal(getActiveSideQuestForTask(tile.id, RESCUE_HERO_TASK_KEY)?.id, quest.id);
+});
+
+test('starting and completing the rescue task uses supplies and adds the rescued hero', () => {
+  const quest = setupSideQuestWorld();
+  emitGameplayEvent({
+    type: 'task:completed',
+    taskType: 'explore',
+    tileId: quest.signalTileId,
+    participantIds: ['h1'],
+  });
+
+  const tile = tileIndex[quest.signalTileId]!;
+  tile.discovered = true;
+  tile.terrain = 'plains';
+
+  const rescueTask = startTask(tile, RESCUE_HERO_TASK_KEY, heroes[0]!);
+  assert.ok(rescueTask);
+  assert.equal(rescueTask.type, RESCUE_HERO_TASK_KEY);
+  assert.deepEqual(rescueTask.requiredResources, [
+    { type: 'food', amount: 8 },
+    { type: 'wood', amount: 10 },
+    { type: 'tools', amount: 2 },
+  ]);
+  assert.equal(rescueTask.active, false);
+
+  assert.equal(addResourcesToTask(rescueTask, { type: 'food', amount: 8 }), 8);
+  assert.equal(addResourcesToTask(rescueTask, { type: 'wood', amount: 10 }), 10);
+  assert.equal(addResourcesToTask(rescueTask, { type: 'tools', amount: 2 }), 2);
+  assert.equal(rescueTask.active, true);
+
+  assert.equal(boostTaskProgress(rescueTask.id, rescueTask.requiredXp), true);
+
+  const rescuedHero = heroes.find((hero) => hero.id.includes('trailbreaker_ren'));
+  assert.equal(quest.status, 'completed');
+  assert.ok(rescuedHero);
+  assert.equal(rescuedHero.name, 'Ren');
+  assert.equal(rescuedHero.playerId, 'player-1');
+});
+
+test('starting rescue on an inactive frontier tile begins supply fetching', () => {
+  const rescueTile: Tile = {
+    id: '2,0',
+    q: 2,
+    r: 0,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'inactive',
+    variant: null,
+  };
+  loadWorld([createTownCenter(), createWorkshop(), rescueTile]);
+  loadHeroes([createHero()]);
+  sideQuestState.instances.push({
+    id: 'lost_hero_distress:0,0',
+    definitionId: 'lost_hero_distress',
+    status: 'active',
+    signalTileId: rescueTile.id,
+    q: rescueTile.q,
+    r: rescueTile.r,
+    spawnSettlementId: '0,0',
+    ownerPlayerId: 'player-1',
+    ownerSettlementId: '0,0',
+    discoveredByHeroId: 'h1',
+    objectives: [],
+    createdAt: nowMs,
+  });
+
+  const tile = tileIndex[rescueTile.id]!;
+  depositResourceToStorage('0,0', 'bread', 8);
+  depositResourceToStorage('0,0', 'wood', 10);
+  depositResourceToStorage('0,0', 'tools', 2);
+
+  const hero = heroes[0]!;
+  hero.q = tile.q;
+  hero.r = tile.r;
+
+  let moveCall: { target: { q: number; r: number }; task?: string; taskLocation?: { q: number; r: number } } | null = null;
+  configureGameRuntime({
+    moveHero: (_hero, target, task, taskLocation) => {
+      moveCall = { target, task, taskLocation };
+    },
+  });
+
+  const rescueTask = startTask(tile, RESCUE_HERO_TASK_KEY, hero);
+
+  assert.ok(rescueTask);
+  assert.equal(rescueTask.active, false);
+  assert.ok(hero.carryingPayload);
+  assert.ok(hero.carryingPayload.amount < 0);
+  assert.ok(['bread', 'wood', 'tools'].includes(hero.carryingPayload.type));
+  assert.deepEqual(hero.pendingTask, { tileId: rescueTile.id, taskType: RESCUE_HERO_TASK_KEY });
+  assert.deepEqual(moveCall?.target, { q: 0, r: 0 });
 });
 
 test('completing the rescue objective grants a hero, not population', () => {

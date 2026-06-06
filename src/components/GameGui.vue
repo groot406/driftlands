@@ -31,6 +31,7 @@
         <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
       </div>
     </div>
+    <DefeatedObserverBanner />
     <HeroesBar />
   </div>
   <OnlinePlayersStatus />
@@ -119,6 +120,7 @@
   <NotificationOverlay />
   <SettlementWelcomeModal />
   <SeasonStageAnnouncementModal />
+  <SettlementDefeatModal />
   <SeasonCompletedOverlay />
 </template>
 
@@ -138,6 +140,7 @@ import OnlinePlayersStatus from './OnlinePlayersStatus.vue';
 import MusicPlayer from './MusicPlayer.vue';
 import InGameMiniMap from './InGameMiniMap.vue';
 import SeasonScoreboard from './SeasonScoreboard.vue';
+import DefeatedObserverBanner from './DefeatedObserverBanner.vue';
 import PlayerModal from './PlayerModal.vue';
 import PopulationOverviewModal from './PopulationOverviewModal.vue';
 import ResourceDetailModal from './ResourceDetailModal.vue';
@@ -149,6 +152,7 @@ import UnlockAnnouncementModal from './UnlockAnnouncementModal.vue';
 import NotificationOverlay from './NotificationOverlay.vue';
 import SettlementWelcomeModal from './SettlementWelcomeModal.vue';
 import SeasonStageAnnouncementModal from './SeasonStageAnnouncementModal.vue';
+import SettlementDefeatModal from './SettlementDefeatModal.vue';
 import SeasonCompletedOverlay from './SeasonCompletedOverlay.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';

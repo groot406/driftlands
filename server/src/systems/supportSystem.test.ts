@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import type { Hero } from '../../../src/shared/game/types/Hero';
 import type { Tile } from '../../../src/shared/game/types/Tile';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
-import { loadHeroes } from '../../../src/shared/game/state/heroStore';
+import { heroes, loadHeroes } from '../../../src/shared/game/state/heroStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { resetResourceState } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
@@ -95,6 +95,7 @@ test.afterEach(() => {
   resetSettlementSupportState();
   resetWorkforceState();
   resetGameRuntime();
+  supportSystem.init();
 });
 
 test('support system does not reroute heroes standing on controlled offline tiles', () => {
@@ -134,4 +135,138 @@ test('support system does not reroute heroes standing on controlled offline tile
   assert.equal(tileIndex[offlineTile.id]?.controlledBySettlementId, '0,0');
   assert.equal(tileIndex[offlineTile.id]?.activationState, 'inactive');
   assert.deepEqual(moveCalls, []);
+});
+
+test('support system sends heroes on enemy controlled ground back to their own town center', () => {
+  const playerTownCenter = createTile({
+    id: '0,0',
+    q: 0,
+    r: 0,
+    terrain: 'towncenter',
+    ownerSettlementId: '0,0',
+    controlledBySettlementId: '0,0',
+  });
+  const enemyTownCenter = createTile({
+    id: '10,0',
+    q: 10,
+    r: 0,
+    terrain: 'towncenter',
+    ownerSettlementId: '10,0',
+    controlledBySettlementId: '10,0',
+  });
+  const capturedTile = createTile({
+    id: '2,0',
+    q: 2,
+    r: 0,
+    terrain: 'plains',
+    ownerSettlementId: '0,0',
+    controlledBySettlementId: '0,0',
+  });
+
+  loadWorld([playerTownCenter, enemyTownCenter, capturedTile]);
+  loadPopulation(1, 1);
+
+  const moveCalls: Array<{ heroId: string; q: number; r: number; ignoreTerritoryRestrictions?: boolean }> = [];
+  configureGameRuntime({
+    moveHero: (hero, target, _task, _taskLocation, options) => {
+      moveCalls.push({
+        heroId: hero.id,
+        q: target.q,
+        r: target.r,
+        ignoreTerritoryRestrictions: options?.ignoreTerritoryRestrictions,
+      });
+    },
+  });
+
+  loadHeroes([
+    {
+      id: 'hero-1',
+      name: 'Scout',
+      avatar: 'santa',
+      q: capturedTile.q,
+      r: capturedTile.r,
+      settlementId: '10,0',
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+    } satisfies Hero,
+  ]);
+
+  tickAt(1_000);
+
+  assert.deepEqual(moveCalls, [
+    {
+      heroId: 'hero-1',
+      q: 10,
+      r: 0,
+      ignoreTerritoryRestrictions: true,
+    },
+  ]);
+});
+
+test('support system lets heroes cross enemy controlled paths toward owned ground', () => {
+  const playerTownCenter = createTile({
+    id: '0,0',
+    q: 0,
+    r: 0,
+    terrain: 'towncenter',
+    ownerSettlementId: '0,0',
+    controlledBySettlementId: '0,0',
+  });
+  const enemyTile = createTile({
+    id: '1,0',
+    q: 1,
+    r: 0,
+    terrain: 'plains',
+    ownerSettlementId: 'enemy',
+    controlledBySettlementId: 'enemy',
+  });
+  const separatedOwnedTile = createTile({
+    id: '2,0',
+    q: 2,
+    r: 0,
+    terrain: 'plains',
+    ownerSettlementId: '0,0',
+    controlledBySettlementId: '0,0',
+  });
+
+  loadWorld([playerTownCenter, enemyTile, separatedOwnedTile]);
+  loadPopulation(1, 1);
+
+  const moveCalls: Array<{ heroId: string; q: number; r: number }> = [];
+  configureGameRuntime({
+    moveHero: (hero, target) => {
+      moveCalls.push({
+        heroId: hero.id,
+        q: target.q,
+        r: target.r,
+      });
+    },
+  });
+
+  loadHeroes([
+    {
+      id: 'hero-1',
+      name: 'Scout',
+      avatar: 'santa',
+      q: playerTownCenter.q,
+      r: playerTownCenter.r,
+      settlementId: '0,0',
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      movement: {
+        origin: { q: 0, r: 0 },
+        target: { q: 2, r: 0 },
+        path: [{ q: 1, r: 0 }, { q: 2, r: 0 }],
+        startMs: 0,
+        stepDurations: [1_000, 1_000],
+        cumulative: [1_000, 2_000],
+        authoritative: true,
+      },
+    } satisfies Hero,
+  ]);
+
+  tickAt(1_000);
+
+  assert.deepEqual(moveCalls, []);
+  assert.deepEqual(heroes[0]?.movement?.target, { q: 2, r: 0 });
 });

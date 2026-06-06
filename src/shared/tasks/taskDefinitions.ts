@@ -20,6 +20,7 @@ import './definitions/hunt';
 import './definitions/irregateDirt';
 import './definitions/placeWaterLilies';
 import './definitions/plantTrees';
+import './definitions/repairBuilding';
 import './definitions/removeTrunks';
 import './definitions/rescueHero';
 import './definitions/seedGrain';

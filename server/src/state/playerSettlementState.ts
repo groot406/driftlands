@@ -40,6 +40,7 @@ class PlayerSettlementState {
 
   registerPlayer(socketId: string, requestedPlayerId: string, playerName: string, spectator: boolean = false) {
     const playerId = requestedPlayerId;
+    this.detachSocketFromCurrentPlayer(socketId, playerId);
     const nickname = sanitizePlayerNickname(playerName);
     let player = this.players.get(playerId);
     if (!player) {
@@ -82,6 +83,29 @@ class PlayerSettlementState {
     return player;
   }
 
+  private detachSocketFromCurrentPlayer(socketId: string, nextPlayerId?: string) {
+    const currentPlayerId = this.playerIdBySocketId.get(socketId);
+    if (!currentPlayerId || currentPlayerId === nextPlayerId) {
+      return;
+    }
+
+    this.players.get(currentPlayerId)?.connectedSocketIds.delete(socketId);
+    this.playerIdBySocketId.delete(socketId);
+    this.spectatorSocketIds.delete(socketId);
+    this.removeUnassignedOfflinePlayer(currentPlayerId);
+  }
+
+  private removeUnassignedOfflinePlayer(playerId: string) {
+    const player = this.players.get(playerId);
+    if (!player || player.connectedSocketIds.size > 0 || player.settlementId) {
+      return;
+    }
+
+    this.players.delete(playerId);
+    this.starterHeroesByPlayerId.delete(playerId);
+    this.starterStoryHeroIdsByPlayerId.delete(playerId);
+  }
+
   unregisterSocket(socketId: string) {
     const playerId = this.playerIdBySocketId.get(socketId);
     this.playerIdBySocketId.delete(socketId);
@@ -91,6 +115,7 @@ class PlayerSettlementState {
     }
 
     this.players.get(playerId)?.connectedSocketIds.delete(socketId);
+    this.removeUnassignedOfflinePlayer(playerId);
   }
 
   setStarterHeroes(playerId: string, heroes: LooperlandsHeroSelection[]) {
@@ -121,12 +146,14 @@ class PlayerSettlementState {
 
   getPersistenceSnapshot(): PlayerSettlementPersistenceSnapshot {
     return {
-      players: Array.from(this.players.values()).map((player) => ({
-        id: player.id,
-        nickname: player.nickname,
-        color: player.color,
-        settlementId: player.settlementId,
-      })),
+      players: Array.from(this.players.values())
+        .filter((player) => !!player.settlementId)
+        .map((player) => ({
+          id: player.id,
+          nickname: player.nickname,
+          color: player.color,
+          settlementId: player.settlementId,
+        })),
       settlements: Array.from(this.settlementByPlayerId.entries()).map(([playerId, settlementId]) => ({
         playerId,
         settlementId,
@@ -180,14 +207,19 @@ class PlayerSettlementState {
       });
     }
 
+    for (const playerId of Array.from(this.players.keys())) {
+      this.removeUnassignedOfflinePlayer(playerId);
+    }
+
     this.ensureDistinctPlayerColors();
   }
 
   clearAssignments() {
     this.settlementByPlayerId.clear();
     this.ownerBySettlementId.clear();
-    for (const player of this.players.values()) {
+    for (const player of Array.from(this.players.values())) {
       player.settlementId = null;
+      this.removeUnassignedOfflinePlayer(player.id);
     }
   }
 

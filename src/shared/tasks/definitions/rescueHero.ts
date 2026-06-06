@@ -8,6 +8,7 @@ const rescueHeroTask: TaskDefinition = {
   key: RESCUE_HERO_TASK_KEY,
   label: 'Rescue Hero',
   chainAdjacentSameTerrain: false,
+  allowInactiveTile: true,
 
   canStart(tile) {
     return tile.discovered

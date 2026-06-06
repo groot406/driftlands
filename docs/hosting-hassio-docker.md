@@ -29,7 +29,7 @@ The main menu is grouped by task:
 - `Overview`: check Docker containers, server image, and platform frontend git status.
 - `Server hosting`: build the image and manage the Driftlands/Caddy Docker stack.
 - `Home Assistant Docker`: build an image bundle locally and install it from Home Assistant WebSSH.
-- `Server config`: edit server env values such as `SERVER_DEBUG_MODE`, `SERVER_TPS`, `SERVER_SETTLEMENT_START_MODE`, `SERVER_SPAWN_SAFETY`, `SERVER_REQUIRE_LOOPERLANDS_AUTH`, `SERVER_SEED`, `LOOPERLANDS_API_URL`, `FRONTEND_ORIGIN`, `HOST`, and `PORT`.
+- `Server config`: edit server env values such as `SERVER_DEBUG_MODE`, `SERVER_PERF_DEBUG`, `SERVER_TPS`, `SERVER_SETTLEMENT_START_MODE`, `SERVER_SPAWN_SAFETY`, `SERVER_REQUIRE_LOOPERLANDS_AUTH`, `SERVER_SEED`, `LOOPERLANDS_API_URL`, `FRONTEND_ORIGIN`, `HOST`, and `PORT`.
 - `Frontend deployment`: copy the current Driftlands client into the platform repo, install dependencies, build, commit, push, and run an optional deploy hook.
 - `Diagnostics`: tail logs and check `/health`.
 - `Commands and env snippets`: print copy/paste Docker commands and frontend env vars.
@@ -38,9 +38,9 @@ Use `Server config` in the TUI to change server variables. Docker containers do 
 
 Use `Frontend deployment` in the TUI to copy the current Driftlands client into `looperlands-platform-frontend`, install dependencies, build the platform frontend, commit the platform changes, push the current branch, and run an optional deploy command.
 
-Use `npm run deploy` for the regular deployment. It asks whether to deploy frontend, backend, or both, prints the exact plan, then asks for confirmation before running anything long-lived. The backend path defaults to `ssh haos`, copies the image bundle to `/config/driftlands`, recreates the Driftlands container, publishes host port `3695`, and waits for `/health`. You can skip the target picker with `npm run deploy -- frontend`, `npm run deploy -- backend`, or `npm run deploy -- both`.
+Use `npm run deploy` for the regular deployment. It asks whether to deploy frontend, backend, or both, prints the exact plan, then asks for confirmation before running anything long-lived. The backend path defaults to `ssh haos`, stages the image bundle in `/tmp/driftlands-haos-deploy`, sudo-copies it into `/config/driftlands`, recreates the Driftlands container, publishes host port `3695`, and waits for `/health`. You can skip the target picker with `npm run deploy -- frontend`, `npm run deploy -- backend`, or `npm run deploy -- both`. For unattended runs, add `--yes`, for example `npm run deploy -- backend --yes`, `npm run deploy -- both --yes`, or run `npm run haos:deploy`.
 
-Use `Home Assistant Docker` when you can access HAOS through WebSSH but cannot use normal SSH copy. The guided publish flow builds `driftlands:latest`, writes `output/haos/driftlands.env`, exports `output/haos/driftlands-image.tar`, serves those files temporarily over your LAN, and prints one `curl ... | sh` command to paste into Home Assistant WebSSH. It asks which Home Assistant Docker platform to build for, defaulting to `linux/amd64`, and which Home Assistant host port should publish Driftlands, defaulting to `3695`. If that port is already used, the WebSSH installer automatically tries the next 50 ports and prints the selected port. Use that selected port in Nginx Proxy Manager. Keep the TUI open until the WebSSH install finishes.
+Use `Home Assistant Docker` when you can access HAOS through WebSSH but cannot use normal SSH copy. The guided publish flow builds `driftlands:latest`, writes `output/haos/driftlands.env`, exports `output/haos/driftlands-image.tar`, serves those files temporarily over your LAN, and prints one `curl ... | sh` command to paste into Home Assistant WebSSH. It asks which Home Assistant Docker platform to build for, defaulting to `linux/amd64`, and which Home Assistant host port should publish Driftlands, defaulting to `3695`. If that port is already used, the WebSSH installer automatically tries the next 50 ports and prints the selected port. Use that selected port in Nginx Proxy Manager and forward to `172.30.32.1`, the HAOS add-on gateway IP, instead of `homeassistant.local`. The mDNS name can resolve to an unreachable Docker bridge address from inside Nginx Proxy Manager. Keep the TUI open until the WebSSH install finishes.
 
 By default, it uses the same names as this guide. Override them with environment variables when needed:
 
@@ -69,7 +69,9 @@ DRIFTLANDS_FRONTEND_COMMIT_MESSAGE=Update embedded Driftlands client
 DRIFTLANDS_FRONTEND_DEPLOY_COMMAND=npm run deploy
 DRIFTLANDS_HAOS_SSH_HOST=haos
 DRIFTLANDS_HAOS_REMOTE_DIR=/config/driftlands
+DRIFTLANDS_HAOS_STAGE_DIR=/tmp/driftlands-haos-deploy
 DRIFTLANDS_HAOS_PUBLISH_PORT=3695
+DRIFTLANDS_DEPLOY_ASSUME_YES=1
 DRIFTLANDS_TUI_NO_ANIMATION=1
 FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>
 ```
@@ -116,6 +118,7 @@ HOST=0.0.0.0
 PORT=3000
 
 SERVER_DEBUG_MODE=0
+SERVER_PERF_DEBUG=1
 SERVER_TPS=10
 SERVER_SETTLEMENT_START_MODE=candidates
 SERVER_SPAWN_SAFETY=0
@@ -127,6 +130,8 @@ FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>
 ```
 
 Leave `SERVER_SEED` empty unless you want the same world after every restart.
+
+HAOS deployments enable the performance monitor by default with `SERVER_PERF_DEBUG=1`. Check `https://driftlands.example.com/debug/perf` or the container logs for `[perf:sample]` lines while reproducing late-game lag.
 
 ## 3. Run the Driftlands Server
 

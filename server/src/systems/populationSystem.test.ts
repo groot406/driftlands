@@ -820,6 +820,98 @@ test('settlers only consume food after they arrive at storage', () => {
   assert.equal(settlers[0]?.r, 0);
 });
 
+test('settlers can eat from owned food storage that became inactive under pressure', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains' }),
+    createTile({
+      id: '2,0',
+      q: 2,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_food_storehouse',
+      activationState: 'inactive',
+      supportBand: 'inactive',
+    }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 90_000,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('2,0', 'bread', 2);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  assert.equal(settlers[0]?.activity, 'fetching_food');
+  assert.equal(settlers[0]?.movement?.target.q, 2);
+  assert.equal(settlers[0]?.movement?.target.r, 0);
+
+  tickAt(6_000, 5_000);
+  assert.equal(resourceInventory.bread, 1);
+  assert.equal(settlers[0]?.hungerMs, 5_000);
+  assert.equal(settlers[0]?.q, 2);
+  assert.equal(settlers[0]?.r, 0);
+});
+
+test('settlers do not starve while their settlement still has edible meals in a later town center', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTowncenterTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      ownerSettlementId: '0,0',
+      controlledBySettlementId: '0,0',
+    }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: null,
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 240_000,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  depositResourceToStorage('6,0', 'bread', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 1);
+  assert.equal(resourceInventory.bread, 0);
+  assert.ok((settlers[0]?.hungerMs ?? 0) < 240_000);
+});
+
 for (const resourceType of HUNGER_FOOD_TYPES) {
   test(`settlers can take ${resourceType} from storage to stave hunger`, () => {
     loadWorld([
@@ -899,7 +991,7 @@ test('job output reaches inventory only after a settler returns to storage', () 
   assert.equal(settlers[0]?.movement?.target.r, 0);
 
   tickAt(69_000, 7_000);
-  assert.equal(resourceInventory.wood, 1);
+  assert.equal(resourceInventory.wood, 2);
   assert.equal(settlers[0]?.carryingPayload, undefined);
   assert.equal(settlers[0]?.q, 0);
   assert.equal(settlers[0]?.r, 0);

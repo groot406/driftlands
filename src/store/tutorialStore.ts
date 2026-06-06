@@ -154,6 +154,10 @@ function buildTutorialMetrics(): TutorialMetrics {
     if (building) {
       buildingCounts[building.key] = (buildingCounts[building.key] ?? 0) + 1;
     }
+
+    if (tile.terrain === 'towncenter') {
+      buildingCounts.townCenter = (buildingCounts.townCenter ?? 0) + 1;
+    }
   }
 
   const selectedHero = getSelectedTutorialHero();

@@ -1,5 +1,6 @@
 import type { Socket } from 'socket.io';
 import { type BaseMessage} from "../../../src/shared/protocol";
+import { performanceMonitor } from '../telemetry/performanceMonitor';
 
 export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void | Promise<void>;
 
@@ -29,6 +30,7 @@ export class ServerMessageRouter {
 
   // Route an incoming message to appropriate handlers
   async route(socket: Socket, message: BaseMessage): Promise<void> {
+    performanceMonitor.recordInboundMessage(message);
     const typeHandlers = this.handlers.get(message.type);
     if (typeHandlers) {
       for (const handler of typeHandlers) {
@@ -61,11 +63,13 @@ export function setIo(ioInput:any) {
 
 // Utility function to send a message to a specific socket
 export function sendToSocket(socket: Socket, message: any): void {
+  performanceMonitor.recordOutboundMessage('send', message);
   socket.emit('message', message);
 }
 
 // Utility function to broadcast a message to all connected sockets
 export function broadcast(message: any): void {
+  performanceMonitor.recordOutboundMessage('broadcast', message);
   io.emit('message', message);
 }
 

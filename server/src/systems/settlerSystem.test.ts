@@ -9,6 +9,8 @@ import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/g
 import { depositResourceToStorage, resetResourceState } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
+import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
+import { configurePathTelemetry } from '../../../src/shared/game/PathService';
 import { resetStudyState } from '../../../src/store/studyStore';
 import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared/game/testMode.ts';
 import { settlerSystem, syncSettlerPopulation } from './settlerSystem';
@@ -76,6 +78,8 @@ function createSettler(overrides: Partial<Settler> & Pick<Settler, 'id'>): Settl
 }
 
 test.afterEach(() => {
+  configurePathTelemetry(null);
+  resetGameRuntime();
   loadWorld([]);
   resetResourceState();
   resetPopulationState();
@@ -84,6 +88,56 @@ test.afterEach(() => {
   resetWorkforceState();
   resetStudyState();
   resetTestModeSettings();
+});
+
+test('settler and hunger population broadcasts are throttled while continuous hunger updates keep changing state', () => {
+  const messages: Array<{ type: string; timestamp?: number }> = [];
+  configureGameRuntime({
+    broadcast: (message) => {
+      messages.push(message);
+    },
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({ id: 'settler-1', settlementId: '0,0', hungerMs: 60_000 }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 100);
+  tickAt(1_100, 100);
+  tickAt(1_200, 100);
+  tickAt(1_300, 100);
+
+  const settlerUpdates = messages.filter((message) => message.type === 'settlers:update');
+  assert.deepEqual(settlerUpdates.map((message) => message.timestamp), [1_000, 1_300]);
+  const populationUpdates = messages.filter((message) => message.type === 'population:update');
+  assert.equal(populationUpdates.length, 2);
 });
 
 test('population sync preserves unassigned settler identities before creating replacements', () => {
@@ -338,6 +392,414 @@ test('settlers prioritize shopping for home goods before pub visits', () => {
   assert.equal(tileIndex['2,0']?.houseGoods?.silk, 1);
 });
 
+test('shop venue movement reuses the reachable access path', () => {
+  const pathEvents: Array<{ source?: string; cacheHit?: boolean }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'plains', variant: 'plains_shop', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 2,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 2,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '0,0',
+      happiness: 70,
+    }),
+    createSettler({
+      id: 'shopkeeper',
+      q: 0,
+      r: 1,
+      settlementId: '0,0',
+      assignedWorkTileId: '0,1',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'silk', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'commuting_shop');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 1);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 0);
+});
+
+test('blocked food reachability is rejected before pathfinding while cooldown holds', () => {
+  const pathEvents: Array<{ source?: string }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_warehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      hungerMs: 90_000,
+    }),
+  ]);
+  depositResourceToStorage('2,0', 'meat', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  tickAt(1_500, 500);
+
+  assert.equal(settlers[0]?.activity, 'waiting');
+  assert.equal(settlers[0]?.blockerReason?.code, 'path_blocked');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 0);
+});
+
+test('blocked food reachability waits across several planning passes without pathfinding', () => {
+  const pathEvents: Array<{ source?: string }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_warehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      hungerMs: 90_000,
+    }),
+  ]);
+  depositResourceToStorage('2,0', 'meat', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+  tickAt(2_500, 1_500);
+  tickAt(4_000, 1_500);
+
+  assert.equal(settlers[0]?.activity, 'waiting');
+  assert.equal(settlers[0]?.blockerReason?.code, 'path_blocked');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 0);
+});
+
+test('dock access selection stops after the nearest reachable tile', () => {
+  const pathEvents: Array<{ source?: string }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'water', variant: 'water_dock_d', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '-1,1', q: -1, r: 1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '0,1',
+      assignedRole: 'job',
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 0);
+});
+
+test('working settlers stagger non-urgent planning while preserving accumulated work time', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'idle',
+      happiness: 60,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 100);
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.workProgressMs, 100);
+
+  tickAt(1_100, 100);
+  assert.equal(settlers[0]?.workProgressMs, 100);
+
+  tickAt(2_100, 1_000);
+  assert.equal(settlers[0]?.workProgressMs, 1_200);
+});
+
+test('settlers reuse a cached fixed route for repeated home commutes', () => {
+  const pathEvents: Array<{ source?: string }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+      fatigueMs: 3 * 60_000,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 100);
+  assert.equal(settlers[0]?.activity, 'commuting_home');
+
+  settlers[0]!.q = 2;
+  settlers[0]!.r = 0;
+  settlers[0]!.activity = 'working';
+  settlers[0]!.movement = undefined;
+  settlers[0]!.fatigueMs = 3 * 60_000;
+
+  tickAt(2_000, 100);
+
+  assert.equal(settlers[0]?.activity, 'commuting_home');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 1);
+});
+
+test('settlers share cached fixed routes across matching commutes', () => {
+  const pathEvents: Array<{ source?: string }> = [];
+  configurePathTelemetry((event) => {
+    pathEvents.push(event);
+  });
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 2,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 2,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+      fatigueMs: 3 * 60_000,
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+      fatigueMs: 3 * 60_000,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 100);
+
+  assert.equal(settlers[0]?.activity, 'commuting_home');
+  assert.equal(settlers[1]?.activity, 'commuting_home');
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 1);
+});
+
 test('upgraded houses slowly restore resident happiness from comfort', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
@@ -519,6 +981,59 @@ test('assigned tower guards spawn visible garrison settlers and scale back when 
   assert.equal(settlers[0]?.guardTowerTileId, '2,0');
 });
 
+test('assigned tower guards spawn from the barracks that trained them', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'plains', variant: 'plains_barracks', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      towerAssignedGuards: 1,
+      towerGuardOriginTileIds: ['3,0'],
+    } as Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 10,
+    beds: 0,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 0,
+      max: 10,
+      beds: 0,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 1);
+  assert.equal(settlers[0]?.q, 3);
+  assert.equal(settlers[0]?.r, 0);
+  assert.equal(settlers[0]?.homeTileId, '3,0');
+  assert.equal(settlers[0]?.homeAccessTileId, '3,0');
+});
+
 test('raid orders spawn visible guard settlers for a foreign watchtower', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0', raidTargetTileId: '2,0', raidCommittedGuards: 2 }),
@@ -590,4 +1105,70 @@ test('raid orders spawn visible guard settlers for a foreign watchtower', () => 
 
   assert.equal(settlers.length, 2);
   assert.deepEqual(settlers.map((settler) => settler.id), firstWaveIds);
+});
+
+test('raid orders spawn visible guard settlers for a foreign town center', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0', raidTargetTileId: '2,0', raidCommittedGuards: 2 }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'towncenter', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 10,
+    beds: 0,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 10,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '9,0',
+        current: 0,
+        max: 10,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  loadSettlers([]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 2);
+  assert.deepEqual(
+    settlers.map((settler) => ({
+      assignedRole: settler.assignedRole,
+      settlementId: settler.settlementId,
+      guardTowerTileId: settler.guardTowerTileId,
+      assignedWorkTileId: settler.assignedWorkTileId,
+    })),
+    [
+      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '2,0' },
+      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '2,0' },
+    ],
+  );
 });

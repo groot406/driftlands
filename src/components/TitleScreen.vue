@@ -54,6 +54,7 @@
             </div>
             <p v-if="walletSettlementLoading" class="title-wallet__notice">Checking existing colony...</p>
             <p v-else-if="existingWalletSettlementId" class="title-wallet__notice">This wallet already founded a colony. Continue to rejoin it.</p>
+            <p v-else-if="walletSettlementLookupUncertain" class="title-wallet__notice">Could not confirm this wallet's colony yet. Continue will ask the server again.</p>
             <p v-if="walletError" class="title-wallet__error">{{ walletError }}</p>
           </div>
 
@@ -160,6 +161,7 @@ import {
   connectLooperlandsWallet,
   fetchDriftlandsWalletSettlement,
   fetchLooperlandsLoopers,
+  getAuthorizedLooperlandsWalletIdentity,
   getStoredLooperlandsSession,
   hasLooperlandsPlatformSessionCandidate,
   restoreLooperlandsPlatformSession,
@@ -167,7 +169,7 @@ import {
   type LooperlandsWalletSession,
 } from '../core/looperlandsClient.ts';
 import { getWalletConnectAppKitClient, getWalletConnectDebugInfo, initializeWalletConnectAppKit } from '../core/walletConnect.ts';
-import { describeWalletError, walletLog, walletWarn } from '../core/walletDebug.ts';
+import { describeWalletError, maskDebugValue, walletLog, walletWarn } from '../core/walletDebug.ts';
 import { listStoryHeroTemplates, type StoryHeroId } from '../shared/story/heroRoster.ts';
 import type { LooperlandsHeroSelection } from '../shared/looperlands.ts';
 import logoArt from '../assets/ui/logo.png';
@@ -221,6 +223,7 @@ const walletLoading = ref(false);
 const walletError = ref('');
 const walletSettlementLoading = ref(false);
 const existingWalletSettlementId = ref<string | null>(null);
+const walletSettlementLookupUncertain = ref(false);
 const defaultSettlementLoading = ref(false);
 const existingDefaultSettlementId = ref<string | null>(null);
 const looperLoading = ref(false);
@@ -239,7 +242,7 @@ const existingSettlementId = computed(() => (
     : existingDefaultSettlementId.value
 ));
 const primaryActionLabel = computed(() => {
-  if (existingSettlementId.value) {
+  if (existingSettlementId.value || (startMode.value === 'wallet' && walletSettlementLookupUncertain.value)) {
     return 'Continue Colony';
   }
 
@@ -260,7 +263,7 @@ const canStart = computed(() => {
     return false;
   }
 
-  if (existingWalletSettlementId.value) {
+  if (existingWalletSettlementId.value || walletSettlementLookupUncertain.value) {
     return true;
   }
 
@@ -321,6 +324,14 @@ function getWalletSessionKey(session: LooperlandsWalletSession | null): string {
 function isCurrentWalletPreparation(runId: number, session: LooperlandsWalletSession): boolean {
   return walletPreparationRunId === runId
     && getWalletSessionKey(walletSession.value) === getWalletSessionKey(session);
+}
+
+function walletIdentityMatchesSession(
+  identity: { walletAddress: string; chainId: number } | null,
+  session: LooperlandsWalletSession,
+): boolean {
+  return !identity
+    || (identity.walletAddress.toLowerCase() === session.walletAddress.toLowerCase() && identity.chainId === session.chainId);
 }
 
 function isEthereumProvider(provider: unknown): provider is EthereumProvider {
@@ -406,7 +417,19 @@ async function connectAppKitProvider(): Promise<EthereumProvider | undefined> {
   }
 
   logWalletState('connectAppKitProvider start');
-  if (!appKitAccount.value.isConnected || !getAppKitEthereumProvider()) {
+  const authorizedProvider = getAppKitEthereumProvider();
+  const authorizedIdentity = authorizedProvider
+    ? await getAuthorizedLooperlandsWalletIdentity(authorizedProvider)
+    : null;
+  if (authorizedProvider && authorizedIdentity) {
+    walletLog('connectAppKitProvider using authorized provider', {
+      walletAddress: maskDebugValue(authorizedIdentity.walletAddress),
+      chainId: authorizedIdentity.chainId,
+    });
+    return authorizedProvider;
+  }
+
+  if (!appKitAccount.value.isConnected || !authorizedProvider) {
     try {
       walletLog('appkit open connect modal');
       await appKit.open({ view: 'Connect', namespace: 'eip155' });
@@ -463,6 +486,7 @@ async function connectWallet() {
     }
     selectedLooperIds.value = [];
     existingWalletSettlementId.value = null;
+    walletSettlementLookupUncertain.value = false;
     await prepareWalletStart(runId);
     walletLog('connect wallet success');
   } catch (error) {
@@ -486,6 +510,7 @@ function disconnectWallet() {
   }
   walletSession.value = null;
   existingWalletSettlementId.value = null;
+  walletSettlementLookupUncertain.value = false;
   loopers.value = [];
   selectedLooperIds.value = [];
   walletError.value = '';
@@ -494,18 +519,46 @@ function disconnectWallet() {
 }
 
 async function prepareWalletStart(runId = ++walletPreparationRunId) {
-  const session = walletSession.value;
+  let session = walletSession.value;
   if (!session) {
     return;
   }
 
   walletLog('prepare wallet start', {
     runId,
-    walletAddress: session.walletAddress,
+    walletAddress: maskDebugValue(session.walletAddress),
     chainId: session.chainId,
   });
   loopers.value = [];
   selectedLooperIds.value = [];
+  walletSettlementLookupUncertain.value = false;
+
+  const providerIdentity = await getAuthorizedLooperlandsWalletIdentity(getAppKitEthereumProvider({ logSelection: false }));
+  if (!isCurrentWalletPreparation(runId, session)) {
+    walletLog('prepare wallet ignored stale provider identity', { runId });
+    return;
+  }
+
+  if (!walletIdentityMatchesSession(providerIdentity, session)) {
+    walletWarn('stored wallet session does not match authorized provider', {
+      runId,
+      sessionWallet: maskDebugValue(session.walletAddress),
+      sessionChainId: session.chainId,
+      providerWallet: maskDebugValue(providerIdentity?.walletAddress),
+      providerChainId: providerIdentity?.chainId,
+    });
+    clearStoredLooperlandsSession();
+    walletSession.value = null;
+    existingWalletSettlementId.value = null;
+    walletSettlementLookupUncertain.value = false;
+    walletError.value = 'MetaMask is connected to a different wallet. Reconnect to load the right colony.';
+    return;
+  }
+
+  session = walletSession.value;
+  if (!session) {
+    return;
+  }
 
   const settlementId = await refreshExistingWalletSettlement(session, runId);
   if (!isCurrentWalletPreparation(runId, session)) {
@@ -543,18 +596,36 @@ async function prepareWalletStart(runId = ++walletPreparationRunId) {
 async function refreshExistingWalletSettlement(session = walletSession.value, runId = walletPreparationRunId) {
   if (!session) {
     existingWalletSettlementId.value = null;
+    walletSettlementLookupUncertain.value = false;
     return null;
   }
 
   walletSettlementLoading.value = true;
   walletError.value = '';
   try {
-    const settlementId = await fetchDriftlandsWalletSettlement(session);
+    let settlementId: string | null = null;
+    let lastLookupError: unknown = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        settlementId = await fetchDriftlandsWalletSettlement(session, { throwOnUnavailable: true });
+        lastLookupError = null;
+      } catch (error) {
+        lastLookupError = error;
+      }
+      if (settlementId || attempt === 2) {
+        break;
+      }
+      await delay(500);
+    }
+    if (lastLookupError) {
+      throw lastLookupError;
+    }
     if (!isCurrentWalletPreparation(runId, session)) {
       return null;
     }
 
     existingWalletSettlementId.value = settlementId;
+    walletSettlementLookupUncertain.value = false;
     walletLog('wallet settlement lookup complete', {
       runId,
       hasSettlement: !!settlementId,
@@ -567,7 +638,11 @@ async function refreshExistingWalletSettlement(session = walletSession.value, ru
     }
 
     existingWalletSettlementId.value = null;
-    walletError.value = error instanceof Error ? error.message : 'Could not check this wallet colony.';
+    walletSettlementLookupUncertain.value = true;
+    walletWarn('wallet settlement lookup uncertain', {
+      runId,
+      error: describeWalletError(error),
+    });
     return null;
   } finally {
     if (isCurrentWalletPreparation(runId, session)) {
@@ -703,6 +778,12 @@ function joinGame() {
   }
 
   if (existingWalletSettlementId.value) {
+    connectWithNickname(nickname.value, buildLooperlandsContinueAuth(walletSession.value));
+    resumeGame();
+    return;
+  }
+
+  if (walletSettlementLookupUncertain.value) {
     connectWithNickname(nickname.value, buildLooperlandsContinueAuth(walletSession.value));
     resumeGame();
     return;

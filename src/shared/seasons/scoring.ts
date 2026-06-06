@@ -159,6 +159,13 @@ export function buildLeaderboard(
         watchtowersControlled: input.watchtowersControlled,
         shipOrdersCompleted: input.shipOrdersCompleted,
         rewardTitles: [],
+        defeated: !!input.defeat,
+        defeatedAt: input.defeat?.defeatedAt,
+        defeatedBySettlementId: input.defeat?.defeatedBySettlementId,
+        defeatedByPlayerId: input.defeat?.defeatedByPlayerId ?? null,
+        defeatedByPlayerName: input.defeat?.defeatedByPlayerName ?? null,
+        capturedTownCenterTileId: input.defeat?.capturedTownCenterTileId,
+        transferredTileCount: input.defeat?.transferredTileCount,
       };
     })
     .sort((left, right) => right.score - left.score || left.playerName.localeCompare(right.playerName))

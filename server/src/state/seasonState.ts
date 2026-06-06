@@ -28,6 +28,7 @@ import {
   type SeasonReward,
   type SeasonScoreBaseline,
   type SeasonScoreInput,
+  type SettlementDefeatSummary,
   type SeasonSnapshot,
   type SeasonStageConfig,
   type SeasonStageKey,
@@ -197,6 +198,7 @@ export interface SeasonPersistenceSnapshot {
   towerCapturesBySettlementId: Array<[string, number]>;
   towerDefensesBySettlementId: Array<[string, number]>;
   calamitiesSurvivedBySettlementId: Array<[string, number]>;
+  defeatedSettlementsBySettlementId?: Array<[string, SettlementDefeatSummary]>;
   scoreBaselinesBySettlementId: Array<[string, SeasonScoreBaseline]>;
 }
 
@@ -209,6 +211,7 @@ class SeasonState {
   private towerCapturesBySettlementId = new Map<string, number>();
   private towerDefensesBySettlementId = new Map<string, number>();
   private calamitiesSurvivedBySettlementId = new Map<string, number>();
+  private defeatedSettlementsBySettlementId = new Map<string, SettlementDefeatSummary>();
   private scoreBaselinesBySettlementId = new Map<string, SeasonScoreBaseline>();
   private lastBroadcastScoreKey = '';
   private lastScoreBroadcastAt = 0;
@@ -221,6 +224,7 @@ class SeasonState {
     this.towerCapturesBySettlementId.clear();
     this.towerDefensesBySettlementId.clear();
     this.calamitiesSurvivedBySettlementId.clear();
+    this.defeatedSettlementsBySettlementId.clear();
     this.scoreBaselinesBySettlementId.clear();
     this.lastBroadcastScoreKey = '';
     this.lastScoreBroadcastAt = 0;
@@ -262,6 +266,10 @@ class SeasonState {
       towerCapturesBySettlementId: Array.from(this.towerCapturesBySettlementId.entries()),
       towerDefensesBySettlementId: Array.from(this.towerDefensesBySettlementId.entries()),
       calamitiesSurvivedBySettlementId: Array.from(this.calamitiesSurvivedBySettlementId.entries()),
+      defeatedSettlementsBySettlementId: Array.from(this.defeatedSettlementsBySettlementId.entries()).map(([settlementId, defeat]) => [
+        settlementId,
+        { ...defeat },
+      ]),
       scoreBaselinesBySettlementId: Array.from(this.scoreBaselinesBySettlementId.entries()).map(([settlementId, baseline]) => [
         settlementId,
         {
@@ -281,6 +289,7 @@ class SeasonState {
       this.towerCapturesBySettlementId.clear();
       this.towerDefensesBySettlementId.clear();
       this.calamitiesSurvivedBySettlementId.clear();
+      this.defeatedSettlementsBySettlementId.clear();
       this.scoreBaselinesBySettlementId.clear();
       this.lastBroadcastScoreKey = '';
       this.lastScoreBroadcastAt = 0;
@@ -294,6 +303,12 @@ class SeasonState {
     this.towerCapturesBySettlementId = new Map(persistence.towerCapturesBySettlementId ?? []);
     this.towerDefensesBySettlementId = new Map(persistence.towerDefensesBySettlementId ?? []);
     this.calamitiesSurvivedBySettlementId = new Map(persistence.calamitiesSurvivedBySettlementId ?? []);
+    this.defeatedSettlementsBySettlementId = new Map(
+      (persistence.defeatedSettlementsBySettlementId ?? []).map(([settlementId, defeat]): [string, SettlementDefeatSummary] => [
+        settlementId,
+        { ...defeat },
+      ]),
+    );
     this.scoreBaselinesBySettlementId = new Map(
       (persistence.scoreBaselinesBySettlementId ?? []).map(([settlementId, baseline]): [string, SeasonScoreBaseline] => [
         settlementId,
@@ -331,6 +346,26 @@ class SeasonState {
       return false;
     }
     return this.getCurrentStageConfig()?.allowNewHeroTasks !== false;
+  }
+
+  isSettlementDefeated(settlementId: string | null | undefined) {
+    return !!settlementId && this.defeatedSettlementsBySettlementId.has(settlementId);
+  }
+
+  isPlayerDefeated(playerId: string | null | undefined) {
+    if (!playerId) {
+      return false;
+    }
+
+    return this.isSettlementDefeated(playerSettlementState.getPlayerSettlement(playerId));
+  }
+
+  canPlayerTakeNewActions(playerId: string | null | undefined) {
+    if (!playerId) {
+      return false;
+    }
+
+    return this.allowsNewHeroActions() && !this.isPlayerDefeated(playerId);
   }
 
   isCompleted() {
@@ -381,6 +416,19 @@ class SeasonState {
 
     if (event.type === 'military:tower_captured') {
       this.increment(this.towerCapturesBySettlementId, event.attackerSettlementId, 1);
+    } else if (event.type === 'military:settlement_defeated') {
+      const attacker = playerSettlementState.getSettlementOwner(event.attackerSettlementId);
+      this.defeatedSettlementsBySettlementId.set(event.defeatedSettlementId, {
+        defeatedAt: event.defeatedAt,
+        defeatedBySettlementId: event.attackerSettlementId,
+        defeatedByPlayerId: attacker?.playerId ?? null,
+        defeatedByPlayerName: attacker?.playerName ?? null,
+        capturedTownCenterTileId: event.capturedTownCenterTileId,
+        transferredTileCount: event.transferredTileIds.length,
+      });
+      if (this.completeIfLastPlayerStanding(event.defeatedAt)) {
+        return;
+      }
     } else if (event.type === 'ship_order:completed') {
       this.increment(this.shipOrdersCompletedBySettlementId, event.settlementId, 1);
       this.increment(this.shipOrderValueBySettlementId, event.settlementId, event.fulfilledValue);
@@ -390,6 +438,35 @@ class SeasonState {
 
     this.recompute(Date.now());
     this.broadcastUpdate();
+  }
+
+  private completeIfLastPlayerStanding(completedAt: number) {
+    if (!this.snapshot || this.snapshot.status !== 'active') {
+      return false;
+    }
+
+    const claimedPlayers = playerSettlementState.listPlayers()
+      .filter((player) => !!player.settlementId);
+    if (claimedPlayers.length <= 1) {
+      return false;
+    }
+
+    const survivors = claimedPlayers
+      .filter((player) => !this.isSettlementDefeated(player.settlementId))
+      .sort((left, right) => left.nickname.localeCompare(right.nickname) || left.id.localeCompare(right.id));
+    if (survivors.length !== 1) {
+      return false;
+    }
+
+    const winner = survivors[0]!;
+    this.complete({
+      kind: 'last_player_standing',
+      playerId: winner.id,
+      settlementId: winner.settlementId,
+      completedAt,
+      message: `${winner.nickname} is the last settlement standing.`,
+    });
+    return true;
   }
 
   applyConfig(config: SeasonConfig) {
@@ -594,6 +671,7 @@ class SeasonState {
           staffedJobSites: settlementJobSites.filter((site) => site.assignedWorkers > 0).length,
           productiveJobSites: settlementJobSites.filter((site) => site.status === 'staffed').length,
           blockedJobSites: settlementJobSites.filter((site) => blockedJobStatuses.has(site.status)).length,
+          defeat: this.defeatedSettlementsBySettlementId.get(settlementId) ?? null,
         };
 
         return {

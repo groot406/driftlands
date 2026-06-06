@@ -60,7 +60,7 @@ export class ServerSeasonAdminHandler {
     try {
       playerSettlementState.clearAssignments();
       coopState.resetHeroClaims();
-      await worldState.init(message.seed ?? undefined);
+      await worldState.initFresh(message.seed ?? undefined);
       this.broadcastWorldSnapshot();
       this.broadcastSeasonSnapshot();
       this.broadcastPlayerSnapshot();

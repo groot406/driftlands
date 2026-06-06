@@ -8,6 +8,8 @@ import { loadHeroes, heroes } from '../../../src/shared/game/state/heroStore.ts'
 import { getTaskByTile, loadTasks } from '../../../src/shared/game/state/taskStore.ts';
 import { setIo } from '../messages/messageRouter.ts';
 import { coopState } from '../state/coopState.ts';
+import { playerSettlementState } from '../state/playerSettlementState.ts';
+import { seasonState } from '../state/seasonState.ts';
 import { ServerMovementHandler } from './movementHandler.ts';
 import { SCOUT_RESOURCE_TASK_TYPE } from '../../../src/shared/game/scoutResources.ts';
 
@@ -29,6 +31,8 @@ test.afterEach(() => {
   loadTasks([]);
   coopState.resetHeroClaims();
   coopState.removePlayer('socket-1');
+  playerSettlementState.reset();
+  seasonState.loadPersistenceSnapshot(null);
   ServerMovementHandler.getInstance().activeMovements.clear();
 });
 
@@ -126,6 +130,285 @@ test('move request can materialize an undiscovered explore tile before validatio
   assert.equal(handler.activeMovements.size, 1);
   assert.deepEqual(hero.pendingTask, { tileId: '1,0', taskType: 'explore' });
   assert.deepEqual(hero.pendingExploreTarget, { q: 8, r: 0 });
+});
+
+test('move request lets a hero on enemy ground move back to own territory', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '2,0',
+      ownerSettlementId: '2,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.q = 0;
+  hero.r = 0;
+  hero.playerId = 'player-1';
+  hero.settlementId = '2,0';
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'player-1' } as any, 'Player');
+  playerSettlementState.registerPlayer('player-1', 'player-1', 'Player');
+  assert.equal(playerSettlementState.assignPlayerSettlement('player-1', '2,0'), true);
+  seasonState.initialize(42, 1_000);
+
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'player-1' }, {
+    type: 'hero:move_request',
+    id: 'escape-enemy-ground',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 2, r: 0 },
+    startAt: Date.now(),
+    path: [{ q: 1, r: 0 }, { q: 2, r: 0 }],
+  });
+
+  assert.equal(handler.activeMovements.size, 1);
+  assert.deepEqual(heroes[0]?.movement?.target, { q: 2, r: 0 });
+});
+
+test('move request does not let a hero on enemy ground move to more enemy territory', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '2,0',
+      ownerSettlementId: '2,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.q = 0;
+  hero.r = 0;
+  hero.playerId = 'player-1';
+  hero.settlementId = '2,0';
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'player-1' } as any, 'Player');
+  playerSettlementState.registerPlayer('player-1', 'player-1', 'Player');
+  assert.equal(playerSettlementState.assignPlayerSettlement('player-1', '2,0'), true);
+  seasonState.initialize(42, 1_000);
+
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'player-1' }, {
+    type: 'hero:move_request',
+    id: 'move-deeper-enemy-ground',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 1, r: 0 },
+    startAt: Date.now(),
+    path: [{ q: 1, r: 0 }],
+  });
+
+  assert.equal(handler.activeMovements.size, 0);
+});
+
+test('move request lets a hero cross enemy territory to reach another owned town center', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.playerId = 'player-1';
+  hero.settlementId = '0,0';
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'player-1' } as any, 'Player');
+  playerSettlementState.registerPlayer('player-1', 'player-1', 'Player');
+  assert.equal(playerSettlementState.assignPlayerSettlement('player-1', '0,0'), true);
+  seasonState.initialize(42, 1_000);
+
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'player-1' }, {
+    type: 'hero:move_request',
+    id: 'cross-enemy-to-town-center',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 2, r: 0 },
+    startAt: Date.now(),
+    path: [{ q: 1, r: 0 }, { q: 2, r: 0 }],
+  });
+
+  assert.equal(handler.activeMovements.size, 1);
+  assert.deepEqual(heroes[0]?.movement?.target, { q: 2, r: 0 });
+});
+
+test('move request lets a hero cross enemy territory to reach separated owned ground', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: 'enemy',
+      ownerSettlementId: 'enemy',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero = createHero();
+  hero.playerId = 'player-1';
+  hero.settlementId = '0,0';
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'player-1' } as any, 'Player');
+  playerSettlementState.registerPlayer('player-1', 'player-1', 'Player');
+  assert.equal(playerSettlementState.assignPlayerSettlement('player-1', '0,0'), true);
+  seasonState.initialize(42, 1_000);
+
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'player-1' }, {
+    type: 'hero:move_request',
+    id: 'cross-enemy-to-owned-ground',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 2, r: 0 },
+    startAt: Date.now(),
+    path: [{ q: 1, r: 0 }, { q: 2, r: 0 }],
+  });
+
+  assert.equal(handler.activeMovements.size, 1);
+  assert.deepEqual(heroes[0]?.movement?.target, { q: 2, r: 0 });
 });
 
 test('scouted fog can only be crossed by scout movement requests', () => {

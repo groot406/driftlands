@@ -57,7 +57,7 @@
               <section class="season-board__leaderboard" aria-label="Season leaderboard">
                 <header class="season-board__section-header">
                   <span>Leaderboard</span>
-                  <strong>Top Settlements</strong>
+                  <strong>{{ defeatedEntries.length ? `${defeatedEntries.length} Defeated` : 'Top Settlements' }}</strong>
                 </header>
                 <article
                   v-for="entry in topEntries"
@@ -66,6 +66,7 @@
                   :class="{
                     'season-board__row--self': entry.playerId === currentPlayerId,
                     'season-board__row--selected': entry.playerId === selectedEntry?.playerId,
+                    'season-board__row--defeated': entry.defeated,
                   }"
                   role="button"
                   tabindex="0"
@@ -79,6 +80,7 @@
                   <span class="season-board__color" :style="{ background: entry.playerColor ?? '#f8fafc' }" />
                   <span class="season-board__name">{{ entry.playerName }}</span>
                   <strong>{{ formatNumber(entry.score) }}</strong>
+                  <span v-if="entry.defeated" class="season-board__defeat-badge">Defeated</span>
                 </article>
               </section>
 
@@ -95,6 +97,24 @@
                   <div v-for="item in breakdownItems" :key="item.label">
                     <span>{{ item.label }}</span>
                     <strong>{{ formatNumber(item.value) }}</strong>
+                  </div>
+                </section>
+
+                <section v-if="selectedEntry?.defeated" class="season-board__defeat" :aria-label="`${selectedEntry.playerName} defeat details`">
+                  <header class="season-board__section-header">
+                    <span>Defeated</span>
+                    <strong>{{ selectedEntry.playerName }}</strong>
+                  </header>
+                  <p>
+                    Last town center captured by {{ selectedEntry.defeatedByPlayerName ?? selectedEntry.defeatedBySettlementId ?? 'a rival' }}.
+                  </p>
+                  <div>
+                    <span>Captured</span>
+                    <strong>{{ formatTimestamp(selectedEntry.defeatedAt) }}</strong>
+                  </div>
+                  <div>
+                    <span>Tiles Taken</span>
+                    <strong>{{ formatNumber(selectedEntry.transferredTileCount ?? 0) }}</strong>
                   </div>
                 </section>
 
@@ -146,6 +166,7 @@ const selectedEntry = computed(() => {
   return selected ?? ownEntry.value ?? entries[0] ?? null;
 });
 const visibleEndGoals = computed(() => season.value?.endGoals.filter((goal) => goal.enabled) ?? []);
+const defeatedEntries = computed(() => season.value?.leaderboard.filter((entry) => entry.defeated) ?? []);
 const topEntries = computed(() => {
   const entries = season.value?.leaderboard.slice(0, 10) ?? [];
   const own = ownEntry.value;
@@ -221,6 +242,16 @@ function stageName(stage: string) {
 
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString();
+}
+
+function formatTimestamp(value: number | null | undefined) {
+  if (!value) {
+    return 'Unknown';
+  }
+  return new Date(value).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function formatDuration(ms: number) {
@@ -299,6 +330,7 @@ onBeforeUnmount(() => {
 
 .season-board__row,
 .season-board__breakdown div,
+.season-board__defeat div,
 .season-board__goal {
   display: flex;
   align-items: center;
@@ -308,6 +340,7 @@ onBeforeUnmount(() => {
 .season-board__summary span,
 .season-board__goal span,
 .season-board__completed span,
+.season-board__defeat span,
 .season-board__section-header span {
   display: block;
   font-size: 0.58rem;
@@ -335,6 +368,7 @@ onBeforeUnmount(() => {
 .season-board__summary article,
 .season-board__leaderboard,
 .season-board__breakdown,
+.season-board__defeat,
 .season-board__goals,
 .season-board__completed {
   border: 1px solid rgba(190, 136, 65, 0.28);
@@ -398,6 +432,7 @@ onBeforeUnmount(() => {
 
 .season-board__leaderboard,
 .season-board__breakdown,
+.season-board__defeat,
 .season-board__goals,
 .season-board__completed {
   display: grid;
@@ -457,6 +492,12 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 0 0 1px rgba(255, 244, 207, 0.08);
 }
 
+.season-board__row--defeated {
+  border-style: dashed;
+  border-color: rgba(248, 113, 113, 0.32);
+  opacity: 0.72;
+}
+
 .season-board__rank {
   width: 2.4rem;
   font-weight: 800;
@@ -481,11 +522,38 @@ onBeforeUnmount(() => {
   color: #fff3d2;
 }
 
-.season-board__breakdown div {
+.season-board__defeat-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(248, 113, 113, 0.46);
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+  font-size: 0.55rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.season-board__breakdown div,
+.season-board__defeat div {
   justify-content: space-between;
   border-bottom: 1px solid rgba(250, 230, 170, 0.08);
   padding: 0.25rem 0.1rem;
   font-size: 0.72rem;
+}
+
+.season-board__defeat {
+  border-color: rgba(248, 113, 113, 0.34);
+  background:
+    linear-gradient(180deg, rgba(75, 24, 24, 0.42), rgba(15, 18, 18, 0.86)),
+    rgba(15, 18, 18, 0.88);
+}
+
+.season-board__defeat p {
+  margin: 0;
+  color: rgba(255, 244, 207, 0.72);
+  font-size: 0.76rem;
+  line-height: 1.45;
 }
 
 .season-board__breakdown .season-board__breakdown-total {

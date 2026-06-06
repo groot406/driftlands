@@ -11,7 +11,7 @@ import {
 } from '../story/progression.ts';
 import { listSideQuestTaskKeys } from '../sideQuests/definitions.ts';
 
-const ALWAYS_AVAILABLE_TASK_KEYS = new Set<string>(['dismantle', 'irregateDirtTask', 'walk', ...listSideQuestTaskKeys()]);
+const ALWAYS_AVAILABLE_TASK_KEYS = new Set<string>(['dismantle', 'irregateDirtTask', 'repairBuilding', 'walk', ...listSideQuestTaskKeys()]);
 const ZERO_SETTLER_FALLBACK_TASK_KEYS = new Set<string>(['fishAtDock']);
 
 export interface TaskUnlockStatus {

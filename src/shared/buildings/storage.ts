@@ -28,8 +28,12 @@ export function isWarehouseBuildingTile(tile: Tile | null | undefined) {
     return !!getStorageKindForTile(tile);
 }
 
-export function canUseWarehouseAtTile(tile: Tile | null | undefined) {
-    if (!tile?.discovered || !isTileWalkable(tile) || !isTileActive(tile) || isBuildingOfflineFromCondition(tile)) {
+interface WarehouseUseOptions {
+    allowInactive?: boolean;
+}
+
+export function canUseWarehouseAtTile(tile: Tile | null | undefined, options: WarehouseUseOptions = {}) {
+    if (!tile?.discovered || !isTileWalkable(tile) || (!options.allowInactive && !isTileActive(tile)) || isBuildingOfflineFromCondition(tile)) {
         return false;
     }
 
@@ -50,12 +54,13 @@ function findNearestStorageTile(
     settlementId: string | null | undefined = null,
     predicate?: (tile: Tile) => boolean,
     excludedTileIds: Set<string> = new Set(),
+    options: WarehouseUseOptions = {},
 ): Tile | null {
     let best: Tile | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
 
     const considerTile = (tile: Tile | null | undefined) => {
-        if (!tile || excludedTileIds.has(tile.id) || !canUseWarehouseAtTile(tile)) {
+        if (!tile || excludedTileIds.has(tile.id) || !canUseWarehouseAtTile(tile, options)) {
             return;
         }
 
@@ -102,12 +107,13 @@ export function findNearestWarehouseWithResource(
     resourceType: ResourceType,
     requiredAmount: number = 1,
     excludeTileIds: Iterable<string> = [],
+    options: WarehouseUseOptions = {},
 ): Tile | null {
     const excluded = new Set(excludeTileIds);
 
     return (
-        findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) >= requiredAmount, excluded)
-        ?? findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) > 0, excluded)
+        findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) >= requiredAmount, excluded, options)
+        ?? findNearestStorageTile(q, r, settlementId, (tile) => getStorageResourceAmount(tile.id, resourceType) > 0, excluded, options)
     );
 }
 
@@ -180,11 +186,11 @@ function listUsableStorageTiles() {
     return Array.from(candidates.values());
 }
 
-function listUsableStorageTilesForSettlement(settlementId: string | null | undefined = null) {
+export function listUsableStorageTilesForSettlement(settlementId: string | null | undefined = null) {
     return listUsableStorageTiles().filter((tile) => belongsToSettlement(tile, settlementId));
 }
 
-function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
+export function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
     const distanceA = axialDistanceCoords(q, r, a.q, a.r);
     const distanceB = axialDistanceCoords(q, r, b.q, b.r);
     if (distanceA !== distanceB) {
@@ -198,6 +204,66 @@ function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
     }
 
     return a.id.localeCompare(b.id);
+}
+
+export function listUsableWarehousesWithResource(
+    q: number,
+    r: number,
+    settlementId: string | null | undefined,
+    resourceType: ResourceType,
+    requiredAmount: number = 1,
+    options: WarehouseUseOptions = {},
+): Tile[] {
+    const strongMatches: Tile[] = [];
+    const partialMatches: Tile[] = [];
+
+    for (const tile of listUsableStorageTilesForSettlement(settlementId)) {
+        if (!canUseWarehouseAtTile(tile, options)) {
+            continue;
+        }
+
+        const amount = getStorageResourceAmount(tile.id, resourceType);
+        if (amount >= requiredAmount) {
+            strongMatches.push(tile);
+        } else if (amount > 0) {
+            partialMatches.push(tile);
+        }
+    }
+
+    const compare = (a: Tile, b: Tile) => compareStorageDistance(q, r, a, b);
+    return strongMatches.length > 0
+        ? strongMatches.sort(compare)
+        : partialMatches.sort(compare);
+}
+
+export function listUsableWarehousesWithCapacityForResource(
+    q: number,
+    r: number,
+    settlementId: string | null | undefined,
+    resourceType: ResourceType | null,
+    requiredFreeCapacity: number = 1,
+): Tile[] {
+    const strongMatches: Tile[] = [];
+    const partialMatches: Tile[] = [];
+
+    for (const tile of listUsableStorageTilesForSettlement(settlementId)) {
+        const kind = getStorageKindForTile(tile);
+        if (!kind || (resourceType && !canStorageKindStoreResource(kind, resourceType))) {
+            continue;
+        }
+
+        const freeCapacity = getStorageFreeCapacity(tile.id);
+        if (freeCapacity >= requiredFreeCapacity) {
+            strongMatches.push(tile);
+        } else if (freeCapacity > 0) {
+            partialMatches.push(tile);
+        }
+    }
+
+    const compare = (a: Tile, b: Tile) => compareStorageDistance(q, r, a, b);
+    return strongMatches.length > 0
+        ? strongMatches.sort(compare)
+        : partialMatches.sort(compare);
 }
 
 export function depositResourceIntoNearestStorages(

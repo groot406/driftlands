@@ -36,8 +36,14 @@ import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
 import { playerSettlementState } from './state/playerSettlementState';
 import { registerMarketRoutes } from './market/marketRoutes';
 import { worldState } from './worldState';
+import { performanceMonitor } from './telemetry/performanceMonitor';
+import { configurePathTelemetry } from '../../src/core/PathService';
+import { heroes } from '../../src/shared/game/state/heroStore';
+import { settlers } from '../../src/shared/game/state/settlerStore';
+import { taskStore } from '../../src/shared/game/state/taskStore';
 
 setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
+configurePathTelemetry((event) => performanceMonitor.recordPathfinding(event));
 
 const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
   .split(',')
@@ -95,6 +101,18 @@ app.get('/', (_req: any, res: any) => {
 app.get('/health', (_req: any, res: any) => {
   res.json({ status: 'ok' });
 });
+app.get('/debug/perf', (_req: any, res: any) => {
+  if (!performanceMonitor.isEnabled() && !serverDebugModeEnabled) {
+    res.status(404).json({
+      enabled: false,
+      message: 'Performance telemetry is disabled. Start the server with SERVER_PERF_DEBUG=1 to enable it.',
+    });
+    return;
+  }
+
+  res.set('Cache-Control', 'no-store');
+  res.json(performanceMonitor.getSnapshot());
+});
 app.use(['/api/looperlands', '/api/driftlands'], (req: any, res: any, next: any) => {
   const origin = typeof req.headers?.origin === 'string' ? req.headers.origin : undefined;
   if (origin && isAllowedFrontendOrigin(origin)) {
@@ -145,6 +163,20 @@ io.engine.on('connection_error', (error) => {
   console.warn(`[socket.io:error] code=${error.code} message=${error.message} origin=${error.req?.headers.origin ?? '-'} ip=${error.req?.socket.remoteAddress ?? '-'}`);
 });
 setIo(io);
+performanceMonitor.setStatsProvider(() => {
+  const players = playerSettlementState.listPlayers();
+  return {
+    connectedSockets: io.sockets.sockets.size,
+    players: players.length,
+    connectedPlayers: players.filter((player) => player.connected).length,
+    heroes: heroes.length,
+    settlers: settlers.length,
+    tasks: taskStore.tasks.length,
+    activeTasks: taskStore.activeTaskIds.size,
+    activeMovements: ServerMovementHandler.getInstance().activeMovements.size,
+  };
+});
+performanceMonitor.start();
 configureGameRuntime({
   broadcast,
   moveHero: (hero, target, task, taskLocation, options) => {
@@ -226,6 +258,7 @@ function shutdown(signal: NodeJS.Signals) {
   console.log(`[server] received ${signal}; saving world and shutting down`);
   worldState.stopAutosave();
   worldState.saveNow('shutdown');
+  performanceMonitor.stop();
   tickEngine.stop();
   io.close(() => {
     httpServer.close(() => {

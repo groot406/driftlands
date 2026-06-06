@@ -39,6 +39,7 @@ const config = {
   haosFrontendOrigin: process.env.DRIFTLANDS_HAOS_FRONTEND_ORIGIN || process.env.FRONTEND_ORIGIN || 'https://looperlands.io',
   haosSshHost: process.env.DRIFTLANDS_HAOS_SSH_HOST || 'haos',
   haosRemoteDir: process.env.DRIFTLANDS_HAOS_REMOTE_DIR || '/config/driftlands',
+  haosStageDir: process.env.DRIFTLANDS_HAOS_STAGE_DIR || '/tmp/driftlands-haos-deploy',
 };
 
 config.envFile = process.env.DRIFTLANDS_ENV_FILE || `${config.configDir}/.env`;
@@ -87,6 +88,13 @@ const serverEnvFields = [
     type: 'boolean',
     defaultValue: '0',
     detail: 'Enables server debug affordances and advertises debug mode to clients.',
+  },
+  {
+    key: 'SERVER_PERF_DEBUG',
+    label: 'Performance monitor',
+    type: 'boolean',
+    defaultValue: '1',
+    detail: 'Enables server performance telemetry logs and /debug/perf snapshots.',
   },
   {
     key: 'SERVER_TPS',
@@ -1147,6 +1155,30 @@ function normalizeDeployTarget(value) {
   return '';
 }
 
+function parseDeployArgs(args) {
+  const options = {
+    target: '',
+    assumeConfirmed: false,
+  };
+
+  for (const arg of args) {
+    if (arg === '--yes' || arg === '-y' || arg === '--assume-yes' || arg === '--no-confirm') {
+      options.assumeConfirmed = true;
+      continue;
+    }
+
+    if (!options.target) {
+      options.target = normalizeDeployTarget(arg);
+    }
+  }
+
+  if (['1', 'true', 'yes', 'on'].includes(String(process.env.DRIFTLANDS_DEPLOY_ASSUME_YES || '').trim().toLowerCase())) {
+    options.assumeConfirmed = true;
+  }
+
+  return options;
+}
+
 function deploysFrontend(target) {
   return target === 'frontend' || target === 'both';
 }
@@ -1194,6 +1226,7 @@ function printDeployPlan(target) {
     console.log(formatKeyValue('bundle', config.haosBundleDir));
     console.log(formatKeyValue('ssh', config.haosSshHost));
     console.log(formatKeyValue('remote', config.haosRemoteDir));
+    console.log(formatKeyValue('stage', config.haosStageDir));
     console.log(formatKeyValue('hostport', config.haosPublishPort));
     console.log(formatKeyValue('origin', config.haosFrontendOrigin));
     console.log(formatKeyValue('admins', config.adminWallets || '(none)'));
@@ -1201,18 +1234,18 @@ function printDeployPlan(target) {
     console.log('Will run:');
     console.log('1. docker build and docker save on this machine.');
     console.log('2. Write driftlands.env and an SSH installer into output/haos.');
-    console.log(`3. ssh ${config.haosSshHost} mkdir -p ${config.haosRemoteDir}`);
-    console.log(`4. scp the image, env, and installer to ${config.haosSshHost}:${config.haosRemoteDir}/`);
-    console.log('5. Run the installer over SSH, recreate the container, and wait for /health.');
+    console.log(`3. Stage the image, env, and installer at ${config.haosSshHost}:${config.haosStageDir}/.`);
+    console.log(`4. sudo-copy the staged files into ${config.haosRemoteDir}.`);
+    console.log('5. Run the installer with sudo over SSH, recreate the container, and wait for /health.');
   }
 }
 
-async function deploySelected(targetArg) {
+async function deploySelected(targetArg, options = {}) {
   const target = await selectDeployTarget(targetArg);
   if (!target || target === 'exit') return;
 
   printDeployPlan(target);
-  if (!await confirm('Start this deployment now?')) {
+  if (!options.assumeConfirmed && !await confirm('Start this deployment now?')) {
     return;
   }
 
@@ -1357,26 +1390,56 @@ function writeHaosInstallScript(baseUrl, publishPort = config.haosPublishPort) {
 set -eu
 
 BASE_URL="${baseUrl}"
-CONFIG_DIR="/config/driftlands"
+REQUESTED_CONFIG_DIR="/config/driftlands"
+resolve_config_dir() {
+  requested="$1"
+  if mkdir -p "$requested/state" >/dev/null 2>&1; then
+    echo "$requested"
+    return
+  fi
+
+  fallback="\${HOME:-/tmp}/.driftlands-haos/driftlands"
+  echo "[driftlands] cannot write $requested; using $fallback instead" >&2
+  mkdir -p "$fallback/state"
+  echo "$fallback"
+}
+
+CONFIG_DIR="$(resolve_config_dir "$REQUESTED_CONFIG_DIR")"
 IMAGE_TAR="$CONFIG_DIR/driftlands-image.tar"
 START_PUBLISH_PORT="${publishPort}"
 PUBLISH_PORT="$START_PUBLISH_PORT"
 MAX_PUBLISH_PORT=$((START_PUBLISH_PORT + 50))
 
-echo "[driftlands] creating $CONFIG_DIR"
-mkdir -p "$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/state"
+echo "[driftlands] using $CONFIG_DIR"
 
 echo "[driftlands] downloading env"
 curl -fsSL "$BASE_URL/driftlands.env" -o "$CONFIG_DIR/.env"
-sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$CONFIG_DIR/.env"
-sed -i 's/^PORT=.*/PORT=3000/' "$CONFIG_DIR/.env"
+set_env_value() {
+  key="$1"
+  value="$2"
+  file="$3"
+  if grep -q "^$key=" "$file"; then
+    sed -i "s/^$key=.*/$key=$value/" "$file"
+  else
+    printf '\\n%s=%s\\n' "$key" "$value" >> "$file"
+  fi
+}
+set_env_value HOST 0.0.0.0 "$CONFIG_DIR/.env"
+set_env_value PORT 3000 "$CONFIG_DIR/.env"
+set_env_value SERVER_PERF_DEBUG 1 "$CONFIG_DIR/.env"
 
 echo "[driftlands] downloading image"
 curl -fL "$BASE_URL/driftlands-image.tar" -o "$IMAGE_TAR"
 
 echo "[driftlands] loading docker image"
 docker load -i "$IMAGE_TAR"
+
+DATA_MOUNT="$CONFIG_DIR/state:/data"
+if ! docker run --rm --entrypoint sh -v "$DATA_MOUNT" driftlands:latest -c 'test -d /data' >/dev/null 2>&1; then
+  echo "[driftlands] Docker cannot bind-mount $CONFIG_DIR/state; using named volume driftlands-state instead" >&2
+  docker volume create driftlands-state >/dev/null
+  DATA_MOUNT="driftlands-state:/data"
+fi
 
 echo "[driftlands] recreating container"
 while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
@@ -1387,7 +1450,7 @@ while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
     --name driftlands \\
     --restart unless-stopped \\
     --env-file "$CONFIG_DIR/.env" \\
-    -v "$CONFIG_DIR/state:/data" \\
+    -v "$DATA_MOUNT" \\
     -p "$PUBLISH_PORT:3000" \\
     driftlands:latest; then
     break
@@ -1429,26 +1492,60 @@ function writeHaosSshInstallScript(publishPort = config.haosPublishPort) {
   const script = `#!/bin/sh
 set -eu
 
-CONFIG_DIR="${config.haosRemoteDir}"
-IMAGE_TAR="$CONFIG_DIR/driftlands-image.tar"
+REQUESTED_CONFIG_DIR="${config.haosRemoteDir}"
+resolve_config_dir() {
+  requested="$1"
+  if mkdir -p "$requested/state" >/dev/null 2>&1; then
+    echo "$requested"
+    return
+  fi
+
+  fallback="\${HOME:-/tmp}/.driftlands-haos/driftlands"
+  echo "[driftlands] cannot write $requested; using $fallback instead" >&2
+  mkdir -p "$fallback/state"
+  echo "$fallback"
+}
+
+CONFIG_DIR="$(resolve_config_dir "$REQUESTED_CONFIG_DIR")"
+SOURCE_DIR="$REQUESTED_CONFIG_DIR"
+if [ ! -f "$SOURCE_DIR/driftlands-image.tar" ]; then
+  SOURCE_DIR="$CONFIG_DIR"
+fi
+IMAGE_TAR="$SOURCE_DIR/driftlands-image.tar"
 START_PUBLISH_PORT="${publishPort}"
 PUBLISH_PORT="$START_PUBLISH_PORT"
 MAX_PUBLISH_PORT=$((START_PUBLISH_PORT + 50))
 
 echo "[driftlands] using $CONFIG_DIR"
-mkdir -p "$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/state"
 
-if [ -f "$CONFIG_DIR/driftlands.env" ]; then
+if [ -f "$SOURCE_DIR/driftlands.env" ]; then
   echo "[driftlands] installing env"
-  cp "$CONFIG_DIR/driftlands.env" "$CONFIG_DIR/.env"
+  cp "$SOURCE_DIR/driftlands.env" "$CONFIG_DIR/.env"
 fi
 
-sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$CONFIG_DIR/.env"
-sed -i 's/^PORT=.*/PORT=3000/' "$CONFIG_DIR/.env"
+set_env_value() {
+  key="$1"
+  value="$2"
+  file="$3"
+  if grep -q "^$key=" "$file"; then
+    sed -i "s/^$key=.*/$key=$value/" "$file"
+  else
+    printf '\\n%s=%s\\n' "$key" "$value" >> "$file"
+  fi
+}
+set_env_value HOST 0.0.0.0 "$CONFIG_DIR/.env"
+set_env_value PORT 3000 "$CONFIG_DIR/.env"
+set_env_value SERVER_PERF_DEBUG 1 "$CONFIG_DIR/.env"
 
 echo "[driftlands] loading docker image"
 docker load -i "$IMAGE_TAR"
+
+DATA_MOUNT="$CONFIG_DIR/state:/data"
+if ! docker run --rm --entrypoint sh -v "$DATA_MOUNT" driftlands:latest -c 'test -d /data' >/dev/null 2>&1; then
+  echo "[driftlands] Docker cannot bind-mount $CONFIG_DIR/state; using named volume driftlands-state instead" >&2
+  docker volume create driftlands-state >/dev/null
+  DATA_MOUNT="driftlands-state:/data"
+fi
 
 echo "[driftlands] recreating container"
 while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
@@ -1459,7 +1556,7 @@ while [ "$PUBLISH_PORT" -le "$MAX_PUBLISH_PORT" ]; do
     --name driftlands \\
     --restart unless-stopped \\
     --env-file "$CONFIG_DIR/.env" \\
-    -v "$CONFIG_DIR/state:/data" \\
+    -v "$DATA_MOUNT" \\
     -p "$PUBLISH_PORT:3000" \\
     driftlands:latest; then
     break
@@ -1612,10 +1709,11 @@ async function publishHaosBundle() {
   console.log('In Nginx Proxy Manager, update the Driftlands proxy host to:');
   console.log(formatKeyValue('domain', 'driftlands.andredegroot.duckdns.org'));
   console.log(formatKeyValue('scheme', 'http'));
-  console.log(formatKeyValue('forward', 'homeassistant.local'));
+  console.log(formatKeyValue('forward', '172.30.32.1'));
   console.log(formatKeyValue('port', publishPort));
   console.log(formatKeyValue('websockets', 'on'));
   console.log('');
+  printHint('Use the HAOS add-on gateway IP for the forward host. homeassistant.local can resolve to an unreachable Docker bridge address from Nginx Proxy Manager.');
   printHint('The installer starts at the selected port and tries the next 50 ports if Docker reports a port conflict.');
   printHint('Use the "[driftlands] selected host port" printed by WebSSH in Nginx Proxy Manager.');
   console.log('');
@@ -1629,7 +1727,7 @@ async function publishHaosBundle() {
 
 async function deployHaosOverSsh() {
   printHeader('Deploy Backend To HAOS');
-  printHint(`Builds locally, copies the bundle to ${config.haosSshHost}:${config.haosRemoteDir}, then installs over SSH.`);
+  printHint(`Builds locally, stages the bundle on ${config.haosSshHost}, then installs into ${config.haosRemoteDir} with sudo.`);
 
   const prepared = await prepareHaosBundle({
     assumeConfirmed: true,
@@ -1641,17 +1739,26 @@ async function deployHaosOverSsh() {
   const { imageTar, envFile } = haosBundlePaths();
   const installScript = writeHaosSshInstallScript(config.haosPublishPort);
   const remoteDir = config.haosRemoteDir.replace(/\/+$/g, '');
+  const stageDir = config.haosStageDir.replace(/\/+$/g, '');
 
-  if (await run('ssh', [config.haosSshHost, `mkdir -p ${shellQuote(remoteDir)}`]) !== 0) {
+  const prepareStageCommand = `rm -rf ${shellQuote(stageDir)} && mkdir -p ${shellQuote(stageDir)}`;
+  if (await run('ssh', [config.haosSshHost, prepareStageCommand]) !== 0) {
     return 1;
   }
 
-  if (await run('scp', ['-O', imageTar, envFile, installScript, `${config.haosSshHost}:${remoteDir}/`]) !== 0) {
+  if (await run('scp', ['-O', imageTar, envFile, installScript, `${config.haosSshHost}:${stageDir}/`]) !== 0) {
     return 1;
   }
 
   const remoteInstallScript = `${remoteDir}/install-driftlands-haos.sh`;
-  const remoteCommand = `chmod +x ${shellQuote(remoteInstallScript)} && ${shellQuote(remoteInstallScript)}`;
+  const remoteCommand = [
+    'set -eu',
+    `sudo mkdir -p ${shellQuote(remoteDir)}`,
+    `sudo cp ${shellQuote(`${stageDir}/driftlands-image.tar`)} ${shellQuote(`${stageDir}/driftlands.env`)} ${shellQuote(`${stageDir}/install-driftlands-haos.sh`)} ${shellQuote(`${remoteDir}/`)}`,
+    `sudo chmod +x ${shellQuote(remoteInstallScript)}`,
+    `sudo ${shellQuote(remoteInstallScript)}`,
+    `rm -rf ${shellQuote(stageDir)}`,
+  ].join(' && ');
   return run('ssh', [config.haosSshHost, remoteCommand]);
 }
 
@@ -1863,11 +1970,12 @@ Usage:
   driftlands
   driftlands tui
   driftlands hosting
-  driftlands deploy [frontend|backend|both]
+  driftlands deploy [frontend|backend|both] [--yes]
   driftlands frontend
   driftlands publish-frontend
   driftlands haos
   driftlands haos-deploy
+  driftlands publish-haos
   driftlands haos-restart
   driftlands external
   driftlands https
@@ -1888,7 +1996,9 @@ Environment overrides:
   DRIFTLANDS_HAOS_PUBLISH_PORT=3695
   DRIFTLANDS_HAOS_SSH_HOST=haos
   DRIFTLANDS_HAOS_REMOTE_DIR=/config/driftlands
+  DRIFTLANDS_HAOS_STAGE_DIR=/tmp/driftlands-haos-deploy
   DRIFTLANDS_HAOS_IMAGE_PLATFORM=linux/amd64
+  DRIFTLANDS_DEPLOY_ASSUME_YES=1
   DOCKER_HOST=ssh://root@<haos-host>
   DRIFTLANDS_TUI_NO_ANIMATION=1
 `);
@@ -1899,14 +2009,18 @@ try {
   if (command === 'tui' || command === 'hosting') {
     await mainMenu();
   } else if (command === 'deploy') {
-    await deploySelected(process.argv[3]);
+    const deployArgs = parseDeployArgs(process.argv.slice(3));
+    await deploySelected(deployArgs.target, { assumeConfirmed: deployArgs.assumeConfirmed });
   } else if (command === 'frontend') {
     await manageFrontendDeployment();
   } else if (command === 'publish-frontend') {
     await fullFrontendPipeline();
   } else if (command === 'haos' || command === 'homeassistant') {
     await manageHaosDeployment();
-  } else if (command === 'haos-deploy' || command === 'publish-haos') {
+  } else if (command === 'haos-deploy') {
+    const code = await deployHaosOverSsh();
+    if (code !== 0) process.exitCode = code;
+  } else if (command === 'publish-haos' || command === 'haos-publish') {
     await publishHaosBundle();
   } else if (command === 'haos-restart' || command === 'restart-haos') {
     await showHaosRestartServerCommand({ skipPause: true });

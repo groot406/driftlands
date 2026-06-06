@@ -123,7 +123,7 @@ Bread is a higher-quality food source produced from grain through the bakery. It
 Irrigation is needed when farmland is not adjacent to water. Early farming near water can skip irrigation. Later, wells or irrigation systems unlock more flexible farming layouts away from natural water.
 
 ### Well
-A well provides water to surrounding tiles. It is not very useful early if the player farms near water, but it can expand viable farmland later. Future systems such as brewing could make wells more important by requiring water as an input.
+A well provides water to surrounding tiles. It is not very useful early if the player farms near water, but it can expand viable farmland later.
 
 ### Watchtower
 A watchtower increases reach near the edge of controlled territory and allows the player to expand farther. In future battle modes, watchtowers may also become defensive jobsites and attack targets. Watchtowers are important for exploration, territory, expansion, and possibly perimeter security.
@@ -408,7 +408,7 @@ Cooking can convert raw food into better consumables. Bakeries, ovens, pubs, and
 Settlers may eventually need entertainment. This adds another need beyond food and housing, creating more mid-game depth.
 
 ### Brewery
-A brewery could use grain and water to produce drinks. This gives additional use to grain and wells.
+A brewery can use grain and hops to produce drinks. This gives additional use to late-game crops.
 
 ### Pub
 A pub could provide entertainment for settlers. It would consume brewery output and help satisfy settler needs.
@@ -423,7 +423,7 @@ The game uses production chains such as:
 - Grain → granary → bakery → bread
 - Mountain → ore/stone → tools → library → upgrades
 - Desert → sand → oven → glass → housing upgrades
-- Water → dock/well → food/irrigation/brewery
+- Water → dock/well → food/irrigation
 These chains give the game its puzzle and strategy depth.
 
 ### Objectives

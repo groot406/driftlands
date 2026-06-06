@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Driftlands Perf Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c1016;
+      --bg-soft: #111821;
+      --panel: #151d27;
+      --panel-strong: #1c2733;
+      --line: #2b3847;
+      --line-soft: rgba(125, 150, 176, 0.18);
+      --text: #eef5fb;
+      --muted: #93a6b8;
+      --faint: #617384;
+      --good: #41d38c;
+      --warn: #f7c948;
+      --bad: #ff6b6b;
+      --info: #64b5f6;
+      --violet: #b794f6;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.34);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(135deg, rgba(100, 181, 246, 0.12), transparent 28%),
+        linear-gradient(225deg, rgba(65, 211, 140, 0.1), transparent 28%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .shell {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 32px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0;
+      max-width: 780px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(21, 29, 39, 0.74);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--faint);
+      box-shadow: 0 0 0 4px rgba(97, 115, 132, 0.16);
+    }
+
+    .status-pill.good .status-dot {
+      background: var(--good);
+      box-shadow: 0 0 0 4px rgba(65, 211, 140, 0.14);
+    }
+
+    .status-pill.warn .status-dot {
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(247, 201, 72, 0.14);
+    }
+
+    .status-pill.bad .status-dot {
+      background: var(--bad);
+      box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.16);
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(17, 24, 33, 0.78);
+      box-shadow: var(--shadow);
+    }
+
+    .target-input,
+    .interval-input {
+      width: 100%;
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0e151d;
+      color: var(--text);
+      outline: none;
+      padding: 0 12px;
+    }
+
+    .interval-input {
+      width: 92px;
+    }
+
+    .target-input:focus,
+    .interval-input:focus {
+      border-color: var(--info);
+      box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.14);
+    }
+
+    .button {
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-strong);
+      color: var(--text);
+      cursor: pointer;
+      padding: 0 13px;
+      font-weight: 700;
+    }
+
+    .button.primary {
+      border-color: rgba(100, 181, 246, 0.5);
+      background: #1f5f91;
+    }
+
+    .button.active {
+      border-color: rgba(65, 211, 140, 0.58);
+      background: #1e6948;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      border-color: rgba(238, 245, 251, 0.42);
+      outline: none;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: -4px 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .meta-row span {
+      padding: 4px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(12, 16, 22, 0.52);
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .summary-grid {
+      grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+      margin-bottom: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(21, 29, 39, 0.86);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+
+    .metric {
+      min-height: 126px;
+      padding: 14px;
+    }
+
+    .metric-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .metric-state {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--faint);
+    }
+
+    .metric-state.good {
+      background: var(--good);
+    }
+
+    .metric-state.warn {
+      background: var(--warn);
+    }
+
+    .metric-state.bad {
+      background: var(--bad);
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 850;
+      line-height: 1.05;
+      margin-bottom: 8px;
+    }
+
+    .metric-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .main-grid {
+      grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+      align-items: start;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(28, 39, 51, 0.56);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .panel-kicker {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .panel-body {
+      padding: 14px 16px 16px;
+    }
+
+    .insight-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .insight {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: rgba(12, 16, 22, 0.35);
+    }
+
+    .insight-dot {
+      width: 9px;
+      height: 9px;
+      margin-top: 5px;
+      border-radius: 50%;
+      background: var(--info);
+    }
+
+    .insight.warn .insight-dot {
+      background: var(--warn);
+    }
+
+    .insight.bad .insight-dot {
+      background: var(--bad);
+    }
+
+    .insight.good .insight-dot {
+      background: var(--good);
+    }
+
+    .insight-title {
+      margin: 0 0 2px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .insight-text {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .chart {
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: rgba(12, 16, 22, 0.34);
+    }
+
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .spark {
+      width: 100%;
+      height: 86px;
+      display: block;
+      overflow: visible;
+    }
+
+    .spark path.area {
+      fill: rgba(100, 181, 246, 0.12);
+    }
+
+    .spark polyline {
+      fill: none;
+      stroke: var(--info);
+      stroke-width: 2.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .spark.warn polyline {
+      stroke: var(--warn);
+    }
+
+    .spark.bad polyline {
+      stroke: var(--bad);
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: right;
+      vertical-align: top;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .empty {
+      color: var(--faint);
+      font-size: 13px;
+      padding: 10px 0;
+    }
+
+    .slow-list {
+      display: grid;
+      gap: 8px;
+      max-height: 430px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .slow-item {
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: rgba(12, 16, 22, 0.34);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    details {
+      margin-top: 14px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 800;
+      padding: 10px 0;
+    }
+
+    pre {
+      max-height: 460px;
+      overflow: auto;
+      margin: 0;
+      padding: 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: #080d12;
+      color: #d9e8f2;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .error-box {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 107, 107, 0.42);
+      border-radius: 8px;
+      background: rgba(255, 107, 107, 0.1);
+      color: #ffd2d2;
+      white-space: pre-wrap;
+    }
+
+    .error-box.visible {
+      display: block;
+    }
+
+    @media (max-width: 1100px) {
+      .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .main-grid,
+      .tables {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .shell {
+        width: min(100vw - 20px, 1480px);
+        padding-top: 14px;
+      }
+
+      .topbar,
+      .toolbar,
+      .summary-grid,
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .status-pill,
+      .button,
+      .interval-input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Driftlands Perf Monitor</h1>
+        <p class="subtitle">Local dashboard for process CPU, server tick health, event loop stalls, commands, pathfinding, message sizes, saves, and entity counts.</p>
+      </div>
+      <div id="statusPill" class="status-pill">
+        <span class="status-dot"></span>
+        <span id="statusText">Waiting</span>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="Performance monitor controls">
+      <input id="targetInput" class="target-input" aria-label="Perf endpoint" spellcheck="false">
+      <input id="intervalInput" class="interval-input" type="number" min="3" step="1" value="10" aria-label="Refresh interval seconds">
+      <button id="refreshButton" class="button primary" type="button">Refresh</button>
+      <button id="autoButton" class="button active" type="button">Auto on</button>
+    </section>
+
+    <div id="errorBox" class="error-box"></div>
+
+    <div class="meta-row">
+      <span id="lastUpdated">Last update: never</span>
+      <span id="sampleCount">Samples: 0</span>
+      <span id="serverConfig">Thresholds: unknown</span>
+    </div>
+
+    <section id="summaryGrid" class="grid summary-grid" aria-label="Summary metrics"></section>
+
+    <section class="grid main-grid">
+      <article class="card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Signals</h2>
+            <div class="panel-kicker">Automatic read of the current snapshot</div>
+          </div>
+          <button id="copyButton" class="button" type="button">Copy JSON</button>
+        </div>
+        <div class="panel-body">
+          <ul id="insights" class="insight-list"></ul>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Trends</h2>
+            <div class="panel-kicker">Recent samples plus current snapshot</div>
+          </div>
+        </div>
+        <div id="chartGrid" class="panel-body chart-grid"></div>
+      </article>
+    </section>
+
+    <section class="tables">
+      <article class="card">
+        <div class="panel-header">
+          <h2 class="panel-title">Systems</h2>
+          <div class="panel-kicker">Sorted by max duration</div>
+        </div>
+        <div id="systemsTable" class="panel-body"></div>
+      </article>
+
+      <article class="card">
+        <div class="panel-header">
+          <h2 class="panel-title">Commands and Pathfinding</h2>
+          <div class="panel-kicker">Hero command pressure</div>
+        </div>
+        <div id="commandTables" class="panel-body"></div>
+      </article>
+
+      <article class="card">
+        <div class="panel-header">
+          <h2 class="panel-title">Messages</h2>
+          <div class="panel-kicker">Socket counts and payload size</div>
+        </div>
+        <div id="messagesTable" class="panel-body"></div>
+      </article>
+
+      <article class="card">
+        <div class="panel-header">
+          <h2 class="panel-title">Slow Events</h2>
+          <div class="panel-kicker">Ring buffers from the server</div>
+        </div>
+        <div id="slowEvents" class="panel-body"></div>
+      </article>
+    </section>
+
+    <details>
+      <summary>Raw snapshot</summary>
+      <pre id="rawJson">{}</pre>
+    </details>
+  </main>
+
+  <script>
+    const defaultTarget = 'https://driftlands.ddns.net/debug/perf';
+    const state = {
+      target: normalizeTarget(new URLSearchParams(location.search).get('target') || defaultTarget),
+      auto: true,
+      intervalSeconds: 3,
+      timer: 0,
+      inFlight: false,
+      lastRequestStartedAt: 0,
+      lastSnapshot: null,
+    };
+
+    const els = {
+      targetInput: document.getElementById('targetInput'),
+      intervalInput: document.getElementById('intervalInput'),
+      refreshButton: document.getElementById('refreshButton'),
+      autoButton: document.getElementById('autoButton'),
+      copyButton: document.getElementById('copyButton'),
+      statusPill: document.getElementById('statusPill'),
+      statusText: document.getElementById('statusText'),
+      errorBox: document.getElementById('errorBox'),
+      lastUpdated: document.getElementById('lastUpdated'),
+      sampleCount: document.getElementById('sampleCount'),
+      serverConfig: document.getElementById('serverConfig'),
+      summaryGrid: document.getElementById('summaryGrid'),
+      insights: document.getElementById('insights'),
+      chartGrid: document.getElementById('chartGrid'),
+      systemsTable: document.getElementById('systemsTable'),
+      commandTables: document.getElementById('commandTables'),
+      messagesTable: document.getElementById('messagesTable'),
+      slowEvents: document.getElementById('slowEvents'),
+      rawJson: document.getElementById('rawJson'),
+    };
+
+    els.targetInput.value = state.target;
+
+    els.refreshButton.addEventListener('click', () => {
+      state.target = normalizeTarget(els.targetInput.value.trim());
+      els.targetInput.value = state.target;
+      refresh({ manual: true });
+    });
+
+    els.autoButton.addEventListener('click', () => {
+      state.auto = !state.auto;
+      updateAutoButton();
+      scheduleNext();
+    });
+
+    els.intervalInput.addEventListener('change', () => {
+      state.intervalSeconds = Math.max(3, Number(els.intervalInput.value) || 10);
+      els.intervalInput.value = String(state.intervalSeconds);
+      scheduleNext();
+    });
+
+    els.targetInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        els.refreshButton.click();
+      }
+    });
+
+    els.copyButton.addEventListener('click', async () => {
+      if (!state.lastSnapshot) return;
+      await navigator.clipboard.writeText(JSON.stringify(state.lastSnapshot, null, 2));
+      els.copyButton.textContent = 'Copied';
+      window.setTimeout(() => {
+        els.copyButton.textContent = 'Copy JSON';
+      }, 1200);
+    });
+
+    function normalizeTarget(value) {
+      const url = new URL(value);
+      if (url.pathname === '/' || url.pathname === '') {
+        url.pathname = '/debug/perf';
+      }
+      return url.toString();
+    }
+
+    function updateAutoButton() {
+      els.autoButton.textContent = state.auto ? 'Auto on' : 'Auto off';
+      els.autoButton.classList.toggle('active', state.auto);
+    }
+
+    function scheduleNext() {
+      window.clearTimeout(state.timer);
+      if (!state.auto || state.inFlight) return;
+      state.timer = window.setTimeout(refresh, state.intervalSeconds * 1000);
+    }
+
+    function setRequestBusy(isBusy) {
+      state.inFlight = isBusy;
+      els.refreshButton.disabled = isBusy;
+      els.refreshButton.textContent = isBusy ? 'Loading' : 'Refresh';
+    }
+
+    async function refresh(options = {}) {
+      if (state.inFlight) {
+        const elapsedSeconds = Math.max(1, Math.round((Date.now() - state.lastRequestStartedAt) / 1000));
+        if (options.manual) {
+          setError(`A perf request is already running (${elapsedSeconds}s). Waiting prevents request pile-ups while the remote server is slow.`);
+        }
+        return;
+      }
+
+      window.clearTimeout(state.timer);
+      setStatus('warn', 'Loading');
+      setError('');
+      setRequestBusy(true);
+      state.lastRequestStartedAt = Date.now();
+
+      try {
+        const response = await fetch(`/api/perf?target=${encodeURIComponent(state.target)}`, {
+          cache: 'no-store',
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(text || `Request failed with HTTP ${response.status}`);
+        }
+
+        const snapshot = JSON.parse(text);
+        state.lastSnapshot = snapshot;
+        render(snapshot);
+        setStatus('good', snapshot.enabled ? 'Live' : 'Disabled');
+      } catch (error) {
+        setStatus('bad', 'Error');
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setRequestBusy(false);
+        scheduleNext();
+      }
+    }
+
+    function setStatus(tone, label) {
+      els.statusPill.className = `status-pill ${tone}`;
+      els.statusText.textContent = label;
+    }
+
+    function setError(message) {
+      els.errorBox.textContent = message;
+      els.errorBox.classList.toggle('visible', Boolean(message));
+    }
+
+    function render(snapshot) {
+      const current = snapshot.current || {};
+      const samples = [...(snapshot.samples || []), current].filter(Boolean);
+      const config = snapshot.config || {};
+
+      els.lastUpdated.textContent = `Last update: ${formatDate(current.at)}`;
+      els.sampleCount.textContent = `Samples: ${snapshot.samples?.length || 0}`;
+      els.serverConfig.textContent = `Thresholds: tick ${config.slowTickMs ?? '?'} ms, command ${config.slowCommandMs ?? '?'} ms, path ${config.slowPathMs ?? '?'} ms`;
+      els.rawJson.textContent = JSON.stringify(snapshot, null, 2);
+
+      renderSummary(current, snapshot);
+      renderInsights(snapshot);
+      renderCharts(samples, config);
+      renderTables(current);
+      renderSlowEvents(snapshot);
+    }
+
+    function renderSummary(current, snapshot) {
+      const stats = current.stats || {};
+      const memory = current.memory || {};
+      const cpu = current.cpu || {};
+      const eventLoop = current.eventLoop || {};
+      const ticks = current.ticks || {};
+      const slowCount = countSlowEvents(snapshot);
+      const commandCount = aggregateCount(current.commands);
+      const pathCount = aggregateCount(current.pathfinding);
+      const messageBytes = sumValues(current.messageBytes);
+
+      const cards = [
+        metricCard('CPU', formatPercent(cpu.percentOfOneCore), `${formatMs(cpu.totalMs)} process CPU over ${formatMs(cpu.elapsedMs)} window; user ${formatMs(cpu.userMs)}, system ${formatMs(cpu.systemMs)}`, severity(cpu.percentOfOneCore, 60, 90)),
+        metricCard('Server Loop', formatMs(ticks.avgMs), `max ${formatMs(ticks.maxMs)} across ${ticks.count || 0} ticks`, severity(ticks.maxMs, 35, snapshot.config?.slowTickMs || 50)),
+        metricCard('Event Loop', formatMs(eventLoop.p99Ms), `max ${formatMs(eventLoop.maxMs)}; p95 ${formatMs(eventLoop.p95Ms)}`, severity(eventLoop.maxMs, 100, 250)),
+        metricCard('Entities', String(stats.players ?? 0), `${stats.connectedSockets ?? 0} sockets, ${stats.heroes ?? 0} heroes, ${stats.settlers ?? 0} settlers`, (stats.players || 0) > (stats.connectedSockets || 0) + 10 ? 'warn' : 'good'),
+        metricCard('Tasks', String(stats.tasks ?? 0), `${stats.activeTasks ?? 0} active tasks, ${stats.activeMovements ?? 0} active movements`, 'good'),
+        metricCard('Memory', formatMb(memory.heapUsedMb), `rss ${formatMb(memory.rssMb)}, heap total ${formatMb(memory.heapTotalMb)}`, severity(memory.heapUsedMb, 180, 350)),
+        metricCard('Slow Buffers', String(slowCount), `${commandCount} commands, ${pathCount} path samples, ${formatBytes(messageBytes)} sent`, slowCount > 0 ? 'warn' : 'good'),
+      ];
+
+      els.summaryGrid.innerHTML = cards.join('');
+    }
+
+    function metricCard(title, value, note, tone) {
+      return `
+        <article class="card metric">
+          <div class="metric-head">
+            <div class="metric-title">${escapeHtml(title)}</div>
+            <span class="metric-state ${tone}"></span>
+          </div>
+          <div class="metric-value">${escapeHtml(value)}</div>
+          <div class="metric-note">${escapeHtml(note)}</div>
+        </article>
+      `;
+    }
+
+    function renderInsights(snapshot) {
+      const current = snapshot.current || {};
+      const stats = current.stats || {};
+      const ticks = current.ticks || {};
+      const cpu = current.cpu || {};
+      const eventLoop = current.eventLoop || {};
+      const config = snapshot.config || {};
+      const insights = [];
+      const topSystem = Object.entries(current.systems || {})
+        .sort(([, a], [, b]) => (b.totalMs || 0) - (a.totalMs || 0))[0];
+      const slowCount = countSlowEvents(snapshot);
+      const bigMessages = Object.entries(current.messageBytes || {})
+        .filter(([, bytes]) => bytes > 1_000_000)
+        .sort(([, a], [, b]) => b - a);
+
+      if ((cpu.percentOfOneCore || 0) >= 90) {
+        insights.push(['bad', 'Process CPU is saturated', `${formatPercent(cpu.percentOfOneCore)} of one core was used in this window. Compare Systems and Pathfinding to find the loop doing the work.`]);
+      } else if ((cpu.percentOfOneCore || 0) >= 60) {
+        insights.push(['warn', 'Process CPU is elevated', `${formatPercent(cpu.percentOfOneCore)} of one core was used. If tick times are also high, the server is compute-bound.`]);
+      }
+
+      if ((cpu.percentOfOneCore || 0) < 25 && (eventLoop.maxMs || 0) > 100) {
+        insights.push(['warn', 'Event loop stall with low CPU', `CPU is only ${formatPercent(cpu.percentOfOneCore)}, so this looks more like blocking I/O, serialization, GC, or a large synchronous send than raw compute.`]);
+      }
+
+      if (slowCount === 0 && (ticks.maxMs || 0) < (config.slowTickMs || 50)) {
+        insights.push(['good', 'Server tick loop is healthy', `Current max tick is ${formatMs(ticks.maxMs)} and the slow buffers are empty.`]);
+      }
+
+      if (topSystem) {
+        const [name, aggregate] = topSystem;
+        insights.push(['warn', 'Top system by total time', `${name} used ${formatMs(aggregate.totalMs)} total in this sample, averaging ${formatMs(aggregate.avgMs)} with a ${formatMs(aggregate.maxMs)} max.`]);
+      }
+
+      if (!aggregateCount(current.commands) && !aggregateCount(current.pathfinding)) {
+        insights.push(['warn', 'No command/pathfinding activity in this window', 'Reproduce hero lag while this UI is open, then look for hero:move_request and pathfinding rows.']);
+      }
+
+      if ((eventLoop.maxMs || 0) > 100) {
+        insights.push(['warn', 'Event loop stall detected', `Max event loop delay is ${formatMs(eventLoop.maxMs)}. If ticks stayed low, look for serialization, large sends, GC, or other non-tick blocking work.`]);
+      }
+
+      if (bigMessages.length) {
+        const [name, bytes] = bigMessages[0];
+        insights.push(['warn', 'Large outbound payload', `${name} sent ${formatBytes(bytes)} in the current sample. Large snapshots can create one-off browser/server stalls.`]);
+      }
+
+      if ((stats.players || 0) > (stats.connectedSockets || 0) + 5) {
+        insights.push(['bad', 'Player count looks stale', `${stats.players} players with ${stats.connectedSockets || 0} sockets. Inspect reconnect/session cleanup.`]);
+      }
+
+      if ((current.persistence && Object.keys(current.persistence).length) && !snapshot.slowSaves?.length) {
+        insights.push(['good', 'Persistence is not slow', 'Autosave timings are below the configured slow-save threshold.']);
+      }
+
+      if (!insights.length) {
+        insights.push(['good', 'No obvious issue in current sample', 'Keep the monitor open during the lag event to capture command, pathfinding, and slow event buffers.']);
+      }
+
+      els.insights.innerHTML = insights.map(([tone, title, text]) => `
+        <li class="insight ${tone}">
+          <span class="insight-dot"></span>
+          <div>
+            <p class="insight-title">${escapeHtml(title)}</p>
+            <p class="insight-text">${escapeHtml(text)}</p>
+          </div>
+        </li>
+      `).join('');
+    }
+
+    function renderCharts(samples, config) {
+      const chartDefs = [
+        {
+          title: 'CPU load',
+          value: (sample) => sample.cpu?.percentOfOneCore,
+          formatter: formatPercent,
+          warn: 60,
+          bad: 90,
+        },
+        {
+          title: 'Tick max',
+          value: (sample) => sample.ticks?.maxMs,
+          suffix: 'ms',
+          warn: config.slowTickMs || 50,
+        },
+        {
+          title: 'Event loop max',
+          value: (sample) => sample.eventLoop?.maxMs,
+          suffix: 'ms',
+          warn: 100,
+          bad: 250,
+        },
+        {
+          title: 'Heap used',
+          value: (sample) => sample.memory?.heapUsedMb,
+          suffix: 'MB',
+          warn: 180,
+          bad: 350,
+        },
+        {
+          title: 'Players',
+          value: (sample) => sample.stats?.players,
+          suffix: '',
+          warn: 10,
+          bad: 30,
+        },
+      ];
+
+      els.chartGrid.innerHTML = chartDefs.map((chart) => renderChart(chart, samples)).join('');
+    }
+
+    function renderChart(chart, samples) {
+      const values = samples.map(chart.value).filter((value) => Number.isFinite(value));
+      const latest = values.at(-1) ?? 0;
+      const tone = chart.bad && latest >= chart.bad ? 'bad' : latest >= chart.warn ? 'warn' : '';
+      const latestLabel = chart.formatter ? chart.formatter(latest) : `${formatNumber(latest)}${chart.suffix}`;
+      const svg = sparkline(values, tone);
+      return `
+        <div class="chart">
+          <div class="chart-head">
+            <span>${escapeHtml(chart.title)}</span>
+            <span>${escapeHtml(latestLabel)}</span>
+          </div>
+          ${svg}
+        </div>
+      `;
+    }
+
+    function sparkline(values, tone) {
+      const width = 320;
+      const height = 86;
+      const pad = 5;
+      if (!values.length) {
+        return `<svg class="spark ${tone}" viewBox="0 0 ${width} ${height}" role="img" aria-label="No data"></svg>`;
+      }
+
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+      const points = values.map((value, index) => {
+        const x = values.length === 1 ? pad : pad + (index / (values.length - 1)) * (width - pad * 2);
+        const y = height - pad - ((value - min) / range) * (height - pad * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const area = `${pad},${height - pad} ${points} ${width - pad},${height - pad}`;
+
+      return `
+        <svg class="spark ${tone}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sparkline">
+          <path class="area" d="M ${area} Z"></path>
+          <polyline points="${points}"></polyline>
+        </svg>
+      `;
+    }
+
+    function renderTables(current) {
+      els.systemsTable.innerHTML = durationTable(current.systems, ['System', 'Count', 'Avg', 'Max', 'Total']);
+      els.commandTables.innerHTML = `
+        <h3 class="panel-kicker">Commands</h3>
+        ${durationTable(current.commands, ['Command', 'Count', 'Avg', 'Max', 'Total'])}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Pathfinding</h3>
+        ${durationTable(current.pathfinding, ['Source', 'Count', 'Avg', 'Max', 'Total'])}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Pathfinding cache</h3>
+        ${counterTable(current.pathfindingCache, 'Source', 'Count')}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Persistence</h3>
+        ${durationTable(current.persistence, ['Save', 'Count', 'Avg', 'Max', 'Total'])}
+      `;
+      els.messagesTable.innerHTML = `
+        <h3 class="panel-kicker">Message counts</h3>
+        ${counterTable(current.messages, 'Message', 'Count')}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Outbound bytes</h3>
+        ${counterTable(current.messageBytes, 'Message', 'Bytes', formatBytes)}
+      `;
+    }
+
+    function durationTable(map, headings) {
+      const rows = Object.entries(map || {})
+        .sort(([, a], [, b]) => (b.maxMs || 0) - (a.maxMs || 0))
+        .slice(0, 12);
+
+      if (!rows.length) return '<div class="empty">No samples in this window.</div>';
+
+      return `
+        <table>
+          <thead><tr>${headings.map((heading) => `<th>${escapeHtml(heading)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${rows.map(([name, item]) => `
+              <tr>
+                <td>${escapeHtml(name)}</td>
+                <td>${item.count ?? 0}</td>
+                <td>${formatMs(item.avgMs)}</td>
+                <td>${formatMs(item.maxMs)}</td>
+                <td>${formatMs(item.totalMs)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function counterTable(map, nameHeading, valueHeading, formatter = formatNumber) {
+      const rows = Object.entries(map || {})
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 14);
+
+      if (!rows.length) return '<div class="empty">No messages in this window.</div>';
+
+      return `
+        <table>
+          <thead><tr><th>${escapeHtml(nameHeading)}</th><th>${escapeHtml(valueHeading)}</th></tr></thead>
+          <tbody>
+            ${rows.map(([name, value]) => `
+              <tr>
+                <td>${escapeHtml(name)}</td>
+                <td>${escapeHtml(formatter(value))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderSlowEvents(snapshot) {
+      const groups = [
+        ['Slow ticks', snapshot.slowTicks],
+        ['Slow systems', snapshot.slowSystems],
+        ['Slow commands', snapshot.slowCommands],
+        ['Slow paths', snapshot.slowPathfinds],
+        ['Slow saves', snapshot.slowSaves],
+      ];
+      const items = groups.flatMap(([label, entries]) => (entries || []).map((entry) => ({ label, entry })));
+
+      if (!items.length) {
+        els.slowEvents.innerHTML = '<div class="empty">No slow events captured.</div>';
+        return;
+      }
+
+      els.slowEvents.innerHTML = `<div class="slow-list">${
+        items.slice(-24).reverse().map(({ label, entry }) => `
+          <div class="slow-item">${escapeHtml(label)}\n${escapeHtml(JSON.stringify(entry, null, 2))}</div>
+        `).join('')
+      }</div>`;
+    }
+
+    function countSlowEvents(snapshot) {
+      return ['slowTicks', 'slowSystems', 'slowCommands', 'slowPathfinds', 'slowSaves']
+        .reduce((sum, key) => sum + ((snapshot[key] || []).length), 0);
+    }
+
+    function aggregateCount(map) {
+      return Object.values(map || {}).reduce((sum, item) => sum + (item.count || 0), 0);
+    }
+
+    function sumValues(map) {
+      return Object.values(map || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    }
+
+    function severity(value, warn, bad) {
+      const numeric = Number(value) || 0;
+      if (numeric >= bad) return 'bad';
+      if (numeric >= warn) return 'warn';
+      return 'good';
+    }
+
+    function formatMs(value) {
+      if (!Number.isFinite(Number(value))) return '0 ms';
+      const numeric = Number(value);
+      return `${numeric < 10 ? numeric.toFixed(1) : Math.round(numeric)} ms`;
+    }
+
+    function formatMb(value) {
+      if (!Number.isFinite(Number(value))) return '0 MB';
+      return `${Number(value).toFixed(1)} MB`;
+    }
+
+    function formatBytes(value) {
+      const numeric = Number(value) || 0;
+      if (numeric >= 1024 * 1024) return `${(numeric / 1024 / 1024).toFixed(2)} MB`;
+      if (numeric >= 1024) return `${(numeric / 1024).toFixed(1)} KB`;
+      return `${numeric} B`;
+    }
+
+    function formatNumber(value) {
+      if (!Number.isFinite(Number(value))) return '0';
+      return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function formatPercent(value) {
+      if (!Number.isFinite(Number(value))) return '0%';
+      return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+    }
+
+    function formatDate(value) {
+      if (!value) return 'unknown';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleTimeString();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    updateAutoButton();
+    refresh();
+  </script>
+</body>
+</html>

@@ -1,9 +1,10 @@
-import {axialKey, tileIndex} from './world';
+import {axialKey, getWorldRenderVersion, tileIndex} from './world';
 import type {Tile} from "./types/Tile.ts";
 import type {Hero} from "./types/Hero.ts";
 import { axialDistanceCoords } from '../shared/game/hex';
 import { getTileMoveCost, isEdgeBlocked, isTileScoutWalkable, isTileWalkable } from '../shared/game/navigation';
 import { isTileControlled, isTileControlledBySettlement } from '../shared/game/state/settlementSupportStore';
+import { canSettlementUseOpenBorderTransit } from '../shared/game/military';
 
 export interface PathCoord {
     q: number;
@@ -12,7 +13,31 @@ export interface PathCoord {
 
 export interface PathFindOptions {
     allowScouted?: boolean;
+    allowOpenBorders?: boolean;
     settlementId?: string | null;
+    telemetrySource?: string;
+}
+
+export interface PathTelemetryEvent {
+    source?: string;
+    durationMs: number;
+    start: PathCoord;
+    goal: PathCoord;
+    directDistance: number;
+    pathLength: number;
+    iterations: number;
+    maxNodes: number;
+    maxRange: number;
+    found: boolean;
+    allowScouted?: boolean;
+    allowOpenBorders?: boolean;
+    settlementRestricted?: boolean;
+    cacheHit?: boolean;
+    cacheSize?: number;
+    cacheEpoch?: number;
+    cacheWorldVersion?: number;
+    cacheResetReason?: PathCacheResetReason;
+    cacheEvictions?: number;
 }
 
 interface PathNode {
@@ -22,6 +47,12 @@ interface PathNode {
     g: number;
     f: number;
 }
+
+interface CachedPathEntry {
+    path: PathCoord[];
+}
+
+type PathCacheResetReason = 'manual' | 'world_version' | 'epoch' | 'world_version_and_epoch';
 
 class MinHeap<T> {
     private items: T[] = [];
@@ -85,6 +116,25 @@ const BASE_NODE_BUDGET = 7000;
 const MAX_NODE_BUDGET = 45000;
 const MIN_DETOUR_MARGIN = 12;
 const MAX_DETOUR_MARGIN = 42;
+const PATH_CACHE_MAX_ENTRIES = 512;
+let pathTelemetry: ((event: PathTelemetryEvent) => void) | null = null;
+let pathCacheEpoch = 0;
+const pathCache = new Map<string, CachedPathEntry>();
+let pathCacheWorldVersion = getWorldRenderVersion();
+let pathCacheEpochSnapshot = pathCacheEpoch;
+let pendingPathCacheResetReason: PathCacheResetReason | null = null;
+
+export function configurePathTelemetry(callback: ((event: PathTelemetryEvent) => void) | null) {
+    pathTelemetry = callback;
+}
+
+export function invalidatePathCaches() {
+    pathCacheEpoch++;
+    pathCache.clear();
+    pathCacheWorldVersion = getWorldRenderVersion();
+    pathCacheEpochSnapshot = pathCacheEpoch;
+    pendingPathCacheResetReason = 'manual';
+}
 
 export class PathService {
     // Pathfinding statics
@@ -106,7 +156,9 @@ export class PathService {
         }
 
         if (hoveredTile.discovered && !this.isWalkable(hoveredTile.q, hoveredTile.r)) return [];
-        const computed = this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r);
+        const computed = this.findWalkablePath(hero.q, hero.r, hoveredTile.q, hoveredTile.r, {
+            telemetrySource: 'path_preview',
+        });
         this._lastPathKey = key;
         this._lastPath = computed;
         return computed;
@@ -115,8 +167,30 @@ export class PathService {
     // expose pathfinding for external movement start
     public findWalkablePath(startQ: number, startR: number, goalQ: number, goalR: number, options: PathFindOptions = {}): PathCoord[] {
         const directDistance = this.axialDistance(startQ, startR, goalQ, goalR);
-        if (directDistance === 0) return [];
+        if (directDistance === 0) {
+            this.recordPathTelemetry(Date.now(), options, startQ, startR, goalQ, goalR, directDistance, 0, 0, 0, 0, false);
+            return [];
+        }
+        const cacheResetReason = this.resetPathCacheIfStale();
+        const cacheKey = this.getPathCacheKey(startQ, startR, goalQ, goalR, options);
+        const cached = pathCache.get(cacheKey);
+        if (cached) {
+            if (this.isCachedPathStillUsable(cached.path, startQ, startR, goalQ, goalR, options)) {
+                pathCache.delete(cacheKey);
+                pathCache.set(cacheKey, cached);
+                this.recordPathTelemetry(Date.now(), options, startQ, startR, goalQ, goalR, directDistance, cached.path.length, 0, 0, 0, true, {
+                    cacheResetReason,
+                });
+                return this.clonePath(cached.path);
+            }
+            pathCache.delete(cacheKey);
+        }
+
         const searchProfile = this.buildSearchProfile(directDistance);
+        const startedAt = Date.now();
+        let iterations = 0;
+        let result: PathCoord[] = [];
+        let cacheEvictions = 0;
 
         const costFor = (q: number, r: number): number => {
             return getTileMoveCost(tileIndex[axialKey(q, r)] ?? null);
@@ -141,50 +215,72 @@ export class PathService {
         bestCosts.set(startKey, 0);
         parents.set(startKey, null);
         coords.set(startKey, { q: startQ, r: startR });
-        let iterations = 0;
-        while (open.size && iterations < searchProfile.maxNodes) {
-            iterations++;
-            const current = open.pop()!;
-            const bestKnownCost = bestCosts.get(current.key);
-            if (bestKnownCost === undefined || current.g !== bestKnownCost || closed.has(current.key)) {
-                continue;
+        try {
+            while (open.size && iterations < searchProfile.maxNodes) {
+                iterations++;
+                const current = open.pop()!;
+                const bestKnownCost = bestCosts.get(current.key);
+                if (bestKnownCost === undefined || current.g !== bestKnownCost || closed.has(current.key)) {
+                    continue;
+                }
+
+                if (current.q === goalQ && current.r === goalR) {
+                    result = this.reconstructPath(current.key, startKey, parents, coords);
+                    return result;
+                }
+
+                closed.add(current.key);
+                const currTile = tileIndex[current.key];
+                for (let i = 0; i < this.AXIAL_DELTAS.length; i++) {
+                    const [dq, dr] = this.AXIAL_DELTAS[i]!;
+                    const side = this.SIDE_NAMES[i]!;
+                    const nq = current.q + dq;
+                    const nr = current.r + dr;
+                    const key = axialKey(nq, nr);
+                    if (closed.has(key)) continue;
+                    if (!this.isWithinSearchWindow(nq, nr, startQ, startR, goalQ, goalR, searchProfile.maxRange)) continue;
+
+                    const nextTile = tileIndex[key];
+                    if (isEdgeBlocked(currTile, nextTile, side)) continue;
+                    if (!this.isWalkable(nq, nr, options) && !(nq === goalQ && nr === goalR)) continue;
+                    const stepCost = costFor(nq, nr);
+                    const tentativeG = current.g + stepCost;
+                    if (tentativeG >= (bestCosts.get(key) ?? Number.POSITIVE_INFINITY)) continue;
+
+                    bestCosts.set(key, tentativeG);
+                    parents.set(key, current.key);
+                    coords.set(key, { q: nq, r: nr });
+                    open.push({
+                        key,
+                        q: nq,
+                        r: nr,
+                        g: tentativeG,
+                        f: tentativeG + heuristic(nq, nr),
+                    });
+                }
             }
-
-            if (current.q === goalQ && current.r === goalR) {
-                return this.reconstructPath(current.key, startKey, parents, coords);
-            }
-
-            closed.add(current.key);
-            const currTile = tileIndex[current.key];
-            for (let i = 0; i < this.AXIAL_DELTAS.length; i++) {
-                const [dq, dr] = this.AXIAL_DELTAS[i]!;
-                const side = this.SIDE_NAMES[i]!;
-                const nq = current.q + dq;
-                const nr = current.r + dr;
-                const key = axialKey(nq, nr);
-                if (closed.has(key)) continue;
-                if (!this.isWithinSearchWindow(nq, nr, startQ, startR, goalQ, goalR, searchProfile.maxRange)) continue;
-
-                const nextTile = tileIndex[key];
-                if (isEdgeBlocked(currTile, nextTile, side)) continue;
-                if (!this.isWalkable(nq, nr, options) && !(nq === goalQ && nr === goalR)) continue;
-                const stepCost = costFor(nq, nr);
-                const tentativeG = current.g + stepCost;
-                if (tentativeG >= (bestCosts.get(key) ?? Number.POSITIVE_INFINITY)) continue;
-
-                bestCosts.set(key, tentativeG);
-                parents.set(key, current.key);
-                coords.set(key, { q: nq, r: nr });
-                open.push({
-                    key,
-                    q: nq,
-                    r: nr,
-                    g: tentativeG,
-                    f: tentativeG + heuristic(nq, nr),
-                });
-            }
+            return result;
+        } finally {
+            cacheEvictions = this.storePathCache(cacheKey, result);
+            this.recordPathTelemetry(
+                startedAt,
+                options,
+                startQ,
+                startR,
+                goalQ,
+                goalR,
+                directDistance,
+                result.length,
+                iterations,
+                searchProfile.maxNodes,
+                searchProfile.maxRange,
+                false,
+                {
+                    cacheResetReason,
+                    cacheEvictions,
+                },
+            );
         }
-        return [];
     }
 
     public axialDistance(aQ: number, aR: number, bQ: number, bR: number) {
@@ -193,7 +289,12 @@ export class PathService {
 
     private isWalkable(q: number, r: number, options: PathFindOptions = {}) {
         const tile = tileIndex[axialKey(q, r)] ?? null;
-        if (options.settlementId && isTileControlled(tile) && !isTileControlledBySettlement(tile, options.settlementId)) {
+        if (
+            options.settlementId
+            && isTileControlled(tile)
+            && !isTileControlledBySettlement(tile, options.settlementId)
+            && !(options.allowOpenBorders && canSettlementUseOpenBorderTransit(tile, options.settlementId, tileIndex))
+        ) {
             return false;
         }
 
@@ -256,5 +357,147 @@ export class PathService {
 
         reversed.reverse();
         return reversed;
+    }
+
+    private getPathCacheKey(startQ: number, startR: number, goalQ: number, goalR: number, options: PathFindOptions) {
+        return [
+            startQ,
+            startR,
+            goalQ,
+            goalR,
+            options.allowScouted ? 1 : 0,
+            options.allowOpenBorders ? 1 : 0,
+            options.settlementId ?? '',
+        ].join(':');
+    }
+
+    private resetPathCacheIfStale(): PathCacheResetReason | null {
+        const worldVersion = getWorldRenderVersion();
+        if (pathCacheWorldVersion === worldVersion && pathCacheEpochSnapshot === pathCacheEpoch) {
+            return null;
+        }
+
+        const worldChanged = pathCacheWorldVersion !== worldVersion;
+        const epochChanged = pathCacheEpochSnapshot !== pathCacheEpoch;
+        const reason = worldChanged && epochChanged
+            ? 'world_version_and_epoch'
+            : worldChanged
+                ? 'world_version'
+                : 'epoch';
+        pathCache.clear();
+        pathCacheWorldVersion = worldVersion;
+        pathCacheEpochSnapshot = pathCacheEpoch;
+        return reason;
+    }
+
+    private storePathCache(key: string, path: PathCoord[]) {
+        if (!path.length) {
+            return 0;
+        }
+        this.resetPathCacheIfStale();
+        pathCache.set(key, { path: this.clonePath(path) });
+        let evictions = 0;
+        while (pathCache.size > PATH_CACHE_MAX_ENTRIES) {
+            const oldest = pathCache.keys().next().value;
+            if (oldest === undefined) break;
+            pathCache.delete(oldest);
+            evictions++;
+        }
+        return evictions;
+    }
+
+    private isCachedPathStillUsable(
+        path: PathCoord[],
+        startQ: number,
+        startR: number,
+        goalQ: number,
+        goalR: number,
+        options: PathFindOptions,
+    ) {
+        if (!path.length) {
+            return false;
+        }
+
+        let prev = { q: startQ, r: startR };
+        for (const step of path) {
+            const side = this.getNeighborSide(prev.q, prev.r, step.q, step.r);
+            if (!side) {
+                return false;
+            }
+
+            const prevTile = tileIndex[axialKey(prev.q, prev.r)] ?? null;
+            const stepTile = tileIndex[axialKey(step.q, step.r)] ?? null;
+            if (isEdgeBlocked(prevTile, stepTile, side)) {
+                return false;
+            }
+
+            const isGoal = step.q === goalQ && step.r === goalR;
+            if (!isGoal && !this.isWalkable(step.q, step.r, options)) {
+                return false;
+            }
+            prev = step;
+        }
+
+        return prev.q === goalQ && prev.r === goalR;
+    }
+
+    private getNeighborSide(fromQ: number, fromR: number, toQ: number, toR: number) {
+        for (let i = 0; i < this.AXIAL_DELTAS.length; i++) {
+            const [dq, dr] = this.AXIAL_DELTAS[i]!;
+            if (fromQ + dq === toQ && fromR + dr === toR) {
+                return this.SIDE_NAMES[i]!;
+            }
+        }
+        return null;
+    }
+
+    private clonePath(path: PathCoord[]) {
+        return path.map((step) => ({ q: step.q, r: step.r }));
+    }
+
+    private recordPathTelemetry(
+        startedAt: number,
+        options: PathFindOptions,
+        startQ: number,
+        startR: number,
+        goalQ: number,
+        goalR: number,
+        directDistance: number,
+        pathLength: number,
+        iterations: number,
+        maxNodes: number,
+        maxRange: number,
+        cacheHit: boolean,
+        cacheDetails: {
+            cacheResetReason?: PathCacheResetReason | null;
+            cacheEvictions?: number;
+        } = {},
+    ) {
+        const cacheResetReason = cacheDetails.cacheResetReason ?? pendingPathCacheResetReason ?? undefined;
+        pendingPathCacheResetReason = null;
+        if (!pathTelemetry) {
+            return;
+        }
+        pathTelemetry({
+            source: options.telemetrySource,
+            durationMs: Date.now() - startedAt,
+            start: { q: startQ, r: startR },
+            goal: { q: goalQ, r: goalR },
+            directDistance,
+            pathLength,
+            iterations,
+            maxNodes,
+            maxRange,
+            found: pathLength > 0,
+            allowScouted: options.allowScouted,
+            allowOpenBorders: options.allowOpenBorders,
+            settlementRestricted: !!options.settlementId,
+            cacheHit,
+            cacheSize: pathCache.size,
+            cacheEpoch: pathCacheEpoch,
+            cacheWorldVersion: pathCacheWorldVersion,
+            cacheResetReason,
+            cacheEvictions: cacheDetails.cacheEvictions ?? 0,
+        });
     }
 }

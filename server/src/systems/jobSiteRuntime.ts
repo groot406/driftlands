@@ -34,6 +34,11 @@ export interface ResolvedJobSite {
 
 export type SiteOperationalBlock = Extract<JobSiteStatus, 'missing_input' | 'storage_full' | 'depleted'>;
 
+export interface ResolvedJobSiteState {
+    status: JobSiteStatus;
+    blockerReason: SettlerBlockerReason | null;
+}
+
 export function isJobBuilding(building: BuildingDefinition | null | undefined): building is BuildingDefinition {
     return !!building
         && (building.jobSlots ?? 0) > 0
@@ -349,34 +354,96 @@ export function canAssignWorkersToSite(site: ResolvedJobSite, assignedWorkers: n
     return blocked !== 'storage_full' && blocked !== 'depleted';
 }
 
-export function resolveSiteStatus(site: ResolvedJobSite, assignedWorkers: number): JobSiteStatus {
+export function resolveSiteState(site: ResolvedJobSite, assignedWorkers: number): ResolvedJobSiteState {
     if (!isOperationalJobSite(site.tile)) {
-        return 'offline';
+        return {
+            status: 'offline',
+            blockerReason: {
+                code: 'site_offline',
+                tileId: site.tile.id,
+            },
+        };
     }
 
     if (!isJobSiteEnabled(site.tile)) {
-        return 'paused';
+        return {
+            status: 'paused',
+            blockerReason: {
+                code: 'site_paused',
+                tileId: site.tile.id,
+            },
+        };
     }
 
     if (site.building.jobKind === 'study' && !hasActiveStudy(getTileSettlementId(site.tile))) {
-        return 'complete';
+        return {
+            status: 'complete',
+            blockerReason: {
+                code: 'no_work',
+                tileId: site.tile.id,
+            },
+        };
     }
 
     if (assignedWorkers <= 0) {
         const previewBlock = getSiteOperationalBlock(site, Math.min(1, site.slots));
         if (previewBlock === 'storage_full' || previewBlock === 'depleted') {
-            return previewBlock;
+            return {
+                status: previewBlock,
+                blockerReason: null,
+            };
         }
 
-        return 'unstaffed';
+        return {
+            status: 'unstaffed',
+            blockerReason: null,
+        };
     }
 
-    const operationalBlock = getSiteOperationalBlock(site, assignedWorkers);
-    if (operationalBlock) {
-        return operationalBlock;
+    if (site.building.key === 'mine' && getMineClusterReserve(site.tile).totalRemaining <= 0) {
+        return {
+            status: 'depleted',
+            blockerReason: {
+                code: 'resource_depleted',
+                resourceType: 'ore',
+                tileId: site.tile.id,
+            },
+        };
     }
 
-    return 'staffed';
+    const { consumes: scaledInputs, produces: scaledOutputs } = resolveJobResources(site, assignedWorkers);
+    const operationalConsumes = site.building.jobKind === 'service'
+        ? getServiceConsumes(site, assignedWorkers)
+        : scaledInputs;
+    const consumeMode = site.building.jobKind === 'service' ? (site.building.serviceConsumeMode ?? 'all') : 'all';
+    const missingInput = getMissingInputReason(site.tile, operationalConsumes, consumeMode);
+    if (missingInput) {
+        return {
+            status: 'missing_input',
+            blockerReason: missingInput,
+        };
+    }
+
+    if (site.building.jobKind !== 'service' && !hasStorageCapacity(site.tile, scaledInputs, scaledOutputs)) {
+        return {
+            status: 'storage_full',
+            blockerReason: {
+                code: 'storage_full',
+                resourceType: scaledOutputs[0]?.type,
+                amount: scaledOutputs[0]?.amount,
+                tileId: site.tile.id,
+            },
+        };
+    }
+
+    return {
+        status: 'staffed',
+        blockerReason: null,
+    };
+}
+
+export function resolveSiteStatus(site: ResolvedJobSite, assignedWorkers: number): JobSiteStatus {
+    return resolveSiteState(site, assignedWorkers).status;
 }
 
 export function countTransferredAmount(transfers: StorageResourceTransfer[]) {

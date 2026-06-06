@@ -75,7 +75,7 @@ function findPreferredHero() {
         ?? null;
 }
 
-export function ensureHeroSelected(focus: boolean = false) {
+export function ensureHeroSelected(_focus: boolean = false) {
     const current = selectedHeroId.value ? heroes.find(h => h.id === selectedHeroId.value) : null;
     const hero = current && isSelectableHero(current) ? current : findPreferredHero();
     if (hero) {
@@ -86,7 +86,7 @@ export function ensureHeroSelected(focus: boolean = false) {
     selectedHeroId.value = null;
 }
 
-export function selectHero(hero: Hero | null, focus: boolean = false) {
+export function selectHero(hero: Hero | null, _focus: boolean = false) {
     if (hero) {
         if (!isSelectableHero(hero)) {
             ensureHeroSelected(false);

@@ -3,7 +3,6 @@ import type { DialogueEntrySnapshot, RunSnapshot } from '../shared/goals/types.t
 import { cloneStoryProgression, type ProgressionSnapshot } from '../shared/story/progression.ts';
 import { loadStoryProgression } from '../shared/story/progressionState.ts';
 import { setWorldGenerationSeed } from '../core/worldVariation.ts';
-import { syncHeroRoster } from './heroStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 interface MissionOverlayState {

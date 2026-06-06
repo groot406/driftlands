@@ -8,6 +8,7 @@ import {
   type MarketTransaction,
   type WalletSnapshot,
 } from '../shared/game/market.ts';
+import type { ClientMessage, MarketResponseMessage } from '../shared/protocol.ts';
 import { getDriftlandsApiUrl } from '../core/driftlandsApi.ts';
 
 export const marketplaceOpen = ref(false);
@@ -73,11 +74,77 @@ export function replaceMarketOverview(overview: MarketOverviewSnapshot) {
   marketVersion.value++;
 }
 
+class MarketSocketUnavailableError extends Error {}
+
+function createMarketRequestId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `market:${crypto.randomUUID()}`;
+  }
+
+  return `market:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function requestMarketOverSocket(message: Record<string, unknown>): Promise<MarketOverviewSnapshot | null> {
+  const [{ socket, sendMessage }, { clientMessageRouter }] = await Promise.all([
+    import('../core/socket.ts'),
+    import('../core/messageRouter.ts'),
+  ]);
+  if (!socket.connected) {
+    return null;
+  }
+
+  const requestId = createMarketRequestId();
+  return new Promise((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => {
+      clientMessageRouter.off('market:response', handleResponse);
+      reject(new MarketSocketUnavailableError('The market did not respond.'));
+    }, 5_000);
+
+    const handleResponse = (response: MarketResponseMessage) => {
+      if (response.requestId !== requestId) {
+        return;
+      }
+
+      globalThis.clearTimeout(timeout);
+      clientMessageRouter.off('market:response', handleResponse);
+      if (!response.ok) {
+        reject(new Error(response.message ?? 'The market rejected that request.'));
+        return;
+      }
+
+      resolve(response.market ?? null);
+    };
+
+    clientMessageRouter.on('market:response', handleResponse);
+    sendMessage({
+      ...message,
+      requestId,
+      timestamp: Date.now(),
+    } as ClientMessage);
+  });
+}
+
 export async function fetchMarketOverview(actorId?: string | null, actorType: MarketActorType = 'PLAYER') {
   marketLoading.value = true;
   marketError.value = null;
   marketNotice.value = null;
   try {
+    const socketOverview = await requestMarketOverSocket({
+      type: 'market:request_overview',
+      actorId: actorId ?? null,
+      actorType,
+    })
+      .catch((error) => {
+        if (error instanceof MarketSocketUnavailableError) {
+          return null;
+        }
+        throw error;
+      });
+    if (socketOverview) {
+      replaceMarketOverview(socketOverview);
+      return socketOverview;
+    }
+
     const params = new URLSearchParams();
     if (actorId) {
       params.set('playerId', actorId);
@@ -116,6 +183,28 @@ export async function tradeMarketResource(input: {
   marketError.value = null;
   marketNotice.value = null;
   try {
+    const socketOverview = await requestMarketOverSocket({
+      type: 'market:trade',
+      action: input.action,
+      actorId: input.actorId,
+      actorType: input.actorType ?? 'PLAYER',
+      settlementId: input.settlementId,
+      resourceType: input.resourceType,
+      quantity: input.quantity,
+    })
+      .catch((error) => {
+        if (error instanceof MarketSocketUnavailableError) {
+          return null;
+        }
+        throw error;
+      });
+    if (socketOverview) {
+      replaceMarketOverview(socketOverview);
+      const actionLabel = input.action === 'buy' ? 'Bought' : 'Sold';
+      marketNotice.value = `${actionLabel} ${input.quantity.toLocaleString()} ${input.resourceType.replaceAll('_', ' ')}.`;
+      return socketOverview;
+    }
+
     const response = await fetch(getDriftlandsApiUrl(`/market/${input.action}`), {
       method: 'POST',
       headers: {

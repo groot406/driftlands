@@ -47,6 +47,40 @@ test('stage multipliers adjust category scores without changing ordering inputs'
   assert.equal(boosted.breakdown.charter, base.breakdown.charter);
 });
 
+test('leaderboard entries expose defeated settlement metadata without changing rank math', () => {
+  const defeatedAt = 123_456;
+  const leaderboard = buildLeaderboard([
+    input({
+      playerId: 'winner',
+      playerName: 'Winner',
+      settlementId: '0,0',
+      controlledTiles: 80,
+    }),
+    input({
+      playerId: 'fallen',
+      playerName: 'Fallen',
+      settlementId: '6,0',
+      controlledTiles: 40,
+      defeat: {
+        defeatedAt,
+        defeatedBySettlementId: '0,0',
+        defeatedByPlayerId: 'winner',
+        defeatedByPlayerName: 'Winner',
+        capturedTownCenterTileId: '6,0',
+        transferredTileCount: 24,
+      },
+    }),
+  ]);
+
+  const fallen = leaderboard.find((entry) => entry.playerId === 'fallen');
+  assert.equal(fallen?.defeated, true);
+  assert.equal(fallen?.defeatedAt, defeatedAt);
+  assert.equal(fallen?.defeatedByPlayerName, 'Winner');
+  assert.equal(fallen?.capturedTownCenterTileId, '6,0');
+  assert.equal(fallen?.transferredTileCount, 24);
+  assert.equal(leaderboard[0]?.playerId, 'winner');
+});
+
 test('settlement start baseline keeps the initial season score at zero', () => {
   const startingState = input({
     chapterNumber: 1,

@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import type { SeasonSnapshot } from '../shared/seasons/types.ts';
 import { queueSeasonStageAnnouncement } from './seasonStageAnnouncementStore.ts';
+import { queueSettlementDefeatAnnouncements, resetSettlementDefeats } from './settlementDefeatStore.ts';
 
 export const seasonSnapshot = ref<SeasonSnapshot | null>(null);
 export const seasonVersion = ref(0);
@@ -47,13 +48,27 @@ export function loadSeasonState(season: SeasonSnapshot) {
   seasonSnapshot.value = next;
   if (previous) {
     queueSeasonStageAnnouncement(previous, next);
+    queueSettlementDefeatAnnouncements(previous, next);
   }
   seasonVersion.value++;
 }
 
 export function resetSeasonStore() {
   seasonSnapshot.value = null;
+  resetSettlementDefeats();
   seasonVersion.value++;
+}
+
+export function getSeasonEntryForPlayer(playerId: string | null | undefined) {
+  if (!playerId) {
+    return null;
+  }
+
+  return seasonSnapshot.value?.leaderboard.find((entry) => entry.playerId === playerId) ?? null;
+}
+
+export function isPlayerDefeatedInCurrentSeason(playerId: string | null | undefined) {
+  return getSeasonEntryForPlayer(playerId)?.defeated === true;
 }
 
 export const seasonCompleted = computed(() => seasonSnapshot.value?.status === 'completed');

@@ -29,7 +29,7 @@ import { canDrawWaterFromTile } from '../buildings/water';
 import { canUseWarehouseAtTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../buildings/storage';
 import { getBuildingDefinitionByTaskKey } from '../buildings/registry';
 import { isUnlimitedResourcesEnabled, testModeSettings } from '../game/testMode.ts';
-import { getDistanceToNearestTowncenter } from '../game/worldQueries';
+import { axialDistanceCoords } from '../game/hex';
 import { findNearestTaskAccessTile, getTaskAccessMode, isHeroAtTaskAccess } from './taskAccess';
 import { canStartTaskDefinition, canTaskUseTileState } from './taskAvailability.ts';
 import { isTaskUnlockedForUse } from './taskUnlocks.ts';
@@ -359,8 +359,8 @@ function attemptDeferredChain(hero: Hero, pending: { sourceTileId: string; taskT
     if (!candidates.length) return;
 
     candidates.sort((a,b) => {
-        const da = getDistanceToNearestTowncenter(a.q, a.r);
-        const db = getDistanceToNearestTowncenter(b.q, b.r);
+        const da = axialDistanceCoords(a.q, a.r, source.q, source.r);
+        const db = axialDistanceCoords(b.q, b.r, source.q, source.r);
         if (da !== db) return da - db;
         if (a.q !== b.q) return a.q - b.q;
         return a.r - b.r;

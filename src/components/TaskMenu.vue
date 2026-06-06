@@ -42,6 +42,28 @@
           </div>
 
           <div class="task-list-scroll">
+            <div v-if="continueTask && continueTaskDefinition" class="task-section task-section--continue">
+              <button
+                type="button"
+                class="task-list-row task-list-row--continue"
+                :style="getContinueTaskRowStyle(continueTaskDefinition)"
+                @click="handleContinueTaskClick(continueTask)"
+                @pointerenter="hoverTask(continueTaskDefinition)"
+                @pointerleave="unHoverTask(continueTaskDefinition)"
+              >
+                <span class="task-list-row__glyph">↻</span>
+                <div class="task-list-row__info">
+                  <div class="task-list-row__headline">
+                    <p class="task-list-row__title">{{ getContinueTaskLabel(continueTask) }}</p>
+                  </div>
+                  <p class="task-list-row__meta">{{ getContinueTaskMeta(continueTask) }}</p>
+                </div>
+                <span class="task-list-row__state task-state--ready">
+                  {{ continueTask.active ? 'Working' : 'Paused' }}
+                </span>
+              </button>
+            </div>
+
             <div v-if="constructionTasks.length" class="task-section">
               <div class="task-section-header">
                 <span class="task-section-icon">{{ activeBuildCategoryMeta.glyph }}</span>
@@ -366,7 +388,7 @@ import { canStartTaskWhileCarrying, detachHeroFromCurrentTask, taskStore } from 
 import { PathService } from '../core/PathService';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
 import { getSelectedHero } from '../store/uiStore';
-import type { TaskDefinition } from '../core/types/Task.ts';
+import type { TaskDefinition, TaskInstance } from '../core/types/Task.ts';
 import type { ResourceAmount, ResourceType } from '../core/types/Resource.ts';
 import {
   getBuildingDefinitionByKey,
@@ -394,7 +416,8 @@ import {
   findNearestTaskAccessTile,
   getTaskAccessMode,
 } from '../shared/tasks/taskAccess';
-import { listTaskDefinitions } from '../shared/tasks/taskRegistry';
+import { getTaskDefinition, listTaskDefinitions } from '../shared/tasks/taskRegistry';
+import { formatContinueTaskLabel } from '../shared/tasks/taskLabels.ts';
 import { canStartTaskDefinition } from '../shared/tasks/taskAvailability.ts';
 import { getTaskUnlockStatus } from '../shared/tasks/taskUnlocks.ts';
 import { isTileWalkable } from '../shared/game/navigation';
@@ -537,6 +560,26 @@ const sortedTasks = computed(() => {
 });
 const constructionTasks = computed(() => sortedTasks.value.filter((task) => !!getBuildingMeta(task) || !!getUpgradeMeta(task)));
 const actionTasks = computed(() => sortedTasks.value.filter((task) => !getBuildingMeta(task) && !getUpgradeMeta(task)));
+const continueTask = computed(() => {
+  const tile = props.tile;
+  if (!tile || !canManageTile(tile)) {
+    return null;
+  }
+
+  const tileTasks = taskStore.tasksByTile[tile.id];
+  if (!tileTasks) {
+    return null;
+  }
+
+  return Object.values(tileTasks)
+    .map((taskId) => taskStore.taskIndex[taskId])
+    .filter((task): task is TaskInstance => !!task && !task.completedMs && !!getTaskDefinition(task.type))
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.createdMs - b.createdMs || a.type.localeCompare(b.type))
+    [0] ?? null;
+});
+const continueTaskDefinition = computed(() => (
+  continueTask.value ? getTaskDefinition(continueTask.value.type) ?? null : null
+));
 const activeBuildCategory = ref('suggested');
 
 type TaskTone = 'ready' | 'blocked' | 'locked' | 'neutral';
@@ -1160,6 +1203,27 @@ function getTaskRowStyle(def: TaskDefinition) {
   };
 }
 
+function getContinueTaskRowStyle(def: TaskDefinition) {
+  return {
+    '--task-accent': getTaskAccent(def),
+  };
+}
+
+function getContinueTaskLabel(task: TaskInstance) {
+  return formatContinueTaskLabel(getTaskDefinition(task.type), task.type);
+}
+
+function getContinueTaskMeta(task: TaskInstance) {
+  if (task.requiredXp <= 0) {
+    return task.active ? 'Ready to complete.' : 'Paused before completion.';
+  }
+
+  const progressPercent = Math.max(0, Math.min(99, Math.floor((task.progressXp / task.requiredXp) * 100)));
+  const participantCount = Object.keys(task.participants ?? {}).length;
+  const participantLabel = participantCount === 1 ? '1 hero assigned' : `${participantCount} heroes assigned`;
+  return `${progressPercent}% complete · ${participantLabel}`;
+}
+
 function isTaskRowSelected(def: TaskDefinition) {
   if (selectedTask.value?.key !== def.key) {
     return false;
@@ -1175,6 +1239,7 @@ function getTaskGlyph(def: TaskDefinition) {
   if (building?.key === 'dock') return '≈';
   if (building?.key === 'well') return '+';
   if (building?.key === 'watchtower') return '▲';
+  if (building?.key === 'beacon') return '◈';
   if (building?.key === 'wall') return '#';
   if (building?.providesWarehouse) return '▤';
   if (building?.jobSlots) return getCategoryMeta(building.categoryLabel).glyph;
@@ -1395,6 +1460,17 @@ function handleTaskClick(def: TaskDefinition) {
 
   hoveredTask.value = def;
 
+  selectTask(def);
+}
+
+function handleContinueTaskClick(task: TaskInstance) {
+  const def = getTaskDefinition(task.type);
+  if (!def) return;
+
+  clearMobileDetailTimer();
+  tappedTask.value = def;
+  hoveredTask.value = def;
+  emit('hover', def);
   selectTask(def);
 }
 
@@ -2026,6 +2102,11 @@ onUnmounted(() => {
   padding: 4px 0;
 }
 
+.task-section--continue {
+  padding-top: 0;
+  padding-bottom: 9px;
+}
+
 .task-section-header {
   display: flex;
   align-items: center;
@@ -2168,6 +2249,17 @@ onUnmounted(() => {
   background:
     linear-gradient(180deg, rgba(8, 36, 34, 0.3), rgba(10, 22, 31, 0.52)),
     linear-gradient(135deg, rgba(34, 197, 94, 0.08), transparent 64%);
+}
+
+.task-list-row--continue {
+  min-height: 64px;
+  border-color: color-mix(in srgb, var(--task-accent) 36%, rgba(250, 204, 21, 0.22));
+  background:
+    linear-gradient(180deg, rgba(34, 47, 28, 0.44), rgba(8, 26, 29, 0.58)),
+    linear-gradient(105deg, color-mix(in srgb, var(--task-accent) 24%, rgba(250, 204, 21, 0.08)), transparent 68%);
+  box-shadow:
+    inset 3px 0 0 var(--task-accent),
+    inset 0 0 0 1px rgba(250, 204, 21, 0.04);
 }
 
 .task-list-row--locked {

@@ -9,10 +9,11 @@ import { loadTestModeSettings, resetTestModeSettings } from '../../../src/shared
 import { ensureBarracksMilitaryState, ensureTownCenterMilitaryState } from '../../../src/shared/game/military.ts';
 import { militarySystem } from './militarySystem';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
-import { loadSettlers, resetSettlerState } from '../../../src/shared/game/state/settlerStore';
+import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { resetStudyState } from '../../../src/store/studyStore';
+import { onGameplayEvent } from '../../../src/shared/gameplay/events.ts';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -40,6 +41,62 @@ function tickAt(now: number, dt: number) {
     tick: Math.floor(now / Math.max(1, dt)),
     rng: {} as never,
   });
+}
+
+function loadPopulationForSettlements(settlementIds: string[]) {
+  loadPopulationSnapshot({
+    current: 0,
+    max: 10,
+    beds: 0,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: settlementIds.map((settlementId) => ({
+      settlementId,
+      current: 0,
+      max: 10,
+      beds: 0,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    })),
+  });
+}
+
+function createGuardSettler(overrides: Partial<Settler> & Pick<Settler, 'id' | 'q' | 'r' | 'settlementId' | 'assignedWorkTileId' | 'guardTowerTileId'>): Settler {
+  return {
+    id: overrides.id,
+    nameSeed: overrides.nameSeed ?? 1,
+    q: overrides.q,
+    r: overrides.r,
+    facing: overrides.facing ?? 'down',
+    appearanceSeed: overrides.appearanceSeed ?? 1,
+    homeTileId: overrides.homeTileId ?? overrides.settlementId ?? '0,0',
+    homeAccessTileId: overrides.homeAccessTileId ?? overrides.settlementId ?? '0,0',
+    settlementId: overrides.settlementId,
+    assignedWorkTileId: overrides.assignedWorkTileId,
+    assignedRole: 'guard',
+    guardTowerTileId: overrides.guardTowerTileId,
+    workTileId: overrides.workTileId ?? overrides.guardTowerTileId,
+    hiddenWhileWorking: overrides.hiddenWhileWorking ?? false,
+    activity: overrides.activity ?? 'raiding',
+    stateSinceMs: overrides.stateSinceMs ?? 0,
+    hungerMs: overrides.hungerMs ?? 0,
+    fatigueMs: overrides.fatigueMs ?? 0,
+    happiness: overrides.happiness ?? 100,
+    traits: overrides.traits ?? [],
+    drinkPreference: overrides.drinkPreference ?? 'either',
+    workProgressMs: overrides.workProgressMs ?? 0,
+    carryingKind: overrides.carryingKind ?? null,
+    socialTileId: overrides.socialTileId ?? null,
+  };
 }
 
 test.afterEach(() => {
@@ -95,7 +152,8 @@ test('fast guard training test mode completes barracks training in one tenth the
 
   assert.equal(barracks!.barracksTrainingQueue, 0);
   assert.equal(barracks!.barracksTrainingProgressMs ?? 0, 0);
-  assert.equal(townCenter!.guardReserve ?? 0, 1);
+  assert.equal(townCenter!.guardReserve ?? 0, 0);
+  assert.equal(barracks!.guardReserve ?? 0, 1);
   assert.equal(resourceInventory.meat ?? 0, 0);
   assert.equal(resourceInventory.weapons ?? 0, 0);
 });
@@ -120,7 +178,8 @@ test('guard training can spend any food source', () => {
   tickAt(90_000, 1);
 
   assert.equal(barracks!.barracksTrainingQueue, 0);
-  assert.equal(townCenter!.guardReserve ?? 0, 1);
+  assert.equal(townCenter!.guardReserve ?? 0, 0);
+  assert.equal(barracks!.guardReserve ?? 0, 1);
   assert.equal(resourceInventory.meat ?? 0, 0);
   assert.equal(resourceInventory.weapons ?? 0, 0);
 });
@@ -137,6 +196,17 @@ test('capturing a watchtower transfers nearby tower territory to the attacker', 
       borderMode: 'open',
       raidTargetTileId: '6,0',
       raidCommittedGuards: 1,
+      raidGuardOriginTileIds: ['1,0'],
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_barracks',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
       guardReserve: 0,
     }),
     createTile({
@@ -246,7 +316,229 @@ test('capturing a watchtower transfers nearby tower territory to the attacker', 
   assert.equal(tileIndex['7,0']?.ownerSettlementId, '0,0');
   assert.equal(tileIndex['7,0']?.controlledBySettlementId, '0,0');
   assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
-  assert.equal(tileIndex['0,0']?.guardReserve ?? 0, 1);
+  assert.equal(tileIndex['0,0']?.guardReserve ?? 0, 0);
+  assert.equal(tileIndex['1,0']?.guardReserve ?? 0, 1);
+});
+
+test('watchtower raids can progress inside the defender town center safe radius', () => {
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '2,0',
+      raidCommittedGuards: 1,
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '2,0',
+      q: 2,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '4,0',
+      ownerSettlementId: '4,0',
+      towerAssignedGuards: 0,
+      towerCaptureProgress: 0,
+      towerDurability: 100,
+      towerDurabilityMax: 100,
+    }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '4,0',
+      ownerSettlementId: '4,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '4,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      guardTowerTileId: '2,0',
+    }),
+  ]);
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(tileIndex['0,0']?.raidTargetTileId, '2,0');
+  assert.equal(tileIndex['2,0']?.towerAttackerSettlementId, '0,0');
+  assert.ok((tileIndex['2,0']?.towerCaptureProgress ?? 0) > 0);
+});
+
+test('raids can capture town centers and transfer the defeated settlement territory', () => {
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  const unsubscribe = onGameplayEvent((event) => events.push(event));
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '6,0',
+      raidCommittedGuards: 1,
+      raidGuardOriginTileIds: ['1,0'],
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_barracks',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '5,0',
+      q: 5,
+      r: 0,
+      terrain: 'plains',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+    }),
+    createTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+      towerCaptureProgress: 99.95,
+      towerDurability: 120,
+      towerDurabilityMax: 300,
+    }),
+    createTile({
+      id: '7,0',
+      q: 7,
+      r: 0,
+      terrain: 'plains',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '6,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 5,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '5,0',
+      guardTowerTileId: '6,0',
+      workTileId: '6,0',
+    }),
+  ]);
+
+  try {
+    tickAt(1_000, 1_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.equal(tileIndex['6,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['6,0']?.controlledBySettlementId, '0,0');
+  assert.equal(tileIndex['7,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['7,0']?.controlledBySettlementId, '0,0');
+  assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
+  assert.equal(tileIndex['0,0']?.guardReserve ?? 0, 0);
+  assert.equal(tileIndex['1,0']?.guardReserve ?? 0, 1);
+  assert.deepEqual(events.find((event) => event.type === 'military:settlement_defeated'), {
+    type: 'military:settlement_defeated',
+    defeatedSettlementId: '6,0',
+    attackerSettlementId: '0,0',
+    capturedTownCenterTileId: '6,0',
+    transferredTileIds: ['6,0', '5,0', '7,0'],
+    defeatedAt: 1_000,
+  });
+});
+
+test('capturing one of multiple town centers does not defeat the defender', () => {
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  const unsubscribe = onGameplayEvent((event) => events.push(event));
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '6,0',
+      raidCommittedGuards: 1,
+      raidGuardOriginTileIds: ['1,0'],
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_barracks',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+      towerCaptureProgress: 99.95,
+      towerDurability: 120,
+      towerDurabilityMax: 300,
+    }),
+    createTile({
+      id: '8,0',
+      q: 8,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '6,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 5,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '5,0',
+      guardTowerTileId: '6,0',
+      workTileId: '6,0',
+    }),
+  ]);
+
+  try {
+    tickAt(1_000, 1_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.equal(tileIndex['6,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '6,0');
+  assert.equal(events.some((event) => event.type === 'military:settlement_defeated'), false);
 });
 
 test('raid orders stay active while raiders are still being deployed', () => {
@@ -506,4 +798,66 @@ test('adjacent raiders and defenders fight until the raid resolves', () => {
   tickAt(250_000, 245_000);
   assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
   assert.equal(tileIndex['2,0']?.ownerSettlementId, '0,0');
+});
+
+test('town center reserve guards automatically defend against capture raids', () => {
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '6,0',
+      raidCommittedGuards: 1,
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+      guardReserve: 0,
+      towerCaptureProgress: 0,
+      towerDurability: 300,
+      towerDurabilityMax: 300,
+    }),
+    createTile({
+      id: '6,1',
+      q: 6,
+      r: 1,
+      terrain: 'plains',
+      variant: 'plains_barracks',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      guardReserve: 5,
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '6,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 5,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '5,0',
+      guardTowerTileId: '6,0',
+      workTileId: '6,0',
+    }),
+  ]);
+
+  tickAt(1_200, 1_200);
+
+  assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
+  assert.equal(tileIndex['0,0']?.raidCommittedGuards ?? 0, 0);
+  assert.equal(tileIndex['6,0']?.ownerSettlementId, '6,0');
+  assert.equal(tileIndex['6,0']?.towerCaptureProgress ?? 0, 0);
+  assert.equal(tileIndex['6,0']?.guardReserve ?? 0, 0);
+  assert.equal(tileIndex['6,1']?.guardReserve ?? 0, 5);
+  assert.equal(settlers.some((settler) => settler.id === 'raider-1'), false);
 });

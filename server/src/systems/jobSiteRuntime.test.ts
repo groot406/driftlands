@@ -80,17 +80,19 @@ test('winery sites resolve into grape-to-wine job sites', () => {
   assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 1 }]);
 });
 
-test('brewery water input is satisfied by settlement water access', () => {
+test('brewery turns grain and hops into ten beer without water', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
-    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water' }),
   ]);
   depositResourceToStorage('0,0', 'grain', 2);
   depositResourceToStorage('0,0', 'hops', 1);
 
   const brewerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+  const resources = brewerySite ? resolveJobResources(brewerySite, 1) : null;
 
   assert.equal(brewerySite?.building.key, 'brewery');
+  assert.deepEqual(resources?.consumes, [{ type: 'grain', amount: 2 }, { type: 'hops', amount: 1 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'beer', amount: 10 }]);
   assert.equal(brewerySite ? resolveSiteStatus(brewerySite, 1) : null, 'staffed');
 });

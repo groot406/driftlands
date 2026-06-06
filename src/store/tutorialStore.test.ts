@@ -16,6 +16,7 @@ import {
   isTutorialPanelOpen,
   resetTutorialMapHintAnchorForTests,
   tutorialMapHints,
+  tutorialSnapshot,
 } from './tutorialStore.ts';
 
 function tile(q: number, r: number, terrain: Tile['terrain'], options: Partial<Tile> = {}): Tile {
@@ -312,4 +313,62 @@ test('study-and-upgrade hints build a workshop before a library when tools are m
   const hint = tutorialMapHints.value[0];
   assert.equal(hint?.taskKey, 'buildWorkshop');
   assert.equal(hint?.label, 'Build workshop');
+});
+
+test('field guide completes founding a second hearth after two town centers exist', () => {
+  currentPlayerSettlementId.value = '0,0';
+  selectedHeroId.value = 'hero-1';
+  resourceInventory.wood = 40;
+  resourceInventory.grain = 4;
+  resourceInventory.water = 1;
+  resourceInventory.fish = 8;
+  resourceInventory.ore = 6;
+  resourceInventory.tools = 2;
+
+  loadPopulation({
+    current: 7,
+    beds: 8,
+    max: 30,
+    hungerMs: 0,
+    supportCapacity: 30,
+    activeTileCount: 24,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [],
+  });
+
+  loadHeroes([{
+    id: 'hero-1',
+    name: 'Guide',
+    avatar: 'guide',
+    q: 0,
+    r: 0,
+    stats: { xp: 0, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  }]);
+
+  loadWorld([
+    tile(0, 0, 'towncenter', { isBaseTile: false }),
+    tile(10, 0, 'towncenter', { isBaseTile: false, ownerSettlementId: '0,0', controlledBySettlementId: '0,0' }),
+    tile(0, 1, 'plains', { isBaseTile: false, variant: 'road' }),
+    tile(0, 2, 'plains', { isBaseTile: false, variant: 'road' }),
+    tile(1, 0, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(1, 1, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(2, 0, 'water', { variant: 'water_dock_a' }),
+    tile(2, 1, 'plains', { variant: 'plains_watchtower' }),
+    tile(3, 0, 'grain', { variant: 'grain_granary' }),
+    tile(3, 1, 'plains', { variant: 'plains_well' }),
+    tile(1, 2, 'plains', { variant: 'plains_depot' }),
+    tile(4, 0, 'mountain', { variant: 'mountains_with_mine' }),
+    tile(4, 1, 'mountain', { variant: 'mountains_with_quarry' }),
+    tile(5, 0, 'plains', { variant: 'plains_workshop' }),
+    tile(5, 1, 'plains', { variant: 'plains_pub' }),
+    tile(6, 0, 'plains'),
+  ]);
+
+  const secondHearth = tutorialSnapshot.value.steps.find((step) => step.id === 'found-second-hearth');
+
+  assert.equal(secondHearth?.progressLabel, '2/2 town centers');
+  assert.equal(secondHearth?.completed, true);
 });

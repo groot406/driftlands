@@ -34,6 +34,11 @@ export interface LooperlandsWalletSession {
   apiUrl: string;
 }
 
+export interface LooperlandsWalletIdentity {
+  walletAddress: string;
+  chainId: number;
+}
+
 function isEnabled(value: string | boolean | undefined): boolean {
   return value === true || value === '1' || value === 'true';
 }
@@ -307,6 +312,51 @@ function getInjectedEthereumProvider(): EthereumProvider | undefined {
   return isEthereumProvider(window.ethereum) ? window.ethereum : undefined;
 }
 
+export async function getAuthorizedLooperlandsWalletIdentity(providerOverride?: EthereumProvider): Promise<LooperlandsWalletIdentity | null> {
+  const provider = providerOverride ?? getInjectedEthereumProvider();
+  if (!provider) {
+    return null;
+  }
+
+  let accounts: string[] = [];
+  try {
+    walletLog('provider request', { method: 'eth_accounts' });
+    accounts = await provider.request<string[]>({ method: 'eth_accounts' });
+    walletLog('provider response', {
+      method: 'eth_accounts',
+      accountCount: accounts.length,
+      firstAccount: maskDebugValue(accounts[0]),
+    });
+  } catch (error) {
+    walletWarn('provider request failed', {
+      method: 'eth_accounts',
+      error: describeWalletError(error),
+    });
+    return null;
+  }
+
+  const walletAddress = accounts[0];
+  if (!walletAddress) {
+    return null;
+  }
+
+  try {
+    walletLog('provider request', { method: 'eth_chainId' });
+    const chainId = toNumberChainId(await provider.request<string>({ method: 'eth_chainId' }));
+    walletLog('provider response', { method: 'eth_chainId', chainId });
+    return {
+      walletAddress: normalizeWalletAddress(walletAddress),
+      chainId,
+    };
+  } catch (error) {
+    walletWarn('provider request failed', {
+      method: 'eth_chainId',
+      error: describeWalletError(error),
+    });
+    return null;
+  }
+}
+
 export async function connectLooperlandsWallet(providerOverride?: EthereumProvider): Promise<LooperlandsWalletSession> {
   const provider = providerOverride ?? getInjectedEthereumProvider();
   walletLog('looperlands connect start', {
@@ -517,7 +567,10 @@ export function getLooperlandsPlayerId(session: LooperlandsWalletSession): strin
   return buildLooperlandsPlayerId(session.walletAddress, session.chainId);
 }
 
-export async function fetchDriftlandsWalletSettlement(session: LooperlandsWalletSession): Promise<string | null> {
+export async function fetchDriftlandsWalletSettlement(
+  session: LooperlandsWalletSession,
+  options: { throwOnUnavailable?: boolean } = {},
+): Promise<string | null> {
   const playerId = getLooperlandsPlayerId(session);
   const url = getDriftlandsApiUrl(`/player/${encodeURIComponent(playerId)}/settlement`);
   const startedAt = performance.now();
@@ -550,6 +603,9 @@ export async function fetchDriftlandsWalletSettlement(session: LooperlandsWallet
         status: response.status,
         durationMs,
       });
+      if (options.throwOnUnavailable) {
+        throw new Error(`Could not check this wallet colony (${response.status}).`);
+      }
       return null;
     }
 
@@ -562,6 +618,9 @@ export async function fetchDriftlandsWalletSettlement(session: LooperlandsWallet
       timedOut: isAbortError(error),
       error: describeWalletError(error),
     });
+    if (options.throwOnUnavailable) {
+      throw error;
+    }
     return null;
   } finally {
     window.clearTimeout(timeoutId);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { heroes, loadHeroes } from '../store/heroStore';
 import { loadWorld } from './world';
-import { startHeroMovement } from './heroService';
+import { requestHeroMovement, startHeroMovement } from './heroService';
 import type { Hero } from './types/Hero';
 import type { Tile } from './types/Tile';
 import { loadTestModeSettings, resetTestModeSettings } from '../shared/game/testMode.ts';
@@ -29,6 +29,19 @@ function createHiddenPlain(q: number, r: number): Tile {
     biome: 'plains',
     terrain: 'plains',
     discovered: false,
+    isBaseTile: true,
+    variant: null,
+  };
+}
+
+function createDiscoveredPlain(q: number, r: number): Tile {
+  return {
+    id: `${q},${r}`,
+    q,
+    r,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
     isBaseTile: true,
     variant: null,
   };
@@ -130,4 +143,59 @@ test('local fallback timings use the fast hero movement debug toggle', () => {
   assert.ok(typeof fastDuration === 'number');
   assert.ok(fastDuration < normalDuration);
   assert.equal(fastDuration, 187.5);
+});
+
+test('player movement requests clear pending delayed movement timers', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000 });
+  t.mock.method(console, 'warn', () => {});
+
+  loadWorld([
+    createDiscoveredPlain(0, 0),
+    createDiscoveredPlain(1, 0),
+  ]);
+  loadHeroes([createHero({ q: 0, r: 0 })]);
+
+  let fired = false;
+  const hero = heroes[0]!;
+  hero.delayedMovementTimer = setTimeout(() => {
+    fired = true;
+  }, 500);
+
+  requestHeroMovement('hero-1', [{ q: 1, r: 0 }], { q: 1, r: 0 });
+
+  assert.equal(hero.delayedMovementTimer, undefined);
+  t.mock.timers.tick(500);
+  assert.equal(fired, false);
+});
+
+test('deferred local movement overrides normalize from the current boundary tile', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000 });
+
+  loadWorld([
+    createDiscoveredPlain(0, 0),
+    createDiscoveredPlain(1, 0),
+    createDiscoveredPlain(2, 0),
+    createDiscoveredPlain(3, 0),
+  ]);
+  loadHeroes([createHero({ q: 0, r: 0 })]);
+
+  startHeroMovement('hero-1', [{ q: 1, r: 0 }, { q: 2, r: 0 }], { q: 2, r: 0 }, undefined, {
+    origin: { q: 0, r: 0 },
+    startAt: 1_000,
+    stepDurations: [100, 100],
+    cumulative: [100, 200],
+  });
+
+  t.mock.timers.tick(150);
+
+  startHeroMovement('hero-1', [{ q: 1, r: 0 }, { q: 2, r: 0 }, { q: 3, r: 0 }], { q: 3, r: 0 });
+  assert.ok(heroes[0]?.delayedMovementTimer);
+
+  t.mock.timers.tick(50);
+
+  const movement = heroes[0]?.movement;
+  assert.deepEqual(movement?.origin, { q: 2, r: 0 });
+  assert.deepEqual(movement?.path, [{ q: 3, r: 0 }]);
+  assert.deepEqual(movement?.target, { q: 3, r: 0 });
+  assert.equal(heroes[0]?.delayedMovementTimer, undefined);
 });

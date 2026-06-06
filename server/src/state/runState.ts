@@ -29,7 +29,7 @@ import {
 import { loadStoryProgression } from '../../../src/shared/story/progressionState';
 import { getStoryHeroTemplate } from '../../../src/shared/story/heroRoster';
 import { createStoryBeat, evaluateStoryChapterNumber } from '../../../src/shared/story/storyMode';
-import { createLandingProfile, DEFAULT_LANDING_PROFILE_RADIUS } from '../../../src/shared/story/landingProfile';
+import { createLandingProfile, DEFAULT_LANDING_PROFILE_RADIUS, type LandingProfile } from '../../../src/shared/story/landingProfile';
 import { resolveBuildingStateForTile } from '../../../src/shared/buildings/state';
 import { getStudySnapshot } from '../../../src/store/studyStore';
 import { getTileSettlementId } from '../../../src/shared/game/settlement';
@@ -188,16 +188,8 @@ function buildStoryBeatForChapter(
   chapterNumber: number,
   metrics: RunMetrics,
   progressionMetrics: ProgressionMetrics,
-  settlementId: string | null,
+  landingProfile: LandingProfile,
 ): RunStoryBeat {
-  const townCenter = settlementId ? tileIndex[settlementId] : null;
-  const settlementTiles = tiles.filter((tile) => (
-    !settlementId
-    || tile.ownerSettlementId === settlementId
-    || tile.controlledBySettlementId === settlementId
-    || tile.id === settlementId
-  ));
-  const landingProfile = createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
   const storyContextTerrains = progressionMetrics.discoveredTerrains.filter((terrain) => (
     terrain !== 'water' || progressionMetrics.landingTerrains.includes('water')
   ));
@@ -219,7 +211,7 @@ function hasPathFromTownCenter(
       townCenter.r,
       target.q,
       target.r,
-      { settlementId },
+      { settlementId, telemetrySource: 'run_landing_reachability' },
     ).length > 0;
 }
 
@@ -274,6 +266,7 @@ class RunState {
   private dialogueSequence = 0;
   private activeSeed = 0;
   private activeSettlementId: string | null = null;
+  private landingProfilesBySettlementId = new Map<string, LandingProfile>();
 
   initialize(seed: number) {
     this.activeSeed = seed;
@@ -281,6 +274,7 @@ class RunState {
     this.restoredTilesBySettlementId.clear();
     this.dialogueSequenceBySettlementId.clear();
     this.naturalUnlockedNodeKeysBySettlementId.clear();
+    this.landingProfilesBySettlementId.clear();
     this.restoredTiles = 0;
     this.dialogueSequence = 0;
     this.activeSettlementId = null;
@@ -389,10 +383,11 @@ class RunState {
 
     const now = Date.now();
     const metrics = this.captureMetrics();
-    const progressionMetrics = this.captureProgressionMetrics(metrics);
+    const landingProfile = this.captureLandingProfile(settlementId);
+    const progressionMetrics = this.captureProgressionMetrics(metrics, landingProfile);
     const progression = this.computeProgression(progressionMetrics, settlementId);
     const storyChapterNumber = evaluateStoryChapterNumber(progressionMetrics, 1);
-    const storyChapter = buildStoryBeatForChapter(storyChapterNumber, metrics, progressionMetrics, settlementId);
+    const storyChapter = buildStoryBeatForChapter(storyChapterNumber, metrics, progressionMetrics, landingProfile);
     const dialogue: DialogueLogSnapshot = {
       activeEntryId: null,
       entries: [],
@@ -543,6 +538,10 @@ class RunState {
       return;
     }
 
+    if (this.shouldInvalidateLandingProfile(event)) {
+      this.invalidateLandingProfile(settlementId);
+    }
+
     if (event.type === 'tile:restored') {
       this.restoredTiles += 1;
       this.restoredTilesBySettlementId.set(settlementId, this.restoredTiles);
@@ -588,6 +587,45 @@ class RunState {
       ...naturalProgression.unlockedNodeKeys,
       ...overrideNodeKeys,
     ])));
+  }
+
+  private listLandingProfileSettlementTiles(settlementId: string | null) {
+    return tiles.filter((tile) => (
+      !settlementId
+      || tile.ownerSettlementId === settlementId
+      || tile.controlledBySettlementId === settlementId
+      || tile.id === settlementId
+    ));
+  }
+
+  private captureLandingProfile(settlementId: string | null = this.activeSettlementId): LandingProfile {
+    const townCenter = settlementId ? tileIndex[settlementId] : null;
+    const settlementTiles = this.listLandingProfileSettlementTiles(settlementId);
+    if (!settlementId) {
+      return createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
+    }
+
+    const cachedProfile = this.landingProfilesBySettlementId.get(settlementId);
+    if (cachedProfile) {
+      return cachedProfile;
+    }
+
+    const profile = createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
+    this.landingProfilesBySettlementId.set(settlementId, profile);
+    return profile;
+  }
+
+  private invalidateLandingProfile(settlementId: string | null | undefined) {
+    if (settlementId) {
+      this.landingProfilesBySettlementId.delete(settlementId);
+      return;
+    }
+
+    this.landingProfilesBySettlementId.clear();
+  }
+
+  private shouldInvalidateLandingProfile(event: GameplayEvent) {
+    return event.type === 'tile:discovered' || event.type === 'tile:restored';
   }
 
   private resolveEventSettlementId(event: GameplayEvent) {
@@ -640,21 +678,14 @@ class RunState {
     };
   }
 
-  private captureProgressionMetrics(runMetrics: RunMetrics): ProgressionMetrics {
+  private captureProgressionMetrics(runMetrics: RunMetrics, landingProfile: LandingProfile = this.captureLandingProfile()): ProgressionMetrics {
     const settlementId = this.activeSettlementId;
     const population = settlementId ? getSettlementPopulationState(settlementId) ?? getPopulationState() : getPopulationState();
     const workforce = getWorkforceSnapshot();
     const discoveredTerrains = new Set<typeof tiles[number]['terrain']>();
     const buildingCounts: Partial<Record<BuildingKey, number>> = {};
     const operationalBuildingCounts: Partial<Record<BuildingKey, number>> = {};
-    const townCenter = settlementId ? tileIndex[settlementId] : null;
-    const settlementTiles = tiles.filter((tile) => (
-      !settlementId
-      || tile.ownerSettlementId === settlementId
-      || tile.controlledBySettlementId === settlementId
-      || tile.id === settlementId
-    ));
-    const landingProfile = createSettlementLandingProfile(settlementTiles, townCenter, settlementId);
+    const settlementTiles = this.listLandingProfileSettlementTiles(settlementId);
 
     for (const tile of settlementTiles) {
       if (tile.discovered && tile.terrain) {
@@ -765,14 +796,15 @@ class RunState {
     const previousProgression = cloneProgression(this.snapshot.progression);
     const previousChapterNumber = this.snapshot.chapterNumber;
     const previousChapter = { ...this.snapshot.chapter };
-    const progressionMetrics = this.captureProgressionMetrics(metrics);
     const resolvedSettlementId = settlementId ?? this.activeSettlementId;
     if (!resolvedSettlementId) {
       return;
     }
+    const landingProfile = this.captureLandingProfile(resolvedSettlementId);
+    const progressionMetrics = this.captureProgressionMetrics(metrics, landingProfile);
     const nextProgression = this.computeProgression(progressionMetrics, resolvedSettlementId);
     const nextChapterNumber = evaluateStoryChapterNumber(progressionMetrics, previousChapterNumber);
-    const nextChapter = buildStoryBeatForChapter(nextChapterNumber, metrics, progressionMetrics, resolvedSettlementId);
+    const nextChapter = buildStoryBeatForChapter(nextChapterNumber, metrics, progressionMetrics, landingProfile);
 
     const heroRosterChanged = previousProgression.unlocked.heroes.length !== nextProgression.unlocked.heroes.length
       || previousProgression.unlocked.heroes.some((heroId, index) => nextProgression.unlocked.heroes[index] !== heroId);

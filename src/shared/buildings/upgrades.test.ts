@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { Tile } from '../../core/types/Tile.ts';
 import { loadWorld } from '../../core/world.ts';
-import { createUpgradeTaskDefinition, getUpgradeDefinitionByKey, getUpgradeDefinitionByTaskKey } from './upgrades.ts';
+import { getUpgradeDefinitionByKey, getUpgradeDefinitionByTaskKey } from './upgrades.ts';
 
 test.afterEach(() => {
   loadWorld([]);

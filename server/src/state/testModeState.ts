@@ -17,7 +17,7 @@ import {
 import { listProgressionNodeDefinitions } from '../../../src/shared/story/progression.ts';
 import { tileIndex } from '../../../src/shared/game/world.ts';
 import { depositResourceToStorage } from '../../../src/shared/game/state/resourceStore.ts';
-import { ensureTownCenterMilitaryState } from '../../../src/shared/game/military.ts';
+import { ensureBarracksMilitaryState, ensureTownCenterMilitaryState, getAvailableGuardReserve, getSettlementBarracksTiles } from '../../../src/shared/game/military.ts';
 import { setStudyOverrides, broadcastStudyState } from '../../../src/store/studyStore.ts';
 import { refreshWorkforceState } from '../systems/jobSystem';
 import { getAvailableCalamities, triggerCalamity } from '../systems/calamitySystem';
@@ -189,12 +189,18 @@ class TestModeState {
         return;
       }
       case 'grant_guard_reserve': {
-        if (!townCenter) {
+        if (!settlementId) {
           return;
         }
 
-        townCenter.guardReserve = Math.max(0, townCenter.guardReserve ?? 0) + Math.max(1, Math.floor(message.amount ?? 5));
-        this.broadcastTile(townCenter.id);
+        const barracks = getSettlementBarracksTiles(Object.values(tileIndex), settlementId)[0] ?? null;
+        if (!barracks) {
+          return;
+        }
+
+        ensureBarracksMilitaryState(barracks);
+        barracks.guardReserve = getAvailableGuardReserve(barracks) + Math.max(1, Math.floor(message.amount ?? 5));
+        this.broadcastTile(barracks.id);
         return;
       }
       case 'grant_weapons': {

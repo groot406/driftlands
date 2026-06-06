@@ -433,6 +433,38 @@ const buildings: BuildingDefinition[] = [
         },
     },
     {
+        key: 'beacon',
+        label: 'Beacon',
+        summary: 'Anchors a signal light that reveals nearby waters and extends your border watch.',
+        categoryLabel: 'Frontier',
+        buildTaskKey: 'buildBeacon',
+        buildTaskLabel: 'Build Beacon',
+        sortOrder: 15.5,
+        requiredPopulation: 3,
+        variantKeys: ['water_beacon'],
+        overlayAssetKey: 'building_beacon',
+        overlayOffset: { x: 0, y: -10 },
+        canPlace(tile, _hero) {
+            return tile.terrain === 'water' && tile.isBaseTile;
+        },
+        requiredXp(_distance: number) {
+            return 3000;
+        },
+        heroRate(hero: Hero) {
+            return 18 * Math.max(1, hero.stats.atk);
+        },
+        requiredResources(_distance: number) {
+            return [{ type: 'wood', amount: 5 }];
+        },
+        onComplete(tile) {
+            applyVariant(tile, 'water_beacon', { stagger: false, respectBiome: false });
+            revealTilesAround(tile, 3);
+            ensureWatchtowerMilitaryState(tile);
+            broadcast({ type: 'tile:updated', tile } as TileUpdatedMessage);
+            onPopulationBuildingCompleted();
+        },
+    },
+    {
         key: 'wall',
         label: 'Wall',
         summary: 'Raises a linked timber wall segment that blocks passage and extends from nearby defenses.',
@@ -953,7 +985,7 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'brewery',
         label: 'Brewery',
-        summary: 'Turns grain, hops, and water into beer for colony morale.',
+        summary: 'Turns grain and hops into beer for colony morale.',
         categoryLabel: 'Hospitality',
         buildTaskKey: 'buildBrewery',
         buildTaskLabel: 'Build Brewery',
@@ -967,9 +999,8 @@ const buildings: BuildingDefinition[] = [
         consumes: [
             { type: 'grain', amount: 2 },
             { type: 'hops', amount: 1 },
-            { type: 'water', amount: 1 },
         ],
-        produces: [{ type: 'beer', amount: 1 }],
+        produces: [{ type: 'beer', amount: 10 }],
         jobLabel: 'Brewer',
         jobPresentation: 'indoor',
         repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],

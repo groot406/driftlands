@@ -97,6 +97,10 @@ function createSettler(overrides: {
   r: number;
   settlementId: string;
   assignedWorkTileId?: string | null;
+  assignedRole?: 'job' | 'repair' | 'guard' | null;
+  workTileId?: string | null;
+  homeTileId?: string;
+  homeAccessTileId?: string;
 }) {
   return {
     id: overrides.id,
@@ -104,10 +108,12 @@ function createSettler(overrides: {
     r: overrides.r,
     facing: 'down' as const,
     appearanceSeed: 1,
-    homeTileId: overrides.settlementId,
-    homeAccessTileId: overrides.settlementId,
+    homeTileId: overrides.homeTileId ?? overrides.settlementId,
+    homeAccessTileId: overrides.homeAccessTileId ?? overrides.settlementId,
     settlementId: overrides.settlementId,
     assignedWorkTileId: overrides.assignedWorkTileId ?? null,
+    assignedRole: overrides.assignedRole ?? null,
+    workTileId: overrides.workTileId ?? null,
     activity: 'idle' as const,
     stateSinceMs: 0,
     hungerMs: 0,
@@ -343,6 +349,90 @@ test('repair targets only reserve one idle settler at a time', () => {
   );
 });
 
+test('offline maintenance job sites keep their worker for repairs', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'forest',
+      variant: 'forest_lumber_camp',
+      condition: 10,
+      conditionState: 'offline',
+    }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'plains' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'former-lumberjack',
+      q: 3,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: '3,0',
+      homeAccessTileId: '3,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      workTileId: '1,0',
+    }),
+    createSettler({ id: 'nearby-idler', q: 1, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers.find((settler) => settler.id === 'former-lumberjack')?.assignedRole, 'repair');
+  assert.equal(settlers.find((settler) => settler.id === 'former-lumberjack')?.assignedWorkTileId, '1,0');
+  assert.equal(settlers.find((settler) => settler.id === 'nearby-idler')?.assignedRole ?? null, null);
+
+  const site = getWorkforceSnapshot().sites.find((snapshotSite) => snapshotSite.tileId === '1,0');
+  assert.equal(site?.assignedWorkers, 0);
+  assert.equal(site?.status, 'offline');
+});
+
+test('offline houses keep a resident for repairs', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      condition: 10,
+      conditionState: 'offline',
+    }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'house-resident',
+      q: 3,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '2,0',
+      assignedWorkTileId: '3,0',
+      assignedRole: 'job',
+      workTileId: '3,0',
+    }),
+    createSettler({ id: 'nearby-idler', q: 0, r: 0, settlementId: '0,0' }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers.find((settler) => settler.id === 'house-resident')?.assignedRole, 'repair');
+  assert.equal(settlers.find((settler) => settler.id === 'house-resident')?.assignedWorkTileId, '1,0');
+  assert.notEqual(settlers.find((settler) => settler.id === 'nearby-idler')?.assignedWorkTileId, '1,0');
+});
+
 test('job input status uses the owning settlement inventory', () => {
   loadWorld([
     createTowncenterTile(),
@@ -552,11 +642,10 @@ test('workshop turns ore into delivered tools', () => {
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
 });
 
-test('brewery draws water from source access and consumes stored grain and hops', () => {
+test('brewery consumes grain and hops to produce ten beer without water', () => {
   loadWorld([
     createTowncenterTile(),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
-    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water' }),
   ]);
   loadPopulation(1, 1);
   loadSettlers([
@@ -592,7 +681,7 @@ test('brewery draws water from source access and consumes stored grain and hops'
   assert.equal(resourceInventory.grain, 0);
   assert.equal(resourceInventory.hops, 0);
   assert.equal(resourceInventory.water, 0);
-  assert.equal(resourceInventory.beer, 1);
+  assert.equal(resourceInventory.beer, 10);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');

@@ -246,7 +246,7 @@ export function isTileWithinReach(q: number, r: number): boolean {
 export function recalculatePopulationLimits(): { max: number; beds: number } {
     const tcCount = terrainPositions.towncenter.size;
     const maxPop = tcCount * TC_BASE_POPULATION;
-    const controlledTileIds = computeControlledTileIds();
+    let controlledTileIds: Set<string> | null = null;
     const bedsBySettlementId = new Map<string, number>();
     const maxBySettlementId = new Map<string, number>();
 
@@ -264,12 +264,21 @@ export function recalculatePopulationLimits(): { max: number; beds: number } {
         if (!positions) continue;
         for (const tileId of positions) {
             const tile = tileIndex[tileId];
-            if (!tile || !controlledTileIds.has(tile.id)) {
+            if (!tile) {
                 continue;
             }
+
+            const isControlled = typeof tile.controlledBySettlementId !== 'undefined'
+                ? !!tile.controlledBySettlementId
+                : (() => {
+                    controlledTileIds ??= computeControlledTileIds();
+                    return controlledTileIds.has(tile.id);
+                })();
+            if (!isControlled) continue;
+
             const houseBeds = HOUSE_BED_CAPACITY_BY_VARIANT[variantKey];
             beds += houseBeds;
-            const settlementId = tile.ownerSettlementId ?? tile.controlledBySettlementId ?? null;
+            const settlementId = tile.controlledBySettlementId ?? tile.ownerSettlementId ?? null;
             if (settlementId) {
                 bedsBySettlementId.set(settlementId, (bedsBySettlementId.get(settlementId) ?? 0) + houseBeds);
             }

@@ -6,9 +6,9 @@ import type { ScoutTargetType } from '../../core/types/Scout';
 import { SIDE_NAMES, type Terrain, type Tile, type TileSide } from '../../core/types/Tile';
 import { resolveWorldTile } from '../../core/worldGeneration';
 import { configureGameRuntime, resetGameRuntime } from './runtime';
-import { ensureTileExists, loadWorld, resolveGeneratedTileVariant, startWorldGeneration, tileIndex } from './world';
+import { ensureTileExists, loadWorld, resolveGeneratedTileVariant, startWorldGeneration, tileIndex, updateTile } from './world';
 import { isTileScoutWalkable, isTileWalkable } from './navigation';
-import { PathService } from './PathService';
+import { configurePathTelemetry, PathService } from './PathService';
 import {
   doesScoutResourceMatchTerrain,
   doesScoutResourceMatchTileForSettlement,
@@ -142,6 +142,7 @@ function markScoutedReturnCorridorToOrigin(tile: Tile) {
 }
 
 test.afterEach(() => {
+  configurePathTelemetry(null);
   loadWorld([]);
   resetGameRuntime();
 });
@@ -153,7 +154,7 @@ test('scouting a non-matching hidden tile marks it scouted without revealing ter
   const resourceType = findNonMatchingResource(generated.terrain);
   const hero = createHero(tile.q, tile.r, resourceType);
   const broadcasts: any[] = [];
-  const moves: Array<{ q: number; r: number; task?: string; options?: { allowScouted?: boolean } }> = [];
+  const moves: Array<{ q: number; r: number; task?: string; options?: { allowScouted?: boolean; telemetrySource?: string } }> = [];
 
   configureGameRuntime({
     broadcast: (message) => broadcasts.push(message),
@@ -234,6 +235,234 @@ test('scouted hidden tiles are only walkable for scout routing', () => {
   ]);
 });
 
+test('settlement-restricted pathfinding can cross foreign open borders', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+    } satisfies Tile,
+    {
+      id: '9,0',
+      q: 9,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      borderMode: 'open',
+    } satisfies Tile,
+  ]);
+
+  const pathService = new PathService();
+  const expectedPath = [
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ];
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { settlementId: '0,0' }), []);
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { settlementId: '0,0', allowOpenBorders: true }), expectedPath);
+
+  tileIndex['9,0']!.borderMode = 'closed';
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { settlementId: '0,0', allowOpenBorders: true }), []);
+});
+
+test('walkable pathfinding reuses identical requests until the world changes', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const events: any[] = [];
+  configurePathTelemetry((event) => events.push(event));
+
+  const pathService = new PathService();
+  const expectedPath = [
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ];
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), expectedPath);
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), expectedPath);
+  assert.equal(events[0]?.cacheHit, false);
+  assert.equal(events[0]?.cacheSize, 1);
+  assert.equal(events[1]?.cacheHit, true);
+  assert.equal(events[1]?.cacheSize, 1);
+
+  updateTile({
+    ...tileIndex['1,0']!,
+    terrain: 'water',
+  });
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), []);
+  assert.equal(events[2]?.cacheHit, false);
+  assert.equal(events[2]?.cacheResetReason, 'world_version');
+  assert.equal(events[2]?.cacheSize, 0);
+});
+
+test('walkable pathfinding reuses identical requests across event loop turns', async () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const events: any[] = [];
+  configurePathTelemetry((event) => events.push(event));
+
+  const pathService = new PathService();
+  const expectedPath = [
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ];
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), expectedPath);
+  await wait(5);
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), expectedPath);
+  assert.equal(events[0]?.cacheHit, false);
+  assert.equal(events[1]?.cacheHit, true);
+});
+
+test('walkable pathfinding rejects cached paths that are no longer walkable', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const events: any[] = [];
+  configurePathTelemetry((event) => events.push(event));
+
+  const pathService = new PathService();
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), [
+    { q: 1, r: 0 },
+    { q: 2, r: 0 },
+  ]);
+
+  tileIndex['1,0']!.terrain = 'water';
+
+  assert.deepEqual(pathService.findWalkablePath(0, 0, 2, 0, { telemetrySource: 'test' }), []);
+  assert.equal(events[0]?.cacheHit, false);
+  assert.equal(events[1]?.cacheHit, false);
+});
+
 test('stale scout arrivals on hidden tiles return the hero to known walkable ground', () => {
   loadWorld([
     {
@@ -277,7 +506,7 @@ test('stale scout arrivals on hidden tiles return the hero to known walkable gro
   handleScoutResourceArrival(hero, tileIndex['1,0']!);
 
   assert.equal(hero.scoutResourceIntent, undefined);
-  assert.deepEqual(moves, [{ q: 0, r: 0, task: undefined, options: { allowScouted: true } }]);
+  assert.deepEqual(moves, [{ q: 0, r: 0, task: undefined, options: { allowScouted: true, telemetrySource: 'scout_resource' } }]);
 });
 
 test('settlement-scoped scout matching uses the settlement origin for hidden tiles', () => {

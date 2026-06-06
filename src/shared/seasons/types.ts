@@ -9,6 +9,15 @@ export type SeasonRewardKind = 'title' | 'badge' | 'banner' | 'hall_of_fame' | '
 
 export interface ScoreBreakdown extends Record<ScoreCategory, number> {}
 
+export interface SettlementDefeatSummary {
+  defeatedAt: number;
+  defeatedBySettlementId: string;
+  defeatedByPlayerId?: string | null;
+  defeatedByPlayerName?: string | null;
+  capturedTownCenterTileId: string;
+  transferredTileCount: number;
+}
+
 export interface SeasonStageGameplayConfig {
   serverTickRate?: number;
   gameSpeedMultiplier?: number;
@@ -88,6 +97,13 @@ export interface LeaderboardEntry {
   watchtowersControlled: number;
   shipOrdersCompleted: number;
   rewardTitles: string[];
+  defeated?: boolean;
+  defeatedAt?: number;
+  defeatedBySettlementId?: string;
+  defeatedByPlayerId?: string | null;
+  defeatedByPlayerName?: string | null;
+  capturedTownCenterTileId?: string;
+  transferredTileCount?: number;
 }
 
 export interface SeasonReward {
@@ -152,7 +168,7 @@ export interface SeasonScoreBaseline {
 }
 
 export interface SeasonCompletedReason {
-  kind: 'timer' | 'end_goal' | 'admin';
+  kind: 'timer' | 'end_goal' | 'admin' | 'last_player_standing';
   goalId?: string;
   playerId?: string | null;
   settlementId?: string | null;
@@ -212,6 +228,7 @@ export interface SeasonScoreInput {
   staffedJobSites?: number;
   productiveJobSites?: number;
   blockedJobSites?: number;
+  defeat?: SettlementDefeatSummary | null;
   baseline?: SeasonScoreBaseline;
 }
 

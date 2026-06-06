@@ -8,15 +8,19 @@ import {
   WATCHTOWER_PALISADE_WALL_LEVEL,
   WATCHTOWER_PALISADE_WOOD_COST,
   ensureBarracksMilitaryState,
+  ensureRaidTargetMilitaryState,
   ensureTownCenterMilitaryState,
   ensureWatchtowerMilitaryState,
-  getAvailableGuardReserve,
   getEffectiveSettlementBorderMode,
+  getSettlementGuardReserve,
+  hasUncapturedDefenderWatchtowerInTownCenterRaidRadius,
   isBarracksTile,
-  isProtectedByTownCenter,
+  isRaidableMilitaryTarget,
   isTownCenterTile,
   isWatchtowerTile,
+  returnSettlementGuardReserve,
   resolveWatchtowerConflictState,
+  withdrawSettlementGuardReserve,
 } from '../../../src/shared/game/military.ts';
 import type {
   MilitaryAssignGuardsMessage,
@@ -59,7 +63,7 @@ function getTownCenterTile(settlementId: string | null | undefined) {
   }
 
   const tile = tileIndex[settlementId] ?? null;
-  return isTownCenterTile(tile) ? ensureTownCenterMilitaryState(tile) : null;
+  return isTownCenterTile(tile) && getTileSettlementId(tile) === settlementId ? ensureTownCenterMilitaryState(tile) : null;
 }
 
 function getOwnedWatchtowers(settlementId: string) {
@@ -81,6 +85,16 @@ function broadcastTile(tileId: string | null | undefined) {
     tile,
     timestamp: Date.now(),
   } satisfies TileUpdatedMessage);
+}
+
+function broadcastTileIds(tileIds: string[]) {
+  for (const tileId of Array.from(new Set(tileIds))) {
+    broadcastTile(tileId);
+  }
+}
+
+function getSettlementReserveTiles() {
+  return Object.values(tileIndex);
 }
 
 function broadcastWoodWithdrawals(withdrawals: ReturnType<typeof withdrawResourceAcrossStoragesForSettlement>) {
@@ -113,12 +127,21 @@ export class ServerMilitaryHandler {
     return playerSettlementState.getPlayerSettlement(playerId ?? '');
   }
 
+  private resolvePlayerId(socket: Socket) {
+    return playerSettlementState.getSocketPlayerId(socket.id);
+  }
+
   private isSpectator(socket: Socket) {
     return playerSettlementState.isSocketSpectator(socket.id);
   }
 
   private handleSetBorderMode(socket: Socket, message: SettlementSetBorderModeMessage) {
     if (this.isSpectator(socket)) {
+      return;
+    }
+
+    const playerId = this.resolvePlayerId(socket);
+    if (seasonState.isPlayerDefeated(playerId)) {
       return;
     }
 
@@ -155,10 +178,12 @@ export class ServerMilitaryHandler {
   }
 
   private handleQueueGuardTraining(socket: Socket, message: MilitaryQueueGuardTrainingMessage) {
-    if (!seasonState.allowsNewHeroActions()) {
+    if (this.isSpectator(socket)) {
       return;
     }
-    if (this.isSpectator(socket)) {
+
+    const playerId = this.resolvePlayerId(socket);
+    if (!seasonState.canPlayerTakeNewActions(playerId)) {
       return;
     }
 
@@ -174,10 +199,12 @@ export class ServerMilitaryHandler {
   }
 
   private handleAssignGuards(socket: Socket, message: MilitaryAssignGuardsMessage) {
-    if (!seasonState.allowsNewHeroActions()) {
+    if (this.isSpectator(socket)) {
       return;
     }
-    if (this.isSpectator(socket)) {
+
+    const playerId = this.resolvePlayerId(socket);
+    if (!seasonState.canPlayerTakeNewActions(playerId)) {
       return;
     }
 
@@ -195,21 +222,36 @@ export class ServerMilitaryHandler {
     }
 
     if (delta > 0) {
-      const reserve = getAvailableGuardReserve(townCenter);
+      const reserve = getSettlementGuardReserve(getSettlementReserveTiles(), settlementId);
       if (reserve < delta) {
         return;
       }
 
-      townCenter.guardReserve = reserve - delta;
+      const assignedOrigins = withdrawSettlementGuardReserve(getSettlementReserveTiles(), settlementId, delta);
+      if (assignedOrigins.length < delta) {
+        returnSettlementGuardReserve(getSettlementReserveTiles(), assignedOrigins, settlementId);
+        return;
+      }
       tower.towerAssignedGuards = Math.max(0, (tower.towerAssignedGuards ?? 0) + delta);
+      tower.towerGuardOriginTileIds = [
+        ...(tower.towerGuardOriginTileIds ?? []),
+        ...assignedOrigins,
+      ];
+      broadcastTileIds(assignedOrigins);
     } else {
       const removeCount = Math.min(Math.abs(delta), tower.towerAssignedGuards ?? 0);
       if (removeCount <= 0) {
         return;
       }
 
+      const towerOrigins = tower.towerGuardOriginTileIds ?? [];
+      const returningOrigins = towerOrigins.splice(Math.max(0, towerOrigins.length - removeCount), removeCount);
       tower.towerAssignedGuards = Math.max(0, (tower.towerAssignedGuards ?? 0) - removeCount);
-      townCenter.guardReserve = getAvailableGuardReserve(townCenter) + removeCount;
+      tower.towerGuardOriginTileIds = towerOrigins;
+      const changedReserveTiles = returnSettlementGuardReserve(getSettlementReserveTiles(), returningOrigins, settlementId);
+      for (const tile of changedReserveTiles) {
+        broadcastTile(tile.id);
+      }
     }
 
     broadcastTile(townCenter.id);
@@ -217,10 +259,12 @@ export class ServerMilitaryHandler {
   }
 
   private handleBuildPalisade(socket: Socket, message: MilitaryBuildPalisadeMessage) {
-    if (!seasonState.allowsNewHeroActions()) {
+    if (this.isSpectator(socket)) {
       return;
     }
-    if (this.isSpectator(socket)) {
+
+    const playerId = this.resolvePlayerId(socket);
+    if (!seasonState.canPlayerTakeNewActions(playerId)) {
       return;
     }
 
@@ -247,10 +291,12 @@ export class ServerMilitaryHandler {
   }
 
   private handleSetRaidTarget(socket: Socket, message: MilitarySetRaidTargetMessage) {
-    if (!seasonState.allowsNewHeroActions()) {
+    if (this.isSpectator(socket)) {
       return;
     }
-    if (this.isSpectator(socket)) {
+
+    const playerId = this.resolvePlayerId(socket);
+    if (!seasonState.canPlayerTakeNewActions(playerId)) {
       return;
     }
 
@@ -266,45 +312,63 @@ export class ServerMilitaryHandler {
       const returningRaiders = Math.max(0, townCenter.raidCommittedGuards ?? 0);
       townCenter.raidTargetTileId = null;
       townCenter.raidBlockedReason = null;
-      townCenter.guardReserve = getAvailableGuardReserve(townCenter) + returningRaiders;
+      const changedReserveTiles = returnSettlementGuardReserve(
+        getSettlementReserveTiles(),
+        (townCenter.raidGuardOriginTileIds ?? []).slice(0, returningRaiders),
+        settlementId,
+      );
       townCenter.raidCommittedGuards = 0;
-      if (previousTarget && isWatchtowerTile(previousTarget) && previousTarget.towerAttackerSettlementId === settlementId) {
+      townCenter.raidGuardOriginTileIds = [];
+      if (previousTarget && isRaidableMilitaryTarget(previousTarget) && previousTarget.towerAttackerSettlementId === settlementId) {
         previousTarget.towerAttackerSettlementId = null;
         previousTarget.towerConflictState = resolveWatchtowerConflictState(previousTarget);
         broadcastTile(previousTarget.id);
+      }
+      for (const tile of changedReserveTiles) {
+        broadcastTile(tile.id);
       }
       broadcastTile(townCenter.id);
       return;
     }
 
     const targetTile = tileIndex[message.targetTileId] ?? null;
-    if (!targetTile || !isWatchtowerTile(targetTile) || targetTile.ownerSettlementId === settlementId) {
+    const defenderSettlementId = getTileSettlementId(targetTile);
+    if (!targetTile || !isRaidableMilitaryTarget(targetTile) || !defenderSettlementId || defenderSettlementId === settlementId) {
       return;
     }
 
-    const defenderTownCenter = getTownCenterTile(targetTile.ownerSettlementId ?? null);
-    if (!defenderTownCenter || getEffectiveSettlementBorderMode(defenderTownCenter, season) !== 'open' || isProtectedByTownCenter(targetTile, defenderTownCenter)) {
+    const defenderTownCenter = getTownCenterTile(defenderSettlementId);
+    if (!defenderTownCenter || getEffectiveSettlementBorderMode(defenderTownCenter, season) !== 'open') {
       return;
     }
 
-    if (getAvailableGuardReserve(townCenter) <= 0) {
+    if (isTownCenterTile(targetTile) && hasUncapturedDefenderWatchtowerInTownCenterRaidRadius(getSettlementReserveTiles(), targetTile, defenderSettlementId)) {
       return;
     }
 
-    if (previousTarget && isWatchtowerTile(previousTarget) && previousTarget.id !== targetTile.id && previousTarget.towerAttackerSettlementId === settlementId) {
+    if (getSettlementGuardReserve(getSettlementReserveTiles(), settlementId) <= 0) {
+      return;
+    }
+
+    if (previousTarget && isRaidableMilitaryTarget(previousTarget) && previousTarget.id !== targetTile.id && previousTarget.towerAttackerSettlementId === settlementId) {
       previousTarget.towerAttackerSettlementId = null;
       previousTarget.towerConflictState = resolveWatchtowerConflictState(previousTarget);
       broadcastTile(previousTarget.id);
     }
 
-    ensureWatchtowerMilitaryState(targetTile);
+    ensureRaidTargetMilitaryState(targetTile);
     if ((townCenter.raidCommittedGuards ?? 0) <= 0) {
-      const committedGuards = getAvailableGuardReserve(townCenter);
+      const committedGuards = getSettlementGuardReserve(getSettlementReserveTiles(), settlementId);
       if (committedGuards <= 0) {
         return;
       }
-      townCenter.guardReserve = 0;
+      const reserveOrigins = withdrawSettlementGuardReserve(getSettlementReserveTiles(), settlementId, committedGuards);
+      if (reserveOrigins.length <= 0) {
+        return;
+      }
       townCenter.raidCommittedGuards = committedGuards;
+      townCenter.raidGuardOriginTileIds = reserveOrigins;
+      broadcastTileIds(reserveOrigins);
     }
     townCenter.raidTargetTileId = targetTile.id;
     townCenter.raidBlockedReason = null;

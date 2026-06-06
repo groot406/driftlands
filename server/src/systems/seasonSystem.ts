@@ -81,7 +81,7 @@ async function restartSeasonWorld() {
   try {
     playerSettlementState.clearAssignments();
     coopState.resetHeroClaims();
-    await worldState.init();
+    await worldState.initFresh();
     broadcastWorldSnapshot();
     broadcastSeasonSnapshot();
     broadcastPlayerSnapshot();

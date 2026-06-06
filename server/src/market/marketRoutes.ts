@@ -17,7 +17,11 @@ function getString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function resolveTradeRequest(body: any) {
+export function getMarketOverviewForActor(actorId?: string | null, actorType?: MarketActorType) {
+  return marketState.getOverview(actorId ?? null, actorType ?? 'PLAYER');
+}
+
+export function resolveMarketTradeRequest(body: any) {
   const actorId = getString(body.actorId) ?? getString(body.playerId);
   if (!actorId) {
     throw new MarketTradeError('A playerId or actorId is required.', 'MISSING_ACTOR');
@@ -36,7 +40,7 @@ function resolveTradeRequest(body: any) {
   };
 }
 
-function assertMarketAccess(request: ReturnType<typeof resolveTradeRequest>) {
+function assertMarketAccess(request: ReturnType<typeof resolveMarketTradeRequest>) {
   if (request.actorType !== 'PLAYER') {
     return;
   }
@@ -50,7 +54,7 @@ function assertMarketAccess(request: ReturnType<typeof resolveTradeRequest>) {
   }
 }
 
-function broadcastMarketResult(action: MarketTransactionAction, result: MarketTradeResult) {
+export function broadcastMarketResult(action: MarketTransactionAction, result: MarketTradeResult) {
   for (const transfer of result.resourceTransfers) {
     const message = action === 'BUY'
       ? {
@@ -84,6 +88,16 @@ function broadcastMarketResult(action: MarketTransactionAction, result: MarketTr
   } satisfies MarketUpdateMessage);
 }
 
+export function executeMarketTrade(action: 'buy' | 'sell', body: any) {
+  const request = resolveMarketTradeRequest(body);
+  assertMarketAccess(request);
+  const result = action === 'buy'
+    ? marketState.buyResource(request)
+    : marketState.sellResource(request);
+  broadcastMarketResult(action === 'buy' ? 'BUY' : 'SELL', result);
+  return result;
+}
+
 function respondWithTradeResult(res: any, result: MarketTradeResult) {
   res.json({
     ...result.overview,
@@ -111,15 +125,12 @@ export function registerMarketRoutes(app: any) {
   app.get('/api/driftlands/market', (req: any, res: any) => {
     const actorId = getString(req.query?.actorId) ?? getString(req.query?.playerId);
     const actorType = parseActorType(req.query?.actorType);
-    res.json(marketState.getOverview(actorId, actorType));
+    res.json(getMarketOverviewForActor(actorId, actorType));
   });
 
   app.post('/api/driftlands/market/buy', (req: any, res: any) => {
     try {
-      const request = resolveTradeRequest(req.body ?? {});
-      assertMarketAccess(request);
-      const result = marketState.buyResource(request);
-      broadcastMarketResult('BUY', result);
+      const result = executeMarketTrade('buy', req.body ?? {});
       respondWithTradeResult(res, result);
     } catch (error) {
       handleMarketError(res, error);
@@ -128,10 +139,7 @@ export function registerMarketRoutes(app: any) {
 
   app.post('/api/driftlands/market/sell', (req: any, res: any) => {
     try {
-      const request = resolveTradeRequest(req.body ?? {});
-      assertMarketAccess(request);
-      const result = marketState.sellResource(request);
-      broadcastMarketResult('SELL', result);
+      const result = executeMarketTrade('sell', req.body ?? {});
       respondWithTradeResult(res, result);
     } catch (error) {
       handleMarketError(res, error);

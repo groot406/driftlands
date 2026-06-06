@@ -94,6 +94,35 @@ test('houses within reach provide the first beds after the town center is built'
   }
 });
 
+test('population beds use cached tile control when support has already recalculated', () => {
+  loadWorld([
+    tile(0, 0, 'towncenter'),
+    {
+      id: '30,0',
+      q: 30,
+      r: 0,
+      biome: null,
+      terrain: 'plains',
+      variant: 'plains_house',
+      discovered: true,
+      isBaseTile: true,
+      controlledBySettlementId: '0,0',
+      activationState: 'active',
+    } satisfies Tile,
+  ]);
+
+  try {
+    const limits = recalculatePopulationLimits();
+
+    assert.equal(limits.max, 15);
+    assert.equal(limits.beds, 2);
+  } finally {
+    loadWorld([]);
+    resetSettlementSupportState();
+    resetPopulationState();
+  }
+});
+
 test('active roads extend reach into the surrounding frontier beyond the base town-center ring', () => {
   loadWorld([
     tile(0, 0, 'towncenter'),

@@ -392,6 +392,7 @@ class ClientTaskHandler {
         const target = { q: warehouse.q, r: warehouse.r };
         const path = rewardDeliveryPathService.findWalkablePath(origin.q, origin.r, target.q, target.r, {
             settlementId,
+            telemetrySource: 'reward_delivery',
         });
         if (!path.length) {
             return;

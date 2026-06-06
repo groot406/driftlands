@@ -22,7 +22,7 @@ import type { TestModeSettingsSnapshot } from './game/testMode.ts';
 import type { SettlementBorderMode } from '../core/types/Tile.ts';
 import type { LooperlandsJoinAuth } from './looperlands.ts';
 import type { StoryHeroId } from './story/heroRoster.ts';
-import type { MarketOverviewSnapshot } from './game/market.ts';
+import type { MarketActorType, MarketOverviewSnapshot, MarketResourceType } from './game/market.ts';
 import type { ShipOrderOverviewSnapshot, ShipOrderResourceType } from './game/shipOrders.ts';
 import type { SeasonConfig, SeasonSnapshot, SeasonStageKey } from './seasons/types.ts';
 
@@ -396,6 +396,33 @@ export interface MarketUpdateMessage extends BaseMessage {
     market: MarketOverviewSnapshot;
 }
 
+export interface MarketOverviewRequestMessage extends BaseMessage {
+    type: 'market:request_overview';
+    requestId: string;
+    actorId?: string | null;
+    actorType?: MarketActorType;
+}
+
+export interface MarketTradeRequestMessage extends BaseMessage {
+    type: 'market:trade';
+    requestId: string;
+    action: 'buy' | 'sell';
+    actorId: string;
+    actorType?: MarketActorType;
+    settlementId: string;
+    resourceType: MarketResourceType;
+    quantity: number;
+}
+
+export interface MarketResponseMessage extends BaseMessage {
+    type: 'market:response';
+    requestId: string;
+    ok: boolean;
+    market?: MarketOverviewSnapshot;
+    message?: string;
+    code?: string;
+}
+
 export interface ShipOrderUpdateMessage extends BaseMessage {
     type: 'ship_order:update';
     overview: ShipOrderOverviewSnapshot;
@@ -663,6 +690,8 @@ export type ClientMessage =
     | MilitaryAssignGuardsMessage
     | MilitaryBuildPalisadeMessage
     | MilitarySetRaidTargetMessage
+    | MarketOverviewRequestMessage
+    | MarketTradeRequestMessage
     | ShipOrderLoadMessage
     | SeasonAdminUpdateConfigMessage
     | SeasonAdminSetStageMessage
@@ -705,6 +734,7 @@ export type ServerMessage =
     | ResourceDepositMessage
     | ResourceWithdrawMessage
     | MarketUpdateMessage
+    | MarketResponseMessage
     | ShipOrderUpdateMessage
     | HeroPayloadUpdateMessage
     | HeroScoutResourceUpdateMessage

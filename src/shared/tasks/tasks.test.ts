@@ -8,7 +8,7 @@ import { terrainPositions } from '../../core/terrainRegistry.ts';
 import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
-import { addResourcesToTask, loadTasks, startTask } from '../../store/taskStore.ts';
+import { addResourcesToTask, canStartTaskWhileCarrying, detachHeroFromCurrentTask, joinTask, leaveTask, loadTasks, startTask, taskStore, updateActiveTasks } from '../../store/taskStore.ts';
 import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
 import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
@@ -75,6 +75,590 @@ test('shared food requirements accept fish, meat, and bread sources', () => {
   assert.equal(addResourcesToTask(task, { type: 'fish', amount: 2 }), 1);
   assert.deepEqual(task.collectedResources, [{ type: 'food', amount: 3 }]);
   assert.equal(task.active, true);
+});
+
+test('building tasks can be placed while the hero is carrying unrelated cargo', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string; active?: boolean }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+    moveHero() {
+      assert.fail('hero should not fetch resources while already carrying unrelated cargo');
+    },
+  });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 1,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+    carryingPayload: { type: 'stone', amount: 3 },
+  } satisfies Hero]);
+
+  const buildRoad = getTaskDefinition('buildRoad');
+  assert.ok(buildRoad);
+  assert.equal(canStartTaskWhileCarrying(heroes[0]!, buildRoad, tileIndex['1,0']!), true);
+
+  const task = startTask(tileIndex['1,0']!, 'buildRoad', heroes[0]!);
+
+  assert.ok(task);
+  assert.equal(task.active, false);
+  assert.deepEqual(task.requiredResources, [{ type: 'wood', amount: 2 }]);
+  assert.deepEqual(task.collectedResources, []);
+  assert.deepEqual(heroes[0]?.carryingPayload, { type: 'stone', amount: 3 });
+  assert.equal(heroes[0]?.currentTaskId, task.id);
+  assert.equal(heroes[0]?.pendingTask, undefined);
+  assert.equal(heroes[0]?.returnPos, undefined);
+  assert.equal(taskStore.tasksByTile['1,0']?.buildRoad, task.id);
+  assert.equal(messages.some((message) => message.type === 'task:created' && message.taskId === task.id), true);
+});
+
+test('leaving the final participant pauses an unfinished build task so it can be continued', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    currentTaskId: 'task-build',
+  } satisfies Hero]);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildDock',
+    tileId: '0,1',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: { h1: 25 },
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [{ type: 'wood', amount: 3 }],
+  };
+  loadTasks([task]);
+
+  leaveTask('task-build', heroes[0]!);
+
+  assert.equal(taskStore.tasks.includes(task), true);
+  assert.equal(taskStore.taskIndex['task-build'], task);
+  assert.equal(taskStore.tasksByTile['0,1']?.buildDock, 'task-build');
+  assert.equal(taskStore.tasksByRequiredResource.get('wood')?.has('task-build'), true);
+  assert.equal(task.active, false);
+  assert.deepEqual(task.participants, {});
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.equal(messages.some((message) => message.type === 'task:removed'), false);
+  assert.equal(messages.some((message) => message.type === 'task:progress' && message.taskId === 'task-build'), true);
+});
+
+test('active tasks with no working participants are paused instead of removed', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string; active?: boolean }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadWorld([{
+    id: '0,1',
+    q: 0,
+    r: 1,
+    biome: 'lake',
+    terrain: 'water',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile]);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildDock',
+    tileId: '0,1',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: { h1: 25 },
+    active: true,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [{ type: 'wood', amount: 5 }],
+  };
+  loadTasks([task]);
+
+  updateActiveTasks([]);
+
+  assert.equal(taskStore.tasks.includes(task), true);
+  assert.equal(taskStore.taskIndex['task-build'], task);
+  assert.equal(taskStore.tasksByTile['0,1']?.buildDock, 'task-build');
+  assert.equal(task.active, false);
+  assert.equal(taskStore.activeTaskIds.has('task-build'), false);
+  assert.equal(messages.some((message) => message.type === 'task:removed'), false);
+  assert.equal(messages.some((message) => message.type === 'task:progress' && message.taskId === 'task-build' && message.active === false), true);
+});
+
+test('leaving a task with no dropped resources removes it instead of making it continuable', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadWorld([{
+    id: '0,0',
+    q: 0,
+    r: 0,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  const task = startTask(tileIndex['0,0']!, 'plantTrees', heroes[0]!);
+  assert.ok(task);
+
+  leaveTask(task.id, heroes[0]!);
+
+  assert.equal(taskStore.taskIndex[task.id], undefined);
+  assert.equal(taskStore.tasksByTile['0,0']?.plantTrees, undefined);
+  assert.equal(taskStore.activeTaskIds.has(task.id), false);
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), true);
+});
+
+test('joining a paused resource-cost task without dropped resources keeps it continuable', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'lake',
+      terrain: 'water',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildDock',
+    tileId: '0,1',
+    progressXp: 0,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [],
+  };
+  loadTasks([task]);
+
+  joinTask(task.id, heroes[0]!);
+
+  assert.equal(taskStore.taskIndex[task.id], task);
+  assert.equal(taskStore.tasksByTile['0,1']?.buildDock, task.id);
+  assert.equal(taskStore.activeTaskIds.has(task.id), false);
+  assert.equal(heroes[0]?.currentTaskId, task.id);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), false);
+});
+
+test('tasks waiting for a hero to fetch resources are not cancelled before resources are dropped', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  let fetchMovementStarted = false;
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+    moveHero(hero) {
+      fetchMovementStarted = true;
+      detachHeroFromCurrentTask(hero);
+    },
+  });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'mountain',
+      terrain: 'mountain',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 1,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+
+  loadStoryProgression(evaluateProgression({
+    population: 5,
+    beds: 5,
+    frontierDistance: 0,
+    resourceStock: { bread: 8, wood: 12 },
+    buildingCounts: { house: 2, supplyDepot: 1, watchtower: 1 },
+    operationalBuildingCounts: {},
+    discoveredTerrains: ['mountain', 'water', 'forest'],
+    landingTerrains: [],
+    unlockedHeroIds: [],
+    completedStudyKeys: [],
+    heroAbilityChargesEarned: 0,
+  }), '0,0');
+  depositResourceToStorage('0,0', 'wood', 10);
+
+  const task = startTask(tileIndex['2,0']!, 'buildMine', heroes[0]!);
+  assert.ok(task);
+  assert.equal(fetchMovementStarted, true);
+  assert.equal(task.active, false);
+  assert.deepEqual(task.collectedResources, []);
+  assert.deepEqual(task.participants, {});
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.deepEqual(heroes[0]?.pendingTask, { tileId: '2,0', taskType: 'buildMine' });
+  assert.deepEqual(heroes[0]?.carryingPayload, { type: 'wood', amount: -10 });
+
+  updateActiveTasks(heroes);
+
+  assert.equal(taskStore.taskIndex[task.id], task);
+  assert.equal(taskStore.tasksByTile['2,0']?.buildMine, task.id);
+  assert.equal(task.active, false);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), false);
+
+  heroes[0]!.carryingPayload = { type: 'wood', amount: 10 };
+  updateActiveTasks(heroes);
+
+  assert.equal(taskStore.taskIndex[task.id], task);
+  assert.equal(taskStore.tasksByTile['2,0']?.buildMine, task.id);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), false);
+});
+
+test('starting a new task removes other open tasks on the same tile', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadWorld([{
+    id: '0,0',
+    q: 0,
+    r: 0,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile]);
+
+  loadHeroes([
+    {
+      id: 'starter',
+      name: 'Santa',
+      avatar: 'santa',
+      q: 0,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      settlementId: '0,0',
+    } satisfies Hero,
+    {
+      id: 'worker',
+      name: 'Rudolph',
+      avatar: 'rudolph',
+      q: 0,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      settlementId: '0,0',
+      currentTaskId: 'task-road',
+    } satisfies Hero,
+    {
+      id: 'fetcher',
+      name: 'Hermey',
+      avatar: 'boy',
+      q: 1,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'left',
+      settlementId: '0,0',
+      pendingTask: { tileId: '0,0', taskType: 'buildRoad' },
+      carryingPayload: { type: 'wood', amount: -5 },
+      returnPos: { q: 0, r: 0 },
+    } satisfies Hero,
+  ]);
+
+  const roadTask: TaskInstance = {
+    id: 'task-road',
+    type: 'buildRoad',
+    tileId: '0,0',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: { worker: 25 },
+    active: false,
+    requiredResources: [],
+    collectedResources: [],
+  };
+  loadTasks([roadTask]);
+
+  const treeTask = startTask(tileIndex['0,0']!, 'plantTrees', heroes[0]!);
+
+  assert.ok(treeTask);
+  assert.equal(treeTask.type, 'plantTrees');
+  assert.equal(taskStore.taskIndex['task-road'], undefined);
+  assert.equal(taskStore.tasksByTile['0,0']?.buildRoad, undefined);
+  assert.equal(taskStore.tasksByTile['0,0']?.plantTrees, treeTask.id);
+  assert.equal(heroes[1]?.currentTaskId, undefined);
+  assert.equal(heroes[2]?.pendingTask, undefined);
+  assert.equal(heroes[2]?.carryingPayload, undefined);
+  assert.equal(heroes[2]?.returnPos, undefined);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === 'task-road'), true);
+});
+
+test('tasks are cancelled when their tile changes into an invalid state', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadWorld([{
+    id: '0,0',
+    q: 0,
+    r: 0,
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  } satisfies Tile]);
+
+  const task: TaskInstance = {
+    id: 'task-plant',
+    type: 'plantTrees',
+    tileId: '0,0',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: false,
+    requiredResources: [],
+    collectedResources: [],
+  };
+  loadTasks([task]);
+
+  const tile = tileIndex['0,0']!;
+  tile.terrain = 'forest';
+  tile.variant = 'young_forest';
+  tile.isBaseTile = false;
+
+  updateActiveTasks([]);
+
+  assert.equal(taskStore.taskIndex['task-plant'], undefined);
+  assert.equal(taskStore.tasksByTile['0,0']?.plantTrees, undefined);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === 'task-plant'), true);
+});
+
+test('leaving one participant keeps an inactive build task assigned to another fetcher', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadHeroes([
+    {
+      id: 'h1',
+      name: 'Santa',
+      avatar: 'santa',
+      q: 0,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      currentTaskId: 'task-build',
+    } satisfies Hero,
+    {
+      id: 'h2',
+      name: 'Rudolph',
+      avatar: 'rudolph',
+      q: 1,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      currentTaskId: 'task-build',
+      pendingTask: { tileId: '0,1', taskType: 'buildDock' },
+      carryingPayload: { type: 'wood', amount: -5 },
+      returnPos: { q: 0, r: 1 },
+    } satisfies Hero,
+  ]);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildDock',
+    tileId: '0,1',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: { h1: 25, h2: 0 },
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [{ type: 'wood', amount: 3 }],
+  };
+  loadTasks([task]);
+
+  leaveTask('task-build', heroes[0]!);
+
+  assert.equal(taskStore.taskIndex['task-build'], task);
+  assert.equal(taskStore.tasksByTile['0,1']?.buildDock, 'task-build');
+  assert.deepEqual(task.participants, { h2: 0 });
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.equal(heroes[1]?.currentTaskId, 'task-build');
+  assert.equal(messages.some((message) => message.type === 'task:removed'), false);
 });
 
 test('inactive controlled tiles no longer offer a manual restore action', () => {
@@ -163,6 +747,128 @@ test('inactive discovered tiles do not offer or start normal work tasks', () => 
 
   assert.equal(availableTasks.some((task) => task.key === 'hunt'), false);
   assert.equal(startTask(tileIndex['1,0']!, 'hunt', hero), null);
+});
+
+test('damaged maintained buildings offer a hero repair task with maintenance materials', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'forest_sawmill',
+      condition: 45,
+      conditionState: 'worn',
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 2, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  };
+
+  const repairTask = getAvailableTasks(tileIndex['0,0']!, hero).find((task) => task.key === 'repairBuilding');
+
+  assert.ok(repairTask);
+  assert.equal(repairTask.label, 'Repair Building');
+  assert.deepEqual(repairTask.requiredResources?.(0, tileIndex['0,0']!), [
+    { type: 'wood', amount: 1 },
+    { type: 'stone', amount: 1 },
+  ]);
+  assert.ok(startTask(tileIndex['0,0']!, 'repairBuilding', hero));
+});
+
+test('healthy and non-maintained tiles do not offer hero repair', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'forest_lumber_camp',
+      condition: 100,
+      conditionState: 'healthy',
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 2, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  };
+
+  assert.equal(getAvailableTasks(tileIndex['0,0']!, hero).some((task) => task.key === 'repairBuilding'), false);
+  assert.equal(getAvailableTasks(tileIndex['1,0']!, hero).some((task) => task.key === 'repairBuilding'), false);
+});
+
+test('hero repair completion restores building condition', () => {
+  const tile: Tile = {
+    id: '0,0',
+    q: 0,
+    r: 0,
+    biome: 'forest',
+    terrain: 'forest',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: 'forest_lumber_camp',
+    condition: 30,
+    conditionState: 'damaged',
+  };
+  const repairTask = getTaskDefinition('repairBuilding');
+
+  repairTask?.onComplete?.(tile, {
+    id: 'task-repair',
+    type: 'repairBuilding',
+    tileId: tile.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, []);
+
+  assert.equal(tile.condition, 100);
+  assert.equal(tile.conditionState, 'healthy');
 });
 
 test('irrigation is available without a story unlock', () => {
@@ -427,6 +1133,70 @@ test('deferred chop wood chaining skips young forest targets', () => {
     assert.fail('Expected chained movement target to be set.');
   }
   assert.equal(target.q, 1);
+  assert.equal(target.r, 0);
+});
+
+test('deferred task chaining chooses the closest tile to the task origin', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    ...[5, 6, 7, 8, 9, 10, 11].map((q) => ({
+      id: `${q},0`,
+      q,
+      r: 0,
+      biome: 'forest',
+      terrain: 'forest',
+      discovered: true,
+      isBaseTile: q !== 10,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: q === 10 ? 'chopped_forest' : q === 9 ? 'young_forest' : null,
+    }) satisfies Tile),
+  ]);
+
+  let chainedTarget: { q: number; r: number } | null = null;
+  let chainedTask: string | undefined;
+  configureGameRuntime({
+    moveHero(_hero, target, task) {
+      chainedTarget = target;
+      chainedTask = task;
+    },
+  });
+
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 10,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    pendingChain: {
+      sourceTileId: '10,0',
+      taskType: 'chopWood',
+    },
+  };
+
+  handleHeroArrival(hero, tileIndex['10,0']!);
+
+  assert.equal(chainedTask, 'chopWood');
+  const target = chainedTarget as { q: number; r: number } | null;
+  if (!target) {
+    assert.fail('Expected chained movement target to be set.');
+  }
+  assert.equal(target.q, 11);
   assert.equal(target.r, 0);
 });
 
@@ -969,6 +1739,53 @@ test('watchtowers can be placed on snow and desert frontier tiles', () => {
 
   assert.equal(snowTile.variant, 'snow_watchtower');
   assert.equal(desertTile.variant, 'dessert_watchtower');
+});
+
+test('beacons can be placed on water frontier tiles only', () => {
+  const buildBeacon = getTaskDefinition('buildBeacon');
+  const hero: Hero = {
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+  };
+
+  const waterTile: Tile = {
+    id: '1,0',
+    q: 1,
+    r: 0,
+    biome: 'lake',
+    terrain: 'water',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    variant: null,
+  };
+
+  assert.equal(buildBeacon?.canStart(waterTile, hero), true);
+  assert.equal(buildBeacon?.canStart({
+    ...waterTile,
+    id: '2,0',
+    q: 2,
+    terrain: 'plains',
+    biome: 'plains',
+  } satisfies Tile, hero), false);
+  assert.equal(buildBeacon?.canStart({
+    ...waterTile,
+    id: '3,0',
+    q: 3,
+    isBaseTile: false,
+  } satisfies Tile, hero), false);
+
+  buildBeacon?.onComplete?.(waterTile, {} as never, [hero]);
+
+  assert.equal(waterTile.variant, 'water_beacon');
+  assert.equal(waterTile.towerDurabilityMax, 100);
 });
 
 test('dock tasks only start on water tiles that touch active land', () => {

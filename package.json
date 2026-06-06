@@ -28,6 +28,7 @@
     "start:server:no-debug:free": "SERVER_DEBUG_MODE=0 SERVER_SETTLEMENT_START_MODE=free tsx server/src/index.ts",
     "external": "node scripts/start-external.mjs",
     "external:https": "node scripts/start-https-proxy.mjs",
+    "perf:monitor": "node scripts/perf-monitor-server.mjs",
     "start-external": "node scripts/start-external.mjs",
     "start:external": "npm run start-external",
     "hosting:tui": "node scripts/hosting-tui.mjs",

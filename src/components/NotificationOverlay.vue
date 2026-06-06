@@ -50,6 +50,10 @@
               class="w-2 h-2 bg-lime-300 rounded-full"
             ></div>
             <div
+              v-else-if="notification.type === 'defeat'"
+              class="w-2 h-2 bg-red-400 rounded-full"
+            ></div>
+            <div
               v-else-if="notification.type === 'calamity'"
               class="w-2 h-2 bg-red-300 rounded-full"
             ></div>
@@ -101,6 +105,8 @@ function getNotificationStyles(type: string) {
       return 'border-violet-400/30';
     case 'settlement':
       return 'border-lime-300/35 bg-lime-300/10';
+    case 'defeat':
+      return 'border-red-400/45 bg-red-500/10';
     case 'calamity':
       return 'border-red-300/40 bg-red-500/10';
     case 'stewardship':

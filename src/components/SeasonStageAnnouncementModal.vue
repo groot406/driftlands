@@ -109,7 +109,7 @@ const summary = computed(() => {
     case 'preparation':
       return 'Build your economy, scout nearby land and prepare defenses before direct border pressure begins.';
     case 'midgame':
-      return 'Raids, watchtower captures and live ranking pressure are now part of the world state.';
+      return 'Raids, watchtower captures, town-center takeovers and live ranking pressure are now part of the world state.';
     case 'endgame':
       return 'Final goals are active. Strong finishes, territory holds and score milestones can decide the season.';
     default:
@@ -130,10 +130,10 @@ const rules = computed(() => {
   const items: string[] = [];
   if (config.borderPolicy === 'locked_open') {
     items.push('All settlement borders are effectively open while this stage is active.');
-    items.push('Border raids and watchtower captures can be started when the military requirements are met.');
+    items.push('Border raids, watchtower captures and town-center takeovers can be started when the military requirements are met.');
   } else if (config.borderPolicy === 'locked_closed') {
     items.push('All settlement borders are effectively closed while this stage is active.');
-    items.push('Raids and watchtower captures are disabled for now.');
+    items.push('Raids, watchtower captures and town-center takeovers are disabled for now.');
   } else {
     items.push('Settlements can manage their own border policy if they have unlocked border controls.');
   }

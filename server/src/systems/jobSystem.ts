@@ -8,7 +8,7 @@ import {
 } from '../../../src/shared/game/state/jobStore';
 import { getPopulationState } from '../../../src/shared/game/state/populationStore';
 import { settlers } from '../../../src/shared/game/state/settlerStore';
-import { getSiteBlockerReason, listResolvedJobSites, resolveSiteStatus } from './jobSiteRuntime';
+import { listResolvedJobSites, resolveSiteState } from './jobSiteRuntime';
 
 function getAvailableWorkers() {
     const population = getPopulationState();
@@ -25,7 +25,7 @@ function createSnapshot(): WorkforceSnapshot {
     const assignedCounts = new Map<string, number>();
 
     for (const settler of assignableSettlers) {
-        if (!settler.assignedWorkTileId) {
+        if ((settler.assignedRole ?? 'job') !== 'job' || !settler.assignedWorkTileId) {
             continue;
         }
 
@@ -37,14 +37,15 @@ function createSnapshot(): WorkforceSnapshot {
 
     const siteSnapshots = sites.map((site): JobSiteSnapshot => {
         const assignedWorkers = Math.min(site.slots, assignedCounts.get(site.tile.id) ?? 0);
+        const siteState = resolveSiteState(site, assignedWorkers);
 
         return {
             tileId: site.tile.id,
             buildingKey: site.building.key,
             slots: site.slots,
             assignedWorkers,
-            status: resolveSiteStatus(site, assignedWorkers),
-            blockerReason: getSiteBlockerReason(site, assignedWorkers),
+            status: siteState.status,
+            blockerReason: siteState.blockerReason,
         };
     });
 

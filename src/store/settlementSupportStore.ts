@@ -56,7 +56,7 @@ interface SupportSelectionResult {
 export type SettlementPopulationInput = number | Partial<Record<string, number>>;
 export type SettlementHungerInput = number | Partial<Record<string, number>>;
 
-const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower'] as const;
+const WATCHTOWER_VARIANT_KEYS = ['plains_watchtower', 'dirt_watchtower', 'mountains_watchtower', 'snow_watchtower', 'dessert_watchtower', 'water_beacon'] as const;
 const HOUSE_VARIANT_KEYS = ['plains_house', 'dirt_house', 'plains_stone_house', 'dirt_stone_house', 'plains_glass_house', 'dirt_glass_house'] as const;
 const INFRASTRUCTURE_VARIANT_KEYS = new Set<string>([
     'road',
@@ -202,9 +202,9 @@ function computeReachTileIdsFromTownCenters(
     townCenters: Array<Pick<Tile, 'q' | 'r'>>,
     settlementId: string | null,
     canActivateWatchtower: (tile: Tile) => boolean,
+    watchtowerTiles: Tile[] = getWatchtowerTiles(),
 ): Set<string> {
     const reachSet = new Set<string>();
-    const watchtowerTiles = getWatchtowerTiles();
     const activatedWatchtowers = new Set<string>();
 
     for (const tc of townCenters) {
@@ -259,13 +259,14 @@ function computeSettlementReachFromTownCenters(
     settlementId: string,
     canActivateWatchtower: (tile: Tile) => boolean,
     requireActiveInfrastructure: boolean = true,
+    watchtowerTiles: Tile[] = getWatchtowerTiles(),
 ) {
     if (!townCenters.length) {
         return new Set<string>();
     }
 
     return extendReachWithInfrastructure(
-        computeReachTileIdsFromTownCenters(townCenters, settlementId, canActivateWatchtower),
+        computeReachTileIdsFromTownCenters(townCenters, settlementId, canActivateWatchtower, watchtowerTiles),
         settlementId,
         requireActiveInfrastructure,
     );
@@ -625,10 +626,11 @@ function buildSupportSnapshot(
     ownerByTileId: Map<string, string | null>,
     controlledByTileId: Map<string, string | null>,
     hungerMs: SettlementHungerInput,
+    ownedDiscoveredTiles: Tile[] = getOwnedDiscoveredTiles(),
 ): SettlementSupportSnapshot {
     const countsBySettlementId = new Map<string, SettlementSupportCounts>();
 
-    for (const tile of getOwnedDiscoveredTiles()) {
+    for (const tile of ownedDiscoveredTiles) {
         if (!isSupportCountedTile(tile)) continue;
 
         const ownerSettlementId = ownerByTileId.get(tile.id);
@@ -772,6 +774,8 @@ function getBaseSupportCapacityBySettlementId(townCenters: Tile[], populationCur
 export function recalculateSettlementSupport(populationCurrent: SettlementPopulationInput, hungerMs: SettlementHungerInput): RecalculateResult {
     const supportAllControlledTiles = isTileSupportEnabled(testModeSettings);
     const townCenters = getTownCenters();
+    const watchtowerTiles = getWatchtowerTiles();
+    const ownedDiscoveredTiles = getOwnedDiscoveredTiles();
     const townCentersBySettlementId = buildTownCentersBySettlementId(townCenters);
     const townCenterBySettlementId = new Map<string, Tile>(
         Array.from(townCentersBySettlementId.entries()).map(([settlementId, settlementTownCenters]) => [settlementId, settlementTownCenters[0]!]),
@@ -781,20 +785,16 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
     for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
         staticReachBySettlementId.set(
             settlementId,
-            computeSettlementReachFromTownCenters(settlementTownCenters, settlementId, () => true, false),
+            computeSettlementReachFromTownCenters(settlementTownCenters, settlementId, () => true, false, watchtowerTiles),
         );
     }
 
     const ownerByTileId = new Map<string, string | null>();
-    for (const tile of getOwnedDiscoveredTiles()) {
+    for (const tile of ownedDiscoveredTiles) {
         ownerByTileId.set(tile.id, chooseOwnerSettlement(tile, staticReachBySettlementId, townCenters));
     }
 
-    let activeWatchtowerIds = new Set(
-        supportAllControlledTiles
-            ? getWatchtowerTiles().map((tile) => tile.id)
-            : getWatchtowerTiles().map((tile) => tile.id),
-    );
+    let activeWatchtowerIds = new Set(watchtowerTiles.map((tile) => tile.id));
     let controlledByTileId = new Map<string, string | null>();
     let baseSelection: SupportSelectionResult = {
         supportCapacity: Array.from(baseSupportCapacityBySettlementId.values()).reduce((sum, capacity) => sum + capacity, 0),
@@ -803,7 +803,7 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
         activeWatchtowerIds: new Set<string>(),
     };
 
-    for (let iteration = 0; iteration <= getWatchtowerTiles().length + 1; iteration++) {
+    for (let iteration = 0; iteration <= watchtowerTiles.length + 1; iteration++) {
         const liveReachBySettlementId = new Map<string, Set<string>>();
         for (const [settlementId, settlementTownCenters] of townCentersBySettlementId.entries()) {
             liveReachBySettlementId.set(
@@ -812,13 +812,15 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
                     settlementTownCenters,
                     settlementId,
                     (watchtower) => activeWatchtowerIds.has(watchtower.id),
+                    true,
+                    watchtowerTiles,
                 ),
             );
         }
 
         controlledByTileId = new Map<string, string | null>();
         const controlledTileIds = new Set<string>();
-        for (const tile of getOwnedDiscoveredTiles()) {
+        for (const tile of ownedDiscoveredTiles) {
             const ownerSettlementId = ownerByTileId.get(tile.id);
             if (!ownerSettlementId) {
                 controlledByTileId.set(tile.id, null);
@@ -976,6 +978,7 @@ export function recalculateSettlementSupport(populationCurrent: SettlementPopula
         ownerByTileId,
         controlledByTileId,
         hungerMs,
+        ownedDiscoveredTiles,
     );
 
     return {

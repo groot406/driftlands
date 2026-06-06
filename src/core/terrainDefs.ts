@@ -211,6 +211,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             {key: 'water_dock_d', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { a: true, b: true, c: true, e: true, f: true }},
             {key: 'water_dock_e', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { a: true, b: true, c: true, d: true, f: true }},
             {key: 'water_dock_f', weight: 0, walkable: true, connectsToRoad: true, fencedEdges: { a: true, b: true, c: true, d: true, e: true }},
+            {key: 'water_beacon', weight: 0, assetKey: 'water-v2', walkable: false, connectsToRoad: true},
             {key: 'water_bridge_ad', weight: 0, walkable: true, moveCost: 0.45, connectsToRoad: true, fencedEdges: { b: true, c: true, e: true, f: true }},
             {key: 'water_bridge_be', weight: 0, walkable: true, moveCost: 0.45, connectsToRoad: true, fencedEdges: { a: true, c: true, d: true, f: true }},
             {key: 'water_bridge_cf', weight: 0, walkable: true, moveCost: 0.45, connectsToRoad: true, fencedEdges: { a: true, b: true, d: true, e: true }},

@@ -1,6 +1,27 @@
 import { normalizeWalletAddress } from '../../../src/shared/looperlands';
 import { getLooperlandsApiUrl, getLooperlandsWeb3Url } from './looperlandsAuth';
 
+const DEFAULT_LOOPERLANDS_PROXY_TIMEOUT_MS = 15_000;
+
+class UpstreamTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Looperlands upstream request timed out after ${timeoutMs}ms.`);
+    this.name = 'UpstreamTimeoutError';
+  }
+}
+
+interface UpstreamTextResponse {
+  status: number;
+  ok: boolean;
+  headers: Headers;
+  body: string;
+}
+
+function getProxyTimeoutMs(): number {
+  const raw = Number(process.env.LOOPERLANDS_PROXY_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_LOOPERLANDS_PROXY_TIMEOUT_MS;
+}
+
 function maskDebugValue(value: string | null | undefined, visible = 6): string {
   if (!value) return '(empty)';
   if (value.length <= visible * 2) return `${value.slice(0, 2)}...`;
@@ -36,18 +57,53 @@ function getHeader(req: any, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-async function sendUpstreamResponse(res: any, upstream: Response): Promise<void> {
+async function fetchUpstreamText(input: string, init: RequestInit = {}): Promise<UpstreamTextResponse> {
+  const timeoutMs = getProxyTimeoutMs();
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new UpstreamTimeoutError(timeoutMs));
+    }, timeoutMs);
+  });
+
+  try {
+    const upstream = await Promise.race([
+      fetch(input, {
+        ...init,
+        signal: controller.signal,
+      }),
+      timeoutPromise,
+    ]);
+    const body = await Promise.race([
+      upstream.text(),
+      timeoutPromise,
+    ]);
+    return {
+      status: upstream.status,
+      ok: upstream.ok,
+      headers: upstream.headers,
+      body,
+    };
+  } catch (error) {
+    throw error;
+  } finally {
+    clearTimeout(timeout!);
+  }
+}
+
+async function sendUpstreamResponse(res: any, upstream: UpstreamTextResponse): Promise<void> {
   const contentType = upstream.headers.get('content-type');
   if (contentType) {
     res.set('content-type', contentType);
   }
 
-  res.status(upstream.status).send(await upstream.text());
+  res.status(upstream.status).send(upstream.body);
 }
 
-async function sendWalletLoopersResponse(res: any, upstream: Response): Promise<void> {
-  const body = await upstream.text();
-  if (upstream.status === 500 && body.includes('Internal Server Error')) {
+async function sendWalletLoopersResponse(res: any, upstream: UpstreamTextResponse): Promise<void> {
+  if (upstream.status === 500 && upstream.body.includes('Internal Server Error')) {
     res.status(401).json({ message: 'Looperlands auth token was rejected. Reconnect your wallet and try again.' });
     return;
   }
@@ -57,11 +113,16 @@ async function sendWalletLoopersResponse(res: any, upstream: Response): Promise<
     res.set('content-type', contentType);
   }
 
-  res.status(upstream.status).send(body);
+  res.status(upstream.status).send(upstream.body);
 }
 
 function sendProxyError(res: any, error: unknown): void {
   console.error('Looperlands proxy request failed:', error);
+  if (error instanceof UpstreamTimeoutError) {
+    res.status(504).json({ message: 'Looperlands API request timed out. Please try again.' });
+    return;
+  }
+
   res.status(502).json({ message: 'Could not reach the Looperlands API.' });
 }
 
@@ -73,7 +134,7 @@ export function registerLooperlandsProxy(app: any): void {
       upstream: `${getLooperlandsWeb3Url()}/web3/nonce`,
     });
     try {
-      const upstream = await fetch(`${getLooperlandsWeb3Url()}/web3/nonce`, {
+      const upstream = await fetchUpstreamText(`${getLooperlandsWeb3Url()}/web3/nonce`, {
         headers: { 'Accept': 'application/json' },
       });
       logProxy('nonce response', {
@@ -103,7 +164,7 @@ export function registerLooperlandsProxy(app: any): void {
       hasSignature: typeof req.body?.signature === 'string',
     });
     try {
-      const upstream = await fetch(`${getLooperlandsWeb3Url()}/web3/verify`, {
+      const upstream = await fetchUpstreamText(`${getLooperlandsWeb3Url()}/web3/verify`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -149,7 +210,7 @@ export function registerLooperlandsProxy(app: any): void {
         walletAddress: maskDebugValue(wallet),
         hasToken: token.length > 0,
       });
-      const upstream = await fetch(`${getLooperlandsApiUrl()}/game/wallet/${wallet}/loopers`, {
+      const upstream = await fetchUpstreamText(`${getLooperlandsApiUrl()}/game/wallet/${wallet}/loopers`, {
         headers: {
           'Accept': 'application/json',
           'X-AUTH-WEB3TOKEN': token,

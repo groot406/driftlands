@@ -304,6 +304,43 @@ test('worldState restores persisted settlement progress from SERVER_SAVE_PATH', 
   }
 });
 
+test('worldState.initFresh bypasses persisted world restore', async () => {
+  const originalSavePath = process.env.SERVER_SAVE_PATH;
+  const originalRandom = Math.random;
+  const saveDir = mkdtempSync(join(tmpdir(), 'driftlands-fresh-save-'));
+  const savePath = join(saveDir, 'world-save.json');
+  setIo({ emit() {} });
+
+  try {
+    process.env.SERVER_SAVE_PATH = savePath;
+    Math.random = () => 0.25;
+
+    await worldState.init(42);
+    const founded = worldState.foundSettlementAt(18, -4, {
+      playerId: 'player-one',
+      playerName: 'Ada',
+    });
+    assert.ok(founded);
+    assert.equal(playerSettlementState.assignPlayerSettlement('player-one', founded.settlementId), true);
+    assert.equal(worldState.saveNow(), true);
+
+    await worldState.initFresh();
+
+    assert.equal(worldState.getSeed(), 0x40000000);
+    assert.notEqual(tileIndex['18,-4']?.terrain, 'towncenter');
+    assert.equal(playerSettlementState.getPlayerSettlement('player-one'), null);
+    assert.equal(heroes.some((hero) => hero.playerId === 'player-one'), false);
+  } finally {
+    Math.random = originalRandom;
+    if (originalSavePath === undefined) {
+      delete process.env.SERVER_SAVE_PATH;
+    } else {
+      process.env.SERVER_SAVE_PATH = originalSavePath;
+    }
+    rmSync(saveDir, { recursive: true, force: true });
+  }
+});
+
 test('worldState can save, load, and remove named saved states', async () => {
   const originalSavePath = process.env.SERVER_SAVE_PATH;
   const saveDir = mkdtempSync(join(tmpdir(), 'driftlands-save-as-'));

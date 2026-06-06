@@ -127,58 +127,45 @@ function isPendingExploreTargetReached(hero: Hero, target: { q: number; r: numbe
 }
 
 function pickDirectedControlledUndiscoveredTile(hero: Hero, target: { q: number; r: number }): Tile | null {
-    const candidates = listReachableControlledUndiscoveredTiles(hero);
+    const candidates = listUndiscoveredFrontierTiles()
+        .map((tile) => {
+            const accessTile = tile.discovered
+                ? null
+                : findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
+            return accessTile ? { tile, accessTile } : null;
+        })
+        .filter((candidate): candidate is { tile: Tile; accessTile: Tile } => !!candidate)
+        .sort((a, b) => {
+            const distanceDelta = explorePathService.axialDistance(a.tile.q, a.tile.r, target.q, target.r)
+                - explorePathService.axialDistance(b.tile.q, b.tile.r, target.q, target.r);
+            if (distanceDelta !== 0) return distanceDelta;
+
+            const accessDelta = explorePathService.axialDistance(hero.q, hero.r, a.accessTile.q, a.accessTile.r)
+                - explorePathService.axialDistance(hero.q, hero.r, b.accessTile.q, b.accessTile.r);
+            if (accessDelta !== 0) return accessDelta;
+
+            return a.tile.id.localeCompare(b.tile.id);
+        });
+
     if (!candidates.length) {
         return null;
     }
 
-    return candidates
-        .slice()
-        .sort((a, b) => {
-            const distanceDelta = explorePathService.axialDistance(a.q, a.r, target.q, target.r)
-                - explorePathService.axialDistance(b.q, b.r, target.q, target.r);
-            if (distanceDelta !== 0) return distanceDelta;
-
-            const accessDelta = getExploreAccessDistance(hero, a) - getExploreAccessDistance(hero, b);
-            if (accessDelta !== 0) return accessDelta;
-
-            return a.id.localeCompare(b.id);
-        })[0] ?? null;
-}
-
-function listReachableControlledUndiscoveredTiles(hero: Hero): Tile[] {
-    const candidates: Tile[] = [];
-
-    for (const tile of listUndiscoveredFrontierTiles()) {
-        if (isReachableControlledUndiscoveredTile(tile, hero)) {
-            candidates.push(tile);
+    for (const candidate of candidates) {
+        if (isExploreAccessTileReachable(hero, candidate.accessTile)) {
+            return candidate.tile;
         }
     }
 
-    return candidates;
+    return null;
 }
 
-function isReachableControlledUndiscoveredTile(tile: Tile, hero: Hero): boolean {
-    if (tile.discovered) {
-        return false;
-    }
-
-    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
-    if (!accessTile) {
-        return false;
-    }
-
+function isExploreAccessTileReachable(hero: Hero, accessTile: Tile): boolean {
     return accessTile.q === hero.q && accessTile.r === hero.r
-        || explorePathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r).length > 0;
-}
-
-function getExploreAccessDistance(hero: Hero, tile: Tile) {
-    const accessTile = findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null);
-    if (!accessTile) {
-        return Number.POSITIVE_INFINITY;
-    }
-
-    return explorePathService.axialDistance(hero.q, hero.r, accessTile.q, accessTile.r);
+        || explorePathService.findWalkablePath(hero.q, hero.r, accessTile.q, accessTile.r, {
+            settlementId: hero.settlementId ?? null,
+            telemetrySource: 'explore_reachability',
+        }).length > 0;
 }
 
 function resolveDiscoveryOrigin(participants: Hero[], tile: Tile) {

@@ -356,7 +356,7 @@
             </div>
 
             <div v-if="selectedJobSiteDetail.watchtowerDetails" class="tc-detail-section">
-              <div class="tc-detail-section-title">Border Tower</div>
+              <div class="tc-detail-section-title">{{ selectedJobSiteDetail.watchtowerDetails.sectionTitle }}</div>
               <div class="tc-detail-grid">
                 <section class="tc-detail-card">
                   <p class="tc-detail-card-label">State</p>
@@ -735,12 +735,15 @@ import {
   GUARD_TRAINING_DURATION_MS,
   getAvailableGuardReserve,
   getEffectiveSettlementBorderMode,
+  getSettlementGuardReserve,
   getSettlementBorderMode,
   getWatchtowerDurabilityPercent,
   isBarracksTile,
-  isProtectedByTownCenter,
+  isRaidableMilitaryTarget,
+  isTownCenterTile,
   isWatchtowerTile,
   resolveWatchtowerConflictState,
+  shouldUseStandaloneMilitaryDetailMode,
 } from '../shared/game/military.ts';
 import { getGuardTrainingSpeedMultiplier, testModeSettings } from '../shared/game/testMode.ts';
 import {
@@ -766,7 +769,7 @@ import { sendMessage } from '../core/socket';
 import { currentPlayerId } from '../core/socket';
 import { currentPlayerSettlementId, settlementStartMarkers } from '../store/settlementStartStore.ts';
 import { closeWindow, isWindowActive, openWindow, WINDOW_IDS } from '../core/windowManager';
-import { getTileSettlementId, isTileInSettlement } from '../shared/game/settlement';
+import { getSettlementTownCenterTile, getTileSettlementId, isTileInSettlement } from '../shared/game/settlement';
 import { hasSettlementMarketAccess, isTradeCenterTile } from '../shared/game/marketAccess.ts';
 import { marketOverview, openMarketplace } from '../store/marketStore.ts';
 import { openShipOrderPanel, shipOrderOverview } from '../store/shipOrderStore.ts';
@@ -803,7 +806,16 @@ const pathService = new PathService();
 type TownCenterTabKey = 'overview' | 'economy' | 'defense' | 'sites';
 const activeTownCenterTab = ref<TownCenterTabKey>('overview');
 
-const inspectedSettlementId = computed(() => props.townCenterTileId ?? currentPlayerSettlementId.value);
+const inspectedSettlementId = computed(() => {
+  void worldVersion.value;
+  const townCenterId = props.townCenterTileId;
+  if (!townCenterId) {
+    return currentPlayerSettlementId.value;
+  }
+
+  const townCenterTile = tileIndex[townCenterId];
+  return getTileSettlementId(townCenterTile) ?? townCenterId;
+});
 
 const townCenterOwner = computed(() => {
   const townCenterId = inspectedSettlementId.value;
@@ -867,8 +879,9 @@ const playerTiles = computed(() => {
 });
 
 const inspectedTownCenterTile = computed(() => {
+  void worldVersion.value;
   const settlementId = inspectedSettlementId.value;
-  return settlementId ? tileIndex[settlementId] ?? null : null;
+  return getSettlementTownCenterTile(Object.values(tileIndex), settlementId);
 });
 
 const tradeCenterTiles = computed(() => {
@@ -908,8 +921,9 @@ const tradeCharterStatusText = computed(() => {
 });
 
 const currentPlayerTownCenterTile = computed(() => {
+  void worldVersion.value;
   const settlementId = currentPlayerSettlementId.value;
-  return settlementId ? tileIndex[settlementId] ?? null : null;
+  return getSettlementTownCenterTile(Object.values(tileIndex), settlementId);
 });
 
 const playerSettlers = computed(() => {
@@ -1441,7 +1455,7 @@ const militarySummary = computed(() => {
     borderMode: getEffectiveSettlementBorderMode(townCenter, seasonSnapshot.value),
     borderModeLabel: formatBorderModeLabel(getEffectiveSettlementBorderMode(townCenter, seasonSnapshot.value)),
     storedBorderMode: getSettlementBorderMode(townCenter),
-    reserveGuards: getAvailableGuardReserve(townCenter),
+    reserveGuards: getSettlementGuardReserve(Object.values(tileIndex), inspectedSettlementId.value),
     committedRaiders: Math.max(0, townCenter?.raidCommittedGuards ?? 0),
     vulnerableTowerCount: vulnerableTowers.length,
     vulnerableTowers,
@@ -1501,8 +1515,8 @@ const militaryStatusText = computed(() => {
       return `Open borders — ${militarySummary.value.raidBlockedReason}`;
     }
     return militarySummary.value.attackTargetTileId
-      ? 'Open borders — a guard squad is currently marching or fighting at the selected watchtower.'
-      : 'Open borders — your outer towers can now be attacked or used for raids.';
+      ? 'Open borders — a guard squad is currently marching or fighting at the selected target.'
+      : 'Open borders — your towers and town centers can now be attacked or used for raids.';
   }
 
   return 'Closed borders — your settlement is protected from border conflict.';
@@ -1756,28 +1770,31 @@ const selectedJobSiteDetail = computed(() => {
   const canManage = canManageTile(tile);
   const hero = selectedHero.value;
   const inspectorHero = hero ?? createInspectorHero(tile);
-  const defenderTownCenter = tile?.ownerSettlementId ? tileIndex[tile.ownerSettlementId] ?? null : null;
+  const defenderSettlementId = getTileSettlementId(tile);
+  const defenderTownCenter = defenderSettlementId ? tileIndex[defenderSettlementId] ?? null : null;
   const defenderBorderMode = getEffectiveSettlementBorderMode(defenderTownCenter, seasonSnapshot.value);
   const currentBorderTownCenter = currentPlayerTownCenterTile.value;
-  const raidLockReason = isWatchtowerTile(tile)
+  const reserveSourceTownCenter = canManage ? inspectedTownCenterTile.value : currentBorderTownCenter;
+  const currentReserveGuards = getSettlementGuardReserve(Object.values(tileIndex), getTileSettlementId(currentBorderTownCenter));
+  const reserveSourceGuards = getSettlementGuardReserve(Object.values(tileIndex), getTileSettlementId(reserveSourceTownCenter));
+  const targetReserveGuards = isTownCenterTile(tile) ? getSettlementGuardReserve(Object.values(tileIndex), defenderSettlementId) : tile.towerAssignedGuards ?? 0;
+  const raidLockReason = isRaidableMilitaryTarget(tile)
     ? (
       !currentBorderTownCenter
         ? 'No home settlement is available for raid orders.'
-        : tile.ownerSettlementId === currentBorderTownCenter.id
-          ? 'You cannot raid your own watchtower.'
+        : getTileSettlementId(tile) === currentBorderTownCenter.id
+          ? 'You cannot raid your own target.'
           : canManage
-            ? 'Only foreign border watchtowers can be targeted for raids.'
+            ? 'Only foreign watchtowers and town centers can be targeted for raids.'
             : getEffectiveSettlementBorderMode(currentBorderTownCenter, seasonSnapshot.value) !== 'open'
               ? 'Open your own borders before issuing a raid.'
               : !defenderTownCenter
-                ? 'This tower is not linked to a valid defending settlement.'
+                ? 'This target is not linked to a valid defending settlement.'
                 : getEffectiveSettlementBorderMode(defenderTownCenter, seasonSnapshot.value) !== 'open'
                   ? 'The target settlement must also have open borders.'
-                  : isProtectedByTownCenter(tile, defenderTownCenter)
-                    ? 'This tower is still inside the defender safe zone.'
-                    : getAvailableGuardReserve(currentBorderTownCenter) <= 0
-                      ? 'Train or free at least one reserve guard first.'
-                      : null
+                  : currentReserveGuards <= 0
+                    ? 'Train or free at least one reserve guard first.'
+                    : null
     )
     : null;
   const availableActions = listTaskDefinitions()
@@ -1792,27 +1809,32 @@ const selectedJobSiteDetail = computed(() => {
       unlocked: isTaskUnlockedForUse(task.key, inspectedSettlementId.value),
       lockHint: getTaskLockHint(task),
     }));
-  const watchtowerDetails = isWatchtowerTile(tile)
+  const watchtowerDetails = isRaidableMilitaryTarget(tile)
     ? {
+      sectionTitle: isTownCenterTile(tile) ? 'Town Center Target' : 'Border Tower',
       stateLabel: formatWatchtowerStateLabel(resolveWatchtowerConflictState(tile)),
       borderLabel: `Owner borders ${formatBorderModeLabel(defenderBorderMode)}${seasonSnapshot.value?.status === 'active' ? ' (season)' : ''}`,
       durabilityPercent: getWatchtowerDurabilityPercent(tile),
       captureLabel: `Capture ${Math.round(tile.towerCaptureProgress ?? 0)}%`,
-      assignedGuards: tile.towerAssignedGuards ?? 0,
-      reserveGuards: getAvailableGuardReserve(inspectedTownCenterTile.value),
-      reserveLabel: `${getAvailableGuardReserve(inspectedTownCenterTile.value)} reserve available · ${Math.max(0, currentBorderTownCenter?.raidCommittedGuards ?? 0)} raiding`,
-      wallLabel: (tile.towerWallLevel ?? 0) > 0 ? 'Palisaded' : 'Exposed',
+      assignedGuards: targetReserveGuards,
+      reserveGuards: reserveSourceGuards,
+      reserveLabel: isTownCenterTile(tile)
+        ? `${targetReserveGuards} reserve automatically defending · ${currentReserveGuards} reserve available · ${Math.max(0, currentBorderTownCenter?.raidCommittedGuards ?? 0)} raiding`
+        : `${reserveSourceGuards} reserve available · ${Math.max(0, currentBorderTownCenter?.raidCommittedGuards ?? 0)} raiding`,
+      wallLabel: isTownCenterTile(tile) ? 'Capital' : (tile.towerWallLevel ?? 0) > 0 ? 'Palisaded' : 'Exposed',
       attackLabel: currentBorderTownCenter?.raidTargetTileId === tile.id && currentBorderTownCenter?.raidBlockedReason
         ? currentBorderTownCenter.raidBlockedReason
-        : tile.towerAttackerSettlementId ? 'Hostile guards are engaging this watchtower.' : 'No active raid',
-      canAssignGuards: canManage,
-      canBuildPalisade: canManage && completedStudyKeys.value.has('defensive_construction') && (tile.towerWallLevel ?? 0) <= 0,
+        : tile.towerAttackerSettlementId ? 'Hostile guards are engaging this target.' : 'No active raid',
+      canAssignGuards: canManage && isWatchtowerTile(tile),
+      canBuildPalisade: canManage && isWatchtowerTile(tile) && completedStudyKeys.value.has('defensive_construction') && (tile.towerWallLevel ?? 0) <= 0,
       canToggleRaid: !canManage && !raidLockReason,
       raidLockReason,
       raidButtonLabel: currentBorderTownCenter?.raidTargetTileId === tile.id ? 'Cancel Raid' : 'Start Capture Raid',
       raidCopy: currentBorderTownCenter?.raidTargetTileId === tile.id
         ? 'Break off the current raid order and pull surviving raiders back into reserve duty.'
-        : 'Commit your current reserve guards to march on this watchtower and keep fighting until the border breaks.',
+        : isTownCenterTile(tile)
+          ? 'Commit your current reserve guards to capture this town center. Capitals take longer to break.'
+          : 'Commit your current reserve guards to march on this watchtower and keep fighting until the border breaks.',
     }
     : null;
   const barracksDetails = isBarracksTile(tile)
@@ -1820,13 +1842,13 @@ const selectedJobSiteDetail = computed(() => {
       const remainingProgressMs = Math.max(0, GUARD_TRAINING_DURATION_MS - (tile.barracksTrainingProgressMs ?? 0));
       const speedMultiplier = getGuardTrainingSpeedMultiplier(testModeSettings);
       return {
-      reserveGuards: getAvailableGuardReserve(inspectedTownCenterTile.value),
-      weapons: Math.max(0, playerInventory.value.weapons ?? 0),
-      queue: tile.barracksTrainingQueue ?? 0,
-      progressPercent: Math.min(100, Math.round(((tile.barracksTrainingProgressMs ?? 0) / GUARD_TRAINING_DURATION_MS) * 100)),
-      progressLabel: `${formatCountdown(Date.now() + Math.max(0, Math.ceil(remainingProgressMs / speedMultiplier)))} to next guard`,
-      canTrain: canManage,
-    };
+        reserveGuards: getAvailableGuardReserve(tile),
+        weapons: Math.max(0, playerInventory.value.weapons ?? 0),
+        queue: tile.barracksTrainingQueue ?? 0,
+        progressPercent: Math.min(100, Math.round(((tile.barracksTrainingProgressMs ?? 0) / GUARD_TRAINING_DURATION_MS) * 100)),
+        progressLabel: `${formatCountdown(Date.now() + Math.max(0, Math.ceil(remainingProgressMs / speedMultiplier)))} to next guard`,
+        canTrain: canManage,
+      };
     })()
     : null;
   const activeShip = (shipOrderOverview.value.activeOrders ?? [])
@@ -1944,7 +1966,8 @@ const selectedJobSiteDetail = computed(() => {
     })()
     : null;
   const isInfrastructure = !building && (isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile));
-  if (!building && !isInfrastructure) {
+  const isMilitaryTarget = isRaidableMilitaryTarget(tile);
+  if (!building && !isInfrastructure && !isMilitaryTarget) {
     return null;
   }
   const assignedWorkerDetails = hasJobSite
@@ -1985,7 +2008,7 @@ const selectedJobSiteDetail = computed(() => {
     tileId: tile.id,
     building,
     isEnabled,
-    detailKicker: hasJobSite ? 'Production Site' : 'Building',
+    detailKicker: hasJobSite ? 'Production Site' : isMilitaryTarget ? 'Military Target' : 'Building',
     label: site?.label ?? getStructureLabel(tile.id),
     summary: site?.summary ?? getStructureSummary(tile.id),
     isJobSite: hasJobSite,
@@ -2053,8 +2076,31 @@ const selectedJobSiteDetail = computed(() => {
 function openJobSiteDetail(tileId: string, options?: { detailOnly?: boolean }) {
   const site = jobSites.value.find((entry) => entry.tileId === tileId);
   const tile = tileIndex[tileId] ?? null;
-  const inspectableStructure = !!resolveBuildingStateForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile);
+  const inspectableStructure = !!resolveBuildingStateForTile(tile) || isRoadTile(tile) || isBridgeTile(tile) || isTunnelTile(tile) || isRaidableMilitaryTarget(tile);
+  console.info('[driftlands:town-center-panel]', 'open-job-site-detail', {
+    tileId,
+    detailOnly: options?.detailOnly === true,
+    visible: props.visible,
+    townCenterTileId: props.townCenterTileId ?? null,
+    standaloneBuildingTileId: props.standaloneBuildingTileId ?? null,
+    inspectedSettlementId: inspectedSettlementId.value,
+    hasTile: !!tile,
+    tileTerrain: tile?.terrain ?? null,
+    tileVariant: tile?.variant ?? null,
+    ownerSettlementId: tile?.ownerSettlementId ?? null,
+    controlledBySettlementId: tile?.controlledBySettlementId ?? null,
+    hasJobSite: !!site,
+    jobSiteHasDetail: site?.hasDetail ?? null,
+    inspectableStructure,
+  });
   if (!site?.hasDetail && !inspectableStructure) {
+    console.warn('[driftlands:town-center-panel]', 'open-job-site-detail-rejected', {
+      tileId,
+      reason: 'no job-site detail and not inspectable',
+      hasTile: !!tile,
+      tileTerrain: tile?.terrain ?? null,
+      tileVariant: tile?.variant ?? null,
+    });
     return;
   }
 
@@ -2068,7 +2114,8 @@ function openStandaloneJobSiteDetail(tileId: string) {
 }
 
 function openStandaloneBuildingDetail(tileId: string) {
-  openJobSiteDetail(tileId, { detailOnly: true });
+  const tile = tileIndex[tileId] ?? null;
+  openJobSiteDetail(tileId, { detailOnly: shouldUseStandaloneMilitaryDetailMode(tile) });
 }
 
 function closeJobSiteDetail() {
@@ -2304,6 +2351,12 @@ watch(() => props.visible, (isVisible) => {
 watch(
   () => [props.visible, props.standaloneBuildingTileId] as const,
   ([isVisible, tileId]) => {
+    console.info('[driftlands:town-center-panel]', 'standalone-building-watch', {
+      isVisible,
+      tileId: tileId ?? null,
+      townCenterTileId: props.townCenterTileId ?? null,
+      inspectedSettlementId: inspectedSettlementId.value,
+    });
     if (!isVisible || !tileId) {
       return;
     }

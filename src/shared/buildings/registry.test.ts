@@ -78,6 +78,10 @@ test('upgraded building variants resolve distinct overlay artwork', () => {
     getBuildingOverlayAssetKeyForTile({ variant: 'plains_watchtower', towerWallLevel: 1 } as Tile),
     'building_watchtower_palisade_overlay',
   );
+  assert.equal(
+    getBuildingOverlayAssetKeyForTile({ variant: 'water_beacon' } as Tile),
+    'building_beacon',
+  );
 });
 
 test('trade center requires tools and grants market access when built', () => {

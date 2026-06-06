@@ -174,7 +174,7 @@ function getStageSummary(stage: ActiveSeasonStageKey) {
     case 'preparation':
       return 'Build the economy, scout nearby tiles, prepare supply lines and raise defenses.';
     case 'midgame':
-      return 'Borders open. Raids, watchtower captures, land pressure and live ranking start to matter.';
+      return 'Borders open. Raids, watchtower captures, town-center takeovers, land pressure and live ranking start to matter.';
     case 'endgame':
       return 'Final goals activate. Hold territory, finish milestones and protect your strongest score categories.';
     default:

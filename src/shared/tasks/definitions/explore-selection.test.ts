@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Hero } from '../../../core/types/Hero';
 import type { Tile } from '../../../core/types/Tile';
+import { configurePathTelemetry } from '../../../core/PathService';
 import { getTaskDefinition } from '../taskRegistry';
 import { configureGameRuntime, resetGameRuntime } from '../../game/runtime';
 import { loadWorld, tileIndex } from '../../game/world';
@@ -24,6 +25,7 @@ test.afterEach(() => {
   loadWorld([]);
   resetGameRuntime();
   resetSettlementSupportState();
+  configurePathTelemetry(null);
 });
 
 test('explore without a pending far target stops after the finished task', async () => {
@@ -340,4 +342,84 @@ test('road reach unlocks explore tasks on the frontier just beyond the base town
 
   assert.equal(frontierTile.discovered, false);
   assert.equal(exploreTask?.canStart(frontierTile, hero), true);
+});
+
+test('directed explore checks reachability lazily instead of pathfinding every frontier tile', async () => {
+  const tiles: Tile[] = [];
+  const discoveredRadius = 8;
+  const frontierRadius = discoveredRadius + 1;
+  for (let q = -frontierRadius; q <= frontierRadius; q++) {
+    for (let r = Math.max(-frontierRadius, -q - frontierRadius); r <= Math.min(frontierRadius, -q + frontierRadius); r++) {
+      const distance = Math.max(Math.abs(q), Math.abs(r), Math.abs((-q - r)));
+      if (distance > frontierRadius) {
+        continue;
+      }
+
+      const discovered = distance <= discoveredRadius;
+      tiles.push({
+        id: `${q},${r}`,
+        q,
+        r,
+        biome: 'plains',
+        terrain: q === 0 && r === 0 ? 'towncenter' : 'plains',
+        discovered,
+        isBaseTile: true,
+        activationState: discovered ? 'active' : 'inactive',
+        variant: null,
+        ownerSettlementId: discovered ? '0,0' : undefined,
+        controlledBySettlementId: discovered ? '0,0' : undefined,
+      });
+    }
+  }
+
+  loadWorld(tiles);
+
+  const moveCalls: Array<{ q: number; r: number; task?: string }> = [];
+  configureGameRuntime({
+    moveHero: (_hero, target, task) => {
+      moveCalls.push({ q: target.q, r: target.r, task });
+    },
+  });
+
+  const pathSources: string[] = [];
+  configurePathTelemetry((event) => {
+    if (event.source) {
+      pathSources.push(event.source);
+    }
+  });
+
+  const hero: Hero = {
+    id: 'hero-1',
+    name: 'Scout',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+    pendingExploreTarget: { q: frontierRadius, r: 0 },
+  };
+
+  const exploreTask = getTaskDefinition('explore');
+  assert.ok(exploreTask?.onComplete);
+
+  exploreTask.onComplete!(tileIndex['8,0']!, {
+    id: 'task-explore-large-frontier',
+    type: 'explore',
+    tileId: '8,0',
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  assert.equal(moveCalls.length, 1);
+  assert.ok(
+    pathSources.filter((source) => source === 'explore_reachability').length <= 3,
+    `expected directed explore to avoid scanning every frontier candidate, got ${pathSources.length} path searches`,
+  );
 });

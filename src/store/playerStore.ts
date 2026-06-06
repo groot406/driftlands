@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue';
 import type { CoopPingSnapshot, CoopPlayerSnapshot, CoopStateSnapshot } from '../shared/coop/types';
 import type { PlayerEntitySnapshot } from '../shared/multiplayer/player';
-import {getHero, heroes} from "./heroStore.ts";
+import { getHero } from "./heroStore.ts";
 
 export interface ConnectedPlayer extends CoopPlayerSnapshot {}
 

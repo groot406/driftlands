@@ -10,6 +10,7 @@ import { ServerStudyHandler } from '../handlers/studyHandler';
 import { ServerHeroAbilityHandler } from '../handlers/heroAbilityHandler';
 import { ServerMilitaryHandler } from '../handlers/militaryHandler';
 import { ServerShipOrderHandler } from '../handlers/shipOrderHandler';
+import { ServerMarketHandler } from '../handlers/marketHandler';
 import { ServerSettlementStartHandler } from '../handlers/settlementStartHandler';
 import { ServerTestModeHandler } from '../handlers/testModeHandler';
 import { ServerSeasonAdminHandler } from '../handlers/seasonAdminHandler';
@@ -44,6 +45,9 @@ export function initializeServerHandlers(io: Server) {
   const shipOrderHandler = new ServerShipOrderHandler(io);
   shipOrderHandler.init();
 
+  const marketHandler = new ServerMarketHandler();
+  marketHandler.init();
+
   const testModeHandler = serverDebugModeEnabled ? new ServerTestModeHandler(io) : null;
   testModeHandler?.init();
 
@@ -69,6 +73,7 @@ export function initializeServerHandlers(io: Server) {
     studyHandler,
     militaryHandler,
     shipOrderHandler,
+    marketHandler,
     testModeHandler,
     seasonAdminHandler,
     heroAbilityHandler,

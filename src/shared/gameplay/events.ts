@@ -44,6 +44,14 @@ export type GameplayEvent =
       transferredTileIds: string[];
     }
   | {
+      type: 'military:settlement_defeated';
+      defeatedSettlementId: string;
+      attackerSettlementId: string;
+      capturedTownCenterTileId: string;
+      transferredTileIds: string[];
+      defeatedAt: number;
+    }
+  | {
       type: 'ship_order:completed';
       orderId: string;
       settlementId: string;
