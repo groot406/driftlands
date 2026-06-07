@@ -13,6 +13,7 @@ import { isHeroAtTaskAccess } from '../../../src/shared/tasks/taskAccess';
 import { isTaskUnlockedForUse } from '../../../src/shared/tasks/taskUnlocks';
 import type { Tile } from '../../../src/core/types/Tile';
 import { seasonState } from '../state/seasonState';
+import { serverSideQuestState } from '../state/sideQuestState';
 
 export class ServerTaskHandler {
     constructor(_io: Server) {
@@ -44,6 +45,8 @@ export class ServerTaskHandler {
 
         if (!isHeroAtTaskAccess(hero, task, tile)) return;
         if (!isTaskUnlockedForUse(task, hero.settlementId ?? playerSettlementState.getPlayerSettlement(playerId ?? ''))) return;
+
+        serverSideQuestState.syncSettlementSideQuests(hero.settlementId ?? playerSettlementState.getPlayerSettlement(playerId ?? ''));
 
         hero.pendingExploreTarget = normalizeExploreTarget(task, message.exploreTarget);
 

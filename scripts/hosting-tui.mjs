@@ -964,6 +964,13 @@ function copyClientToFrontend() {
     addTsNoCheck(path);
   }
   prepareEmbeddedApp();
+
+  const versionSource = resolve(rootDir, 'public', 'driftlands-version.json');
+  if (existsSync(versionSource)) {
+    const versionTarget = resolve(config.frontendRepoPath, 'public', 'driftlands-version.json');
+    mkdirSync(dirname(versionTarget), { recursive: true });
+    cpSync(versionSource, versionTarget);
+  }
 }
 
 async function showFrontendStatus() {
@@ -1041,7 +1048,7 @@ async function commitFrontendChanges(options = {}) {
     return 1;
   }
 
-  let code = await run('git', ['add', 'src/pages/driftlands', 'src/routes.ts', 'package.json', 'package-lock.json', 'README.md', '.env.example'], { cwd: config.frontendRepoPath });
+  let code = await run('git', ['add', 'src/pages/driftlands', 'public/driftlands-version.json', 'src/routes.ts', 'package.json', 'package-lock.json', 'README.md', '.env.example'], { cwd: config.frontendRepoPath });
   if (code !== 0) return code;
   code = await run('git', ['commit', '-m', message], { cwd: config.frontendRepoPath });
   if (!options.skipPause) await pause();

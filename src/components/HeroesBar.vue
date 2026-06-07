@@ -92,7 +92,7 @@
                 >
                   <span class="skill-trigger-code" aria-hidden="true">+</span>
                   <span class="skill-trigger-copy">
-                    <span class="skill-trigger-kicker">SP {{ hero.skillPoints ?? 0 }}</span>
+                    <span class="skill-trigger-kicker">Skills</span>
                     <span class="skill-trigger-label">{{ getSkillProgressLabel(hero) }}</span>
                   </span>
                   <span class="skill-trigger-caret" aria-hidden="true"></span>
@@ -146,6 +146,10 @@
       @click.stop
       @pointerdown.stop
     >
+      <div class="skill-menu-header">
+        <span class="skill-menu-title">{{ activeFloatingHero.name }} skills</span>
+        <span class="skill-menu-points">{{ skillPointCountLabel(activeFloatingHero) }}</span>
+      </div>
       <button
         v-for="skill in heroSkillOptions"
         :key="skill.key"
@@ -164,6 +168,8 @@
             <span class="skill-option-level">Lv {{ getSkillLevel(activeFloatingHero, skill.key) }}/{{ skill.maxLevel }}</span>
           </span>
           <span class="skill-option-summary">{{ skill.menuSummary }}</span>
+          <span class="skill-option-effect">{{ skill.perLevelText }}</span>
+          <span class="skill-option-examples">{{ skill.examples }}</span>
           <span class="skill-option-segments" aria-hidden="true">
             <span
               v-for="segment in skill.maxLevel"
@@ -270,13 +276,14 @@ interface FloatingMenuState {
 
 const FLOATING_MENU_WIDTHS: Record<FloatingMenuKind, number> = {
   scout: 248,
-  skill: 432,
+  skill: 620,
 };
 
 const openScoutMenuHeroId = ref<string | null>(null);
 const openSkillMenuHeroId = ref<string | null>(null);
 const floatingMenu = ref<FloatingMenuState | null>(null);
 const stripRef = ref<HTMLElement | null>(null);
+const pendingSkillSelection = ref<{ heroId: string; signature: string } | null>(null);
 
 const scoutOptions = computed<ScoutOption[]>(() => SCOUT_TARGET_DEFINITIONS.map((definition) => ({
   type: definition.type,
@@ -288,50 +295,17 @@ const scoutOptions = computed<ScoutOption[]>(() => SCOUT_TARGET_DEFINITIONS.map(
 })));
 
 const skillCodes: Record<HeroSkillKey, string> = {
-  speed: '>',
-  strength: 'S',
-  craft: 'C',
-  scouting: '?',
-  survival: '+',
-  teamwork: '&',
-};
-
-interface SkillMenuHelp {
-  menuSummary: string;
-  perLevelText: string;
-}
-
-const skillMenuHelp: Record<HeroSkillKey, SkillMenuHelp> = {
-  speed: {
-    menuSummary: 'Shortens travel time between tiles.',
-    perLevelText: '+4% move speed per level',
-  },
-  strength: {
-    menuSummary: 'Speeds up chopping, mining, digging, and heavy clearing.',
-    perLevelText: '+5% heavy work speed per level',
-  },
-  craft: {
-    menuSummary: 'Speeds up buildings, upgrades, roads, bridges, and tunnels.',
-    perLevelText: '+5% craft work speed per level',
-  },
-  scouting: {
-    menuSummary: 'Speeds up exploring and resource scouting.',
-    perLevelText: '+5% scout work speed per level',
-  },
-  survival: {
-    menuSummary: 'Speeds up food work, planting, harvesting, and field care.',
-    perLevelText: '+5% survival work speed per level',
-  },
-  teamwork: {
-    menuSummary: 'Adds task speed for each other hero on the same task.',
-    perLevelText: '+2.5% speed per helper per level',
-  },
+  speed: 'TR',
+  strength: 'HW',
+  craft: 'BD',
+  scouting: 'SC',
+  survival: 'FW',
+  teamwork: 'TM',
 };
 
 const heroSkillOptions = HERO_SKILL_DEFINITIONS.map((skill) => ({
   ...skill,
   code: skillCodes[skill.key],
-  ...skillMenuHelp[skill.key],
 }));
 
 const activeFloatingHero = computed(() => (
@@ -357,6 +331,7 @@ function closeFloatingMenus() {
   openScoutMenuHeroId.value = null;
   openSkillMenuHeroId.value = null;
   floatingMenu.value = null;
+  pendingSkillSelection.value = null;
 }
 
 function positionFloatingMenu(kind: FloatingMenuKind, heroId: string, target: EventTarget | null) {
@@ -470,11 +445,15 @@ function getXpChargePercent(hero: Hero) {
 }
 
 function getSkillProgressLabel(hero: Hero) {
-  return getHeroSkillPoints(hero) > 0 ? 'Ready' : `XP ${getXpChargePercent(hero)}%`;
+  const points = getHeroSkillPoints(hero);
+  return points > 0 ? `${points} ${points === 1 ? 'pt' : 'pts'}` : `XP ${getXpChargePercent(hero)}%`;
 }
 
 function canSelectSkill(hero: Hero, skill: HeroSkillKey) {
-  return showSkillControls(hero) && getHeroSkillPoints(hero) > 0 && getSkillLevel(hero, skill) < getSkillMaxLevel(skill);
+  return !isPendingSkillSelection(hero)
+    && showSkillControls(hero)
+    && getHeroSkillPoints(hero) > 0
+    && getSkillLevel(hero, skill) < getSkillMaxLevel(skill);
 }
 
 function isNextSkillLevel(hero: Hero, skill: HeroSkillKey, level: number) {
@@ -482,6 +461,10 @@ function isNextSkillLevel(hero: Hero, skill: HeroSkillKey, level: number) {
 }
 
 function skillStateLabel(hero: Hero, skill: HeroSkillKey, maxLevel: number) {
+  if (isPendingSkillSelection(hero)) {
+    return 'Applying';
+  }
+
   if (getSkillLevel(hero, skill) >= maxLevel) {
     return 'Max';
   }
@@ -494,25 +477,47 @@ function selectSkill(hero: Hero, skill: HeroSkillKey) {
     return;
   }
 
+  pendingSkillSelection.value = { heroId: hero.id, signature: getSkillStateSignature(hero) };
   requestHeroSkillSelect(hero.id, skill);
-  closeFloatingMenus();
 }
 
 function getSkillMaxLevel(skill: HeroSkillKey) {
   return HERO_SKILL_DEFINITIONS.find((definition) => definition.key === skill)?.maxLevel ?? 10;
 }
 
-function skillTitle(hero: Hero, skill: { key: HeroSkillKey; label: string; menuSummary: string; perLevelText: string; maxLevel: number }) {
+function hasSelectableSkill(hero: Hero) {
+  return showSkillControls(hero)
+    && getHeroSkillPoints(hero) > 0
+    && heroSkillOptions.some((skill) => getSkillLevel(hero, skill.key) < skill.maxLevel);
+}
+
+function isPendingSkillSelection(hero: Hero) {
+  return pendingSkillSelection.value?.heroId === hero.id;
+}
+
+function getSkillStateSignature(hero: Hero) {
+  return [
+    getHeroSkillPoints(hero),
+    ...heroSkillOptions.map((skill) => getSkillLevel(hero, skill.key)),
+  ].join(':');
+}
+
+function skillPointCountLabel(hero: Hero) {
+  const points = getHeroSkillPoints(hero);
+  return points === 1 ? '1 point ready' : `${points} points ready`;
+}
+
+function skillTitle(hero: Hero, skill: { key: HeroSkillKey; label: string; menuSummary: string; perLevelText: string; examples: string; maxLevel: number }) {
   const level = getSkillLevel(hero, skill.key);
   if (getHeroSkillPoints(hero) <= 0) {
-    return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}. ${hero.name} has no skill points.`;
+    return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}. ${skill.examples} ${hero.name} has no skill points.`;
   }
 
   if (level >= skill.maxLevel) {
-    return `${skill.label} is maxed. ${skill.menuSummary} ${skill.perLevelText}.`;
+    return `${skill.label} is maxed. ${skill.menuSummary} ${skill.perLevelText}. ${skill.examples}`;
   }
 
-  return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}.`;
+  return `${skill.label} ${level}/${skill.maxLevel}. ${skill.menuSummary} ${skill.perLevelText}. ${skill.examples}`;
 }
 
 function skillTriggerTitle(hero: Hero) {
@@ -773,6 +778,26 @@ onBeforeUnmount(() => {
 
 watch(selectedHeroId, () => {
   void nextTick(() => scrollSelectedMobileCardIntoView());
+});
+
+watch(() => {
+  const hero = activeFloatingHero.value;
+  if (!hero || floatingMenu.value?.kind !== 'skill') {
+    return null;
+  }
+
+  return `${hero.id}:${getSkillStateSignature(hero)}`;
+}, () => {
+  const pending = pendingSkillSelection.value;
+  const hero = activeFloatingHero.value;
+  if (!pending || !hero || hero.id !== pending.heroId || getSkillStateSignature(hero) === pending.signature) {
+    return;
+  }
+
+  pendingSkillSelection.value = null;
+  if (!hasSelectableSkill(hero)) {
+    closeFloatingMenus();
+  }
 });
 </script>
 
@@ -1403,14 +1428,14 @@ watch(selectedHeroId, () => {
 .skill-menu-trigger {
   position: relative;
   width: 100%;
-  min-height: 2.08rem;
-  padding: 0.2rem 0.18rem 0.16rem;
+  min-height: 2.18rem;
+  padding: 0.22rem 0.2rem 0.18rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 0.88rem auto;
+  grid-template-rows: 1rem auto;
   justify-items: center;
   align-items: center;
-  gap: 0.08rem;
+  gap: 0.1rem;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--hero-accent) 28%, rgba(250, 204, 21, 0.16));
   border-radius: 0.08rem;
@@ -1451,8 +1476,8 @@ watch(selectedHeroId, () => {
 }
 
 .skill-trigger-code {
-  width: 0.92rem;
-  height: 0.86rem;
+  width: 1.1rem;
+  height: 1rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1463,7 +1488,7 @@ watch(selectedHeroId, () => {
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.26));
   color: color-mix(in srgb, var(--hero-accent) 42%, rgba(254, 243, 199, 0.96));
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.66rem;
+  font-size: 0.74rem;
   font-weight: 900;
   line-height: 1;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
@@ -1485,7 +1510,7 @@ watch(selectedHeroId, () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.35rem;
+  font-size: 0.42rem;
   font-weight: 800;
   line-height: 1;
   color: color-mix(in srgb, var(--hero-accent) 48%, rgba(255, 251, 235, 0.8));
@@ -1499,7 +1524,7 @@ watch(selectedHeroId, () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
-  font-size: 0.39rem;
+  font-size: 0.48rem;
   font-weight: 800;
   line-height: 1;
   color: rgba(254, 243, 199, 0.82);
@@ -1530,13 +1555,13 @@ watch(selectedHeroId, () => {
   left: 0;
   bottom: calc(100% + 0.35rem);
   z-index: 60;
-  width: min(27rem, calc(100vw - 1rem));
-  max-height: min(26rem, calc(100vh - 2rem));
+  width: min(38.75rem, calc(100vw - 1rem));
+  max-height: min(30rem, calc(100vh - 1rem));
   overflow-y: auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.38rem;
-  padding: 0.42rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+  padding: 0.48rem;
   border: 1px solid rgba(178, 255, 214, 0.22);
   border-radius: 0.8rem;
   background:
@@ -1555,13 +1580,48 @@ watch(selectedHeroId, () => {
   pointer-events: auto;
 }
 
+.skill-menu-header {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.08rem 0.06rem 0.18rem;
+  border-bottom: 1px solid rgba(178, 255, 214, 0.14);
+}
+
+.skill-menu-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+  color: rgba(255, 251, 235, 0.96);
+  text-transform: uppercase;
+}
+
+.skill-menu-points {
+  flex: 0 0 auto;
+  padding: 0.16rem 0.38rem;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  border-radius: 0.36rem;
+  background: rgba(18, 24, 20, 0.34);
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+  color: rgba(254, 243, 199, 0.9);
+}
+
 .skill-option {
-  min-height: 5rem;
-  padding: 0.5rem;
+  min-height: 6.6rem;
+  padding: 0.48rem;
   display: grid;
-  grid-template-columns: 1.1rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.42rem minmax(0, 1fr);
   align-items: start;
-  gap: 0.48rem;
+  gap: 0.42rem;
   border: 1px solid rgba(178, 255, 214, 0.15);
   border-radius: 0.55rem;
   background:
@@ -1586,15 +1646,15 @@ watch(selectedHeroId, () => {
 }
 
 .skill-option-code {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 1.3rem;
+  height: 1.3rem;
   margin-top: 0.04rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: rgba(250, 204, 21, 0.18);
-  font-size: 0.68rem;
+  font-size: 0.52rem;
   font-weight: 900;
   line-height: 1;
 }
@@ -1602,7 +1662,7 @@ watch(selectedHeroId, () => {
 .skill-option-copy {
   min-width: 0;
   display: grid;
-  gap: 0.22rem;
+  gap: 0.18rem;
 }
 
 .skill-option-topline {
@@ -1615,7 +1675,7 @@ watch(selectedHeroId, () => {
 
 .skill-option-label {
   min-width: 0;
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   font-weight: 900;
   line-height: 1.1;
 }
@@ -1633,6 +1693,8 @@ watch(selectedHeroId, () => {
 }
 
 .skill-option-summary,
+.skill-option-effect,
+.skill-option-examples,
 .skill-option-state {
   min-width: 0;
   font-size: 0.55rem;
@@ -1643,6 +1705,14 @@ watch(selectedHeroId, () => {
 
 .skill-option-summary {
   max-width: 100%;
+}
+
+.skill-option-effect {
+  color: rgba(190, 242, 100, 0.9);
+}
+
+.skill-option-examples {
+  color: rgba(203, 213, 225, 0.82);
 }
 
 .skill-option-segments {
@@ -1688,14 +1758,17 @@ watch(selectedHeroId, () => {
 }
 
 .skill-option-state {
-  align-self: start;
-  justify-self: end;
+  grid-column: 2;
+  align-self: end;
+  justify-self: start;
+  margin-top: 0.08rem;
   white-space: nowrap;
   color: rgba(250, 204, 21, 0.95);
 }
 
 @media (max-width: 640px) {
   .heroes-bar {
+    bottom: 3.3rem;
     height: 13.55rem;
   }
 
@@ -1755,7 +1828,7 @@ watch(selectedHeroId, () => {
 
   .scout-menu-trigger,
   .skill-menu-trigger {
-    min-height: 2rem;
+    min-height: 2.1rem;
   }
 
   .hero-floating-menu.scout-menu {
@@ -1764,7 +1837,50 @@ watch(selectedHeroId, () => {
 
   .hero-floating-menu.skill-menu {
     width: min(25rem, calc(100vw - 1rem)) !important;
-    max-height: min(24rem, calc(100vh - 1rem));
+    max-height: min(28rem, calc(100vh - 0.75rem));
+    gap: 0.32rem;
+    padding: 0.38rem;
+  }
+
+  .skill-menu-title {
+    font-size: 0.62rem;
+  }
+
+  .skill-menu-points {
+    font-size: 0.5rem;
+  }
+
+  .skill-option {
+    min-height: 5.95rem;
+    padding: 0.38rem;
+    gap: 0.32rem;
+  }
+
+  .skill-option-code {
+    width: 1.1rem;
+    height: 1.1rem;
+    font-size: 0.46rem;
+  }
+
+  .skill-option-label {
+    font-size: 0.58rem;
+  }
+
+  .skill-option-level,
+  .skill-option-summary,
+  .skill-option-effect,
+  .skill-option-examples,
+  .skill-option-state {
+    font-size: 0.48rem;
+  }
+
+  .skill-option-segments {
+    gap: 0.1rem;
+    padding: 0.12rem;
+  }
+
+  .skill-option-segment {
+    height: 0.42rem;
   }
 }
 

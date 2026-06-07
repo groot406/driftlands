@@ -97,5 +97,32 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Extensive testing added across Discord chat logger and game handler systems."
     ],
     "gitHead": "33436aa5aba3"
+  },
+  {
+    "id": "both-1780821047384-8242978ab5e2",
+    "releasedAt": 1780821047384,
+    "target": "both",
+    "title": "Settler System and Job Site Improvements",
+    "bullets": [
+      "Major updates to the settler system enhance settler behaviors and task management.",
+      "Improved job site runtime and job system for better resource gathering and usage.",
+      "Updated population overview and storage management UI for clearer status feedback.",
+      "Expanded tests to ensure better stability and reliability across gameplay systems."
+    ],
+    "gitHead": "8242978ab5e2"
+  },
+  {
+    "id": "both-1780824063538-8242978ab5e2",
+    "releasedAt": 1780824063538,
+    "target": "both",
+    "title": "Driftlands Update: Improvements and New Features",
+    "bullets": [
+      "Refined hero abilities and skills for more balanced gameplay.",
+      "Enhanced quest and task handling for a smoother player experience.",
+      "Improved water building mechanics and related system stability.",
+      "Updated Heroes Bar UI for better clarity and usability.",
+      "Introduced client update notification system for seamless patching."
+    ],
+    "gitHead": "8242978ab5e2"
   }
 ];

@@ -9,6 +9,7 @@ import {
   addHeroAbilityProgress,
 } from './heroAbilities.ts';
 import {
+  HERO_SKILL_DEFINITIONS,
   getHeroMovementSpeedMultiplier,
   getHeroTaskRateMultiplier,
   getHeroTaskSkillCategory,
@@ -113,4 +114,14 @@ test('skill helpers apply direct movement and task multipliers', () => {
   assert.equal(getHeroTaskRateMultiplier(skilled, 'explore'), 1.15);
   assert.equal(getHeroTaskRateMultiplier(skilled, 'hunt'), 1.05);
   assert.equal(Math.round(getHeroTaskRateMultiplier(skilled, 'chopWood', 3) * 1000), 1210);
+});
+
+test('skill definitions include clear menu copy for every skill', () => {
+  for (const definition of HERO_SKILL_DEFINITIONS) {
+    assert.ok(definition.label.trim().length > 0, `${definition.key} has a label`);
+    assert.ok(definition.summary.trim().length > 0, `${definition.key} has a summary`);
+    assert.ok(definition.menuSummary.trim().length > 0, `${definition.key} has menu summary copy`);
+    assert.ok(definition.perLevelText.trim().length > 0, `${definition.key} has per-level copy`);
+    assert.ok(definition.examples.trim().length > 0, `${definition.key} has examples`);
+  }
 });

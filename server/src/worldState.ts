@@ -57,6 +57,7 @@ import {
 } from '../../src/shared/game/military.ts';
 import { playerSettlementState } from './state/playerSettlementState';
 import { marketState } from './state/marketState';
+import { serverSideQuestState } from './state/sideQuestState';
 import type { MarketOverviewSnapshot } from '../../src/shared/game/market';
 import { shipOrderState } from './state/shipOrderState';
 import { seasonState } from './state/seasonState';
@@ -431,6 +432,7 @@ class WorldState {
     playerSettlementState.reset();
     marketState.reset();
     shipOrderState.reset();
+    serverSideQuestState.reset();
     loadTasks([]);
     loadHeroes([]);
     loadSettlers([]);

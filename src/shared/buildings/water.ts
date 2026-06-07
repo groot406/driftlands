@@ -9,6 +9,8 @@ import { isTileActive } from '../game/state/settlementSupportStore';
 import { isBuildingOfflineFromCondition } from './maintenance.ts';
 import { isTileControlledBySettlement } from '../game/state/settlementSupportStore';
 
+const WELL_WATER_SOURCE_RADIUS = 3;
+
 function getNeighbors(tile: Tile) {
     return tile.neighbors ?? ensureTileExists(tile.q, tile.r).neighbors;
 }
@@ -22,6 +24,24 @@ export function isWaterSourceBuildingTile(tile: Tile | null | undefined) {
         && isTileActive(tile)
         && !isBuildingOfflineFromCondition(tile)
         && !!getBuildingDefinitionForTile(tile)?.providesWaterSource;
+}
+
+function hasWaterSourceBuildingInRadius(tile: Tile, radius: number = WELL_WATER_SOURCE_RADIUS): boolean {
+    for (const building of listBuildingDefinitions()) {
+        if (!building.providesWaterSource) continue;
+
+        for (const variantKey of building.variantKeys) {
+            for (const tileId of getVariantSet(variantKey)) {
+                const source = tileIndex[tileId];
+                if (!isWaterSourceBuildingTile(source)) continue;
+                if (axialDistanceCoords(tile.q, tile.r, source.q, source.r) <= radius) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 export function hasAdjacentWaterSource(tile: Tile | null | undefined): boolean {
@@ -38,7 +58,7 @@ export function hasAdjacentWaterSource(tile: Tile | null | undefined): boolean {
         }
     }
 
-    return false;
+    return hasWaterSourceBuildingInRadius(tile);
 }
 
 export function canDrawWaterFromTile(tile: Tile | null | undefined): boolean {
@@ -57,7 +77,7 @@ export function canDrawWaterFromTile(tile: Tile | null | undefined): boolean {
         }
     }
 
-    return false;
+    return hasWaterSourceBuildingInRadius(tile);
 }
 
 function findNearestWaterBuildingAccessTile(q: number, r: number, settlementId: string | null | undefined = null): Tile | null {

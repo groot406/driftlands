@@ -13,6 +13,7 @@
     </div>
   </Transition>
   <ChangelogModal />
+  <ClientUpdateModal />
 </template>
 
 <script setup lang="ts">
@@ -20,6 +21,7 @@ import Game from './components/Game.vue';
 import TitleScreen from './components/TitleScreen.vue';
 import InGameMenu from './components/InGameMenu.vue';
 import ChangelogModal from './components/ChangelogModal.vue';
+import ClientUpdateModal from './components/ClientUpdateModal.vue';
 import { isTitle } from './store/uiStore';
 import { computed } from 'vue';
 import { shouldUseBrowserLightRendering } from './store/graphicsStore';

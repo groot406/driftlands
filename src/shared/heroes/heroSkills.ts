@@ -15,6 +15,9 @@ export interface HeroSkillDefinition {
   key: HeroSkillKey;
   label: string;
   summary: string;
+  menuSummary: string;
+  perLevelText: string;
+  examples: string;
   maxLevel: number;
 }
 
@@ -23,38 +26,56 @@ export const HERO_SKILL_MAX_LEVEL = 10;
 export const HERO_SKILL_DEFINITIONS: readonly HeroSkillDefinition[] = [
   {
     key: 'speed',
-    label: 'Speed',
+    label: 'Travel',
     summary: 'Moves faster between tiles.',
+    menuSummary: 'Shortens travel time between tiles.',
+    perLevelText: '+4% move speed per level',
+    examples: 'Useful for long walks, delivery chains, and reaching distant tasks.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
     key: 'strength',
-    label: 'Strength',
+    label: 'Heavy Work',
     summary: 'Works faster on chopping, mining, digging, and heavy clearing.',
+    menuSummary: 'Speeds up chopping, mining, digging, and heavy clearing.',
+    perLevelText: '+5% heavy work speed per level',
+    examples: 'Covers timber, ore, sand, rocks, trunks, and tough terrain work.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
     key: 'craft',
-    label: 'Craft',
+    label: 'Building',
     summary: 'Builds roads, structures, bridges, tunnels, and upgrades faster.',
+    menuSummary: 'Speeds up construction and settlement improvements.',
+    perLevelText: '+5% building work speed per level',
+    examples: 'Covers roads, buildings, upgrades, bridges, tunnels, and dismantling.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
     key: 'scouting',
     label: 'Scouting',
     summary: 'Explores and resource-scouts faster.',
+    menuSummary: 'Speeds up exploration and resource scouting.',
+    perLevelText: '+5% scouting speed per level',
+    examples: 'Best for revealing new tiles, ruins, and targeted resource scans.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
     key: 'survival',
-    label: 'Survival',
+    label: 'Fieldwork',
     summary: 'Works faster on hunting, fishing, cooking, planting, and field care.',
+    menuSummary: 'Speeds up food work, planting, harvesting, and field care.',
+    perLevelText: '+5% fieldwork speed per level',
+    examples: 'Covers hunting, fishing, crops, trees, grass, irrigation, and water lilies.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
   {
     key: 'teamwork',
     label: 'Teamwork',
     summary: 'Gains extra task speed when working with other heroes.',
+    menuSummary: 'Adds task speed for each other hero on the same task.',
+    perLevelText: '+2.5% speed per helper per level',
+    examples: 'Strongest when you stack multiple heroes on one long task.',
     maxLevel: HERO_SKILL_MAX_LEVEL,
   },
 ] as const;

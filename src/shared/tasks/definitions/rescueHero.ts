@@ -1,7 +1,7 @@
 import type { Hero } from '../../../core/types/Hero.ts';
 import type { TaskDefinition } from '../../../core/types/Task.ts';
-import { getActiveSideQuestForTask, getSideQuestRequiredResources } from '../../../store/sideQuestStore.ts';
 import { RESCUE_HERO_TASK_KEY } from '../../sideQuests/definitions.ts';
+import { getActiveSideQuestForTask, getSideQuestRequiredResources } from '../../sideQuests/taskRuntime.ts';
 import { registerTask } from '../taskRegistry.ts';
 
 const rescueHeroTask: TaskDefinition = {

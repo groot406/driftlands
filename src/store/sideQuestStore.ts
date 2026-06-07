@@ -9,6 +9,7 @@ import { axialDistanceCoords } from '../shared/game/hex.ts';
 import { broadcastGameMessage as broadcast } from '../shared/game/runtime.ts';
 import { onGameplayEvent, type GameplayEvent } from '../shared/gameplay/events.ts';
 import { listSideQuestDefinitions, getSideQuestDefinition } from '../shared/sideQuests/definitions.ts';
+import { configureSideQuestTaskRuntime } from '../shared/sideQuests/taskRuntime.ts';
 import type {
   SideQuestDefinition,
   SideQuestInstance,
@@ -600,3 +601,8 @@ export function getSideQuestRequiredResources(tileId: string, taskType: TaskType
   const definition = quest ? getSideQuestDefinition(quest.definitionId) : null;
   return definition?.requiredResources?.map((resource) => ({ ...resource })) ?? [];
 }
+
+configureSideQuestTaskRuntime({
+  getActiveSideQuestForTask,
+  getSideQuestRequiredResources,
+});

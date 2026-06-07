@@ -11,6 +11,7 @@ import { addTextIndicator } from '../textIndicators';
 import { playPositionalSound } from '../../store/soundStore';
 import { addNotification } from '../../store/notificationStore';
 import { ensureHeroSelected } from '../../store/uiStore';
+import { currentPlayerId } from '../socket';
 
 class ClientHeroHandler {
     private initialized = false;
@@ -58,9 +59,13 @@ class ClientHeroHandler {
         hero.skillPointsEarned = message.skillPointsEarned;
         hero.skills = { ...message.skills };
 
-        if (earnedSkillPointDelta > 0) {
+        if (earnedSkillPointDelta > 0 && this.isLocalHero(hero)) {
             this.announceSkillPointReady(hero, earnedSkillPointDelta);
         }
+    }
+
+    private isLocalHero(hero: NonNullable<ReturnType<typeof getHero>>): boolean {
+        return !!currentPlayerId.value && hero.playerId === currentPlayerId.value;
     }
 
     private announceSkillPointReady(hero: NonNullable<ReturnType<typeof getHero>>, amount: number): void {

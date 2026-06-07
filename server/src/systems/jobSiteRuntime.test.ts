@@ -102,6 +102,23 @@ test('field brewery turns grain and connected hops into durable beer production'
   assert.equal(brewerySite ? resolveSiteStatus(brewerySite, 1) : null, 'staffed');
 });
 
+test('field granary brewery and winery each expose two worker slots', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'grapes', variant: 'grapes_winery', isBaseTile: false }),
+  ]);
+
+  const slotsByBuilding = new Map(
+    listResolvedJobSites().map((site) => [site.building.key, site.slots]),
+  );
+
+  assert.equal(slotsByBuilding.get('granary'), 2);
+  assert.equal(slotsByBuilding.get('brewery'), 2);
+  assert.equal(slotsByBuilding.get('winery'), 2);
+});
+
 test('legacy brewery and winery variants still resolve as minimum-output job sites', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),

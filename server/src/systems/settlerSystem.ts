@@ -80,6 +80,7 @@ import {
 } from '../../../src/shared/game/testMode.ts';
 import { RAIDER_COMBAT_HEALTH_MAX, canSettlementUseOpenBorderTransit, isRaidableMilitaryTarget, isWatchtowerTile } from '../../../src/shared/game/military.ts';
 import { HUNGER_FOOD_TYPES, TRADE_GOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, getTradeGoodHappinessGain, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
+import { maintainJobSiteFields } from './fieldWork';
 
 const pathService = new PathService();
 
@@ -2894,13 +2895,14 @@ function completeWorkCycle(settler: Settler, now: number) {
     }
 
     settler.workProgressMs = 0;
+    const fieldChanged = maintainJobSiteFields(siteInfo.site);
     settler.carryingPayload = cloneResource(siteInfo.output) ?? undefined;
     settler.carryingKind = settler.carryingPayload ? 'output' : null;
     if (consumeTileProductionBoost(siteInfo.site.tile)) {
         broadcast({ type: 'tile:updated', tile: siteInfo.site.tile } as TileUpdatedMessage);
     }
 
-    return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now);
+    return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now) || fieldChanged;
 }
 
 function maybeWork(settler: Settler, now: number, dt: number) {

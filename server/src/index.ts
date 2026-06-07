@@ -30,6 +30,7 @@ import { shipOrderSystem } from './systems/shipOrderSystem';
 import { seasonSystem } from './systems/seasonSystem';
 import { marketSystem } from './systems/marketSystem';
 import { seasonState } from './state/seasonState';
+import { serverSideQuestState } from './state/sideQuestState';
 import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
 import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
 import { registerLooperlandsProxy } from './looperlands/looperlandsProxy';
@@ -184,6 +185,7 @@ configureGameRuntime({
   }
 });
 configureGameplayEventRuntime((event) => {
+  serverSideQuestState.recordEvent(event);
   runState.recordEvent(event);
   seasonState.recordEvent(event);
 });

@@ -6,16 +6,7 @@ import { getTaskDefinition } from '../shared/tasks/taskRegistry';
 import { tileIndex } from './world';
 import type {TaskSoundConfig} from "./types/Task.ts";
 import { getDriftlandsServerUrl } from './driftlandsServerUrl.ts';
-
-function resolveSoundAssetUrl(soundPath: string) {
-    if (soundPath.startsWith('http://') || soundPath.startsWith('https://') || soundPath.startsWith('blob:')) {
-        return soundPath;
-    }
-
-    const baseUrl = getDriftlandsServerUrl();
-    const assetPath = soundPath.startsWith('/') ? soundPath : `/sounds/${soundPath}`;
-    return `${baseUrl}${assetPath}`;
-}
+import { resolveSoundAssetUrl } from './soundAssets.ts';
 
 export interface PositionalSound {
     id: string;
@@ -521,7 +512,7 @@ class SoundService {
     }
 
     private async loadAudioData(soundPath: string): Promise<string> {
-        soundPath = resolveSoundAssetUrl(soundPath);
+        soundPath = resolveSoundAssetUrl(soundPath, { serverBaseUrl: getDriftlandsServerUrl() });
         // Check if already cached
         const cached = this.audioDataCache.get(soundPath);
         if (cached) {

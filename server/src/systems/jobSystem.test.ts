@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Hero } from '../../../src/shared/game/types/Hero';
 import type { Tile } from '../../../src/shared/game/types/Tile';
-import { loadWorld } from '../../../src/shared/game/world';
+import { loadWorld, tileIndex } from '../../../src/shared/game/world';
 import { heroes, loadHeroes } from '../../../src/shared/game/state/heroStore';
 import { getWorkforceSnapshot, resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
@@ -598,6 +598,35 @@ test('granary and bakery form a settler-driven production chain', () => {
     amount: 1,
     tileId: '2,0',
   });
+});
+
+test('field granary harvests and replants mature crops around the job site', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain', isBaseTile: true }),
+    createTile({ id: '4,0', q: 4, r: 0, terrain: 'plains', variant: 'plains_well', isBaseTile: false }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      workTileId: '1,0',
+    }),
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(61_000, 61_000);
+
+  assert.equal(tileIndex['2,0']?.terrain, 'grain');
+  assert.equal(tileIndex['2,0']?.variant, 'grain_planted');
+  assert.equal(tileIndex['2,0']?.isBaseTile, false);
 });
 
 test('workshop turns ore into delivered tools', () => {
