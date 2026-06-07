@@ -1,5 +1,5 @@
 import {getTaskDefinition} from '../shared/tasks/taskRegistry';
-import {ensureTileExists, tileIndex} from '../core/world';
+import {axialKey, ensureTileExists, tileIndex} from '../core/world';
 import {getDistanceToNearestTowncenter} from '../shared/game/worldQueries';
 import {getStorageResourceAmount, withdrawResourceFromStorage} from './resourceStore';
 import {invalidatePathCaches, PathService} from "../core/PathService";
@@ -24,7 +24,7 @@ import { clearHeroPayload, setHeroFetchIntent, setHeroPayload } from '../shared/
 import { collectTerrainCluster } from '../shared/game/terrainCluster';
 import { emitGameplayEvent } from '../shared/gameplay/events';
 import { axialDistanceCoords } from '../shared/game/hex';
-import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacityForResource, findNearestWarehouseWithResource } from '../shared/buildings/storage';
+import { canUseWarehouseAtTile, findNearestWarehouseAccessTile, findNearestWarehouseWithCapacityForResource, listUsableWarehousesWithResource } from '../shared/buildings/storage';
 import { canDrawWaterFromTile, findNearestWaterAccessTile } from '../shared/buildings/water';
 import { isHeroWorkingTask } from '../shared/game/heroTaskState';
 import { getTaskEconomyDistance } from '../shared/tasks/economy';
@@ -46,6 +46,7 @@ const TASK_PROGRESS_BROADCAST_INTERVAL_MS = 300;
 const TASK_PROGRESS_BROADCAST_MIN_DELTA_XP = 1;
 const HERO_ABILITY_PROGRESS_TASK_XP_DIVISOR = 250;
 const HERO_ABILITY_PROGRESS_MIN_PER_COMPLETED_TASK = 1;
+const MAX_CARRY_AMOUNT = 10;
 
 function isConstructionTask(type: TaskType) {
     return isBuildingTask(type) || type.startsWith('build') || type.startsWith('upgrade');
@@ -295,6 +296,55 @@ function getRemainingResources(task: TaskInstance): ResourceAmount[] {
     return remaining;
 }
 
+function isHeroFetchingForTask(hero: Hero, task: TaskInstance) {
+    return !!(
+        hero.pendingTask?.tileId === task.tileId
+        && hero.pendingTask.taskType === task.type
+        && hero.carryingPayload
+        && hero.carryingPayload.amount < 0
+    );
+}
+
+function getAssignedFetchAmount(hero: Hero) {
+    if (!hero.carryingPayload || hero.carryingPayload.amount >= 0) {
+        return 0;
+    }
+
+    return Math.min(Math.abs(hero.carryingPayload.amount), MAX_CARRY_AMOUNT);
+}
+
+function getAssignedFetchAmountForRequirement(task: TaskInstance, requiredType: ResourceType, excludedHero?: Hero) {
+    return heroes.reduce((sum, hero) => {
+        if (excludedHero && hero.id === excludedHero.id) {
+            return sum;
+        }
+        if (!isHeroFetchingForTask(hero, task) || !hero.carryingPayload) {
+            return sum;
+        }
+        if (!resourceFulfillsRequirement(requiredType, hero.carryingPayload.type)) {
+            return sum;
+        }
+
+        return sum + getAssignedFetchAmount(hero);
+    }, 0);
+}
+
+function getUnassignedRemainingResources(task: TaskInstance, excludedHero?: Hero): ResourceAmount[] {
+    if (!task.requiredResources) return [];
+
+    const remaining: ResourceAmount[] = [];
+    for (const required of task.requiredResources) {
+        const collected = getCollectedAmountForRequirement(task, required.type);
+        const assigned = getAssignedFetchAmountForRequirement(task, required.type, excludedHero);
+        const stillNeeded = required.amount - collected - assigned;
+        if (stillNeeded > 0) {
+            remaining.push({ type: required.type, amount: stillNeeded });
+        }
+    }
+
+    return remaining;
+}
+
 function resourceFulfillsRequirement(requiredType: ResourceType, providedType: ResourceType) {
     return requiredType === providedType || (requiredType === 'food' && isFoodSourceResource(providedType));
 }
@@ -449,31 +499,90 @@ export function addResourcesToTask(task: TaskInstance, carrying: ResourceAmount)
     return amountToAdd;
 }
 
-function resolveFetchResourceSource(hero: Hero, resource: ResourceAmount) {
+function getMovementTargetTileId(hero: Hero) {
+    const target = hero.movement?.target;
+    if (!target) {
+        return null;
+    }
+
+    return tileIndex[axialKey(target.q, target.r)]?.id ?? null;
+}
+
+function getReservedWarehouseResourceAmount(
+    task: TaskInstance | undefined,
+    storageTileId: string,
+    resourceType: ResourceType,
+    excludedHero?: Hero,
+) {
+    if (!task) {
+        return 0;
+    }
+
+    return heroes.reduce((sum, hero) => {
+        if (excludedHero && hero.id === excludedHero.id) {
+            return sum;
+        }
+        if (!isHeroFetchingForTask(hero, task) || !hero.carryingPayload) {
+            return sum;
+        }
+        if (hero.carryingPayload.type !== resourceType) {
+            return sum;
+        }
+        if (getMovementTargetTileId(hero) !== storageTileId) {
+            return sum;
+        }
+
+        return sum + getAssignedFetchAmount(hero);
+    }, 0);
+}
+
+function resolveFetchResourceSourceForType(
+    hero: Hero,
+    resource: ResourceAmount,
+    resourceType: ResourceType,
+    task?: TaskInstance,
+) {
+    const desiredAmount = Math.min(resource.amount, MAX_CARRY_AMOUNT);
+    if (desiredAmount <= 0) {
+        return null;
+    }
+
+    const strongMatches: Array<{ tile: Tile; available: number }> = [];
+    const partialMatches: Array<{ tile: Tile; available: number }> = [];
+
+    for (const tile of listUsableWarehousesWithResource(hero.q, hero.r, hero.settlementId ?? null, resourceType, 1)) {
+        const reserved = getReservedWarehouseResourceAmount(task, tile.id, resourceType, hero);
+        const available = Math.max(0, getStorageResourceAmount(tile.id, resourceType) - reserved);
+        if (available >= desiredAmount) {
+            strongMatches.push({ tile, available });
+        } else if (available > 0) {
+            partialMatches.push({ tile, available });
+        }
+    }
+
+    const match = strongMatches[0] ?? partialMatches[0];
+    if (!match) {
+        return null;
+    }
+
+    return {
+        tile: match.tile,
+        resource: {
+            type: resourceType,
+            amount: Math.min(resource.amount, MAX_CARRY_AMOUNT, match.available),
+        },
+    };
+}
+
+function resolveFetchResourceSource(hero: Hero, resource: ResourceAmount, task?: TaskInstance) {
     if (resource.type !== 'food') {
-        const found = findNearestWarehouseWithResource(
-            hero.q,
-            hero.r,
-            hero.settlementId ?? null,
-            resource.type,
-            resource.amount,
-        );
-        return found ? { tile: found, resource } : null;
+        return resolveFetchResourceSourceForType(hero, resource, resource.type, task);
     }
 
     for (const foodSourceType of FOOD_SOURCE_TYPES) {
-        const found = findNearestWarehouseWithResource(
-            hero.q,
-            hero.r,
-            hero.settlementId ?? null,
-            foodSourceType,
-            resource.amount,
-        );
-        if (found) {
-            return {
-                tile: found,
-                resource: { type: foodSourceType, amount: resource.amount },
-            };
+        const source = resolveFetchResourceSourceForType(hero, resource, foodSourceType, task);
+        if (source) {
+            return source;
         }
     }
 
@@ -516,7 +625,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
             }
         } else {
             // For other resources, find nearest warehouse with the resource
-            const source = resolveFetchResourceSource(hero, resource);
+            const source = resolveFetchResourceSource(hero, resource, inst);
             if (source) {
                 fetchLocation = { q: source.tile.q, r: source.tile.r };
                 resource = source.resource;
@@ -773,7 +882,10 @@ function fetchResourcesIfNeeded(hero: Hero, inst: TaskInstance) {
         : [];
     if (stillNeeded.length > 0) {
         deactivateTaskInstance(inst);
-        checkAndInitiateResourceFetch(tile, stillNeeded, hero, type, inst);
+        const unassignedStillNeeded = getUnassignedRemainingResources(inst, hero);
+        if (unassignedStillNeeded.length > 0) {
+            checkAndInitiateResourceFetch(tile, unassignedStillNeeded, hero, type, inst);
+        }
     } else if (!inst.active) {
         activateTaskInstance(inst);
     }

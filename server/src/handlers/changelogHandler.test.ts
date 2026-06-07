@@ -29,6 +29,7 @@ test('player join receives changelog snapshot for the current player', async () 
   const { socket, messages } = fakeSocket('socket-1');
   playerSettlementState.registerPlayer('socket-1', 'player-a', 'Player A');
   playerSettlementState.setLastSeenChangelogAt('player-a', 500);
+  playerSettlementState.recordLoginForChangelog('player-a', 550);
   new ServerChangelogHandler([
     {
       id: 'backend-600',
@@ -57,9 +58,46 @@ test('player join receives changelog snapshot for the current player', async () 
           bullets: ['The colony runs more smoothly.'],
         },
       ],
-      lastSeenChangelogAt: 500,
+      lastSeenChangelogAt: 550,
     },
   ]);
+});
+
+test('first player join snapshots from current login time and records it', async () => {
+  const { socket, messages } = fakeSocket('socket-1');
+  playerSettlementState.registerPlayer('socket-1', 'player-a', 'Player A');
+  new ServerChangelogHandler([
+    {
+      id: 'backend-600',
+      releasedAt: 600,
+      target: 'backend',
+      title: 'Server work',
+      bullets: ['The colony runs more smoothly.'],
+    },
+  ], () => 700).init();
+
+  await serverMessageRouter.route(socket, {
+    type: 'player:join',
+    playerId: 'player-a',
+    playerName: 'Player A',
+  } as any);
+
+  assert.deepEqual(messages, [
+    {
+      type: 'changelog:snapshot',
+      entries: [
+        {
+          id: 'backend-600',
+          releasedAt: 600,
+          target: 'backend',
+          title: 'Server work',
+          bullets: ['The colony runs more smoothly.'],
+        },
+      ],
+      lastSeenChangelogAt: 700,
+    },
+  ]);
+  assert.equal(playerSettlementState.getLastLoginAt('player-a'), 700);
 });
 
 test('changelog ack updates only the socket player checkpoint', async () => {

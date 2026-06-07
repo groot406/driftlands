@@ -7,7 +7,7 @@ import { resolveWorldTile } from '../../core/worldGeneration';
 import type { CoopPingMessage, HeroScoutResourceUpdateMessage, TileUpdatedMessage } from '../protocol';
 import { isStoryTerrainUnlocked } from '../story/progressionState';
 import { axialDistanceCoords } from './hex';
-import { PathService } from './PathService';
+import { PathService, type PathFindOptions } from './PathService';
 import { listScoutingFrontierTiles } from './explorationFrontier';
 import { isTileWalkable } from './navigation';
 import { broadcastGameMessage as broadcast, moveHeroWithRuntime } from './runtime';
@@ -93,6 +93,13 @@ const SIDE_DELTAS: Record<TileSide, readonly [number, number]> = {
 const scoutPathService = new PathService();
 const scoutPathOptions = { allowScouted: true, telemetrySource: 'scout_resource' };
 
+function getScoutPathOptions(hero: Pick<Hero, 'settlementId'>): PathFindOptions {
+    return {
+        ...scoutPathOptions,
+        settlementId: hero.settlementId ?? null,
+    };
+}
+
 export function shouldStopScoutResourceForMovement(
     hero: Pick<Hero, 'scoutResourceIntent'>,
     taskType?: string | null,
@@ -101,11 +108,11 @@ export function shouldStopScoutResourceForMovement(
 }
 
 export function getScoutCancelMovementPathOptions(
-    hero: Pick<Hero, 'scoutResourceIntent'>,
+    hero: Pick<Hero, 'scoutResourceIntent' | 'settlementId'>,
     taskType?: string | null,
 ) {
     return shouldStopScoutResourceForMovement(hero, taskType)
-        ? scoutPathOptions
+        ? getScoutPathOptions(hero)
         : {};
 }
 
@@ -403,10 +410,11 @@ function createReachableScoutCandidate(hero: Hero, tile: Tile, resourceType: Sco
         return null;
     }
 
+    const pathOptions = getScoutPathOptions(hero);
     const atTile = hero.q === tile.q && hero.r === tile.r;
     const path = atTile
         ? []
-        : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, scoutPathOptions);
+        : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, pathOptions);
 
     if (!atTile && !path.length) {
         return null;
@@ -459,6 +467,7 @@ function returnHeroToNearestReachableDiscoveredWalkableTile(hero: Hero) {
 
 function findNearestReachableOnlineTowncenter(hero: Hero) {
     let best: { tile: Tile; pathLength: number; distance: number } | null = null;
+    const pathOptions = getScoutPathOptions(hero);
 
     for (const tileId of terrainPositions.towncenter) {
         const tile = ensureTileExistsFromIndex(tileId);
@@ -469,7 +478,7 @@ function findNearestReachableOnlineTowncenter(hero: Hero) {
         const atTile = hero.q === tile.q && hero.r === tile.r;
         const path = atTile
             ? []
-            : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, scoutPathOptions);
+            : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, pathOptions);
 
         if (!atTile && !path.length) {
             continue;
@@ -492,6 +501,7 @@ function findNearestReachableOnlineTowncenter(hero: Hero) {
 
 function findNearestReachableDiscoveredWalkableTile(hero: Hero) {
     let best: { tile: Tile; pathLength: number; distance: number } | null = null;
+    const pathOptions = getScoutPathOptions(hero);
 
     for (const tile of Object.values(tileIndex)) {
         if (!isDiscoveredWalkableTile(tile)) {
@@ -501,7 +511,7 @@ function findNearestReachableDiscoveredWalkableTile(hero: Hero) {
         const atTile = hero.q === tile.q && hero.r === tile.r;
         const path = atTile
             ? []
-            : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, scoutPathOptions);
+            : scoutPathService.findWalkablePath(hero.q, hero.r, tile.q, tile.r, pathOptions);
 
         if (!atTile && !path.length) {
             continue;

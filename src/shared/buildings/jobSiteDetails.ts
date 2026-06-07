@@ -187,7 +187,10 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Bakery output depends on staffed granaries upstream, so keep grain production online as well as storage stocked.');
             }
             if (buildingRunsHospitality) {
-                pushAdvice(advice, 'Pubs only help if drinks are stocked in storage, so keep the brewery running and colony stores supplied.');
+                pushAdvice(advice, 'Pubs only help if morale drinks are stocked, so keep breweries, wineries, and colony stores supplied.');
+            }
+            if (building.key === 'brewery') {
+                pushAdvice(advice, 'Breweries draw grain from storage while their hops field supplies the flavor on site.');
             }
             pushAdvice(advice, 'Inputs can be drawn from any colony storage, so keep town centers and depots topped up instead of letting one site run dry.');
             break;
@@ -231,6 +234,10 @@ export function getJobSiteAdvice(context: JobSiteAdviceContext) {
                 pushAdvice(advice, 'Scale grain production alongside bakeries so the ovens stay fed every cycle.');
             } else if (building.key === 'granary') {
                 pushAdvice(advice, 'Granaries scale with the grain tile they sit on plus each adjacent active grain field, so dense farms pay off fast.');
+            } else if (building.key === 'brewery') {
+                pushAdvice(advice, 'Breweries scale from their own hops tile plus adjacent active hops fields, then spend stored grain each cycle.');
+            } else if (building.key === 'winery') {
+                pushAdvice(advice, 'Wineries scale from their own grape tile plus adjacent active grape fields, so compact vineyards keep pubs stocked.');
             } else if (building.key === 'lumberCamp') {
                 pushAdvice(advice, 'Lumber camps scale with their own forest tile plus adjacent active woods, so place them in thicker stands when you can.');
             } else if (building.key === 'huntersHut') {

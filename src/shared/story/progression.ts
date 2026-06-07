@@ -278,12 +278,12 @@ const BUILDING_META: Record<BuildingKey, { label: string; description: string; t
   },
   brewery: {
     label: 'Brewery',
-    description: 'Turns grain and hops into beer for the colony.',
+    description: 'Turns a hops field and stored grain into beer for colony morale.',
     taskKey: 'buildBrewery',
   },
   winery: {
     label: 'Winery',
-    description: 'Turns grapes into wine for settlers who need a stronger morale boost.',
+    description: 'Turns a grape field into wine for settlers who need a stronger morale boost.',
     taskKey: 'buildWinery',
   },
   pub: {
@@ -1482,7 +1482,7 @@ function describeRequirementRoute(requirement: RequirementDefinition, progress: 
     case 'resource_stock_at_least':
       return `Store ${requirement.amount} ${requirement.resourceType}. If this route is slow, improve the producer or work another recommended milestone while stock builds.`;
     case 'food_source_stock_at_least':
-      return 'Store enough edible food from any route: hunting, fish, bread, beer, wine, or other food sources all count.';
+      return 'Store enough edible food from any route: hunting, fishing, or bread production. Beer, wine, and crops are useful, but they do not prevent hunger.';
     case 'building_count_at_least':
       return `Build ${progress.target} ${progress.label.replace(/ x\d+$/, '')}. If the terrain is awkward, extend reach with roads, towers, or depots first.`;
     case 'building_operational_at_least':

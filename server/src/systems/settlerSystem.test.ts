@@ -456,6 +456,264 @@ test('shop venue movement reuses the reachable access path', () => {
   assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 0);
 });
 
+test('settlers visit the nearest reachable staffed shop with capacity', () => {
+  loadWorld([
+    createTile({ id: '-1,0', q: -1, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_shop', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,-1', q: 3, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,-1', q: 4, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '5,-1', q: 5, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '6,-1', q: 6, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '7,-1', q: 7, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '8,-1', q: 8, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,-1', q: 9, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,0', q: 9, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '10,0', q: 10, r: 0, terrain: 'plains', variant: 'plains_shop', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 3,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 3,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: '-1,0',
+      homeAccessTileId: '0,0',
+      happiness: 70,
+    }),
+    createSettler({
+      id: 'far-shopkeeper',
+      q: 9,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '10,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+    createSettler({
+      id: 'near-shopkeeper',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'silk', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'commuting_shop');
+  assert.equal(settlers[0]?.socialTileId, '2,0');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 2, r: 0 });
+});
+
+test('settlers visit the nearest reachable staffed pub with capacity', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_pub', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,-1', q: 3, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,-1', q: 4, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '5,-1', q: 5, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '6,-1', q: 6, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '7,-1', q: 7, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '8,-1', q: 8, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,-1', q: 9, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,0', q: 9, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '10,0', q: 10, r: 0, terrain: 'plains', variant: 'plains_pub', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 3,
+    max: 15,
+    beds: 3,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 3,
+      max: 15,
+      beds: 3,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      happiness: 40,
+    }),
+    createSettler({
+      id: 'far-publican',
+      q: 9,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '10,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+    createSettler({
+      id: 'near-publican',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'beer', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'commuting_social');
+  assert.equal(settlers[0]?.socialTileId, '2,0');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 2, r: 0 });
+});
+
+test('hungry settlers choose the nearest reachable food storehouse', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,0', q: 4, r: 0, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      hungerMs: 90_000,
+    }),
+  ]);
+  depositResourceToStorage('1,0', 'meat', 1);
+  depositResourceToStorage('4,0', 'meat', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'fetching_food');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 1, r: 0 });
+});
+
+test('hungry settlers skip unreachable closer food storage for a reachable source', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'water', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,2', q: 0, r: 2, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,3', q: 0, r: 3, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      hungerMs: 90_000,
+    }),
+  ]);
+  depositResourceToStorage('2,0', 'meat', 1);
+  depositResourceToStorage('0,3', 'meat', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'fetching_food');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 0, r: 3 });
+});
+
 test('blocked food reachability is rejected before pathfinding while cooldown holds', () => {
   const pathEvents: Array<{ source?: string }> = [];
   configurePathTelemetry((event) => {
@@ -616,6 +874,224 @@ test('dock access selection stops after the nearest reachable tile', () => {
 
   assert.equal(settlers[0]?.activity, 'working');
   assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 0);
+});
+
+test('unhomed settlers choose the nearest reachable open house slot', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,0', q: 9, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '10,0', q: 10, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 4,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 4,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: 'missing-house',
+      homeAccessTileId: 'missing-access',
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.homeTileId, '2,0');
+  assert.equal(settlers[0]?.homeAccessTileId, '1,0');
+});
+
+test('settlers keep an existing valid home when a closer slot is open', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,0', q: 4, r: 0, terrain: 'plains', variant: 'plains_house', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 4,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 4,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      homeTileId: '4,0',
+      homeAccessTileId: '3,0',
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.homeTileId, '4,0');
+  assert.equal(settlers[0]?.homeAccessTileId, '3,0');
+});
+
+test('unassigned idle settlers choose the nearest eligible open job site', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water', variant: 'water_dock_a', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,-1', q: 3, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,-1', q: 4, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '5,-1', q: 5, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '6,-1', q: 6, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '7,-1', q: 7, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '8,-1', q: 8, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,-1', q: 9, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '9,0', q: 9, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '10,0', q: 10, r: 0, terrain: 'water', variant: 'water_dock_a', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.assignedRole, 'job');
+  assert.equal(settlers[0]?.assignedWorkTileId, '2,0');
+});
+
+test('idle job assignment does not steal active workers from valid sites', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'water', variant: 'water_dock_a', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '3,-1', q: 3, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '4,-1', q: 4, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '5,-1', q: 5, r: -1, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '5,0', q: 5, r: 0, terrain: 'plains', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '6,0', q: 6, r: 0, terrain: 'water', variant: 'water_dock_a', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 2,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 2,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'active-worker',
+      q: 5,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '6,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+    createSettler({
+      id: 'idle-worker',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.find((settler) => settler.id === 'active-worker')?.assignedWorkTileId, '6,0');
+  assert.equal(settlers.find((settler) => settler.id === 'idle-worker')?.assignedWorkTileId, '2,0');
 });
 
 test('working settlers stagger non-urgent planning while preserving accumulated work time', () => {
@@ -851,6 +1327,59 @@ test('upgraded houses slowly restore resident happiness from comfort', () => {
   tickAt(180_001, 1);
 
   assert.ok((settlers[0]?.happiness ?? 0) > 43.9);
+});
+
+test('base houses provide a small passive happiness recovery', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_house',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      houseGoodsConsumedAtMs: 0,
+    }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 2,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 2,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      settlementId: '0,0',
+      homeTileId: '1,0',
+      homeAccessTileId: '0,0',
+      happiness: 40,
+    }),
+  ]);
+
+  tickAt(180_001, 1);
+
+  assert.ok((settlers[0]?.happiness ?? 0) > 40.9);
 });
 
 test('population sync rebalances overfilled settlement buckets before creating replacements', () => {

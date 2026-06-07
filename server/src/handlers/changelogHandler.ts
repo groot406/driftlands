@@ -7,9 +7,11 @@ import { playerSettlementState } from '../state/playerSettlementState.ts';
 
 export class ServerChangelogHandler {
   private readonly entries: ReleaseChangelogEntry[];
+  private readonly nowProvider: () => number;
 
-  constructor(entries: ReleaseChangelogEntry[] = generatedChangelogEntries) {
+  constructor(entries: ReleaseChangelogEntry[] = generatedChangelogEntries, nowProvider: () => number = () => Date.now()) {
     this.entries = entries;
+    this.nowProvider = nowProvider;
   }
 
   init(): void {
@@ -19,10 +21,11 @@ export class ServerChangelogHandler {
 
   private handlePlayerJoin(socket: Socket, _message: PlayerJoinMessage): void {
     const playerId = playerSettlementState.getSocketPlayerId(socket.id);
+    const loginCheckpoint = playerSettlementState.recordLoginForChangelog(playerId, this.nowProvider());
     const message: ChangelogSnapshotMessage = {
       type: 'changelog:snapshot',
       entries: this.entries.map((entry) => ({ ...entry, bullets: entry.bullets.slice() })),
-      lastSeenChangelogAt: playerSettlementState.getLastSeenChangelogAt(playerId),
+      lastSeenChangelogAt: loginCheckpoint.checkpointAt,
     };
 
     sendToSocket(socket, message);

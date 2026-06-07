@@ -50,7 +50,7 @@ import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessag
 import type { PopulationIncidentMessage } from '../../../src/shared/protocol';
 import { findNearestTaskAccessTile, listTaskAccessTiles } from '../../../src/shared/tasks/taskAccess';
 import { getWorldRenderVersion, tileIndex } from '../../../src/shared/game/world';
-import { canAssignWorkersToSite, compareResolvedSites, finalizeMineExtraction, getJobSiteSettlementId, isVirtualJobInput, listResolvedJobSites } from './jobSiteRuntime';
+import { canAssignWorkersToSite, compareResolvedSites, finalizeMineExtraction, getJobSiteSettlementId, isVirtualJobInput, listResolvedJobSites, type ResolvedJobSite } from './jobSiteRuntime';
 import { addStudyProgress, broadcastStudyState, hasActiveStudy } from '../../../src/store/studyStore';
 import { consumeTileProductionBoost } from '../../../src/shared/game/tileFeatures';
 import {
@@ -1726,17 +1726,32 @@ export function syncSettlerPopulation(now: number) {
     return changed || settlers.length !== originalLength;
 }
 
-function buildHomeSlots() {
-    const slots: Array<{ key: string; homeTileId: string; accessTileId: string; settlementId: string | null }> = [];
-    const houseCapacityByVariant: Partial<Record<string, number>> = {
-        plains_house: 2,
-        dirt_house: 2,
-        plains_stone_house: 4,
-        dirt_stone_house: 4,
-        plains_glass_house: 6,
-        dirt_glass_house: 6,
-    };
+interface HomeSlot {
+    key: string;
+    homeTileId: string;
+    accessTileId: string;
+    settlementId: string | null;
+}
 
+const HOUSE_CAPACITY_BY_VARIANT: Partial<Record<string, number>> = {
+    plains_house: 2,
+    dirt_house: 2,
+    plains_stone_house: 4,
+    dirt_stone_house: 4,
+    plains_glass_house: 6,
+    dirt_glass_house: 6,
+};
+
+function getHouseCapacity(tile: Tile | null | undefined) {
+    if (!isHouseTile(tile)) {
+        return 0;
+    }
+
+    return Math.max(0, HOUSE_CAPACITY_BY_VARIANT[tile.variant ?? ''] ?? 2);
+}
+
+function buildHomeSlots() {
+    const slots: HomeSlot[] = [];
     const houses = Object.values(tileIndex)
         .filter((tile): tile is Tile => {
             return !!tile?.discovered
@@ -1754,7 +1769,7 @@ function buildHomeSlots() {
             continue;
         }
 
-        const houseCapacity = Math.max(0, houseCapacityByVariant[house.variant ?? ''] ?? 2);
+        const houseCapacity = getHouseCapacity(house);
         for (let slotIndex = 0; slotIndex < houseCapacity; slotIndex++) {
             slots.push({
                 key: `${house.id}:${slotIndex}`,
@@ -1768,9 +1783,78 @@ function buildHomeSlots() {
     return slots;
 }
 
+function chooseNearestReachableHomeSlot(
+    settler: Settler,
+    homeSlots: HomeSlot[],
+    usedSlotKeys: Set<string>,
+    settlementId: string | null | undefined,
+) {
+    const startTile = tileIndex[`${settler.q},${settler.r}`] ?? null;
+    const pathSettlementId = getSettlerPathSettlementId(settler);
+    const candidates = homeSlots
+        .filter((slot) => !usedSlotKeys.has(slot.key))
+        .filter((slot) => settlementId === undefined || slot.settlementId === settlementId)
+        .map((slot) => ({
+            slot,
+            accessTile: tileIndex[slot.accessTileId] ?? null,
+        }))
+        .filter((candidate): candidate is { slot: HomeSlot; accessTile: Tile } => !!candidate.accessTile)
+        .sort((a, b) => {
+            const distanceDelta = pathService.axialDistance(settler.q, settler.r, a.accessTile.q, a.accessTile.r)
+                - pathService.axialDistance(settler.q, settler.r, b.accessTile.q, b.accessTile.r);
+            if (distanceDelta !== 0) {
+                return distanceDelta;
+            }
+
+            return a.slot.key.localeCompare(b.slot.key);
+        });
+
+    for (const candidate of candidates) {
+        if (areSettlerTilesConnected(startTile, candidate.accessTile, pathSettlementId)) {
+            return candidate.slot;
+        }
+    }
+
+    return null;
+}
+
+function preserveCurrentHomeIfResident(
+    settler: Settler,
+    preservedHomeOccupancy: Map<string, number>,
+) {
+    const homeTile = settler.homeTileId ? tileIndex[settler.homeTileId] ?? null : null;
+    const accessTile = settler.homeAccessTileId ? tileIndex[settler.homeAccessTileId] ?? null : null;
+    if (
+        !homeTile?.discovered
+        || !isHouseTile(homeTile)
+        || !isBuildingOfflineFromCondition(homeTile)
+        || !homeTile.controlledBySettlementId
+        || !accessTile?.discovered
+        || !isTileWalkable(accessTile)
+    ) {
+        return { preserved: false, changed: false };
+    }
+
+    const capacity = getHouseCapacity(homeTile);
+    const occupancy = preservedHomeOccupancy.get(homeTile.id) ?? 0;
+    if (capacity <= 0 || occupancy >= capacity) {
+        return { preserved: false, changed: false };
+    }
+
+    preservedHomeOccupancy.set(homeTile.id, occupancy + 1);
+    const settlementId = homeTile.ownerSettlementId ?? homeTile.controlledBySettlementId ?? null;
+    if (settler.settlementId !== settlementId) {
+        settler.settlementId = settlementId;
+        return { preserved: true, changed: true };
+    }
+
+    return { preserved: true, changed: false };
+}
+
 function reconcileHomes() {
     const homeSlots = buildHomeSlots();
     const usedSlotKeys = new Set<string>();
+    const preservedHomeOccupancy = new Map<string, number>();
     const remaining: Settler[] = [];
     let changed = false;
 
@@ -1793,12 +1877,18 @@ function reconcileHomes() {
             continue;
         }
 
+        const preserved = preserveCurrentHomeIfResident(settler, preservedHomeOccupancy);
+        if (preserved.preserved) {
+            changed = preserved.changed || changed;
+            continue;
+        }
+
         remaining.push(settler);
     }
 
     for (const settler of remaining) {
-        const nextSlot = homeSlots.find((slot) => !usedSlotKeys.has(slot.key) && slot.settlementId === settler.settlementId)
-            ?? homeSlots.find((slot) => !usedSlotKeys.has(slot.key));
+        const nextSlot = chooseNearestReachableHomeSlot(settler, homeSlots, usedSlotKeys, settler.settlementId)
+            ?? chooseNearestReachableHomeSlot(settler, homeSlots, usedSlotKeys, undefined);
         if (nextSlot) {
             usedSlotKeys.add(nextSlot.key);
             if (settler.homeTileId !== nextSlot.homeTileId) {
@@ -1860,6 +1950,47 @@ function sortSettlersForAssignment(a: Settler, b: Settler, siteTile: Tile) {
 function canSettlerServeTile(settler: Settler, tile: Tile | null | undefined) {
     const tileSettlementId = getJobSiteSettlementId(tile);
     return !tileSettlementId || settler.settlementId === tileSettlementId;
+}
+
+function canTakeNewWorkAssignment(settler: Settler) {
+    return !settler.assignedWorkTileId
+        && !settler.movement
+        && settler.carryingKind === null
+        && (settler.activity === 'idle' || settler.activity === 'waiting');
+}
+
+function chooseNearestAssignableSite(
+    settler: Settler,
+    sites: ResolvedJobSite[],
+    assignmentCounts: Map<string, number>,
+) {
+    const candidates = sites
+        .map((site) => {
+            const assigned = assignmentCounts.get(site.tile.id) ?? 0;
+            const nextCount = assigned + 1;
+            if (
+                assigned >= site.slots
+                || !canSettlerServeTile(settler, site.tile)
+                || !canAssignWorkersToSite(site, nextCount)
+            ) {
+                return null;
+            }
+
+            const accessTile = getReachableWorkAccessTile(settler, site.tile);
+            return accessTile ? { site, accessTile, nextCount } : null;
+        })
+        .filter((candidate): candidate is { site: ResolvedJobSite; accessTile: Tile; nextCount: number } => !!candidate)
+        .sort((a, b) => {
+            const distanceDelta = pathService.axialDistance(settler.q, settler.r, a.accessTile.q, a.accessTile.r)
+                - pathService.axialDistance(settler.q, settler.r, b.accessTile.q, b.accessTile.r);
+            if (distanceDelta !== 0) {
+                return distanceDelta;
+            }
+
+            return compareResolvedSites(a.site, b.site);
+        });
+
+    return candidates[0] ?? null;
 }
 
 function assignSettlerToRepair(settler: Settler, repairTile: Tile, assignedRepairTargetIds: Set<string>) {
@@ -1959,32 +2090,21 @@ function reconcileAssignments() {
         changed = refreshSettlerWorkPresentation(settler) || changed;
     }
 
-    for (const site of sites) {
-        let assigned = assignmentCounts.get(site.tile.id) ?? 0;
-        while (assigned < site.slots) {
-            const candidates = eligibleSettlers
-                .filter((settler) => !settler.assignedWorkTileId)
-                .filter((settler) => canSettlerServeTile(settler, site.tile))
-                .sort((a, b) => sortSettlersForAssignment(a, b, site.tile));
-
-            const candidate = candidates[0];
-            if (!candidate) {
-                break;
-            }
-
-            const nextCount = assigned + 1;
-            if (!canAssignWorkersToSite(site, nextCount)) {
-                break;
-            }
-
-            candidate.assignedWorkTileId = site.tile.id;
-            candidate.assignedRole = 'job';
-            resetSettlerWorkProgress(candidate);
-            refreshSettlerWorkPresentation(candidate);
-            changed = true;
-            assigned = nextCount;
-            assignmentCounts.set(site.tile.id, nextCount);
+    const unassignedWorkers = eligibleSettlers
+        .filter(canTakeNewWorkAssignment)
+        .sort((a, b) => a.id.localeCompare(b.id));
+    for (const candidate of unassignedWorkers) {
+        const assignment = chooseNearestAssignableSite(candidate, sites, assignmentCounts);
+        if (!assignment) {
+            continue;
         }
+
+        candidate.assignedWorkTileId = assignment.site.tile.id;
+        candidate.assignedRole = 'job';
+        resetSettlerWorkProgress(candidate);
+        refreshSettlerWorkPresentation(candidate);
+        assignmentCounts.set(assignment.site.tile.id, assignment.nextCount);
+        changed = true;
     }
 
     for (const repairTile of repairTargets) {
@@ -2264,10 +2384,25 @@ function getPubVisitorCount(tileId: string) {
     )).length;
 }
 
+function compareVenueAccess(
+    settler: Settler,
+    a: { site: ResolvedJobSite; accessTile: Tile },
+    b: { site: ResolvedJobSite; accessTile: Tile },
+) {
+    const distanceDelta = pathService.axialDistance(settler.q, settler.r, a.accessTile.q, a.accessTile.r)
+        - pathService.axialDistance(settler.q, settler.r, b.accessTile.q, b.accessTile.r);
+    if (distanceDelta !== 0) {
+        return distanceDelta;
+    }
+
+    return compareResolvedSites(a.site, b.site);
+}
+
 function chooseSocialVenue(settler: Settler) {
     const pubs = listResolvedJobSites()
         .filter((site) => site.building.key === 'pub' && site.tile.discovered)
         .sort(compareResolvedSites);
+    const venues: Array<{ site: ResolvedJobSite; accessTile: Tile }> = [];
 
     for (const site of pubs) {
         if (getPubWorkerCount(site.tile.id, settler.id) <= 0) {
@@ -2286,13 +2421,13 @@ function chooseSocialVenue(settler: Settler) {
             continue;
         }
 
-        return {
+        venues.push({
             site,
             accessTile,
-        };
+        });
     }
 
-    return null;
+    return venues.sort((a, b) => compareVenueAccess(settler, a, b))[0] ?? null;
 }
 
 function tryStartSocializing(settler: Settler, pubTileId: string, now: number) {
@@ -2500,6 +2635,7 @@ function chooseShopVenue(settler: Settler) {
     const shops = listResolvedJobSites()
         .filter((site) => site.building.key === 'shop' && site.tile.discovered)
         .sort(compareResolvedSites);
+    const venues: Array<{ site: ResolvedJobSite; accessTile: Tile }> = [];
 
     for (const site of shops) {
         if (getShopWorkerCount(site.tile.id, settler.id) <= 0) {
@@ -2519,13 +2655,13 @@ function chooseShopVenue(settler: Settler) {
             continue;
         }
 
-        return {
+        venues.push({
             site,
             accessTile,
-        };
+        });
     }
 
-    return null;
+    return venues.sort((a, b) => compareVenueAccess(settler, a, b))[0] ?? null;
 }
 
 function tryStartShopping(settler: Settler, shopTileId: string, now: number) {

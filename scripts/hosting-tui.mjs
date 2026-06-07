@@ -922,9 +922,19 @@ function prepareEmbeddedApp() {
 
   let contents = readFileSync(path, 'utf8');
   if (!contents.includes('id="driftlands-game"')) {
-    contents = contents
-      .replace('<template>\n  <!-- Scene swap with fade -->\n  <Transition', '<template>\n  <!-- Scene swap with fade -->\n  <main id="driftlands-game">\n    <Transition')
-      .replace(/\n\s*<\/Transition>\n<\/template>/, '\n    </Transition>\n  </main>\n</template>');
+    contents = contents.replace(
+      /<template>\n  <!-- Scene swap with fade -->\n([\s\S]*?)\n<\/template>/,
+      (_match, body) => {
+        const indentedBody = body
+          .split('\n')
+          .map((line) => line.length > 0 ? `  ${line}` : line)
+          .join('\n');
+
+        return `<template>\n  <!-- Scene swap with fade -->\n  <main id="driftlands-game">\n${indentedBody}\n  </main>\n</template>`;
+      },
+    );
+  } else if (!contents.includes('</main>')) {
+    contents = contents.replace(/\n<\/template>/, '\n  </main>\n</template>');
   }
   if (!contents.includes("import './style.css';")) {
     contents = contents.replace('// @ts-nocheck\n', "// @ts-nocheck\nimport './style.css';\n");

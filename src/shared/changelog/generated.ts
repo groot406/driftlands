@@ -83,5 +83,19 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Checkpoint updates to stabilize Driftlands gameplay experience."
     ],
     "gitHead": "3d695ad5b541"
+  },
+  {
+    "id": "both-1780794529177-33436aa5aba3",
+    "releasedAt": 1780794529177,
+    "target": "both",
+    "title": "Guarded Watchtower Defense and Changelog Features",
+    "bullets": [
+      "Introducing a new guarded watchtower defense system for improved military gameplay.",
+      "Added a detailed in-game changelog modal to better track updates and changes.",
+      "Improved settler and hero rendering with enhanced visuals and overlays.",
+      "Updated player and military systems to refine movement, population, and combat.",
+      "Extensive testing added across Discord chat logger and game handler systems."
+    ],
+    "gitHead": "33436aa5aba3"
   }
 ];

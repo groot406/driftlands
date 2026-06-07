@@ -625,6 +625,76 @@ test('scout target selection chooses a random reachable local neighbor instead o
   }
 });
 
+test('scout target selection skips same-ring candidates outside settlement reach', () => {
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      controlledBySettlementId: 'foreign',
+      ownerSettlementId: 'foreign',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '0,1',
+      q: 0,
+      r: 1,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  const reachableTarget = ensureTileExists(0, 2);
+  const blockedTarget = ensureTileExists(2, 0);
+
+  for (const tile of Object.values(tileIndex)) {
+    if (
+      !tile.discovered
+      && tile.id !== reachableTarget.id
+      && tile.id !== blockedTarget.id
+    ) {
+      tile.discovered = true;
+      tile.terrain = 'water';
+      tile.variant = null;
+    }
+  }
+
+  const hero = createHero(0, 0, 'wood');
+  hero.settlementId = '0,0';
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.99;
+
+  try {
+    const selected = pickNextScoutTile(hero, 'wood');
+    assert.ok(selected);
+    assert.deepEqual({ q: selected.q, r: selected.r }, { q: reachableTarget.q, r: reachableTarget.r });
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test('scout target selection clears the closest town-center ring before pushing outward', () => {
   startWorldGeneration(1, 13579);
   const closeTile = ensureTileExists(2, 0);

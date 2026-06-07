@@ -642,10 +642,11 @@ test('workshop turns ore into delivered tools', () => {
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
 });
 
-test('brewery consumes grain and hops to produce ten beer without water', () => {
+test('field brewery consumes grain and produces beer without stored hops', () => {
   loadWorld([
     createTowncenterTile(),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'hops' }),
   ]);
   loadPopulation(1, 1);
   loadSettlers([
@@ -668,8 +669,7 @@ test('brewery consumes grain and hops to produce ten beer without water', () => 
       carryingKind: null,
     },
   ]);
-  depositResourceToStorage('0,0', 'grain', 2);
-  depositResourceToStorage('0,0', 'hops', 1);
+  depositResourceToStorage('0,0', 'grain', 1);
   settlerSystem.init();
   jobSystem.init();
 
@@ -681,10 +681,49 @@ test('brewery consumes grain and hops to produce ten beer without water', () => 
   assert.equal(resourceInventory.grain, 0);
   assert.equal(resourceInventory.hops, 0);
   assert.equal(resourceInventory.water, 0);
-  assert.equal(resourceInventory.beer, 10);
+  assert.equal(resourceInventory.beer, 8);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('field winery produces wine without stored grapes', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grapes', variant: 'grapes_winery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grapes' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    {
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      facing: 'right',
+      appearanceSeed: 1,
+      homeTileId: '0,0',
+      homeAccessTileId: '0,0',
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      activity: 'idle',
+      stateSinceMs: 0,
+      hungerMs: 0,
+      fatigueMs: 0,
+      happiness: 100,
+      workProgressMs: 0,
+      carryingKind: null,
+    },
+  ]);
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(7_000, 6_000);
+  tickAll(68_000, 61_000);
+  tickAll(75_000, 7_000);
+
+  assert.equal(resourceInventory.grapes, 0);
+  assert.equal(resourceInventory.wine, 4);
 });
 
 test('multi-input jobs consume stored secondary ingredients', () => {

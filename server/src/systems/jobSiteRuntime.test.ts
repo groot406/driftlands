@@ -65,10 +65,13 @@ test('active adjacent volcanoes increase nearby job-site output', () => {
   assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 5 }]);
 });
 
-test('winery sites resolve into grape-to-wine job sites', () => {
+test('field winery resolves into durable grape-to-wine production', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_winery' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grapes', variant: 'grapes_winery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grapes' }),
+    createTile({ id: '1,1', q: 1, r: 1, terrain: 'grapes' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'grapes' }),
   ]);
 
   const winerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
@@ -76,23 +79,47 @@ test('winery sites resolve into grape-to-wine job sites', () => {
   assert.equal(winerySite?.building.key, 'winery');
 
   const resources = winerySite ? resolveJobResources(winerySite, 1) : null;
-  assert.deepEqual(resources?.consumes, [{ type: 'grapes', amount: 2 }]);
-  assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 1 }]);
+  assert.deepEqual(resources?.consumes, []);
+  assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 6 }]);
 });
 
-test('brewery turns grain and hops into ten beer without water', () => {
+test('field brewery turns grain and connected hops into durable beer production', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
-    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'hops' }),
+    createTile({ id: '1,1', q: 1, r: 1, terrain: 'hops' }),
+    createTile({ id: '0,1', q: 0, r: 1, terrain: 'hops' }),
   ]);
-  depositResourceToStorage('0,0', 'grain', 2);
-  depositResourceToStorage('0,0', 'hops', 1);
+  depositResourceToStorage('0,0', 'grain', 1);
 
   const brewerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
   const resources = brewerySite ? resolveJobResources(brewerySite, 1) : null;
 
   assert.equal(brewerySite?.building.key, 'brewery');
-  assert.deepEqual(resources?.consumes, [{ type: 'grain', amount: 2 }, { type: 'hops', amount: 1 }]);
-  assert.deepEqual(resources?.produces, [{ type: 'beer', amount: 10 }]);
+  assert.deepEqual(resources?.consumes, [{ type: 'grain', amount: 1 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'beer', amount: 12 }]);
   assert.equal(brewerySite ? resolveSiteStatus(brewerySite, 1) : null, 'staffed');
+});
+
+test('legacy brewery and winery variants still resolve as minimum-output job sites', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_brewery' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_winery' }),
+  ]);
+
+  const brewerySite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+  const winerySite = listResolvedJobSites().find((site) => site.tile.id === '2,0');
+
+  assert.equal(brewerySite?.building.key, 'brewery');
+  assert.deepEqual(brewerySite ? resolveJobResources(brewerySite, 1) : null, {
+    consumes: [{ type: 'grain', amount: 1 }],
+    produces: [{ type: 'beer', amount: 6 }],
+  });
+  assert.equal(winerySite?.building.key, 'winery');
+  assert.deepEqual(winerySite ? resolveJobResources(winerySite, 1) : null, {
+    consumes: [],
+    produces: [{ type: 'wine', amount: 3 }],
+  });
 });

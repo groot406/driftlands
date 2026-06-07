@@ -158,11 +158,11 @@ export interface PlannedStorageDepositTransfer extends StorageDepositTransfer {
     resourceType: ResourceType;
 }
 
-function listUsableStorageTiles() {
+function listUsableStorageTiles(options: WarehouseUseOptions = {}) {
     const candidates = new Map<string, Tile>();
 
     const considerTile = (tile: Tile | null | undefined) => {
-        if (!tile || !canUseWarehouseAtTile(tile)) {
+        if (!tile || !canUseWarehouseAtTile(tile, options)) {
             return;
         }
 
@@ -186,8 +186,11 @@ function listUsableStorageTiles() {
     return Array.from(candidates.values());
 }
 
-export function listUsableStorageTilesForSettlement(settlementId: string | null | undefined = null) {
-    return listUsableStorageTiles().filter((tile) => belongsToSettlement(tile, settlementId));
+export function listUsableStorageTilesForSettlement(
+    settlementId: string | null | undefined = null,
+    options: WarehouseUseOptions = {},
+) {
+    return listUsableStorageTiles(options).filter((tile) => belongsToSettlement(tile, settlementId));
 }
 
 export function compareStorageDistance(q: number, r: number, a: Tile, b: Tile) {
@@ -217,7 +220,7 @@ export function listUsableWarehousesWithResource(
     const strongMatches: Tile[] = [];
     const partialMatches: Tile[] = [];
 
-    for (const tile of listUsableStorageTilesForSettlement(settlementId)) {
+    for (const tile of listUsableStorageTilesForSettlement(settlementId, options)) {
         if (!canUseWarehouseAtTile(tile, options)) {
             continue;
         }

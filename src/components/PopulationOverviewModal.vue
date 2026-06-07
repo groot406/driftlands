@@ -16,8 +16,10 @@
               <PanelStatCard label="Beds" :value="playerPopulation.beds" :icon-style="settlerIconStyle('home')" />
               <PanelStatCard label="Meals" :value="mealStockLabel" :icon-style="settlerIconStyle('food')" />
               <PanelStatCard label="Food Use" :value="foodUseLabel" :icon-style="settlerIconStyle('work')" />
+              <PanelStatCard label="Morale" :value="moraleLabel" :icon-style="settlerIconStyle('happiness')" />
             </div>
             <p v-if="hungerWarningText" class="population-warning">{{ hungerWarningText }}</p>
+            <p v-if="moraleWarningText" class="population-warning">{{ moraleWarningText }}</p>
           </section>
 
           <section class="population-section population-section--settlers">
@@ -97,18 +99,31 @@ const playerInventory = computed(() => {
 const edibleMealValue = computed(() => Math.floor(getHungerFoodMealValue(playerInventory.value)));
 const mealStockLabel = computed(() => `${edibleMealValue.value}`);
 const foodUseLabel = computed(() => `${playerPopulation.value.current * FOOD_PER_SETTLER_PER_MINUTE}/min`);
+const averageHappiness = computed(() => {
+  if (settlers.value.length === 0) return 100;
+  const total = settlers.value.reduce((sum, settler) => sum + Math.max(0, Math.min(100, settler.happiness ?? 100)), 0);
+  return Math.round(total / settlers.value.length);
+});
+const lowHappinessCount = computed(() => settlers.value.filter((settler) => (settler.happiness ?? 100) <= 45).length);
+const moraleLabel = computed(() => `${averageHappiness.value}%`);
 const hungerWarningText = computed(() => {
   if (playerPopulation.value.hungerMs <= 0) return '';
   return `Hunger risk is active for ${formatHungerDuration(playerPopulation.value.hungerMs)}. Settlers need reachable bread, meat, or fish; drinks and crops do not prevent hunger.`;
 });
+const moraleWarningText = computed(() => {
+  if (lowHappinessCount.value <= 0) return '';
+  const countLabel = `${lowHappinessCount.value} settler${lowHappinessCount.value === 1 ? '' : 's'}`;
+  return `${countLabel} need a morale lift. Keep pubs stocked with beer or wine, bring trade goods to shops, or improve houses for steady comfort.`;
+});
 
-type SettlerOverviewIcon = 'home' | 'work' | 'status' | 'food';
+type SettlerOverviewIcon = 'home' | 'work' | 'status' | 'food' | 'happiness';
 
 const iconPositions: Record<SettlerOverviewIcon, string> = {
   home: '0% 0%',
   work: '33.333% 0%',
   status: '0% 100%',
   food: '33.333% 100%',
+  happiness: '100% 100%',
 };
 
 const portraitAtlasPositions: Record<SettlerSpriteKey, string> = {
@@ -348,7 +363,7 @@ onUnmounted(() => {
 .population-stat-grid {
   display: grid;
   gap: 0.45rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .population-warning {

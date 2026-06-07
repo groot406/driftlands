@@ -43,6 +43,7 @@ test('store merges client and server changelogs and opens for unseen entries', (
 });
 
 test('acknowledgeChangelogEntries closes the modal and advances the local checkpoint', () => {
+  setClientChangelogEntriesForTest([]);
   replaceChangelogSnapshot({
     entries: [
       {

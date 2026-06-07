@@ -552,6 +552,143 @@ test('tasks waiting for a hero to fetch resources are not cancelled before resou
   assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), false);
 });
 
+test('heroes joining the same build task fetch material from unreserved warehouse stock', () => {
+  const fetchTargets = new Map<string, { q: number; r: number }>();
+  configureGameRuntime({
+    moveHero(hero, target) {
+      fetchTargets.set(hero.id, { q: target.q, r: target.r });
+      hero.movement = {
+        origin: { q: hero.q, r: hero.r },
+        target: { q: target.q, r: target.r },
+        path: [{ q: target.q, r: target.r }],
+        startMs: 0,
+        stepDurations: [1],
+        cumulative: [1],
+      };
+    },
+  });
+
+  registerTask({
+    key: 'buildMaterialReservationProbe',
+    label: 'Build Material Reservation Probe',
+    canStart() {
+      return true;
+    },
+    requiredXp() {
+      return 1_000;
+    },
+    heroRate() {
+      return 1;
+    },
+    requiredResources() {
+      return [{ type: 'wood', amount: 20 }];
+    },
+  });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '2,0',
+      q: 2,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: 'plains_warehouse',
+    } satisfies Tile,
+    {
+      id: '3,0',
+      q: 3,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([
+    {
+      id: 'h1',
+      name: 'Santa',
+      avatar: 'santa',
+      q: 1,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      settlementId: '0,0',
+    } satisfies Hero,
+    {
+      id: 'h2',
+      name: 'Rudolph',
+      avatar: 'rudolph',
+      q: 1,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      settlementId: '0,0',
+    } satisfies Hero,
+  ]);
+  depositResourceToStorage('0,0', 'wood', 10);
+  depositResourceToStorage('2,0', 'wood', 10);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildMaterialReservationProbe',
+    tileId: '3,0',
+    progressXp: 0,
+    requiredXp: 1_000,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 20 }],
+    collectedResources: [],
+  };
+  loadTasks([task]);
+
+  joinTask(task.id, heroes[0]!);
+  joinTask(task.id, heroes[1]!);
+
+  assert.deepEqual(fetchTargets.get('h1'), { q: 0, r: 0 });
+  assert.deepEqual(fetchTargets.get('h2'), { q: 2, r: 0 });
+  assert.deepEqual(heroes[0]?.carryingPayload, { type: 'wood', amount: -10 });
+  assert.deepEqual(heroes[1]?.carryingPayload, { type: 'wood', amount: -10 });
+});
+
 test('starting a new task removes other open tasks on the same tile', () => {
   const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
   configureGameRuntime({

@@ -15,6 +15,7 @@ interface PlayerEntityState {
   connectedSocketIds: Set<string>;
   settlementId: string | null;
   lastSeenChangelogAt: number | null;
+  lastLoginAt: number | null;
 }
 
 export interface PlayerSettlementPersistenceSnapshot {
@@ -24,6 +25,7 @@ export interface PlayerSettlementPersistenceSnapshot {
     color: string;
     settlementId: string | null;
     lastSeenChangelogAt?: number | null;
+    lastLoginAt?: number | null;
   }>;
   settlements: Array<{
     playerId: string;
@@ -54,6 +56,7 @@ class PlayerSettlementState {
         connectedSocketIds: new Set<string>(),
         settlementId: this.settlementByPlayerId.get(playerId) ?? null,
         lastSeenChangelogAt: null,
+        lastLoginAt: null,
       };
       this.players.set(playerId, player);
     } else if (this.isColorUsedByAnotherPlayer(player.id, player.color)) {
@@ -157,6 +160,7 @@ class PlayerSettlementState {
           color: player.color,
           settlementId: player.settlementId,
           lastSeenChangelogAt: player.lastSeenChangelogAt,
+          lastLoginAt: player.lastLoginAt,
         })),
       settlements: Array.from(this.settlementByPlayerId.entries()).map(([playerId, settlementId]) => ({
         playerId,
@@ -183,6 +187,7 @@ class PlayerSettlementState {
         connectedSocketIds: new Set<string>(),
         settlementId: playerSnapshot.settlementId ?? null,
         lastSeenChangelogAt: normalizeChangelogTimestamp(playerSnapshot.lastSeenChangelogAt),
+        lastLoginAt: normalizeChangelogTimestamp(playerSnapshot.lastLoginAt),
       });
     }
 
@@ -200,6 +205,7 @@ class PlayerSettlementState {
           connectedSocketIds: new Set<string>(),
           settlementId: null,
           lastSeenChangelogAt: null,
+          lastLoginAt: null,
         };
         this.players.set(assignment.playerId, player);
       }
@@ -303,6 +309,7 @@ class PlayerSettlementState {
         connectedSocketIds: new Set<string>(),
         settlementId: null,
         lastSeenChangelogAt: null,
+        lastLoginAt: null,
       };
       this.players.set(playerId, player);
     }
@@ -345,11 +352,61 @@ class PlayerSettlementState {
         connectedSocketIds: new Set<string>(),
         settlementId: this.settlementByPlayerId.get(playerId) ?? null,
         lastSeenChangelogAt: null,
+        lastLoginAt: null,
       };
       this.players.set(playerId, player);
     }
 
     player.lastSeenChangelogAt = Math.max(player.lastSeenChangelogAt ?? 0, Math.floor(seenAt));
+  }
+
+  getLastLoginAt(playerId: string | null | undefined) {
+    if (!playerId) {
+      return null;
+    }
+
+    return this.players.get(playerId)?.lastLoginAt ?? null;
+  }
+
+  recordLoginForChangelog(playerId: string | null | undefined, loginAt: number = Date.now()) {
+    const normalizedLoginAt = normalizeChangelogTimestamp(loginAt) ?? Date.now();
+    if (!playerId) {
+      return {
+        previousLoginAt: null,
+        lastSeenChangelogAt: null,
+        checkpointAt: normalizedLoginAt,
+      };
+    }
+
+    let player = this.players.get(playerId);
+    if (!player) {
+      const usedColors = Array.from(this.players.values()).map((entry) => entry.color);
+      player = {
+        id: playerId,
+        nickname: 'Pioneer',
+        color: getDistinctPlayerColor(playerId, usedColors),
+        connectedSocketIds: new Set<string>(),
+        settlementId: this.settlementByPlayerId.get(playerId) ?? null,
+        lastSeenChangelogAt: null,
+        lastLoginAt: null,
+      };
+      this.players.set(playerId, player);
+    }
+
+    const previousLoginAt = player.lastLoginAt;
+    const lastSeenChangelogAt = player.lastSeenChangelogAt;
+    const checkpointAt = Math.max(
+      lastSeenChangelogAt ?? -Infinity,
+      previousLoginAt ?? normalizedLoginAt,
+    );
+
+    player.lastLoginAt = normalizedLoginAt;
+
+    return {
+      previousLoginAt,
+      lastSeenChangelogAt,
+      checkpointAt,
+    };
   }
 
   listPlayers(): PlayerEntitySnapshot[] {

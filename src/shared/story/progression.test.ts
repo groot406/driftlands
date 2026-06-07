@@ -58,6 +58,31 @@ test('security accepts any edible food source', () => {
   assert.ok(progression.unlocked.buildings.includes('watchtower'));
 });
 
+test('food objective guidance excludes morale drinks from hunger food', () => {
+  const progression = evaluateProgression(metrics({
+    population: 4,
+  }), [
+    'landfall',
+    'water_source',
+    'shoreline',
+    'farming',
+    'irrigation',
+    'stores',
+    'baking',
+    'brewing',
+  ]);
+  assert.equal(progression.nextRecommendedNodeKeys[0], 'security');
+
+  const objectives = getStoryProgressionObjectives(progression);
+  const securityFoodDescription = objectives
+    .map((objective) => objective.description)
+    .find((description) => description.includes('edible food'));
+
+  assert.ok(securityFoodDescription);
+  assert.match(securityFoodDescription, /bread|meat|fish/i);
+  assert.match(securityFoodDescription, /do not prevent hunger/i);
+});
+
 test('shoreline and farming unlock from discovered water, housing, and population growth', () => {
   const landfall = evaluateProgression(metrics());
   const progression = evaluateProgression(metrics({

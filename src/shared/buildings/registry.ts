@@ -305,6 +305,20 @@ function countApiaryForageTiles(tile: Tile) {
     return countActiveAdjacentTiles(tile, 'forest') + countActiveAdjacentTiles(tile, 'grain');
 }
 
+function getConnectedFieldCount(tile: Tile, terrain: Tile['terrain']) {
+    return Math.max(1, countActiveConnectedTiles(tile, terrain));
+}
+
+function getBreweryBeerPerCycle(tile: Tile, assignedWorkers: number) {
+    const connectedHops = getConnectedFieldCount(tile, 'hops');
+    return Math.min(12, 4 + (connectedHops * 2)) * assignedWorkers;
+}
+
+function getWineryWinePerCycle(tile: Tile, assignedWorkers: number) {
+    const connectedGrapes = getConnectedFieldCount(tile, 'grapes');
+    return Math.min(6, 2 + connectedGrapes) * assignedWorkers;
+}
+
 function revealTilesAround(tile: Tile, radius: number) {
     const settlementId = getTileSettlementId(tile);
 
@@ -985,28 +999,31 @@ const buildings: BuildingDefinition[] = [
     {
         key: 'brewery',
         label: 'Brewery',
-        summary: 'Turns grain and hops into beer for colony morale.',
+        summary: 'Anchors a hops field and turns stored grain into steady beer for colony morale.',
         categoryLabel: 'Hospitality',
         buildTaskKey: 'buildBrewery',
         buildTaskLabel: 'Build Brewery',
         sortOrder: 36.2,
         requiredPopulation: 6,
-        variantKeys: ['plains_brewery', 'dirt_brewery'],
+        variantKeys: ['hops_brewery', 'plains_brewery', 'dirt_brewery'],
         overlayAssetKey: 'building_brewery',
         maxIncomingRoads: 1,
         jobSlots: 1,
         cycleMs: 60_000,
-        consumes: [
-            { type: 'grain', amount: 2 },
-            { type: 'hops', amount: 1 },
-        ],
-        produces: [{ type: 'beer', amount: 10 }],
+        consumes: [{ type: 'grain', amount: 1 }],
+        produces: [{ type: 'beer', amount: 6 }],
         jobLabel: 'Brewer',
         jobPresentation: 'indoor',
         repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.7,
+        getJobResources(tile, assignedWorkers) {
+            return {
+                consumes: [{ type: 'grain', amount: assignedWorkers }],
+                produces: [{ type: 'beer', amount: getBreweryBeerPerCycle(tile, assignedWorkers) }],
+            };
+        },
         canPlace(tile, _hero) {
-            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+            return tile.terrain === 'hops' && tile.isBaseTile;
         },
         requiredXp(_distance: number) {
             return 3600;
@@ -1021,35 +1038,37 @@ const buildings: BuildingDefinition[] = [
             ];
         },
         onComplete(tile) {
-            if (tile.terrain === 'plains') {
-                applyVariant(tile, 'plains_brewery', { stagger: false, respectBiome: false });
-            } else if (tile.terrain === 'dirt') {
-                applyVariant(tile, 'dirt_brewery', { stagger: false, respectBiome: false });
+            if (tile.terrain === 'hops') {
+                applyVariant(tile, 'hops_brewery', { stagger: false, respectBiome: false });
             }
         },
     },
     {
         key: 'winery',
         label: 'Winery',
-        summary: 'Turns ripe grapes into wine for stronger colony morale.',
+        summary: 'Anchors a grape field and presses steady wine for stronger colony morale.',
         categoryLabel: 'Hospitality',
         buildTaskKey: 'buildWinery',
         buildTaskLabel: 'Build Winery',
         sortOrder: 36.25,
         requiredPopulation: 6,
-        variantKeys: ['plains_winery', 'dirt_winery'],
+        variantKeys: ['grapes_winery', 'plains_winery', 'dirt_winery'],
         overlayAssetKey: 'building_winery',
         maxIncomingRoads: 1,
         jobSlots: 1,
-        cycleMs: 90_000,
-        consumes: [{ type: 'grapes', amount: 2 }],
-        produces: [{ type: 'wine', amount: 1 }],
+        cycleMs: 60_000,
+        produces: [{ type: 'wine', amount: 3 }],
         jobLabel: 'Vintner',
         jobPresentation: 'indoor',
         repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],
         maintenanceDecayPerMinute: 1.7,
+        getJobResources(tile, assignedWorkers) {
+            return {
+                produces: [{ type: 'wine', amount: getWineryWinePerCycle(tile, assignedWorkers) }],
+            };
+        },
         canPlace(tile, _hero) {
-            return (tile.terrain === 'plains' || tile.terrain === 'dirt') && tile.isBaseTile;
+            return tile.terrain === 'grapes' && tile.isBaseTile;
         },
         requiredXp(_distance: number) {
             return 3800;
@@ -1064,10 +1083,8 @@ const buildings: BuildingDefinition[] = [
             ];
         },
         onComplete(tile) {
-            if (tile.terrain === 'plains') {
-                applyVariant(tile, 'plains_winery', { stagger: false, respectBiome: false });
-            } else if (tile.terrain === 'dirt') {
-                applyVariant(tile, 'dirt_winery', { stagger: false, respectBiome: false });
+            if (tile.terrain === 'grapes') {
+                applyVariant(tile, 'grapes_winery', { stagger: false, respectBiome: false });
             }
         },
     },

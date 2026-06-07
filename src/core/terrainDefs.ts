@@ -353,6 +353,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             hops: 50,
         },
         variations: [
+            { key: 'hops_brewery', weight: 0, assetKey: 'hops', overlayAssetKey: false, connectsToRoad: true },
             { key: 'hops_planted', weight: 3, growth: { next: 'hops_small', ageMs: 100000 }, overlayAssetKey: false },
             { key: 'hops_small', weight: 3, growth: { next: 'hops_small2', ageMs: 100000 }, overlayAssetKey: false },
             { key: 'hops_small2', weight: 3, growth: { next: null, ageMs: 100000 }, overlayAssetKey: false },
@@ -374,6 +375,7 @@ export const TERRAIN_DEFS: TerrainDefsMap = {
             grapes: 50,
         },
         variations: [
+            { key: 'grapes_winery', weight: 0, assetKey: 'grapes', overlayAssetKey: false, connectsToRoad: true },
             { key: 'grapes_planted', weight: 3, growth: { next: 'grapes_small', ageMs: 140000 }, overlayAssetKey: false },
             { key: 'grapes_small', weight: 3, growth: { next: 'grapes_small2', ageMs: 140000 }, overlayAssetKey: false },
             { key: 'grapes_small2', weight: 3, growth: { next: null, ageMs: 140000 }, overlayAssetKey: false },

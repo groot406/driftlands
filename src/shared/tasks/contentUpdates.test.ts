@@ -194,6 +194,70 @@ test('apiary builds beside active forage and scales with nearby forest or grain'
   assert.equal(apiaryTile.variant, 'plains_apiary');
 });
 
+test('brewery builds on mature hops fields and completes to a field brewery', () => {
+  const buildBrewery = getTaskDefinition('buildBrewery');
+  const brewery = getBuildingDefinitionByKey('brewery');
+  assert.ok(buildBrewery);
+  assert.ok(brewery);
+
+  const hops = tile({ terrain: 'hops' });
+  const plantedHops = tile({ terrain: 'hops', variant: 'hops_small2', isBaseTile: false });
+
+  assert.equal(canStartTaskDefinition(buildBrewery, hops, hero), true);
+  assert.equal(canStartTaskDefinition(buildBrewery, tile({ terrain: 'plains' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildBrewery, tile({ terrain: 'dirt' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildBrewery, tile({ terrain: 'grapes' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildBrewery, plantedHops, hero), false);
+
+  buildBrewery.onComplete?.(hops, {
+    id: 'brewery',
+    type: 'buildBrewery',
+    tileId: hops.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+
+  assert.equal(hops.terrain, 'hops');
+  assert.equal(hops.variant, 'hops_brewery');
+  assert.equal(hops.isBaseTile, false);
+});
+
+test('winery builds on mature grape fields and completes to a field winery', () => {
+  const buildWinery = getTaskDefinition('buildWinery');
+  const winery = getBuildingDefinitionByKey('winery');
+  assert.ok(buildWinery);
+  assert.ok(winery);
+
+  const grapes = tile({ terrain: 'grapes' });
+  const plantedGrapes = tile({ terrain: 'grapes', variant: 'grapes_small2', isBaseTile: false });
+
+  assert.equal(canStartTaskDefinition(buildWinery, grapes, hero), true);
+  assert.equal(canStartTaskDefinition(buildWinery, tile({ terrain: 'plains' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildWinery, tile({ terrain: 'dirt' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildWinery, tile({ terrain: 'hops' }), hero), false);
+  assert.equal(canStartTaskDefinition(buildWinery, plantedGrapes, hero), false);
+
+  buildWinery.onComplete?.(grapes, {
+    id: 'winery',
+    type: 'buildWinery',
+    tileId: grapes.id,
+    progressXp: 0,
+    requiredXp: 1,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: true,
+  }, [hero]);
+
+  assert.equal(grapes.terrain, 'grapes');
+  assert.equal(grapes.variant, 'grapes_winery');
+  assert.equal(grapes.isBaseTile, false);
+});
+
 test('harbor requires a large generated water body beside controlled shore', () => {
   const buildHarbor = getTaskDefinition('buildHarbor');
   assert.ok(buildHarbor);
@@ -249,7 +313,7 @@ test('glass house upgrade raises house beds to six', () => {
     { kind: 'house_comfort_happiness', value: 4 },
   ]);
   assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_house' })), 1);
-  assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_house' })), 0);
+  assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_house' })), 1);
   assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_stone_house' })), 2);
   assert.equal(getHouseComfortHappinessForTile(tile({ variant: 'plains_stone_house' })), 2);
   assert.equal(getHouseGoodCapacityForTile(tile({ variant: 'plains_glass_house' })), 4);

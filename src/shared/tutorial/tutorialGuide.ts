@@ -388,9 +388,9 @@ const fieldGuideTopics: FieldGuideTopicDefinition[] = [
     title: 'Comfort and entertainment',
     summary: 'Large colonies need morale systems: pubs, shops, imported trade goods, and better houses turn surplus industry into happier settlers.',
     cues: [
-      'Pubs spend beer or wine to recover settler happiness.',
+      'Pubs spend beer or wine from field breweries and wineries to recover settler happiness.',
       'Harbors can bring trade goods, and shops turn those imported luxuries into a local comfort service.',
-      'Stone and glass house upgrades add beds and comfort, so housing quality matters as much as raw capacity.',
+      'Every house gives a little comfort, while stone and glass upgrades add beds and stronger comfort.',
     ],
     relatedStepIds: ['raise-comfort', 'stage-logistics', 'study-and-upgrade'],
   },
@@ -871,7 +871,7 @@ const tutorialSteps: TutorialStepDefinition[] = [
     why: 'As the colony grows, happiness needs a real economy too: drinks, luxuries, and better homes keep settlers productive.',
     action: (metrics) => {
       if (building(metrics, 'pub') > 0) {
-        return 'Keep beer or wine stocked so the pub can serve settlers who need a morale lift.';
+        return 'Keep beer or wine stocked from field breweries or wineries so the pub can serve settlers who need a morale lift.';
       }
 
       if (building(metrics, 'shop') > 0) {
@@ -886,7 +886,7 @@ const tutorialSteps: TutorialStepDefinition[] = [
         return 'Build a pub or shop if hospitality is unlocked, or upgrade houses when stone, glass, and tools are ready.';
       }
 
-      return 'Build a pub for drinks, a harbor and shop for traded goods, or improve houses once upgrades are available.';
+      return 'Build a pub for morale drinks, a harbor and shop for traded goods, or improve houses once upgrades are available.';
     },
     target: 1,
     progress: (metrics) => Math.max(

@@ -51,7 +51,7 @@ export function resolveBuildingStateForTile(tile: Tile | null | undefined): Buil
     ? (upgrade?.effects.find((effect) => effect.kind === 'house_goods_capacity')?.value ?? 1)
     : null;
   const houseComfortHappiness = building.key === 'house'
-    ? (upgrade?.effects.find((effect) => effect.kind === 'house_comfort_happiness')?.value ?? 0)
+    ? (upgrade?.effects.find((effect) => effect.kind === 'house_comfort_happiness')?.value ?? 1)
     : null;
   const storageKind = building.providesWarehouse
     ? ((upgrade?.effects.find((effect) => effect.kind === 'storage_kind_override')?.value
