@@ -116,6 +116,26 @@ function getHero(heroId: string | null | undefined): Hero | null {
   return heroId ? heroes.find((hero) => hero.id === heroId) ?? null : null;
 }
 
+function sideQuestInstanceId(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return `${definition.id}:${settlementId ?? 'global'}`;
+}
+
+function sideQuestHeroRewardId(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return `sidequest:${sideQuestInstanceId(definition, settlementId)}:${definition.npc.id}`;
+}
+
+function hasClaimedSideQuestHeroReward(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return definition.rewards.some((reward) => (
+    reward.kind === 'hero'
+    && heroes.some((hero) => hero.id === sideQuestHeroRewardId(definition, settlementId))
+  ));
+}
+
+function resolveTimeLimitMs(definition: SideQuestDefinition) {
+  const minutes = definition.timeLimit?.minutes ?? 0;
+  return Math.max(0, minutes) * 60_000;
+}
+
 class ServerSideQuestState {
   private readonly state: ServerSideQuestStateSnapshot = {
     instances: [],
@@ -141,6 +161,8 @@ class ServerSideQuestState {
       return;
     }
 
+    this.expireOverdueSideQuests();
+
     for (const definition of listSideQuestDefinitions()) {
       if (!this.hasQuestInstanceForDefinition(definition, settlementId) && this.areTriggerConditionsMet(definition, settlementId)) {
         this.spawnSideQuest(definition, settlementId);
@@ -151,6 +173,8 @@ class ServerSideQuestState {
   }
 
   recordEvent(event: GameplayEvent) {
+    this.expireOverdueSideQuests();
+
     if (event.type === 'tile:discovered') {
       const tile = tileIndex[event.tileId];
       this.syncSettlementSideQuests(getTileSettlementId(tile));
@@ -169,6 +193,7 @@ class ServerSideQuestState {
   }
 
   getActiveSideQuestForTask(tileId: string, taskType: TaskType) {
+    this.expireOverdueSideQuests();
     this.ensureQuestForTaskTile(tileId, taskType);
 
     return this.state.instances.find((quest) => {
@@ -191,10 +216,11 @@ class ServerSideQuestState {
   }
 
   private hasQuestInstanceForDefinition(definition: SideQuestDefinition, settlementId: string | null | undefined) {
-    return this.state.instances.some((quest) => (
-      quest.definitionId === definition.id
-      && (quest.spawnSettlementId ?? null) === (settlementId ?? null)
-    ));
+    return hasClaimedSideQuestHeroReward(definition, settlementId)
+      || this.state.instances.some((quest) => (
+        quest.definitionId === definition.id
+        && (quest.spawnSettlementId ?? null) === (settlementId ?? null)
+      ));
   }
 
   private countSettlementBuildings(buildingKey: string, settlementId: string | null | undefined) {
@@ -261,13 +287,17 @@ class ServerSideQuestState {
   }
 
   private spawnSideQuest(definition: SideQuestDefinition, settlementId: string | null | undefined, tile?: Tile | null) {
+    if (hasClaimedSideQuestHeroReward(definition, settlementId)) {
+      return null;
+    }
+
     const signalTile = tile ?? this.findSignalTile(definition, settlementId);
     if (!signalTile) {
       return null;
     }
 
     const instance: SideQuestInstance = {
-      id: `${definition.id}:${settlementId ?? 'global'}`,
+      id: sideQuestInstanceId(definition, settlementId),
       definitionId: definition.id,
       status: 'signaled',
       signalTileId: signalTile.id,
@@ -337,13 +367,29 @@ class ServerSideQuestState {
       if (!hasTaskObjective || !this.areTriggerConditionsMet(definition, settlementId)) {
         continue;
       }
+      if (hasClaimedSideQuestHeroReward(definition, settlementId)) {
+        continue;
+      }
 
       const expectedSignalTile = this.findSignalTile(definition, settlementId, { includeDiscovered: true });
       if (expectedSignalTile?.id !== tile.id) {
         continue;
       }
 
-      const quest = this.spawnSideQuest(definition, settlementId, tile);
+      let quest = this.state.instances.find((candidate) => (
+        candidate.definitionId === definition.id
+        && (candidate.spawnSettlementId ?? null) === (settlementId ?? null)
+        && candidate.status === 'signaled'
+      )) ?? null;
+
+      if (quest) {
+        quest.signalTileId = tile.id;
+        quest.q = tile.q;
+        quest.r = tile.r;
+      } else {
+        quest = this.spawnSideQuest(definition, settlementId, tile);
+      }
+
       if (quest && tile.discovered) {
         this.revealSideQuest(quest, null);
       }
@@ -362,13 +408,17 @@ class ServerSideQuestState {
   }
 
   private revealSideQuest(quest: SideQuestInstance, hero: Hero | null) {
-    if (quest.status === 'completed') {
+    if (quest.status === 'completed' || quest.status === 'expired') {
       return;
     }
 
     if (quest.status === 'signaled') {
       quest.status = 'active';
       quest.revealedAt = Date.now();
+      const definition = getSideQuestDefinition(quest.definitionId);
+      if (definition) {
+        this.assignQuestTimeLimit(quest, definition);
+      }
     }
 
     const tile = tileIndex[quest.signalTileId];
@@ -396,6 +446,9 @@ class ServerSideQuestState {
         if (!this.areTriggerConditionsMet(definition, settlementId)) {
           continue;
         }
+        if (hasClaimedSideQuestHeroReward(definition, settlementId)) {
+          continue;
+        }
 
         const expectedSignalTile = this.findSignalTile(definition, settlementId, { includeDiscovered: true });
         if (expectedSignalTile?.id !== tile.id) {
@@ -413,6 +466,7 @@ class ServerSideQuestState {
   }
 
   private progressTaskObjectives(event: Extract<GameplayEvent, { type: 'task:completed' }>) {
+    this.expireOverdueSideQuests();
     this.ensureQuestForTaskTile(event.tileId, event.taskType);
 
     for (const quest of this.state.instances) {
@@ -484,6 +538,10 @@ class ServerSideQuestState {
     }
 
     const heroId = `sidequest:${quest.id}:${definition.npc.id}`;
+    if (heroes.some((hero) => hero.id === heroId)) {
+      return;
+    }
+
     upsertHero({
       id: heroId,
       name: definition.npc.name,
@@ -501,6 +559,26 @@ class ServerSideQuestState {
       type: 'hero:roster_update',
       heroes: heroes.map(cloneHeroForRoster),
     } satisfies HeroRosterUpdateMessage);
+  }
+
+  private assignQuestTimeLimit(quest: SideQuestInstance, definition: SideQuestDefinition) {
+    const timeLimitMs = resolveTimeLimitMs(definition);
+    if (timeLimitMs <= 0 || quest.expiresAt) {
+      return;
+    }
+
+    quest.expiresAt = Date.now() + timeLimitMs;
+  }
+
+  private expireOverdueSideQuests() {
+    for (const quest of this.state.instances) {
+      if (quest.status !== 'active' || !quest.expiresAt || quest.expiresAt > Date.now()) {
+        continue;
+      }
+
+      quest.status = 'expired';
+      quest.expiredAt = Date.now();
+    }
   }
 }
 

@@ -8,6 +8,7 @@ import type {Hero} from "../core/types/Hero.ts";
 import type { Settler } from '../core/types/Settler';
 import { resetNotifications } from './notificationStore';
 import { resetChangelogStore } from './changelogStore';
+import { closeDocumentation } from './documentationStore.ts';
 import type { InventorySelectionKey } from '../shared/game/inventoryPresentation.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 import { currentPlayerId } from '../core/socket.ts';
@@ -169,6 +170,7 @@ export function returnToTitle() {
     closeWindow(WINDOW_IDS.IN_GAME_MENU);
     closeWindow(WINDOW_IDS.MISSION_CENTER);
     closeWindow(WINDOW_IDS.NOTIFICATION_CENTER);
+    closeDocumentation();
     closePopulationModal();
     closeResourceDetailModal();
     closeSettlerModal();

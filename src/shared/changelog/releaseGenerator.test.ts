@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import {
   appendChangelogEntry,
   applyChangelogDraftAction,
+  buildChangelogGenerationPrompt,
   buildManualChangelogEntry,
   normalizeChangelogDraftContent,
+  parseChangelogSeedNotes,
   serializeClientVersionManifest,
   summarizeReleaseCommitLog,
   type ExistingChangelogModule,
@@ -113,4 +115,31 @@ test('summarizeReleaseCommitLog does not fall back to old commits after a previo
     summarizeReleaseCommitLog('', 'abc123 Initial release', null),
     'abc123 Initial release',
   );
+});
+
+test('parseChangelogSeedNotes accepts pipe and newline separated notes', () => {
+  assert.deepEqual(parseChangelogSeedNotes('ships improved | faster reloads\nclearer warning'), [
+    'ships improved',
+    'faster reloads',
+    'clearer warning',
+  ]);
+});
+
+test('buildChangelogGenerationPrompt treats releaser notes as primary source', () => {
+  const prompt = buildChangelogGenerationPrompt({
+    target: 'frontend',
+    seedNotes: ['reload old tabs', 'show update modal'],
+    gitSummary: 'Old unrelated commits should not drive the draft.',
+    previousDraft: {
+      title: 'Old draft',
+      bullets: ['Too broad.'],
+    },
+    revisionPrompt: 'Make it shorter.',
+  });
+
+  assert.match(prompt, /Treat these as the primary source/);
+  assert.match(prompt, /- reload old tabs/);
+  assert.match(prompt, /Previous draft/);
+  assert.match(prompt, /Make it shorter/);
+  assert.match(prompt, /sanity checking only/);
 });

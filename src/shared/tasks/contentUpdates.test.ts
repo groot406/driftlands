@@ -150,6 +150,48 @@ test('hunter hut builds on forest and produces steady meat', () => {
   assert.deepEqual(resources.produces, [{ type: 'meat', amount: 1 }]);
 });
 
+test('food production balance favors staffed bakery output over terrain-scaled fishing and hunting', () => {
+  const dock = getBuildingDefinitionByKey('dock');
+  const huntersHut = getBuildingDefinitionByKey('huntersHut');
+  const bakery = getBuildingDefinitionByKey('bakery');
+  assert.ok(dock);
+  assert.ok(huntersHut);
+  assert.ok(bakery);
+
+  const waterNeighbors = {
+    a: tile({ id: '1,0', q: 1, r: 0, terrain: 'water' }),
+    b: tile({ id: '0,1', q: 0, r: 1, terrain: 'water' }),
+    c: tile({ id: '-1,1', q: -1, r: 1, terrain: 'water' }),
+    d: tile({ id: '-1,0', q: -1, r: 0, terrain: 'water' }),
+  } as any;
+  const forestNeighbors = {
+    a: tile({ id: '11,0', q: 11, r: 0, terrain: 'forest' }),
+    b: tile({ id: '10,1', q: 10, r: 1, terrain: 'forest' }),
+    c: tile({ id: '9,1', q: 9, r: 1, terrain: 'forest' }),
+  } as any;
+
+  const dockResources = resolveBuildingJobResources(
+    dock,
+    tile({ terrain: 'water', variant: 'water_dock_a', neighbors: waterNeighbors }),
+    1,
+  );
+  const huntersHutResources = resolveBuildingJobResources(
+    huntersHut,
+    tile({ id: '10,0', q: 10, r: 0, terrain: 'forest', variant: 'forest_hunters_hut', neighbors: forestNeighbors }),
+    1,
+  );
+  const bakeryResources = resolveBuildingJobResources(
+    bakery,
+    tile({ terrain: 'plains', variant: 'plains_bakery' }),
+    1,
+  );
+
+  assert.deepEqual(dockResources.produces, [{ type: 'fish', amount: 4 }]);
+  assert.deepEqual(huntersHutResources.produces, [{ type: 'meat', amount: 3 }]);
+  assert.deepEqual(bakeryResources.consumes, [{ type: 'grain', amount: 1 }]);
+  assert.deepEqual(bakeryResources.produces, [{ type: 'bread', amount: 4 }]);
+});
+
 test('apiary builds beside active forage and scales with nearby forest or grain', () => {
   const buildApiary = getTaskDefinition('buildApiary');
   const apiary = getBuildingDefinitionByKey('apiary');

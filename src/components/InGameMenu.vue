@@ -26,6 +26,10 @@
                   <span class="menu-action-title">Settings</span>
                   <span class="menu-action-copy">Adjust audio and graphics without leaving the current run.</span>
                 </button>
+                <button class="menu-action" @click="openFieldGuide">
+                  <span class="menu-action-title">Field Guide</span>
+                  <span class="menu-action-copy">Open the full frontier encyclopedia for buildings, logistics, seasons, and reference tables.</span>
+                </button>
                 <button class="menu-action menu-action-danger" @click="returnToTitle">
                   <span class="menu-action-title">Return to Title</span>
                   <span class="menu-action-copy">Leave this session and head back to the title screen.</span>
@@ -50,6 +54,7 @@ import { uiStore, resumeGame, returnToTitle } from '../store/uiStore';
 import { computed, ref, watch } from 'vue';
 import Settings from './Settings.vue';
 import NineSlicePanel from "./ui/NineSlicePanel.vue";
+import { openDocumentation } from '../store/documentationStore.ts';
 
 const visible = computed(() => uiStore.menuOpen);
 const showSettings = ref(false);
@@ -60,6 +65,11 @@ watch(visible, (isVisible) => {
     showSettings.value = false;
   }
 });
+
+function openFieldGuide() {
+  openDocumentation();
+  resumeGame();
+}
 
 </script>
 

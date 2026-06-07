@@ -46,6 +46,7 @@ function cloneSettler(
         guardTowerTileId: settler.guardTowerTileId ?? null,
         workTileId: settler.workTileId ?? null,
         hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
+        fieldWork: settler.fieldWork ? { ...settler.fieldWork } : null,
         blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,
         carryingKind: settler.carryingKind ?? null,
         happiness: settler.happiness ?? 100,

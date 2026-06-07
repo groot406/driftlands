@@ -3,7 +3,7 @@ import type { TaskType } from '../../core/types/Task.ts';
 import type { BuildingKey } from '../story/progression.ts';
 
 export type SideQuestDefinitionId = 'lost_hero_distress';
-export type SideQuestInstanceStatus = 'signaled' | 'active' | 'completed';
+export type SideQuestInstanceStatus = 'signaled' | 'active' | 'completed' | 'expired';
 
 export interface SideQuestSignalDefinition {
   label: string;
@@ -26,6 +26,10 @@ export interface SideQuestTriggerDelayDefinition {
 export interface SideQuestTriggerDefinition {
   conditions?: SideQuestTriggerConditionDefinition[];
   delayAfterConditionsMet?: SideQuestTriggerDelayDefinition;
+}
+
+export interface SideQuestTimeLimitDefinition {
+  minutes: number;
 }
 
 export type SideQuestObjectiveDefinition =
@@ -62,6 +66,7 @@ export interface SideQuestDefinition {
   title: string;
   signal: SideQuestSignalDefinition;
   trigger?: SideQuestTriggerDefinition;
+  timeLimit?: SideQuestTimeLimitDefinition;
   npc: SideQuestNpcDefinition;
   objectives: SideQuestObjectiveDefinition[];
   rewards: SideQuestRewardDefinition[];
@@ -93,5 +98,7 @@ export interface SideQuestInstance {
   objectives: SideQuestObjectiveSnapshot[];
   createdAt: number;
   revealedAt?: number;
+  expiresAt?: number;
   completedAt?: number;
+  expiredAt?: number;
 }

@@ -53,6 +53,14 @@ export interface SettlerBlockerReason {
     tileId?: string;
 }
 
+export type SettlerFieldWorkPhase = 'prepare_land' | 'irrigate' | 'seed' | 'harvest' | 'process' | 'chop_forest' | 'replant_forest';
+
+export interface SettlerFieldWorkState {
+    siteTileId: string;
+    fieldTileId: string | null;
+    phase: SettlerFieldWorkPhase;
+}
+
 export interface Settler {
     id: string;
     nameSeed?: number;
@@ -69,6 +77,7 @@ export interface Settler {
     guardTowerTileId?: string | null;
     workTileId?: string | null;
     hiddenWhileWorking?: boolean | null;
+    fieldWork?: SettlerFieldWorkState | null;
     activity: SettlerActivity;
     blockerReason?: SettlerBlockerReason | null;
     stateSinceMs: number;

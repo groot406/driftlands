@@ -21,6 +21,9 @@ const SIDE_QUEST_DEFINITIONS: readonly SideQuestDefinition[] = [
         maxMinutes: 7,
       },
     },
+    timeLimit: {
+      minutes: 45,
+    },
     npc: {
       id: 'trailbreaker_ren',
       name: 'Ren',

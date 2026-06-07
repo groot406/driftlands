@@ -16,6 +16,9 @@ import { seasonState } from '../state/seasonState.ts';
 import { serverSideQuestState } from '../state/sideQuestState.ts';
 import { ServerTaskHandler } from './taskHandler.ts';
 
+let nowMs = 1_000_000;
+const realDateNow = Date.now;
+
 function createTownCenter(): Tile {
   return {
     id: '0,0',
@@ -103,7 +106,13 @@ function getDistantSmokeSignalLocation(settlementId: string) {
   return candidates[0]!;
 }
 
+test.beforeEach(() => {
+  nowMs = 1_000_000;
+  Date.now = () => nowMs;
+});
+
 test.afterEach(() => {
+  Date.now = realDateNow;
   loadWorld([]);
   loadHeroes([]);
   loadTasks([]);
@@ -196,4 +205,62 @@ test('server completing the rescue objective grants Ren through the authoritativ
     && message !== null
     && (message as { type?: string }).type === 'hero:roster_update'
   )), true);
+});
+
+test('server refuses rescue after the active Distant Smoke timer expires', () => {
+  const signalTile = setupDiscoveredDistantSmokeSignal();
+  const activeQuest = serverSideQuestState.getActiveSideQuestForTask(signalTile.id, RESCUE_HERO_TASK_KEY);
+  assert.ok(activeQuest);
+  const quest = activeQuest;
+  assert.equal(typeof quest.expiresAt, 'number');
+  assert.equal(serverSideQuestState.listInstances().filter((instance) => instance.id === quest.id).length, 1);
+
+  nowMs = quest.expiresAt! + 1;
+
+  const handler = new ServerTaskHandler({} as any);
+  (handler as any).handleStartRequest({ id: 'socket-1' }, {
+    type: 'task:request_start',
+    heroId: 'h1',
+    task: RESCUE_HERO_TASK_KEY,
+    location: { q: signalTile.q, r: signalTile.r },
+  });
+
+  assert.equal(quest.status, 'expired');
+  assert.equal(getTaskByTile(signalTile.id, RESCUE_HERO_TASK_KEY), undefined);
+});
+
+test('server does not recreate Distant Smoke after Ren has already joined', () => {
+  const signalTile = setupDiscoveredDistantSmokeSignal();
+  configureGameplayEventRuntime((event) => {
+    serverSideQuestState.recordEvent(event);
+  });
+
+  const handler = new ServerTaskHandler({} as any);
+  (handler as any).handleStartRequest({ id: 'socket-1' }, {
+    type: 'task:request_start',
+    heroId: 'h1',
+    task: RESCUE_HERO_TASK_KEY,
+    location: { q: signalTile.q, r: signalTile.r },
+  });
+
+  const task = getTaskByTile(signalTile.id, RESCUE_HERO_TASK_KEY);
+  assert.ok(task);
+  assert.equal(addResourcesToTask(task, { type: 'food', amount: 8 }), 8);
+  assert.equal(addResourcesToTask(task, { type: 'wood', amount: 10 }), 10);
+  assert.equal(addResourcesToTask(task, { type: 'tools', amount: 2 }), 2);
+  assert.equal(boostTaskProgress(task.id, task.requiredXp), true);
+  assert.equal(heroes.filter((hero) => hero.id.includes('trailbreaker_ren')).length, 1);
+
+  serverSideQuestState.reset();
+  loadTasks([]);
+
+  (handler as any).handleStartRequest({ id: 'socket-1' }, {
+    type: 'task:request_start',
+    heroId: 'h1',
+    task: RESCUE_HERO_TASK_KEY,
+    location: { q: signalTile.q, r: signalTile.r },
+  });
+
+  assert.equal(getTaskByTile(signalTile.id, RESCUE_HERO_TASK_KEY), undefined);
+  assert.equal(heroes.filter((hero) => hero.id.includes('trailbreaker_ren')).length, 1);
 });

@@ -23,6 +23,44 @@ export type ChangelogDraftAction =
   | { type: 'edit'; title?: string; bullets?: string[] }
   | { type: 'abort' };
 
+export interface ChangelogGenerationPromptInput {
+  target: ChangelogTarget;
+  seedNotes: string[];
+  gitSummary: string;
+  previousDraft?: ChangelogDraftContent | null;
+  revisionPrompt?: string | null;
+}
+
+export function parseChangelogSeedNotes(value: string): string[] {
+  return value
+    .split(/\r?\n|\|/)
+    .map((note) => note.trim())
+    .filter(Boolean);
+}
+
+export function buildChangelogGenerationPrompt(input: ChangelogGenerationPromptInput): string {
+  const notes = input.seedNotes.length
+    ? input.seedNotes.map((note) => `- ${note}`).join('\n')
+    : '- General Driftlands update';
+  const previousDraft = input.previousDraft
+    ? `\nPrevious draft:\n${JSON.stringify(input.previousDraft, null, 2)}\n`
+    : '';
+  const revision = input.revisionPrompt?.trim()
+    ? `\nRevision request from releaser:\n${input.revisionPrompt.trim()}\n`
+    : '';
+
+  return [
+    `Release target: ${input.target}`,
+    '',
+    'Releaser supplied bulletpoints/keywords. Treat these as the primary source:',
+    notes,
+    previousDraft,
+    revision,
+    'Git context for sanity checking only. Do not invent notes from this if the releaser notes do not mention them:',
+    input.gitSummary,
+  ].join('\n');
+}
+
 export function summarizeReleaseCommitLog(
   commitLog: string,
   fallbackCommitLog: string,

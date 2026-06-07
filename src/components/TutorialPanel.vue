@@ -78,6 +78,9 @@
           <ul>
             <li v-for="cue in topic.cues" :key="cue">{{ cue }}</li>
           </ul>
+          <button class="tutorial-panel__topic-guide" type="button" @click="openTopicPage(topic.id)">
+            Open full guide
+          </button>
         </article>
       </section>
 
@@ -138,6 +141,8 @@ import {
 import { getFieldGuideTopicDefinitions } from '../shared/tutorial/tutorialGuide.ts';
 import { useToolbarPopoverPosition } from '../composables/useToolbarPopoverPosition.ts';
 import { closeToolbarPanel } from '../store/toolbarPanelStore.ts';
+import { openDocumentation } from '../store/documentationStore.ts';
+import { getWikiPageById } from '../shared/documentation/wikiIndex.ts';
 
 const visibleStep = computed(() => visibleTutorialStep.value);
 const activeMode = ref<'steps' | 'topics'>('steps');
@@ -188,6 +193,30 @@ const canGoNext = computed(() => {
   const step = visibleStep.value;
   return !!step && step.index < tutorialSnapshot.value.steps.length - 1;
 });
+
+const topicWikiPageIds: Record<string, string> = {
+  'roads-and-reach': 'movement-and-roads',
+  'harbor-orders': 'harbors-and-ship-orders',
+  'story-and-roadmap': 'seasons-and-scoring',
+  'early-food-routes': 'early-food',
+  'active-support': 'settlement-support',
+  'repairs-and-maintenance': 'maintenance-and-repairs',
+  'comfort-and-entertainment': 'comfort-and-morale',
+  'market-and-trade': 'market-and-trade',
+};
+
+function resolveTopicPageId(topicId: string) {
+  if (getWikiPageById(topicId)) {
+    return topicId;
+  }
+
+  return topicWikiPageIds[topicId] ?? 'getting-started';
+}
+
+function openTopicPage(topicId: string) {
+  openDocumentation(resolveTopicPageId(topicId));
+  closeGuidePanel();
+}
 
 function closeGuidePanel() {
   closeTutorialPanel();
@@ -452,6 +481,27 @@ function closeGuidePanel() {
   gap: 0.35rem;
   margin-top: 0.55rem;
   padding-left: 1rem;
+}
+
+.tutorial-panel__topic-guide {
+  width: 100%;
+  min-height: 2rem;
+  margin-top: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 0.35rem 0.65rem;
+  color: rgb(254 243 199);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.tutorial-panel__topic-guide:hover,
+.tutorial-panel__topic-guide:focus-visible {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.18);
+  outline: none;
 }
 
 .tutorial-panel__step-progress {

@@ -35,7 +35,10 @@ export const sideQuestState = reactive<SideQuestState>({
   instances: [],
 });
 
-export const activeSideQuests = computed(() => sideQuestState.instances.filter((quest) => quest.status !== 'completed'));
+export const activeSideQuests = computed(() => sideQuestState.instances.filter((quest) => (
+  quest.status !== 'completed'
+  && quest.status !== 'expired'
+)));
 
 let initialized = false;
 let stopEventListener: (() => void) | null = null;
@@ -46,6 +49,7 @@ const triggerGateStateByKey = new Map<string, {
   eligibleAt: number;
   timer: ReturnType<typeof setTimeout> | null;
 }>();
+const expirationTimerByQuestId = new Map<string, ReturnType<typeof setTimeout>>();
 
 function hintIdForQuest(quest: Pick<SideQuestInstance, 'id'>) {
   return `${SIDE_QUEST_HINT_PREFIX}${quest.id}`;
@@ -88,6 +92,26 @@ function scoreCandidate(seed: string) {
 
 function sideQuestGateKey(definition: SideQuestDefinition, settlementId: string | null | undefined) {
   return `${activeRunKey ?? 'no-run'}:${definition.id}:${settlementId ?? 'global'}`;
+}
+
+function sideQuestInstanceId(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return `${definition.id}:${settlementId ?? 'global'}`;
+}
+
+function sideQuestHeroRewardId(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return `sidequest:${sideQuestInstanceId(definition, settlementId)}:${definition.npc.id}`;
+}
+
+function hasClaimedSideQuestHeroReward(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  return definition.rewards.some((reward) => (
+    reward.kind === 'hero'
+    && heroes.some((hero) => hero.id === sideQuestHeroRewardId(definition, settlementId))
+  ));
+}
+
+function resolveTimeLimitMs(definition: SideQuestDefinition) {
+  const minutes = definition.timeLimit?.minutes ?? 0;
+  return Math.max(0, minutes) * 60_000;
 }
 
 function countSettlementBuildings(buildingKey: string, settlementId: string | null | undefined) {
@@ -154,6 +178,67 @@ function clearTriggerGateState() {
     clearTriggerGateTimer(key);
   }
   triggerGateStateByKey.clear();
+}
+
+function clearQuestExpirationTimer(questId: string) {
+  const timer = expirationTimerByQuestId.get(questId);
+  if (timer) {
+    clearTimeout(timer);
+    expirationTimerByQuestId.delete(questId);
+  }
+}
+
+function clearQuestExpirationTimers() {
+  for (const questId of expirationTimerByQuestId.keys()) {
+    clearQuestExpirationTimer(questId);
+  }
+}
+
+function expireSideQuest(quest: SideQuestInstance) {
+  if (quest.status !== 'active') {
+    return;
+  }
+
+  quest.status = 'expired';
+  quest.expiredAt = Date.now();
+  clearQuestExpirationTimer(quest.id);
+  clearStoryTileHint(hintIdForQuest(quest));
+}
+
+function scheduleQuestExpiration(quest: SideQuestInstance) {
+  clearQuestExpirationTimer(quest.id);
+  if (quest.status !== 'active' || !quest.expiresAt) {
+    return;
+  }
+
+  const remainingMs = quest.expiresAt - Date.now();
+  if (remainingMs <= 0) {
+    expireSideQuest(quest);
+    return;
+  }
+
+  expirationTimerByQuestId.set(quest.id, setTimeout(() => {
+    expireSideQuest(quest);
+  }, remainingMs));
+}
+
+function assignQuestTimeLimit(quest: SideQuestInstance, definition: SideQuestDefinition) {
+  const timeLimitMs = resolveTimeLimitMs(definition);
+  if (timeLimitMs <= 0 || quest.expiresAt) {
+    scheduleQuestExpiration(quest);
+    return;
+  }
+
+  quest.expiresAt = Date.now() + timeLimitMs;
+  scheduleQuestExpiration(quest);
+}
+
+function expireOverdueSideQuests() {
+  for (const quest of sideQuestState.instances) {
+    if (quest.status === 'active' && quest.expiresAt && quest.expiresAt <= Date.now()) {
+      expireSideQuest(quest);
+    }
+  }
 }
 
 function scheduleTriggerGateSync(key: string, delayMs: number) {
@@ -239,19 +324,24 @@ function findSignalTile(definition: SideQuestDefinition, settlementId: string | 
 }
 
 function hasQuestInstanceForDefinition(definition: SideQuestDefinition, settlementId: string | null | undefined) {
-  return sideQuestState.instances.some((quest) => (
-    quest.definitionId === definition.id
-    && (quest.spawnSettlementId ?? null) === (settlementId ?? null)
-  ));
+  return hasClaimedSideQuestHeroReward(definition, settlementId)
+    || sideQuestState.instances.some((quest) => (
+      quest.definitionId === definition.id
+      && (quest.spawnSettlementId ?? null) === (settlementId ?? null)
+    ));
 }
 
 function spawnSideQuest(definition: SideQuestDefinition, settlementId: string | null | undefined) {
+  if (hasClaimedSideQuestHeroReward(definition, settlementId)) {
+    return null;
+  }
+
   const tile = findSignalTile(definition, settlementId);
   if (!tile) {
     return null;
   }
 
-  const id = `${definition.id}:${settlementId ?? 'global'}`;
+  const id = sideQuestInstanceId(definition, settlementId);
   const instance: SideQuestInstance = {
     id,
     definitionId: definition.id,
@@ -294,6 +384,8 @@ function revealDiscoveredSignalTiles(settlementId: string | null | undefined) {
 }
 
 export function syncSideQuestSignals() {
+  expireOverdueSideQuests();
+
   const settlementId = currentPlayerSettlementId.value;
   const runKey = runSnapshot.value ? `${runSnapshot.value.seed}:${runSnapshot.value.startedAt}` : null;
   if (runKey !== activeRunKey) {
@@ -392,6 +484,9 @@ function revealSideQuest(quest: SideQuestInstance, hero: Hero | null) {
   clearStoryTileHint(hintIdForQuest(quest));
 
   const definition = getSideQuestDefinition(quest.definitionId);
+  if (definition) {
+    assignQuestTimeLimit(quest, definition);
+  }
   appendQuestDialogue(quest, 'reveal');
   addNotification({
     type: 'goal_completed',
@@ -441,6 +536,10 @@ function grantQuestHero(quest: SideQuestInstance) {
   }
 
   const heroId = `sidequest:${quest.id}:${definition.npc.id}`;
+  if (heroes.some((hero) => hero.id === heroId)) {
+    return;
+  }
+
   upsertHero({
     id: heroId,
     name: definition.npc.name,
@@ -472,6 +571,7 @@ function completeSideQuest(quest: SideQuestInstance) {
   const definition = getSideQuestDefinition(quest.definitionId);
   quest.status = 'completed';
   quest.completedAt = Date.now();
+  clearQuestExpirationTimer(quest.id);
   clearStoryTileHint(hintIdForQuest(quest));
 
   if (definition) {
@@ -490,6 +590,8 @@ function completeSideQuest(quest: SideQuestInstance) {
 }
 
 function progressTaskObjectives(event: Extract<GameplayEvent, { type: 'task:completed' }>) {
+  expireOverdueSideQuests();
+
   for (const quest of sideQuestState.instances) {
     if (quest.status !== 'active') {
       continue;
@@ -566,6 +668,7 @@ export function teardownSideQuestRuntime() {
   stopSignalWatcher?.();
   stopSignalWatcher = null;
   clearTriggerGateState();
+  clearQuestExpirationTimers();
   initialized = false;
 }
 
@@ -575,6 +678,7 @@ export function resetSideQuests() {
   }
   sideQuestState.instances = [];
   clearTriggerGateState();
+  clearQuestExpirationTimers();
   activeRunKey = null;
 }
 
@@ -583,6 +687,8 @@ export function getSideQuestAtTile(tileId: string) {
 }
 
 export function getActiveSideQuestForTask(tileId: string, taskType: TaskType) {
+  expireOverdueSideQuests();
+
   return sideQuestState.instances.find((quest) => {
     if (quest.status !== 'active' || quest.signalTileId !== tileId) {
       return false;

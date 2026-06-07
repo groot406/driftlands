@@ -232,6 +232,83 @@ test('workforce snapshots reflect assigned settlers per site', () => {
   );
 });
 
+test('lumber camps can staff two timber workers', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  jobSystem.init();
+
+  const site = getWorkforceSnapshot().sites.find((snapshotSite) => snapshotSite.tileId === '1,0');
+  assert.equal(site?.slots, 2);
+  assert.equal(site?.assignedWorkers, 2);
+});
+
+test('workforce snapshots count civilian job workers when guard settlers sort first', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_watchtower' }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    {
+      ...createSettler({ id: 'guard-1', q: 0, r: 0, settlementId: '0,0' }),
+      assignedRole: 'guard',
+      assignedWorkTileId: '0,0',
+      guardTowerTileId: '2,0',
+    },
+    {
+      ...createSettler({ id: 'guard-2', q: 0, r: 0, settlementId: '0,0' }),
+      assignedRole: 'guard',
+      assignedWorkTileId: '0,0',
+      guardTowerTileId: '2,0',
+    },
+    createSettler({
+      id: 'worker-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+    createSettler({
+      id: 'worker-2',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  jobSystem.init();
+
+  const snapshot = getWorkforceSnapshot();
+  const brewerySite = snapshot.sites.find((site) => site.tileId === '1,0');
+  assert.equal(snapshot.availableWorkers, 2);
+  assert.equal(snapshot.assignedWorkers, 2);
+  assert.equal(brewerySite?.assignedWorkers, 2);
+});
+
 test('no workers can staff docks before houses provide beds', () => {
   loadWorld([
     createTowncenterTile(),
@@ -243,6 +320,7 @@ test('no workers can staff docks before houses provide beds', () => {
   jobSystem.init();
 
   tickAll(1_000, 1_000);
+  tickAll(2_000, 1_000);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.availableWorkers, 0);
@@ -334,7 +412,6 @@ test('repair targets only reserve one idle settler at a time', () => {
   jobSystem.init();
 
   tickAll(1_000, 1_000);
-  tickAll(2_000, 1_000);
 
   const repairAssignees = settlers.filter((settler) => settler.assignedRole === 'repair');
   assert.equal(repairAssignees.length, 1);
@@ -521,6 +598,7 @@ test('granary and bakery form a settler-driven production chain', () => {
     createTowncenterTile(),
     createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary' }),
     createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_bakery' }),
+    createTile({ id: '1,1', q: 1, r: 1, terrain: 'grain' }),
   ]);
   loadPopulation(2, 2);
   loadSettlers([
@@ -585,18 +663,17 @@ test('granary and bakery form a settler-driven production chain', () => {
   tickAll(137_000, 62_000);
   tickAll(145_000, 8_000);
 
-  assert.equal(resourceInventory.grain, 0);
-  assert.equal(resourceInventory.bread, 2);
+  assert.equal(resourceInventory.grain, 1);
+  assert.equal(resourceInventory.bread, 4);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.assignedWorkers, 2);
   const bakerySite = snapshot.sites.find((site) => site.tileId === '2,0');
-  assert.equal(bakerySite?.status, 'missing_input');
-  assert.deepEqual(bakerySite?.blockerReason, {
-    code: 'missing_input',
-    resourceType: 'grain',
+  assert.equal(bakerySite?.status, 'staffed');
+  assert.equal(bakerySite?.blockerReason, null);
+  assert.deepEqual(settlers.find((settler) => settler.id === 'settler-2')?.carryingPayload, {
+    type: 'grain',
     amount: 1,
-    tileId: '2,0',
   });
 });
 
@@ -622,11 +699,126 @@ test('field granary harvests and replants mature crops around the job site', () 
   settlerSystem.init();
   jobSystem.init();
 
-  tickAll(61_000, 61_000);
+  tickAll(1_000, 1_000);
+  tickAll(7_000, 6_000);
+  tickAll(12_000, 5_000);
+  tickAll(20_000, 8_000);
+  tickAll(27_000, 7_000);
+  tickAll(37_000, 10_000);
+  tickAll(47_000, 10_000);
 
   assert.equal(tileIndex['2,0']?.terrain, 'grain');
   assert.equal(tileIndex['2,0']?.variant, 'grain_planted');
   assert.equal(tileIndex['2,0']?.isBaseTile, false);
+});
+
+test('granary worker performs a timed harvest on the field before delivering grain', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain', isBaseTile: true }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.workTileId, '2,0');
+  assert.equal(settlers[0]?.hiddenWhileWorking, false);
+  assert.equal(tileIndex['2,0']?.terrain, 'grain');
+  assert.equal(resourceInventory.grain, 0);
+
+  tickAll(9_000, 8_000);
+
+  assert.equal(tileIndex['2,0']?.terrain, 'grain');
+  assert.equal(resourceInventory.grain, 0);
+
+  tickAll(12_000, 3_000);
+
+  assert.equal(tileIndex['2,0']?.terrain, 'dirt');
+  assert.deepEqual(settlers[0]?.carryingPayload, { type: 'grain', amount: 3 });
+  assert.equal(settlers[0]?.carryingKind, 'output');
+
+  tickAll(20_000, 8_000);
+
+  assert.equal(resourceInventory.grain, 3);
+});
+
+test('two granary workers reserve and render on separate field tiles', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grain', variant: 'grain_granary', isBaseTile: false }),
+    createTile({ id: '1,1', q: 1, r: 1, terrain: 'grain', isBaseTile: true }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'grain', isBaseTile: true }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 1,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.deepEqual(settlers.map((settler) => settler.activity), ['working', 'working']);
+  assert.deepEqual(new Set(settlers.map((settler) => settler.workTileId)), new Set(['1,1', '2,0']));
+  assert.deepEqual(new Set(settlers.map((settler) => settler.fieldWork?.fieldTileId)), new Set(['1,1', '2,0']));
+  assert.deepEqual(settlers.map((settler) => settler.hiddenWhileWorking), [false, false]);
 });
 
 test('workshop turns ore into delivered tools', () => {
@@ -699,6 +891,20 @@ test('field brewery consumes grain and produces beer without stored hops', () =>
     },
   ]);
   depositResourceToStorage('0,0', 'grain', 1);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
   settlerSystem.init();
   jobSystem.init();
 
@@ -707,13 +913,71 @@ test('field brewery consumes grain and produces beer without stored hops', () =>
   tickAll(68_000, 61_000);
   tickAll(75_000, 7_000);
 
+  assert.equal(resourceInventory.grain, 1);
+  assert.equal(resourceInventory.hops, 2);
+  assert.equal(resourceInventory.beer, 0);
+
+  tickAll(82_000, 7_000);
+  tickAll(102_000, 20_000);
+  tickAll(110_000, 8_000);
+
   assert.equal(resourceInventory.grain, 0);
   assert.equal(resourceInventory.hops, 0);
   assert.equal(resourceInventory.water, 0);
-  assert.equal(resourceInventory.beer, 8);
+  assert.equal(resourceInventory.beer, 4);
 
   const snapshot = getWorkforceSnapshot();
   assert.equal(snapshot.sites.find((site) => site.tileId === '1,0')?.status, 'missing_input');
+});
+
+test('field brewery workers do not wait for stored hops before tending their own field', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'grain', 2);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.blockerReason?.resourceType ?? null, null);
+  assert.equal(settlers[1]?.blockerReason?.resourceType ?? null, null);
+  const brewerySite = getWorkforceSnapshot().sites.find((site) => site.tileId === '1,0');
+  assert.equal(brewerySite?.assignedWorkers, 2);
 });
 
 test('field winery produces wine without stored grapes', () => {
@@ -743,6 +1007,20 @@ test('field winery produces wine without stored grapes', () => {
       carryingKind: null,
     },
   ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
   settlerSystem.init();
   jobSystem.init();
 
@@ -751,8 +1029,183 @@ test('field winery produces wine without stored grapes', () => {
   tickAll(68_000, 61_000);
   tickAll(75_000, 7_000);
 
+  assert.equal(resourceInventory.grapes, 2);
+  assert.equal(resourceInventory.wine, 0);
+
+  tickAll(82_000, 7_000);
+  tickAll(102_000, 20_000);
+  tickAll(110_000, 8_000);
+
   assert.equal(resourceInventory.grapes, 0);
-  assert.equal(resourceInventory.wine, 4);
+  assert.equal(resourceInventory.wine, 2);
+});
+
+test('brewery and winery workers irrigate dry fields visibly', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'hops', variant: 'hops_brewery', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'dirt', variant: 'dirt_tilled_draught', isBaseTile: false }),
+    createTile({ id: '10,0', q: 10, r: 0, terrain: 'grapes', variant: 'grapes_winery', isBaseTile: false }),
+    createTile({ id: '11,0', q: 11, r: 0, terrain: 'dirt', variant: 'dirt_tilled_draught', isBaseTile: false }),
+  ]);
+  loadPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 11,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '10,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.fieldWork?.phase, 'irrigate');
+  assert.equal(settlers[0]?.workTileId, '2,0');
+  assert.equal(settlers[0]?.hiddenWhileWorking, false);
+  assert.equal(settlers[1]?.activity, 'working');
+  assert.equal(settlers[1]?.fieldWork?.phase, 'irrigate');
+  assert.equal(settlers[1]?.workTileId, '11,0');
+  assert.equal(settlers[1]?.hiddenWhileWorking, false);
+
+  tickAll(14_000, 10_000);
+
+  assert.equal(tileIndex['2,0']?.variant, 'dirt_tilled');
+  assert.equal(tileIndex['11,0']?.variant, 'dirt_tilled');
+});
+
+test('lumber camp workers chop and replant nearby forest visibly', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp', isBaseTile: false }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'forest', isBaseTile: true }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 2,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+  tickAll(2_000, 1_000);
+  tickAll(3_000, 1_000);
+  tickAll(4_000, 1_000);
+  tickAll(5_000, 1_000);
+  tickAll(6_000, 1_000);
+  tickAll(7_000, 1_000);
+  tickAll(8_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.fieldWork?.phase, 'chop_forest');
+  assert.equal(settlers[0]?.workTileId, '2,0');
+  assert.equal(settlers[0]?.hiddenWhileWorking, false);
+
+  tickAll(12_000, 10_000);
+
+  assert.equal(tileIndex['2,0']?.terrain, 'forest');
+  assert.equal(tileIndex['2,0']?.variant, 'chopped_forest');
+  assert.deepEqual(settlers[0]?.carryingPayload, { type: 'wood', amount: 4 });
+
+  tickAll(21_000, 9_000);
+  assert.equal(resourceInventory.wood, 4);
+
+  tickAll(22_000, 1_000);
+  assert.equal(settlers[0]?.fieldWork?.phase, 'replant_forest');
+  assert.equal(settlers[0]?.workTileId, '2,0');
+
+  tickAll(32_000, 10_000);
+
+  assert.equal(tileIndex['2,0']?.terrain, 'forest');
+  assert.equal(tileIndex['2,0']?.variant, 'young_forest');
+});
+
+test('field winery worker does not wait for stored grapes before tending the vineyard', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'grapes', variant: 'grapes_winery', isBaseTile: false }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+    }),
+  ]);
+  loadTestModeSettings({
+    enabled: true,
+    instantBuild: false,
+    unlimitedResources: false,
+    bypassHunger: true,
+    fastHeroMovement: false,
+    fastGrowth: false,
+    fastPopulationGrowth: false,
+    fastSettlerCycles: false,
+    fastGuardTraining: false,
+    supportTiles: false,
+    progressionOverridesBySettlementId: {},
+    completedStudyKeys: [],
+  });
+  settlerSystem.init();
+  jobSystem.init();
+
+  tickAll(1_000, 1_000);
+
+  assert.equal(settlers[0]?.blockerReason?.resourceType ?? null, null);
+  const winerySite = getWorkforceSnapshot().sites.find((site) => site.tileId === '1,0');
+  assert.equal(winerySite?.assignedWorkers, 1);
 });
 
 test('multi-input jobs consume stored secondary ingredients', () => {

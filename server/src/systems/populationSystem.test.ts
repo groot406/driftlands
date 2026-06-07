@@ -859,7 +859,7 @@ test('settlers only consume food after they arrive at storage', () => {
       assignedWorkTileId: null,
       activity: 'idle',
       stateSinceMs: 0,
-      hungerMs: 90_000,
+      hungerMs: 180_000,
       fatigueMs: 0,
       happiness: 100,
       workProgressMs: 0,
@@ -909,7 +909,7 @@ test('settlers can eat from owned food storage that became inactive under pressu
       assignedWorkTileId: null,
       activity: 'idle',
       stateSinceMs: 0,
-      hungerMs: 90_000,
+      hungerMs: 180_000,
       fatigueMs: 0,
       happiness: 100,
       workProgressMs: 0,
@@ -956,7 +956,7 @@ test('settlers do not starve while their settlement still has edible meals in a 
       assignedWorkTileId: null,
       activity: 'idle',
       stateSinceMs: 0,
-      hungerMs: 240_000,
+      hungerMs: 360_000,
       fatigueMs: 0,
       happiness: 100,
       workProgressMs: 0,
@@ -970,7 +970,7 @@ test('settlers do not starve while their settlement still has edible meals in a 
 
   assert.equal(settlers.length, 1);
   assert.equal(resourceInventory.bread, 0);
-  assert.ok((settlers[0]?.hungerMs ?? 0) < 240_000);
+  assert.ok((settlers[0]?.hungerMs ?? 0) < 360_000);
 });
 
 test('starvation deaths are paced per settlement so shortages shrink gradually', () => {
@@ -980,7 +980,7 @@ test('starvation deaths are paced per settlement so shortages shrink gradually',
   loadSettlementPopulation(6, 6);
   loadSettlers(Array.from({ length: 6 }, (_, index) => createSettler({
     id: `settler-${index + 1}`,
-    hungerMs: 240_000,
+    hungerMs: 360_000,
   })));
   settlerSystem.init();
 
@@ -994,6 +994,24 @@ test('starvation deaths are paced per settlement so shortages shrink gradually',
 
   tickAt(61_000, 31_000);
   assert.equal(settlers.length, 4);
+});
+
+test('settlers do not die immediately after reaching the meal-seeking threshold', () => {
+  loadWorld([
+    createTowncenterTile(),
+  ]);
+  loadSettlementPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      hungerMs: 240_000,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 1);
 });
 
 test('starvation chooses non-food workers before food producers', () => {
@@ -1011,7 +1029,7 @@ test('starvation chooses non-food workers before food producers', () => {
       assignedWorkTileId: '1,0',
       assignedRole: 'job',
       activity: 'working',
-      hungerMs: 240_000,
+      hungerMs: 360_000,
     }),
     createSettler({
       id: 'lumberjack',
@@ -1020,7 +1038,7 @@ test('starvation chooses non-food workers before food producers', () => {
       assignedWorkTileId: '2,0',
       assignedRole: 'job',
       activity: 'working',
-      hungerMs: 240_000,
+      hungerMs: 360_000,
     }),
   ]);
   settlerSystem.init();
@@ -1050,7 +1068,7 @@ for (const resourceType of HUNGER_FOOD_TYPES) {
         assignedWorkTileId: null,
         activity: 'idle',
         stateSinceMs: 0,
-        hungerMs: 90_000,
+        hungerMs: 180_000,
         fatigueMs: 0,
         happiness: 100,
         workProgressMs: 0,
@@ -1067,7 +1085,7 @@ for (const resourceType of HUNGER_FOOD_TYPES) {
 
     tickAt(6_000, 5_000);
     assert.equal(resourceInventory[resourceType], 0);
-    const expectedHungerMs = Math.max(0, 91_000 - (getResourceHungerRelief(resourceType) * 60_000)) + 5_000;
+    const expectedHungerMs = Math.max(0, 181_000 - (getResourceHungerRelief(resourceType) * 180_000)) + 5_000;
     assert.equal(settlers[0]?.hungerMs, expectedHungerMs);
   });
 }
@@ -1136,7 +1154,7 @@ test('tired settlers go home to sleep before resuming work', () => {
       activity: 'working',
       stateSinceMs: 0,
       hungerMs: 0,
-      fatigueMs: 181_000,
+      fatigueMs: 601_000,
       happiness: 100,
       workProgressMs: 5_000,
       carryingKind: null,
@@ -1156,6 +1174,33 @@ test('tired settlers go home to sleep before resuming work', () => {
   tickAt(53_000, 46_000);
   assert.equal(settlers[0]?.fatigueMs, 0);
   assert.equal(settlers[0]?.activity === 'sleeping', false);
+});
+
+test('settlers keep working past the old three minute fatigue mark', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      fatigueMs: 181_000,
+      workProgressMs: 5_000,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.movement, undefined);
+  assert.ok((settlers[0]?.workProgressMs ?? 0) > 5_000);
 });
 
 test('settlers keep partial job progress while taking a meal break', () => {
@@ -1178,7 +1223,7 @@ test('settlers keep partial job progress while taking a meal break', () => {
       assignedRole: 'job',
       activity: 'working',
       stateSinceMs: 0,
-      hungerMs: 90_000,
+      hungerMs: 180_000,
       fatigueMs: 0,
       happiness: 100,
       workProgressMs: 50_000,
@@ -1203,6 +1248,35 @@ test('settlers keep partial job progress while taking a meal break', () => {
   tickAt(12_000, 6_000);
   assert.equal(settlers[0]?.activity, 'working');
   assert.ok((settlers[0]?.workProgressMs ?? 0) > 50_000);
+});
+
+test('settlers keep working through early hunger instead of taking frequent meal breaks', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadPopulation(1, 1);
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      hungerMs: 90_000,
+      workProgressMs: 20_000,
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'fish', 2);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'working');
+  assert.equal(settlers[0]?.movement, undefined);
+  assert.ok((settlers[0]?.workProgressMs ?? 0) > 20_000);
+  assert.equal(resourceInventory.fish, 2);
 });
 
 test('settlers blocked by missing job inputs stay waiting instead of flickering idle', () => {

@@ -80,7 +80,7 @@ test('field winery resolves into durable grape-to-wine production', () => {
 
   const resources = winerySite ? resolveJobResources(winerySite, 1) : null;
   assert.deepEqual(resources?.consumes, []);
-  assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 6 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'wine', amount: 3 }]);
 });
 
 test('field brewery turns grain and connected hops into durable beer production', () => {
@@ -98,7 +98,7 @@ test('field brewery turns grain and connected hops into durable beer production'
 
   assert.equal(brewerySite?.building.key, 'brewery');
   assert.deepEqual(resources?.consumes, [{ type: 'grain', amount: 1 }]);
-  assert.deepEqual(resources?.produces, [{ type: 'beer', amount: 12 }]);
+  assert.deepEqual(resources?.produces, [{ type: 'beer', amount: 6 }]);
   assert.equal(brewerySite ? resolveSiteStatus(brewerySite, 1) : null, 'staffed');
 });
 
@@ -132,11 +132,11 @@ test('legacy brewery and winery variants still resolve as minimum-output job sit
   assert.equal(brewerySite?.building.key, 'brewery');
   assert.deepEqual(brewerySite ? resolveJobResources(brewerySite, 1) : null, {
     consumes: [{ type: 'grain', amount: 1 }],
-    produces: [{ type: 'beer', amount: 6 }],
+    produces: [{ type: 'beer', amount: 3 }],
   });
   assert.equal(winerySite?.building.key, 'winery');
   assert.deepEqual(winerySite ? resolveJobResources(winerySite, 1) : null, {
     consumes: [],
-    produces: [{ type: 'wine', amount: 3 }],
+    produces: [{ type: 'wine', amount: 1 }],
   });
 });

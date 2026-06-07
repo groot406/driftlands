@@ -311,12 +311,12 @@ function getConnectedFieldCount(tile: Tile, terrain: Tile['terrain']) {
 
 function getBreweryBeerPerCycle(tile: Tile, assignedWorkers: number) {
     const connectedHops = getConnectedFieldCount(tile, 'hops');
-    return Math.min(12, 4 + (connectedHops * 2)) * assignedWorkers;
+    return Math.min(6, 2 + connectedHops) * assignedWorkers;
 }
 
 function getWineryWinePerCycle(tile: Tile, assignedWorkers: number) {
     const connectedGrapes = getConnectedFieldCount(tile, 'grapes');
-    return Math.min(6, 2 + connectedGrapes) * assignedWorkers;
+    return Math.min(3, 1 + Math.floor(connectedGrapes / 2)) * assignedWorkers;
 }
 
 function revealTilesAround(tile: Tile, radius: number) {
@@ -693,7 +693,7 @@ const buildings: BuildingDefinition[] = [
         getJobResources(tile, assignedWorkers) {
             const nearbyWaterTiles = countActiveAdjacentTiles(tile, 'water');
             return {
-                produces: [{ type: 'fish', amount: Math.max(2, nearbyWaterTiles * 2) * assignedWorkers }],
+                produces: [{ type: 'fish', amount: Math.max(1, nearbyWaterTiles) * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -831,7 +831,7 @@ const buildings: BuildingDefinition[] = [
         variantOverlayAssetKeys: {
             forest_sawmill: 'building_sawmill_overlay',
         },
-        jobSlots: 1,
+        jobSlots: 2,
         cycleMs: 60_000,
         jobLabel: 'Timber crew',
         jobPresentation: 'field',
@@ -887,8 +887,9 @@ const buildings: BuildingDefinition[] = [
                 || countActiveAdjacentRevealedModifier(tile, 'dense_forest') > 0
                 ? 1
                 : 0;
+            const meatPerWorker = Math.min(3, countActiveConnectedTiles(tile, 'forest') + denseForestBonus);
             return {
-                produces: [{ type: 'meat', amount: (countActiveConnectedTiles(tile, 'forest') + denseForestBonus) * assignedWorkers }],
+                produces: [{ type: 'meat', amount: meatPerWorker * assignedWorkers }],
             };
         },
         canPlace(tile, _hero) {
@@ -968,7 +969,7 @@ const buildings: BuildingDefinition[] = [
         jobSlots: 1,
         cycleMs: 60_000,
         consumes: [{ type: 'grain', amount: 1 }],
-        produces: [{ type: 'bread', amount: 2 }],
+        produces: [{ type: 'bread', amount: 4 }],
         jobLabel: 'Baker',
         jobPresentation: 'indoor',
         repairResources: [{ type: 'wood', amount: 1 }, { type: 'stone', amount: 1 }],

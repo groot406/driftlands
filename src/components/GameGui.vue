@@ -71,6 +71,15 @@
       <TutorialPanel />
     </div>
     <button
+      class="documentation-toggle-btn pixel-font"
+      type="button"
+      title="Open field guide encyclopedia"
+      aria-label="Open field guide encyclopedia"
+      @click="openDocumentation()"
+    >
+      FG
+    </button>
+    <button
       v-if="hasGoals"
       class="goals-toggle-btn"
       :class="{ 'goals-toggle-btn--active': isGoalsPanelOpen }"
@@ -122,6 +131,7 @@
   <SeasonStageAnnouncementModal />
   <SettlementDefeatModal />
   <SeasonCompletedOverlay />
+  <InGameDocumentationModal />
 </template>
 
 <script setup lang="ts">
@@ -154,6 +164,7 @@ import SettlementWelcomeModal from './SettlementWelcomeModal.vue';
 import SeasonStageAnnouncementModal from './SeasonStageAnnouncementModal.vue';
 import SettlementDefeatModal from './SettlementDefeatModal.vue';
 import SeasonCompletedOverlay from './SeasonCompletedOverlay.vue';
+import InGameDocumentationModal from './InGameDocumentationModal.vue';
 import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
 import { chronicleHasEntries, requestChronicleReopen, openGoalsPanel, closeGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
@@ -169,6 +180,8 @@ import {
 } from '../store/tutorialStore';
 import { activeCalamityWarning, getCalamityDisplayName, reopenActiveCalamityWarning } from '../store/calamityEventStore.ts';
 import { activeToolbarPanel, closeToolbarPanel, openToolbarPanel } from '../store/toolbarPanelStore.ts';
+import { openDocumentation } from '../store/documentationStore.ts';
+import { getActiveWindow, isKeyboardBlocked, WINDOW_IDS } from '../core/windowManager.ts';
 
 const activeToolPanel = ref<'debug' | 'admin' | null>(null);
 const countdownNow = ref(Date.now());
@@ -269,6 +282,10 @@ function closeDebugPanel() {
   }
 }
 
+function canUseDebugShortcut() {
+  return !isKeyboardBlocked.value || getActiveWindow.value === WINDOW_IDS.DEBUG_TOOLS_PANEL;
+}
+
 function handleKeyDown(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null;
   const isInput = target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
@@ -276,12 +293,18 @@ function handleKeyDown(e: KeyboardEvent) {
   if (isInput) return;
 
   if (DEBUG_HELPER_SHORTCUTS.has(e.key) || DEBUG_HELPER_SHORTCUTS.has(e.code)) {
+    if (!canUseDebugShortcut()) {
+      return;
+    }
+
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
     toggleToolPanel('debug');
     return;
   }
+
+  if (isKeyboardBlocked.value) return;
 
   if (!isPlaying()) return;
 
@@ -646,6 +669,36 @@ watch(activeToolbarPanel, (panel) => {
   justify-content: center;
   width: 42px;
   height: 42px;
+}
+
+.documentation-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.18), transparent 44%),
+    rgba(46, 34, 20, 0.78);
+  color: rgb(254 243 199);
+  box-shadow: 0 8px 18px rgba(20, 42, 28, 0.2);
+  backdrop-filter: blur(8px);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.documentation-toggle-btn:hover,
+.documentation-toggle-btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(252, 211, 77, 0.62);
+  background:
+    radial-gradient(circle at top left, rgba(252, 211, 77, 0.24), transparent 44%),
+    rgba(64, 45, 23, 0.9);
+  outline: none;
 }
 
 .goals-toggle-btn {

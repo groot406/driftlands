@@ -80,15 +80,33 @@ import {
 } from '../../../src/shared/game/testMode.ts';
 import { RAIDER_COMBAT_HEALTH_MAX, canSettlementUseOpenBorderTransit, isRaidableMilitaryTarget, isWatchtowerTile } from '../../../src/shared/game/military.ts';
 import { HUNGER_FOOD_TYPES, TRADE_GOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, getTradeGoodHappinessGain, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
-import { maintainJobSiteFields } from './fieldWork';
+import {
+    AGRICULTURAL_PROCESS_SUBTASK_MS,
+    chooseAgriculturalFieldAction,
+    completeAgriculturalFieldAction,
+    getAgriculturalCropConfig,
+    getAgriculturalFieldAction,
+    getAgriculturalProcessInputs,
+    getAgriculturalProcessOutput,
+    isAgriculturalJobSite,
+    type AgriculturalFieldAction,
+} from './fieldWork';
+import {
+    chooseForestryFieldAction,
+    completeForestryFieldAction,
+    getForestryFieldAction,
+    isForestryJobSite,
+    type ForestryFieldAction,
+} from './forestryWork';
 
 const pathService = new PathService();
 
 const SETTLER_MEAL_INTERVAL_MS = 60_000;
-const SETTLER_FOOD_SEEK_MS = 90_000;
+const SETTLER_FOOD_SEEK_MS = 180_000;
+const SETTLER_HUNGER_RELIEF_MS = 180_000;
 const SETTLER_STARVATION_MS = HUNGER_GRACE_MINUTES * 60_000;
 const SETTLER_STARVATION_DEATH_INTERVAL_MS = SETTLER_MEAL_INTERVAL_MS;
-const SETTLER_MAX_ACTIVE_MS = 3 * 60_000;
+const SETTLER_MAX_ACTIVE_MS = 10 * 60_000;
 const SETTLER_SLEEP_MS = 45_000;
 const POPULATION_GROWTH_INTERVAL_MS = 60_000;
 const SETTLER_STEP_BASE_MS = 900;
@@ -291,6 +309,7 @@ function createSettler(now: number, settlementId?: string | null): Settler {
         assignedRole: null,
         workTileId: null,
         hiddenWhileWorking: null,
+        fieldWork: null,
         activity: 'idle',
         stateSinceMs: now,
         hungerMs: 0,
@@ -414,8 +433,8 @@ function createGuardSettler(now: number, settlementId: string, tower: Tile, acce
     return guard;
 }
 
-function getSettlerPathSettlementId(settler: Settler) {
-    return isRaidSettler(settler) ? null : settler.settlementId;
+function getSettlerPathSettlementId() {
+    return null;
 }
 
 function broadcastTileUpdate(tile: Tile | null | undefined) {
@@ -628,6 +647,10 @@ function clearSettlerAssignment(settler: Settler) {
     }
     if ((settler.hiddenWhileWorking ?? null) !== null) {
         settler.hiddenWhileWorking = null;
+        changed = true;
+    }
+    if ((settler.fieldWork ?? null) !== null) {
+        settler.fieldWork = null;
         changed = true;
     }
     if ((settler.socialTileId ?? null) !== null) {
@@ -1074,7 +1097,7 @@ function startMovement(settler: Settler, target: Tile, activity: SettlerActivity
         return true;
     }
 
-    const pathSettlementId = getSettlerPathSettlementId(settler);
+    const pathSettlementId = getSettlerPathSettlementId();
     const pathSettlementKey = pathSettlementId ?? null;
     let path = getCachedSettlerRoutePath(settler, target, pathSettlementKey);
     if (!path) {
@@ -1120,7 +1143,7 @@ function canSettlerReachTile(settler: Settler, target: Tile | null | undefined) 
         return true;
     }
 
-    const pathSettlementId = getSettlerPathSettlementId(settler);
+    const pathSettlementId = getSettlerPathSettlementId();
     const pathSettlementKey = pathSettlementId ?? null;
     if (getCachedSettlerRoutePath(settler, target, pathSettlementKey)) {
         clearReachabilityFailure(settler, target, pathSettlementKey);
@@ -1229,7 +1252,15 @@ function refreshSettlerWorkPresentation(settler: Settler) {
     let workTileId = assignedTile.id;
     let hiddenWhileWorking = false;
 
-    if (settler.assignedRole === 'guard') {
+    if (settler.fieldWork?.siteTileId === assignedTile.id) {
+        if (settler.fieldWork.phase === 'process') {
+            workTileId = assignedTile.id;
+            hiddenWhileWorking = getTileJobPresentation(assignedTile) === 'indoor';
+        } else {
+            workTileId = settler.fieldWork.fieldTileId ?? assignedTile.id;
+            hiddenWhileWorking = false;
+        }
+    } else if (settler.assignedRole === 'guard') {
         workTileId = guardTower?.id ?? assignedTile.id;
         hiddenWhileWorking = false;
     } else if (settler.assignedRole === 'repair') {
@@ -1316,7 +1347,7 @@ function getStarvationMs(settler: Settler) {
         return 0;
     }
 
-    return Math.max(0, settler.hungerMs - SETTLER_MEAL_INTERVAL_MS);
+    return Math.max(0, settler.hungerMs - SETTLER_FOOD_SEEK_MS);
 }
 
 function isHungry(settler: Settler) {
@@ -1422,7 +1453,7 @@ function tryEatFromStorage(settler: Settler, storageTile: Tile) {
         }
 
         broadcastWithdrawal(settler, storageTile.id, { type: resourceType, amount: withdrawn });
-        const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_MEAL_INTERVAL_MS;
+        const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_HUNGER_RELIEF_MS;
         settler.hungerMs = Math.max(0, settler.hungerMs - reliefMs);
         return true;
     }
@@ -1448,7 +1479,7 @@ function tryEatFromSettlementStorage(settler: Settler) {
         for (const transfer of transfers) {
             broadcastWithdrawal(settler, transfer.storageTileId, { type: resourceType, amount: transfer.amount });
         }
-        const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_MEAL_INTERVAL_MS;
+        const reliefMs = getResourceHungerRelief(resourceType) * SETTLER_HUNGER_RELIEF_MS;
         settler.hungerMs = Math.max(0, settler.hungerMs - reliefMs);
         return true;
     }
@@ -1607,6 +1638,90 @@ function withdrawStoredCycleInputs(
     }
 
     return true;
+}
+
+function getMissingStoredResource(settlementId: string | null | undefined, resources: ResourceAmount[]) {
+    for (const resource of resources) {
+        const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(
+            settlementId,
+            resource.type,
+            resource.amount,
+        );
+        const plannedAmount = plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+        if (plannedAmount < resource.amount) {
+            return {
+                type: resource.type,
+                amount: Math.max(0, resource.amount - plannedAmount),
+            };
+        }
+    }
+
+    return null;
+}
+
+function withdrawStoredResources(
+    settler: Settler,
+    settlementId: string | null | undefined,
+    resources: ResourceAmount[],
+) {
+    const plannedResources = resources.map((resource) => {
+        const transfers = planResourceWithdrawalsAcrossStoragesForSettlement(
+            settlementId,
+            resource.type,
+            resource.amount,
+        );
+        const plannedAmount = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+        return { resource, transfers, plannedAmount };
+    });
+
+    if (plannedResources.some((planned) => planned.plannedAmount < planned.resource.amount)) {
+        return false;
+    }
+
+    for (const planned of plannedResources) {
+        const transfers = withdrawResourceAcrossStoragesForSettlement(
+            settlementId,
+            planned.resource.type,
+            planned.resource.amount,
+        );
+
+        for (const transfer of transfers) {
+            broadcastWithdrawal(settler, transfer.storageTileId, {
+                type: planned.resource.type,
+                amount: transfer.amount,
+            });
+        }
+    }
+
+    return true;
+}
+
+function hasStoredResource(settlementId: string | null | undefined, resource: ResourceAmount) {
+    const plannedTransfers = planResourceWithdrawalsAcrossStoragesForSettlement(
+        settlementId,
+        resource.type,
+        resource.amount,
+    );
+    return plannedTransfers.reduce((sum, transfer) => sum + transfer.amount, 0) >= resource.amount;
+}
+
+function isSelfSuppliedAgriculturalInput(site: ResolvedJobSite, resource: ResourceAmount) {
+    const crop = getAgriculturalCropConfig(site);
+    return !!crop && resource.type === crop.resourceType;
+}
+
+function getRequiredAgriculturalProcessInputs(site: ResolvedJobSite, inputs: ResourceAmount[]) {
+    return inputs.filter((input) => !isSelfSuppliedAgriculturalInput(site, input));
+}
+
+function getStoredAgriculturalProcessInputs(
+    settlementId: string | null | undefined,
+    site: ResolvedJobSite,
+    inputs: ResourceAmount[],
+) {
+    return inputs.filter((input) => {
+        return !isSelfSuppliedAgriculturalInput(site, input) || hasStoredResource(settlementId, input);
+    });
 }
 
 function completeRepairCycle(settler: Settler, repairTile: Tile, now: number) {
@@ -1791,7 +1906,7 @@ function chooseNearestReachableHomeSlot(
     settlementId: string | null | undefined,
 ) {
     const startTile = tileIndex[`${settler.q},${settler.r}`] ?? null;
-    const pathSettlementId = getSettlerPathSettlementId(settler);
+    const pathSettlementId = getSettlerPathSettlementId();
     const candidates = homeSlots
         .filter((slot) => !usedSlotKeys.has(slot.key))
         .filter((slot) => settlementId === undefined || slot.settlementId === settlementId)
@@ -2432,6 +2547,8 @@ function chooseSocialVenue(settler: Settler) {
 }
 
 function tryStartSocializing(settler: Settler, pubTileId: string, now: number) {
+    const pubTile = tileIndex[pubTileId] ?? null;
+    const settlementId = pubTile ? getJobSiteSettlementId(pubTile) : settler.settlementId;
     const preferredDrinks = getSettlerDrinkPriority(settler);
     if (isUnlimitedResourcesEnabled(testModeSettings)) {
         const chosenDrink = preferredDrinks[0] ?? SOCIAL_DRINKS[0]?.type ?? 'beer';
@@ -2440,7 +2557,6 @@ function tryStartSocializing(settler: Settler, pubTileId: string, now: number) {
         return setActivity(settler, 'socializing', now) || true;
     }
 
-    const settlementId = settler.settlementId;
     const prioritizedDrinks = preferredDrinks
         .map((drinkType) => SOCIAL_DRINKS.find((drink) => drink.type === drinkType))
         .filter((drink): drink is typeof SOCIAL_DRINKS[number] => !!drink);
@@ -2841,6 +2957,420 @@ function maybeFetchInput(settler: Settler, now: number) {
     return true;
 }
 
+function getSettlerWorkHappinessMultiplier(settler: Settler) {
+    return settler.happiness >= 80
+        ? 1.1
+        : settler.happiness >= 50
+            ? 1
+            : settler.happiness >= 20
+                ? 0.8
+                : 0.6;
+}
+
+function getReservedAgriculturalFieldTileIds(site: ResolvedJobSite, activeSettler: Settler) {
+    const reserved = new Set<string>();
+    for (const settler of settlers) {
+        if (settler.id === activeSettler.id) {
+            continue;
+        }
+        if (settler.fieldWork?.siteTileId !== site.tile.id || !settler.fieldWork.fieldTileId) {
+            continue;
+        }
+        reserved.add(settler.fieldWork.fieldTileId);
+    }
+    return reserved;
+}
+
+function getReservedFieldTileIds(site: ResolvedJobSite, activeSettler: Settler) {
+    const reserved = new Set<string>();
+    for (const settler of settlers) {
+        if (settler.id === activeSettler.id) {
+            continue;
+        }
+        if (settler.fieldWork?.siteTileId !== site.tile.id || !settler.fieldWork.fieldTileId) {
+            continue;
+        }
+        reserved.add(settler.fieldWork.fieldTileId);
+    }
+    return reserved;
+}
+
+function setAgriculturalFieldWork(settler: Settler, site: ResolvedJobSite, action: AgriculturalFieldAction) {
+    settler.fieldWork = {
+        siteTileId: site.tile.id,
+        fieldTileId: action.fieldTileId,
+        phase: action.phase,
+    };
+    settler.workProgressMs = 0;
+}
+
+function setForestryFieldWork(settler: Settler, site: ResolvedJobSite, action: ForestryFieldAction) {
+    settler.fieldWork = {
+        siteTileId: site.tile.id,
+        fieldTileId: action.fieldTileId,
+        phase: action.phase,
+    };
+    settler.workProgressMs = 0;
+}
+
+function setAgriculturalProcessWork(settler: Settler, site: ResolvedJobSite) {
+    settler.fieldWork = {
+        siteTileId: site.tile.id,
+        fieldTileId: null,
+        phase: 'process',
+    };
+    settler.workProgressMs = 0;
+}
+
+function clearAgriculturalWork(settler: Settler) {
+    settler.fieldWork = null;
+    settler.workProgressMs = 0;
+}
+
+function resolveAgriculturalFieldAction(
+    settler: Settler,
+    site: ResolvedJobSite,
+): { action: AgriculturalFieldAction; targetTile: Tile } | null {
+    const fieldWork = settler.fieldWork;
+    if (!fieldWork || fieldWork.siteTileId !== site.tile.id || fieldWork.phase === 'process' || !fieldWork.fieldTileId) {
+        return null;
+    }
+
+    const action = getAgriculturalFieldAction(site, fieldWork.phase, fieldWork.fieldTileId);
+    const targetTile = action ? tileIndex[action.fieldTileId] ?? null : null;
+    return action && targetTile ? { action, targetTile } : null;
+}
+
+function maybeStartAgriculturalFieldWork(
+    settler: Settler,
+    site: ResolvedJobSite,
+): { action: AgriculturalFieldAction; targetTile: Tile } | null {
+    const action = chooseAgriculturalFieldAction(
+        site,
+        getReservedAgriculturalFieldTileIds(site, settler),
+    );
+    const targetTile = action ? tileIndex[action.fieldTileId] ?? null : null;
+    if (!action || !targetTile) {
+        return null;
+    }
+
+    setAgriculturalFieldWork(settler, site, action);
+    return { action, targetTile };
+}
+
+function resolveForestryFieldAction(
+    settler: Settler,
+    site: ResolvedJobSite,
+): { action: ForestryFieldAction; targetTile: Tile } | null {
+    const fieldWork = settler.fieldWork;
+    if (!fieldWork || fieldWork.siteTileId !== site.tile.id || !fieldWork.fieldTileId) {
+        return null;
+    }
+    if (fieldWork.phase !== 'chop_forest' && fieldWork.phase !== 'replant_forest') {
+        return null;
+    }
+
+    const action = getForestryFieldAction(site, fieldWork.phase, fieldWork.fieldTileId);
+    const targetTile = action ? tileIndex[action.fieldTileId] ?? null : null;
+    return action && targetTile ? { action, targetTile } : null;
+}
+
+function maybeStartForestryFieldWork(
+    settler: Settler,
+    site: ResolvedJobSite,
+): { action: ForestryFieldAction; targetTile: Tile } | null {
+    const action = chooseForestryFieldAction(
+        site,
+        getReservedFieldTileIds(site, settler),
+    );
+    const targetTile = action ? tileIndex[action.fieldTileId] ?? null : null;
+    if (!action || !targetTile) {
+        return null;
+    }
+
+    setForestryFieldWork(settler, site, action);
+    return { action, targetTile };
+}
+
+function getSettlerAgriculturalProcessOutput(siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>) {
+    return cloneResource(getAgriculturalProcessOutput(siteInfo.site));
+}
+
+function maybeStartAgriculturalProcessWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    now: number,
+    options: { allowWaiting: boolean; requireSelfSuppliedInputs?: boolean } = { allowWaiting: true },
+): { targetTile: Tile; durationMs: number } | false {
+    const inputs = getAgriculturalProcessInputs(siteInfo.site);
+
+    const output = getSettlerAgriculturalProcessOutput(siteInfo);
+    if (!output || output.amount <= 0) {
+        if (options.allowWaiting) {
+            setWaiting(settler, now, { code: 'resource_depleted', tileId: siteInfo.site.tile.id });
+        }
+        return false;
+    }
+
+    const settlementId = getJobSiteSettlementId(siteInfo.site.tile);
+    const requiredInputs = options.requireSelfSuppliedInputs
+        ? inputs
+        : getRequiredAgriculturalProcessInputs(siteInfo.site, inputs);
+    const missingInput = isUnlimitedResourcesEnabled(testModeSettings)
+        ? null
+        : getMissingStoredResource(settlementId, requiredInputs);
+    if (missingInput) {
+        if (options.allowWaiting) {
+            setWaiting(settler, now, {
+                code: 'missing_input',
+                resourceType: missingInput.type,
+                amount: missingInput.amount,
+                tileId: siteInfo.site.tile.id,
+            });
+        }
+        return false;
+    }
+
+    setAgriculturalProcessWork(settler, siteInfo.site);
+    return { targetTile: siteInfo.site.tile, durationMs: AGRICULTURAL_PROCESS_SUBTASK_MS };
+}
+
+function completeAgriculturalProcessWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    now: number,
+) {
+    const inputs = getAgriculturalProcessInputs(siteInfo.site);
+    const output = getSettlerAgriculturalProcessOutput(siteInfo);
+    const settlementId = getJobSiteSettlementId(siteInfo.site.tile);
+    clearAgriculturalWork(settler);
+
+    if (!output || output.amount <= 0) {
+        return setWaiting(settler, now, { code: 'resource_depleted', tileId: siteInfo.site.tile.id });
+    }
+
+    if (!isUnlimitedResourcesEnabled(testModeSettings)) {
+        const requiredInputs = getRequiredAgriculturalProcessInputs(siteInfo.site, inputs);
+        const missingInput = getMissingStoredResource(settlementId, requiredInputs);
+        if (missingInput) {
+            return setWaiting(settler, now, {
+                code: 'missing_input',
+                resourceType: missingInput.type,
+                amount: missingInput.amount,
+                tileId: siteInfo.site.tile.id,
+            });
+        }
+
+        const storedInputs = getStoredAgriculturalProcessInputs(settlementId, siteInfo.site, inputs);
+        if (!withdrawStoredResources(settler, settlementId, storedInputs)) {
+            return setWaiting(settler, now, { code: 'missing_input', tileId: siteInfo.site.tile.id });
+        }
+    }
+
+    settler.carryingPayload = output;
+    settler.carryingKind = 'output';
+    return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now);
+}
+
+function completeAgriculturalFieldWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    action: AgriculturalFieldAction,
+    now: number,
+) {
+    const completion = completeAgriculturalFieldAction(siteInfo.site, action);
+    clearAgriculturalWork(settler);
+
+    if (completion.changed && completion.tile) {
+        broadcast({ type: 'tile:updated', tile: completion.tile } as TileUpdatedMessage);
+    }
+
+    if (completion.harvested) {
+        settler.carryingPayload = completion.harvested;
+        settler.carryingKind = 'output';
+        return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now) || completion.changed;
+    }
+
+    return setActivity(settler, 'working', now) || completion.changed || true;
+}
+
+function maybeAgriculturalWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    now: number,
+    dt: number,
+) {
+    if (!isAgriculturalJobSite(siteInfo.site)) {
+        return null;
+    }
+
+    if (settler.fieldWork && settler.fieldWork.siteTileId !== siteInfo.site.tile.id) {
+        clearAgriculturalWork(settler);
+    }
+
+    let fieldWork = resolveAgriculturalFieldAction(settler, siteInfo.site);
+    let processWork: { targetTile: Tile; durationMs: number } | null = null;
+
+    if (settler.fieldWork?.phase === 'process' && settler.fieldWork.siteTileId === siteInfo.site.tile.id) {
+        processWork = { targetTile: siteInfo.site.tile, durationMs: AGRICULTURAL_PROCESS_SUBTASK_MS };
+    } else if (settler.fieldWork && !fieldWork) {
+        clearAgriculturalWork(settler);
+    }
+
+    if (!fieldWork && !processWork) {
+        const startedProcess = maybeStartAgriculturalProcessWork(settler, siteInfo, now, {
+            allowWaiting: false,
+            requireSelfSuppliedInputs: true,
+        });
+        if (startedProcess) {
+            processWork = startedProcess;
+        }
+    }
+
+    if (!fieldWork && !processWork) {
+        fieldWork = maybeStartAgriculturalFieldWork(settler, siteInfo.site);
+    }
+
+    if (!fieldWork && !processWork) {
+        const startedProcess = maybeStartAgriculturalProcessWork(settler, siteInfo, now);
+        if (startedProcess) {
+            processWork = startedProcess;
+        } else if (settler.activity === 'waiting') {
+            return true;
+        }
+    }
+
+    if (!fieldWork && !processWork) {
+        return setWaiting(settler, now, { code: 'no_work', tileId: siteInfo.site.tile.id }) || true;
+    }
+
+    const targetTile = fieldWork?.targetTile ?? processWork?.targetTile ?? null;
+    const accessTile = getReachableWorkAccessTile(settler, targetTile);
+    if (!targetTile || !accessTile) {
+        clearAgriculturalWork(settler);
+        return setWaiting(settler, now, {
+            code: 'path_blocked',
+            tileId: targetTile?.id ?? siteInfo.site.tile.id,
+        }, {
+            action: fieldWork ? 'commute_field_work' : 'commute_job',
+            assignedWorkTileId: siteInfo.site.tile.id,
+            targetAccessTileId: targetTile?.id ?? null,
+        });
+    }
+
+    if (settler.q !== accessTile.q || settler.r !== accessTile.r) {
+        if (!startMovement(settler, accessTile, 'commuting_work', now)) {
+            clearAgriculturalWork(settler);
+            return setWaiting(settler, now, { code: 'path_blocked', tileId: accessTile.id }, {
+                action: fieldWork ? 'commute_field_work' : 'commute_job',
+                targetAccessTileId: accessTile.id,
+                assignedWorkTileId: siteInfo.site.tile.id,
+            });
+        }
+        return true;
+    }
+
+    refreshSettlerWorkPresentation(settler);
+    setActivity(settler, 'working', now);
+    settler.workProgressMs += getEffectiveSettlerCycleProgress(dt) * getSettlerWorkHappinessMultiplier(settler);
+
+    const durationMs = fieldWork?.action.durationMs ?? processWork?.durationMs ?? AGRICULTURAL_PROCESS_SUBTASK_MS;
+    if (settler.workProgressMs < durationMs) {
+        return true;
+    }
+
+    if (fieldWork) {
+        return completeAgriculturalFieldWork(settler, siteInfo, fieldWork.action, now);
+    }
+
+    return completeAgriculturalProcessWork(settler, siteInfo, now);
+}
+
+function completeForestryFieldWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    action: ForestryFieldAction,
+    now: number,
+) {
+    const completion = completeForestryFieldAction(siteInfo.site, action);
+    clearAgriculturalWork(settler);
+
+    if (completion.changed && completion.tile) {
+        broadcast({ type: 'tile:updated', tile: completion.tile } as TileUpdatedMessage);
+    }
+
+    if (completion.harvested) {
+        settler.carryingPayload = completion.harvested;
+        settler.carryingKind = 'output';
+        return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now) || completion.changed;
+    }
+
+    return setActivity(settler, 'working', now) || completion.changed || true;
+}
+
+function maybeForestryWork(
+    settler: Settler,
+    siteInfo: NonNullable<ReturnType<typeof getSiteInputsOutputs>>,
+    now: number,
+    dt: number,
+) {
+    if (!isForestryJobSite(siteInfo.site)) {
+        return null;
+    }
+
+    if (settler.fieldWork && settler.fieldWork.siteTileId !== siteInfo.site.tile.id) {
+        clearAgriculturalWork(settler);
+    }
+
+    let fieldWork = resolveForestryFieldAction(settler, siteInfo.site);
+    if (settler.fieldWork && !fieldWork) {
+        clearAgriculturalWork(settler);
+    }
+
+    if (!fieldWork) {
+        fieldWork = maybeStartForestryFieldWork(settler, siteInfo.site);
+    }
+
+    if (!fieldWork) {
+        return null;
+    }
+
+    const accessTile = getReachableWorkAccessTile(settler, fieldWork.targetTile);
+    if (!accessTile) {
+        clearAgriculturalWork(settler);
+        return setWaiting(settler, now, {
+            code: 'path_blocked',
+            tileId: fieldWork.targetTile.id,
+        }, {
+            action: 'commute_field_work',
+            assignedWorkTileId: siteInfo.site.tile.id,
+            targetAccessTileId: fieldWork.targetTile.id,
+        });
+    }
+
+    if (settler.q !== accessTile.q || settler.r !== accessTile.r) {
+        if (!startMovement(settler, accessTile, 'commuting_work', now)) {
+            clearAgriculturalWork(settler);
+            return setWaiting(settler, now, { code: 'path_blocked', tileId: accessTile.id }, {
+                action: 'commute_field_work',
+                targetAccessTileId: accessTile.id,
+                assignedWorkTileId: siteInfo.site.tile.id,
+            });
+        }
+        return true;
+    }
+
+    refreshSettlerWorkPresentation(settler);
+    setActivity(settler, 'working', now);
+    settler.workProgressMs += getEffectiveSettlerCycleProgress(dt) * getSettlerWorkHappinessMultiplier(settler);
+
+    if (settler.workProgressMs < fieldWork.action.durationMs) {
+        return true;
+    }
+
+    return completeForestryFieldWork(settler, siteInfo, fieldWork.action, now);
+}
+
 function completeWorkCycle(settler: Settler, now: number) {
     const siteInfo = getSiteInputsOutputs(settler);
     if (siteInfo?.site.building.jobKind === 'study') {
@@ -2895,14 +3425,13 @@ function completeWorkCycle(settler: Settler, now: number) {
     }
 
     settler.workProgressMs = 0;
-    const fieldChanged = maintainJobSiteFields(siteInfo.site);
     settler.carryingPayload = cloneResource(siteInfo.output) ?? undefined;
     settler.carryingKind = settler.carryingPayload ? 'output' : null;
     if (consumeTileProductionBoost(siteInfo.site.tile)) {
         broadcast({ type: 'tile:updated', tile: siteInfo.site.tile } as TileUpdatedMessage);
     }
 
-    return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now) || fieldChanged;
+    return maybeDeliverOutput(settler, now) || setActivity(settler, 'delivering', now);
 }
 
 function maybeWork(settler: Settler, now: number, dt: number) {
@@ -2979,13 +3508,28 @@ function maybeWork(settler: Settler, now: number, dt: number) {
 
     const siteInfo = getSiteInputsOutputs(settler);
     const workTile = siteInfo?.site.tile ?? null;
-    const accessTile = getWorkAccessTile(settler, workTile);
 
-    if (!siteInfo || !accessTile || !workTile || !isTileActive(workTile) || isBuildingOfflineFromCondition(workTile)) {
+    if (!siteInfo || !workTile || !isTileActive(workTile) || isBuildingOfflineFromCondition(workTile)) {
         if (settler.assignedWorkTileId && (isBuildingOfflineFromCondition(workTile) || !isTileActive(workTile))) {
             const progressReset = resetSettlerWorkProgress(settler);
             return setWaiting(settler, now, { code: 'site_offline', tileId: settler.assignedWorkTileId }) || progressReset;
         }
+        clearSettlerAssignment(settler);
+        return false;
+    }
+
+    const agriculturalWork = maybeAgriculturalWork(settler, siteInfo, now, dt);
+    if (agriculturalWork !== null) {
+        return agriculturalWork;
+    }
+
+    const forestryWork = maybeForestryWork(settler, siteInfo, now, dt);
+    if (forestryWork !== null) {
+        return forestryWork;
+    }
+
+    const accessTile = getWorkAccessTile(settler, workTile);
+    if (!accessTile) {
         clearSettlerAssignment(settler);
         return false;
     }
@@ -3013,14 +3557,7 @@ function maybeWork(settler: Settler, now: number, dt: number) {
 
     refreshSettlerWorkPresentation(settler);
     setActivity(settler, 'working', now);
-    const happinessMultiplier = settler.happiness >= 80
-        ? 1.1
-        : settler.happiness >= 50
-            ? 1
-            : settler.happiness >= 20
-                ? 0.8
-                : 0.6;
-    settler.workProgressMs += getEffectiveSettlerCycleProgress(dt) * happinessMultiplier;
+    settler.workProgressMs += getEffectiveSettlerCycleProgress(dt) * getSettlerWorkHappinessMultiplier(settler);
 
     if (settler.workProgressMs < Math.max(1, siteInfo.site.building.cycleMs ?? SETTLER_MEAL_INTERVAL_MS)) {
         return true;

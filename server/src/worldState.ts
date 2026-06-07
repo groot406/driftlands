@@ -349,6 +349,7 @@ function serializeSettler(settler: Settler): Settler {
     guardTowerTileId: settler.guardTowerTileId ?? null,
     workTileId: settler.workTileId ?? null,
     hiddenWhileWorking: settler.hiddenWhileWorking ?? null,
+    fieldWork: settler.fieldWork ? { ...settler.fieldWork } : null,
     activity: settler.activity,
     blockerReason: settler.blockerReason ? { ...settler.blockerReason } : null,
     stateSinceMs: settler.stateSinceMs,

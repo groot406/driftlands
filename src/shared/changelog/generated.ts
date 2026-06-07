@@ -124,5 +124,84 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Introduced client update notification system for seamless patching."
     ],
     "gitHead": "8242978ab5e2"
+  },
+  {
+    "id": "both-1780824712848-abcf7f97420d",
+    "releasedAt": 1780824712848,
+    "target": "both",
+    "title": "Guarded Watchtower Defense Update",
+    "bullets": [
+      "Introduced side quest state management with extensive tests for improved quest handling.",
+      "Added new client update modal and enhanced heroes bar interface for better user experience.",
+      "Implemented fieldwork and job site runtime improvements with multiple bug fixes.",
+      "Refined hero skills and rescue hero task interactions for deeper gameplay strategy.",
+      "Integrated client update watcher and sound service enhancements for smoother gameplay."
+    ],
+    "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "both-1780827498129-abcf7f97420d",
+    "releasedAt": 1780827498129,
+    "target": "both",
+    "title": "Driftlands Patch: Stability and Gameplay Enhancements",
+    "bullets": [
+      "Improved settler and side quest systems for smoother gameplay.",
+      "Enhanced fieldwork and job system mechanics with added tests.",
+      "Fixed multiple bugs to increase overall game stability.",
+      "Updated side quest definitions for better quest handling."
+    ],
+    "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "both-1780834559806-abcf7f97420d",
+    "releasedAt": 1780834559806,
+    "target": "both",
+    "title": "Fieldwork and Job System Improvements",
+    "bullets": [
+      "Enhanced fieldwork mechanics with improved settler behavior and task handling.",
+      "Refined job system for better task assignments and population management.",
+      "Updated UI elements in Game GUI and Tutorial Panel for clearer guidance.",
+      "Fixed multiple issues with settler and side quest systems to stabilize gameplay."
+    ],
+    "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "backend-1780837869812-abcf7f97420d",
+    "releasedAt": 1780837869812,
+    "target": "backend",
+    "title": "Backend Improvements and Side Quest Updates",
+    "bullets": [
+      "Major backend refactor improves job and settler systems for better performance.",
+      "Side quest state and store updated with improved task handling and tests.",
+      "Enhanced field work system with updated logic and test coverage.",
+      "Various UI components improved for smoother gameplay experience."
+    ],
+    "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "backend-1780838690169-abcf7f97420d",
+    "releasedAt": 1780838690169,
+    "target": "backend",
+    "title": "Backend Improvements and Fixes",
+    "bullets": [
+      "Optimized backend systems for better ore extraction and processing.",
+      "Improved population and settler system stability and performance.",
+      "Streamlined job and field work systems with enhanced task handling.",
+      "Fixed various backend bugs to enhance overall game stability."
+    ],
+    "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "backend-1780839315229-abcf7f97420d",
+    "releasedAt": 1780839315229,
+    "target": "backend",
+    "title": "Backend Update: Foet System Improvements",
+    "bullets": [
+      "Added and refined forestry work system for better backend job handling.",
+      "Improved settler and population system tests for stability.",
+      "Enhanced side quest state and store with new logic and tests.",
+      "Updated job system with extensive test coverage and fixes."
+    ],
+    "gitHead": "abcf7f97420d"
   }
 ];

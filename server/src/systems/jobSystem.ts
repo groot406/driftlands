@@ -12,13 +12,19 @@ import { listResolvedJobSites, resolveSiteState } from './jobSiteRuntime';
 
 function getAvailableWorkers() {
     const population = getPopulationState();
-    return Math.max(0, Math.min(population.current, settlers.length));
+    const civilianSettlers = settlers.filter((settler) => !isGuardSettler(settler));
+    return Math.max(0, Math.min(population.current, civilianSettlers.length));
+}
+
+function isGuardSettler(settler: (typeof settlers)[number]) {
+    return settler.assignedRole === 'guard' && !!settler.guardTowerTileId;
 }
 
 function createSnapshot(): WorkforceSnapshot {
     const sites = listResolvedJobSites();
     const availableWorkers = getAvailableWorkers();
     const assignableSettlers = settlers
+        .filter((settler) => !isGuardSettler(settler))
         .slice()
         .sort((a, b) => a.id.localeCompare(b.id))
         .slice(0, availableWorkers);

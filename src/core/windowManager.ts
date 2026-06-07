@@ -56,7 +56,7 @@ export function openWindow(windowId: WindowId): void {
   // Insert in correct position based on priority
   const insertIndex = windowStack.value.findIndex(id => {
     const otherConfig = windows.value.get(id);
-    return otherConfig && otherConfig.priority < config.priority;
+    return otherConfig && otherConfig.priority > config.priority;
   });
 
   if (insertIndex === -1) {
@@ -111,6 +111,7 @@ export const WINDOW_IDS = {
   SETTLER_MODAL: 'settler-modal',
   POPULATION_MODAL: 'population-modal',
   RESOURCE_MODAL: 'resource-modal',
+  DOCUMENTATION_MODAL: 'documentation-modal',
   DEBUG_TOOLS_PANEL: 'debug-tools-panel',
 } as const;
 
@@ -178,6 +179,12 @@ registerWindow({
 registerWindow({
   id: WINDOW_IDS.RESOURCE_MODAL,
   priority: 85,
+  blocksKeyboard: true,
+});
+
+registerWindow({
+  id: WINDOW_IDS.DOCUMENTATION_MODAL,
+  priority: 170,
   blocksKeyboard: true,
 });
 

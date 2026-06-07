@@ -271,7 +271,7 @@ onUnmounted(() => {
   position: relative;
   box-sizing: border-box;
   width: min(49rem, calc(100vw - 32px));
-  max-height: min(86vh, 36rem);
+  max-height: min(90vh, 44rem);
   display: flex;
   overflow: hidden;
   padding: 1.25rem 1.35rem 1.1rem;

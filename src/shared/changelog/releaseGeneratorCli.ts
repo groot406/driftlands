@@ -11,7 +11,9 @@ import { generatedChangelogEntries } from './generated.ts';
 import {
   appendChangelogEntry,
   applyChangelogDraftAction,
+  buildChangelogGenerationPrompt,
   buildManualChangelogEntry,
+  parseChangelogSeedNotes,
   serializeClientVersionManifest,
   type ChangelogDraftContent,
   serializeGeneratedChangelog,
@@ -33,21 +35,17 @@ async function main() {
   const gitHead = git(['rev-parse', '--short=12', 'HEAD']) || 'worktree';
   const releasedAt = Date.now();
   const summary = collectChangeSummary(target);
-  let content: { title: string; bullets: string[] } | null = null;
+  let seedNotes: string[] = [];
+  let content = readEnvChangelogContent();
 
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      content = await generateWithOpenAI(target, summary);
-    } catch (error) {
-      console.warn(`[changelog] AI generation failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  if (content) {
+    seedNotes = content.bullets.slice();
+  } else {
+    seedNotes = await promptChangelogSeedNotes(target);
+    content = await draftChangelogFromSeed(target, summary, seedNotes);
   }
 
-  if (!content) {
-    content = await promptManualChangelog(target, summary);
-  }
-
-  content = await reviewChangelogDraft(target, content, summary);
+  content = await reviewChangelogDraft(target, content, summary, seedNotes);
   if (!content) {
     console.error('[changelog] release changelog was not approved; aborting release.');
     process.exitCode = 1;
@@ -127,7 +125,31 @@ function isRelevantTarget(target: ChangelogTarget, entryTarget: ChangelogTarget)
   return entryTarget === target || entryTarget === 'both';
 }
 
-async function generateWithOpenAI(target: ChangelogTarget, summary: string) {
+async function draftChangelogFromSeed(
+  target: ChangelogTarget,
+  summary: string,
+  seedNotes: string[],
+  previousDraft?: ChangelogDraftContent | null,
+  revisionPrompt?: string | null,
+) {
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      return await generateWithOpenAI(target, summary, seedNotes, previousDraft, revisionPrompt);
+    } catch (error) {
+      console.warn(`[changelog] AI generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return promptManualChangelog(target, summary, seedNotes);
+}
+
+async function generateWithOpenAI(
+  target: ChangelogTarget,
+  summary: string,
+  seedNotes: string[],
+  previousDraft?: ChangelogDraftContent | null,
+  revisionPrompt?: string | null,
+) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -138,11 +160,19 @@ async function generateWithOpenAI(target: ChangelogTarget, summary: string) {
       model: process.env.OPENAI_CHANGELOG_MODEL || 'gpt-4.1-mini',
       instructions: [
         'Write concise Driftlands player-facing release notes.',
-        'Use only the supplied git summary. Do not mention commits, files, or internal tooling.',
+        'Use the releaser supplied bulletpoints/keywords as the primary source.',
+        'Use git context only to sanity check wording; do not add unrelated git changes.',
+        'Do not mention commits, files, AI, prompts, or internal tooling.',
         'Return strict JSON with shape {"title": string, "bullets": string[]}.',
         'Use 2 to 5 bullets. Keep each bullet under 120 characters.',
       ].join('\n'),
-      input: `Release target: ${target}\n\n${summary}`,
+      input: buildChangelogGenerationPrompt({
+        target,
+        seedNotes,
+        gitSummary: summary,
+        previousDraft,
+        revisionPrompt,
+      }),
       max_output_tokens: 600,
     }),
   });
@@ -180,19 +210,66 @@ function extractResponseText(payload: any) {
   return parts.join('\n').trim();
 }
 
-async function promptManualChangelog(target: ChangelogTarget, summary: string) {
+function readEnvChangelogContent(): ChangelogDraftContent | null {
   const envTitle = process.env.DRIFTLANDS_CHANGELOG_TITLE?.trim();
   const envBullets = process.env.DRIFTLANDS_CHANGELOG_BULLETS?.split('|').map((bullet) => bullet.trim()).filter(Boolean);
   if (envTitle && envBullets?.length) {
     return { title: envTitle, bullets: envBullets };
   }
 
+  return null;
+}
+
+async function promptChangelogSeedNotes(target: ChangelogTarget) {
+  const envNotes = parseChangelogSeedNotes(process.env.DRIFTLANDS_CHANGELOG_NOTES ?? '');
+  if (envNotes.length) {
+    return envNotes;
+  }
+
+  const envBullets = parseChangelogSeedNotes(process.env.DRIFTLANDS_CHANGELOG_BULLETS ?? '');
+  if (envBullets.length) {
+    return envBullets;
+  }
+
+  if (!input.isTTY || !output.isTTY) {
+    throw new Error('DRIFTLANDS_CHANGELOG_NOTES is not set and changelog seed input is unavailable outside an interactive terminal.');
+  }
+
+  const rl = readline.createInterface({ input, output });
+  try {
+    console.log(`\n[changelog] ${target} release notes`);
+    console.log('[changelog] Enter bulletpoints or keywords. Separate items with |, or press Enter after each item.');
+    console.log('[changelog] Submit an empty line when done.\n');
+    const notes: string[] = [];
+    while (true) {
+      const note = (await rl.question(`[changelog] Note ${notes.length + 1}: `)).trim();
+      if (!note) {
+        break;
+      }
+      notes.push(...parseChangelogSeedNotes(note));
+    }
+
+    if (!notes.length) {
+      throw new Error('No changelog bulletpoints or keywords were provided.');
+    }
+
+    return notes;
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptManualChangelog(target: ChangelogTarget, summary: string, seedNotes: string[]) {
   if (!input.isTTY || !output.isTTY) {
     throw new Error('OPENAI_API_KEY is not set and manual changelog input is unavailable outside an interactive terminal.');
   }
 
-  console.log('\n[changelog] AI generation is unavailable. Please write player-facing release notes.');
-  console.log('[changelog] Git summary follows:\n');
+  console.log('\n[changelog] AI generation is unavailable. Please write player-facing release notes from your notes.');
+  console.log('[changelog] Your notes:');
+  for (const note of seedNotes) {
+    console.log(`[changelog] - ${note}`);
+  }
+  console.log('\n[changelog] Git context follows:\n');
   console.log(summary);
   console.log('');
 
@@ -213,6 +290,7 @@ async function reviewChangelogDraft(
   target: ChangelogTarget,
   content: ChangelogDraftContent,
   summary: string,
+  seedNotes: string[],
 ): Promise<ChangelogDraftContent | null> {
   if (isTruthy(process.env.DRIFTLANDS_CHANGELOG_ASSUME_APPROVED) || !input.isTTY || !output.isTTY) {
     return applyChangelogDraftAction(content, { type: 'approve' }).content;
@@ -224,7 +302,7 @@ async function reviewChangelogDraft(
   try {
     while (true) {
       printChangelogDraft(target, draft);
-      const answer = (await rl.question('[changelog] Approve, edit title, edit bullets, show summary, or abort? [a/t/b/s/x]: '))
+      const answer = (await rl.question('[changelog] Approve, suggest changes, show context, or abort? [a/r/s/x]: '))
         .trim()
         .toLowerCase();
 
@@ -232,27 +310,22 @@ async function reviewChangelogDraft(
         return applyChangelogDraftAction(draft, { type: 'approve' }).content;
       }
 
-      if (answer === 't' || answer === 'title') {
-        const title = await rl.question(`[changelog] Title [${draft.title}]: `);
-        draft = applyChangelogDraftAction(draft, {
-          type: 'edit',
-          title: title.trim() || draft.title,
-        }).content;
-        continue;
-      }
-
-      if (answer === 'b' || answer === 'bullets') {
-        console.log('[changelog] Enter bullets separated by |');
-        const bullets = await rl.question(`[changelog] Bullets [${draft.bullets.join(' | ')}]: `);
-        draft = applyChangelogDraftAction(draft, {
-          type: 'edit',
-          bullets: parseBulletInput(bullets, draft.bullets),
-        }).content;
+      if (answer === 'r' || answer === 'revise' || answer === 'revision' || answer === 'suggest') {
+        const revisionPrompt = (await rl.question('[changelog] What should change? ')).trim();
+        if (!revisionPrompt) {
+          console.log('[changelog] No revision prompt entered; keeping current draft.');
+          continue;
+        }
+        draft = await draftChangelogFromSeed(target, summary, seedNotes, draft, revisionPrompt);
         continue;
       }
 
       if (answer === 's' || answer === 'summary') {
-        console.log('\n[changelog] Git summary used for this draft:\n');
+        console.log('\n[changelog] Your source notes:');
+        for (const note of seedNotes) {
+          console.log(`[changelog] - ${note}`);
+        }
+        console.log('\n[changelog] Git context used for sanity checking:\n');
         console.log(summary);
         console.log('');
         continue;
@@ -262,7 +335,7 @@ async function reviewChangelogDraft(
         return null;
       }
 
-      console.log('[changelog] Please choose a, t, b, s, or x.');
+      console.log('[changelog] Please choose a, r, s, or x.');
     }
   } finally {
     rl.close();
@@ -277,11 +350,6 @@ function printChangelogDraft(target: ChangelogTarget, content: ChangelogDraftCon
     console.log(`[changelog] - ${bullet}`);
   }
   console.log('');
-}
-
-function parseBulletInput(value: string, fallback: string[]) {
-  const bullets = value.split('|').map((bullet) => bullet.trim()).filter(Boolean);
-  return bullets.length ? bullets : fallback;
 }
 
 function isTruthy(value: unknown) {

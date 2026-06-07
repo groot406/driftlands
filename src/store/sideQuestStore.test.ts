@@ -18,6 +18,7 @@ import { depositResourceToStorage, resetResourceState } from './resourceStore.ts
 import { runSnapshot, runVersion } from './runStore.ts';
 import { addResourcesToTask, boostTaskProgress, loadTasks, startTask } from './taskStore.ts';
 import {
+  activeSideQuests,
   getActiveSideQuestForTask,
   initializeSideQuestRuntime,
   resetSideQuests,
@@ -312,6 +313,33 @@ test('rescue task is available only for active side quest tiles and carries ques
   assert.equal(getActiveSideQuestForTask(tile.id, RESCUE_HERO_TASK_KEY)?.id, quest.id);
 });
 
+test('active rescue quest expires after its time limit and does not respawn', () => {
+  const quest = setupSideQuestWorld();
+  emitGameplayEvent({
+    type: 'task:completed',
+    taskType: 'explore',
+    tileId: quest.signalTileId,
+    participantIds: ['h1'],
+  });
+
+  const tile = tileIndex[quest.signalTileId]!;
+  tile.discovered = true;
+  tile.terrain = 'plains';
+
+  assert.equal(quest.status, 'active');
+  assert.equal(typeof quest.expiresAt, 'number');
+
+  nowMs = quest.expiresAt! + 1;
+  syncSideQuestSignals();
+
+  const rescueTask = getTaskDefinition(RESCUE_HERO_TASK_KEY);
+  assert.ok(rescueTask);
+  assert.equal(quest.status, 'expired');
+  assert.equal(activeSideQuests.value.length, 0);
+  assert.equal(rescueTask.canStart(tile, heroes[0]!), false);
+  assert.equal(sideQuestState.instances.length, 1);
+});
+
 test('starting and completing the rescue task uses supplies and adds the rescued hero', () => {
   const quest = setupSideQuestWorld();
   emitGameplayEvent({
@@ -347,6 +375,34 @@ test('starting and completing the rescue task uses supplies and adds the rescued
   assert.ok(rescuedHero);
   assert.equal(rescuedHero.name, 'Ren');
   assert.equal(rescuedHero.playerId, 'player-1');
+});
+
+test('claimed rescue hero prevents Distant Smoke from spawning again', () => {
+  const quest = setupSideQuestWorld();
+  emitGameplayEvent({
+    type: 'task:completed',
+    taskType: 'explore',
+    tileId: quest.signalTileId,
+    participantIds: ['h1'],
+  });
+
+  emitGameplayEvent({
+    type: 'task:completed',
+    taskType: RESCUE_HERO_TASK_KEY,
+    tileId: quest.signalTileId,
+    participantIds: ['h1'],
+  });
+
+  const rescuedHeroCount = heroes.filter((hero) => hero.id.includes('trailbreaker_ren')).length;
+  assert.equal(rescuedHeroCount, 1);
+
+  resetSideQuests();
+  syncSideQuestSignals();
+  nowMs += 8 * 60_000;
+  syncSideQuestSignals();
+
+  assert.equal(sideQuestState.instances.length, 0);
+  assert.equal(heroes.filter((hero) => hero.id.includes('trailbreaker_ren')).length, 1);
 });
 
 test('starting rescue on an inactive frontier tile begins supply fetching', () => {

@@ -6,7 +6,7 @@ import type { Settler } from '../../../src/shared/game/types/Settler';
 import { loadWorld, tileIndex } from '../../../src/shared/game/world';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
-import { depositResourceToStorage, resetResourceState } from '../../../src/shared/game/state/resourceStore';
+import { depositResourceToStorage, resetResourceState, resourceInventory } from '../../../src/shared/game/state/resourceStore';
 import { resetSettlementSupportState } from '../../../src/shared/game/state/settlementSupportStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
@@ -125,7 +125,7 @@ test('settler and hunger population broadcasts are throttled while continuous hu
     }],
   });
   loadSettlers([
-    createSettler({ id: 'settler-1', settlementId: '0,0', hungerMs: 60_000 }),
+    createSettler({ id: 'settler-1', settlementId: '0,0', hungerMs: 180_000 }),
   ]);
   settlerSystem.init();
 
@@ -392,6 +392,72 @@ test('settlers prioritize shopping for home goods before pub visits', () => {
   assert.equal(tileIndex['2,0']?.houseGoods?.silk, 1);
 });
 
+test('each pub visitor consumes one ordered drink from stock', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', variant: 'plains_pub', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 3,
+    max: 15,
+    beds: 3,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 3,
+      max: 15,
+      beds: 3,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      happiness: 40,
+      drinkPreference: 'beer',
+    }),
+    createSettler({
+      id: 'settler-2',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      happiness: 45,
+      drinkPreference: 'beer',
+    }),
+    createSettler({
+      id: 'publican',
+      q: 1,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+    }),
+  ]);
+  depositResourceToStorage('0,0', 'beer', 2);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'socializing');
+  assert.equal(settlers[1]?.activity, 'socializing');
+  assert.equal(resourceInventory.beer, 0);
+});
+
 test('shop venue movement reuses the reachable access path', () => {
   const pathEvents: Array<{ source?: string; cacheHit?: boolean }> = [];
   configurePathTelemetry((event) => {
@@ -649,7 +715,7 @@ test('hungry settlers choose the nearest reachable food storehouse', () => {
       q: 0,
       r: 0,
       settlementId: '0,0',
-      hungerMs: 90_000,
+      hungerMs: 180_000,
     }),
   ]);
   depositResourceToStorage('1,0', 'meat', 1);
@@ -701,7 +767,7 @@ test('hungry settlers skip unreachable closer food storage for a reachable sourc
       q: 0,
       r: 0,
       settlementId: '0,0',
-      hungerMs: 90_000,
+      hungerMs: 180_000,
     }),
   ]);
   depositResourceToStorage('2,0', 'meat', 1);
@@ -712,6 +778,55 @@ test('hungry settlers skip unreachable closer food storage for a reachable sourc
 
   assert.equal(settlers[0]?.activity, 'fetching_food');
   assert.deepEqual(settlers[0]?.movement?.target, { q: 0, r: 3 });
+});
+
+test('hungry settlers can cross physically reachable tiles even when settlement control is stale', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: 'other', ownerSettlementId: 'other' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_food_storehouse', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 1,
+    max: 15,
+    beds: 1,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 1,
+      max: 15,
+      beds: 1,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers([
+    createSettler({
+      id: 'settler-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      hungerMs: 180_000,
+    }),
+  ]);
+  depositResourceToStorage('2,0', 'meat', 1);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers[0]?.activity, 'fetching_food');
+  assert.deepEqual(settlers[0]?.movement?.target, { q: 2, r: 0 });
+  assert.equal(settlers[0]?.blockerReason ?? null, null);
 });
 
 test('blocked food reachability is rejected before pathfinding while cooldown holds', () => {
@@ -754,7 +869,7 @@ test('blocked food reachability is rejected before pathfinding while cooldown ho
       q: 0,
       r: 0,
       settlementId: '0,0',
-      hungerMs: 90_000,
+      hungerMs: 180_000,
     }),
   ]);
   depositResourceToStorage('2,0', 'meat', 1);
@@ -808,7 +923,7 @@ test('blocked food reachability waits across several planning passes without pat
       q: 0,
       r: 0,
       settlementId: '0,0',
-      hungerMs: 90_000,
+      hungerMs: 180_000,
     }),
   ]);
   depositResourceToStorage('2,0', 'meat', 1);
@@ -1191,7 +1306,7 @@ test('settlers reuse a cached fixed route for repeated home commutes', () => {
       assignedWorkTileId: '2,0',
       assignedRole: 'job',
       activity: 'working',
-      fatigueMs: 3 * 60_000,
+      fatigueMs: 10 * 60_000,
     }),
   ]);
   settlerSystem.init();
@@ -1203,7 +1318,7 @@ test('settlers reuse a cached fixed route for repeated home commutes', () => {
   settlers[0]!.r = 0;
   settlers[0]!.activity = 'working';
   settlers[0]!.movement = undefined;
-  settlers[0]!.fatigueMs = 3 * 60_000;
+  settlers[0]!.fatigueMs = 10 * 60_000;
 
   tickAt(2_000, 100);
 
@@ -1254,7 +1369,7 @@ test('settlers share cached fixed routes across matching commutes', () => {
       assignedWorkTileId: '2,0',
       assignedRole: 'job',
       activity: 'working',
-      fatigueMs: 3 * 60_000,
+      fatigueMs: 10 * 60_000,
     }),
     createSettler({
       id: 'settler-2',
@@ -1264,7 +1379,7 @@ test('settlers share cached fixed routes across matching commutes', () => {
       assignedWorkTileId: '2,0',
       assignedRole: 'job',
       activity: 'working',
-      fatigueMs: 3 * 60_000,
+      fatigueMs: 10 * 60_000,
     }),
   ]);
   settlerSystem.init();
