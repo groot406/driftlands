@@ -19,13 +19,16 @@ import { getStoryHeroTemplate, type StoryHeroId } from '../../../src/shared/stor
 import { buildLooperlandsPlayerId } from '../../../src/shared/looperlands';
 import { noteActivePlayerCount, noteFirstActivePlayer } from '../state/attendanceState';
 import { resolveStewardshipAfterAbsence } from '../systems/stewardshipSystem';
+import { discordChatLogger, type DiscordChatLoggerLike } from '../discord/discordChatLogger';
 
 export class ServerPlayerHandler {
   private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket, spectator: boolean }>();
   private readonly io: Server;
+  private readonly chatLogger: DiscordChatLoggerLike;
 
-  constructor(io: Server) {
+  constructor(io: Server, chatLogger: DiscordChatLoggerLike = discordChatLogger) {
     this.io = io;
+    this.chatLogger = chatLogger;
   }
 
   init(): void {
@@ -255,6 +258,14 @@ export class ServerPlayerHandler {
     socket.broadcast.emit('message', {
       ...baseMessage,
       isOwnMessage: false,
+    });
+
+    void this.chatLogger.logChatMessage({
+      playerId: baseMessage.playerId,
+      playerName: baseMessage.playerName,
+      message: baseMessage.message,
+    }).catch((error) => {
+      console.warn('Failed to hand Driftlands chat message to Discord logger.', error);
     });
   }
 

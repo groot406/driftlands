@@ -78,7 +78,7 @@ import {
     isUnlimitedResourcesEnabled,
     testModeSettings,
 } from '../../../src/shared/game/testMode.ts';
-import { canSettlementUseOpenBorderTransit, isRaidableMilitaryTarget, isWatchtowerTile } from '../../../src/shared/game/military.ts';
+import { RAIDER_COMBAT_HEALTH_MAX, canSettlementUseOpenBorderTransit, isRaidableMilitaryTarget, isWatchtowerTile } from '../../../src/shared/game/military.ts';
 import { HUNGER_FOOD_TYPES, TRADE_GOOD_TYPES, getHungerFoodMealValue, getResourceHungerRelief, getTradeGoodHappinessGain, isHungerFoodResource } from '../../../src/shared/game/resourceDefinitions.ts';
 
 const pathService = new PathService();
@@ -86,6 +86,7 @@ const pathService = new PathService();
 const SETTLER_MEAL_INTERVAL_MS = 60_000;
 const SETTLER_FOOD_SEEK_MS = 90_000;
 const SETTLER_STARVATION_MS = HUNGER_GRACE_MINUTES * 60_000;
+const SETTLER_STARVATION_DEATH_INTERVAL_MS = SETTLER_MEAL_INTERVAL_MS;
 const SETTLER_MAX_ACTIVE_MS = 3 * 60_000;
 const SETTLER_SLEEP_MS = 45_000;
 const POPULATION_GROWTH_INTERVAL_MS = 60_000;
@@ -119,6 +120,7 @@ const SOCIAL_DRINKS = [
 
 let nextSettlerId = 1;
 let lastGrowthCheckMsPerSettlement: Record<string, number> = {};
+let lastStarvationLossMsBySettlement = new Map<string, number>();
 let lastSettlerBroadcastMs = Number.NEGATIVE_INFINITY;
 let settlerBroadcastPending = false;
 let lastPopulationBroadcastMs = Number.NEGATIVE_INFINITY;
@@ -165,6 +167,13 @@ interface SettlerComponentCacheEntry {
 interface SettlerPlanningCacheEntry {
     accumulatedDt: number;
     nextPlanAtMs: number;
+}
+
+interface StarvationCandidate {
+    id: string;
+    settlementId: string | null;
+    starvationMs: number;
+    canProduceFood: boolean;
 }
 
 const settlerRouteCache = new Map<string, SettlerRouteCacheEntry[]>();
@@ -341,6 +350,49 @@ function getGuardTowerAccessTile(
         ?? (isTileWalkable(tower) ? tower : null);
 }
 
+function listAdjacentWalkableTiles(tile: Tile | null | undefined) {
+    if (!tile) {
+        return [];
+    }
+
+    return SETTLER_ROUTE_SIDES
+        .map(({ dq, dr }) => tileIndex[`${tile.q + dq},${tile.r + dr}`] ?? null)
+        .filter((candidate): candidate is Tile => !!candidate?.discovered && isTileWalkable(candidate))
+        .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function getGuardRaidAccessTiles(
+    settlementId: string | null | undefined,
+    target: Tile | null | undefined,
+) {
+    const adjacentTiles = listAdjacentWalkableTiles(target);
+    if (adjacentTiles.length > 0) {
+        return adjacentTiles;
+    }
+
+    const fallback = getGuardTowerAccessTile(settlementId, target, true);
+    return fallback ? [fallback] : [];
+}
+
+function canReachGuardAccessTile(homeTile: Tile | null | undefined, accessTile: Tile | null | undefined) {
+    if (!homeTile || !accessTile) {
+        return false;
+    }
+
+    if (homeTile.q === accessTile.q && homeTile.r === accessTile.r) {
+        return true;
+    }
+
+    return pathService.findWalkablePath(homeTile.q, homeTile.r, accessTile.q, accessTile.r, {
+        telemetrySource: 'settler_guard_reachability',
+    }).length > 0;
+}
+
+function ensureRaiderCombatHealth(raider: Settler) {
+    raider.combatHealthMax = Math.max(1, raider.combatHealthMax ?? RAIDER_COMBAT_HEALTH_MAX);
+    raider.combatHealth = Math.max(0, Math.min(raider.combatHealthMax, raider.combatHealth ?? raider.combatHealthMax));
+}
+
 function createGuardSettler(now: number, settlementId: string, tower: Tile, accessTile: Tile, originTile?: Tile | null): Settler {
     const guard = createSettler(now, settlementId);
     const homeTile = originTile?.discovered && isTileWalkable(originTile) ? originTile : getHomeFallbackTile(settlementId);
@@ -354,6 +406,10 @@ function createGuardSettler(now: number, settlementId: string, tower: Tile, acce
     guard.assignedWorkTileId = accessTile.id;
     guard.workTileId = tower.id;
     guard.hiddenWhileWorking = false;
+    if (tower.ownerSettlementId !== settlementId) {
+        guard.combatHealthMax = RAIDER_COMBAT_HEALTH_MAX;
+        guard.combatHealth = RAIDER_COMBAT_HEALTH_MAX;
+    }
     return guard;
 }
 
@@ -2039,23 +2095,24 @@ function reconcileMilitaryGuards(now: number) {
             continue;
         }
 
-        const accessTile = getGuardTowerAccessTile(settlementId, targetTower, true);
         const homeTile = getHomeFallbackTile(settlementId);
-        const hasPath = !!accessTile && !!homeTile
-            && pathService.findWalkablePath(homeTile.q, homeTile.r, accessTile.q, accessTile.r, {
-                telemetrySource: 'settler_guard_reachability',
-            }).length > 0;
+        const accessTiles = getGuardRaidAccessTiles(settlementId, targetTower);
+        const reachableAccessTiles = accessTiles.filter((accessTile) => canReachGuardAccessTile(homeTile, accessTile));
+        const formationAccessTiles = reachableAccessTiles.length > 0 ? reachableAccessTiles : accessTiles;
+        const hasPath = reachableAccessTiles.length > 0;
         const nextBlockedReason = hasPath ? null : 'No path to the raid target.';
         if ((townCenter.raidBlockedReason ?? null) !== nextBlockedReason) {
             townCenter.raidBlockedReason = nextBlockedReason;
             broadcastTileUpdate(townCenter);
         }
 
-        for (const raider of currentRaiders) {
+        for (const [index, raider] of currentRaiders.entries()) {
             if (raider.guardTowerTileId !== targetTower.id) {
                 raider.guardTowerTileId = targetTower.id;
                 changed = true;
             }
+            ensureRaiderCombatHealth(raider);
+            const accessTile = formationAccessTiles[index % formationAccessTiles.length] ?? null;
             if (accessTile && raider.assignedWorkTileId !== accessTile.id) {
                 raider.assignedWorkTileId = accessTile.id;
                 resetSettlerWorkProgress(raider);
@@ -2065,7 +2122,7 @@ function reconcileMilitaryGuards(now: number) {
         }
 
         for (let index = currentRaiders.length; index < desiredRaiders; index++) {
-            const fallbackAccessTile = accessTile ?? homeTile;
+            const fallbackAccessTile = formationAccessTiles[index % formationAccessTiles.length] ?? homeTile;
             if (!fallbackAccessTile) {
                 break;
             }
@@ -3049,6 +3106,57 @@ function broadcastPopulationIncident(message: Omit<PopulationIncidentMessage, 't
     } satisfies PopulationIncidentMessage);
 }
 
+function getStarvationSettlementKey(settlementId: string | null | undefined) {
+    return settlementId ?? '__unsettled__';
+}
+
+function canLoseSettlerToStarvation(settlementId: string | null | undefined, now: number) {
+    const lastLossMs = lastStarvationLossMsBySettlement.get(getStarvationSettlementKey(settlementId));
+    return typeof lastLossMs !== 'number' || now - lastLossMs >= SETTLER_STARVATION_DEATH_INTERVAL_MS;
+}
+
+function recordStarvationLoss(settlementId: string | null | undefined, now: number) {
+    lastStarvationLossMsBySettlement.set(getStarvationSettlementKey(settlementId), now);
+}
+
+function compareStarvationCandidates(left: StarvationCandidate, right: StarvationCandidate) {
+    if (left.canProduceFood !== right.canProduceFood) {
+        return left.canProduceFood ? 1 : -1;
+    }
+
+    const starvationDelta = right.starvationMs - left.starvationMs;
+    if (starvationDelta !== 0) {
+        return starvationDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+}
+
+function selectStarvationLosses(candidates: StarvationCandidate[], now: number) {
+    const bySettlement = new Map<string, StarvationCandidate[]>();
+    for (const candidate of candidates) {
+        if (!canLoseSettlerToStarvation(candidate.settlementId, now)) {
+            continue;
+        }
+
+        const key = getStarvationSettlementKey(candidate.settlementId);
+        const settlementCandidates = bySettlement.get(key) ?? [];
+        settlementCandidates.push(candidate);
+        bySettlement.set(key, settlementCandidates);
+    }
+
+    const selected: StarvationCandidate[] = [];
+    for (const settlementCandidates of bySettlement.values()) {
+        settlementCandidates.sort(compareStarvationCandidates);
+        const candidate = settlementCandidates[0];
+        if (candidate) {
+            selected.push(candidate);
+        }
+    }
+
+    return selected;
+}
+
 function tryGrowPopulation(now: number) {
     const population = getPopulationState();
     if (population.settlements.length > 0) {
@@ -3102,6 +3210,7 @@ export const settlerSystem = {
     init: () => {
         refreshSettlerIdCounter();
         lastGrowthCheckMsPerSettlement = {};
+        lastStarvationLossMsBySettlement = new Map();
         settlerRouteCache.clear();
         settlerReachabilityFailureCache.clear();
         settlerPlanningCache.clear();
@@ -3126,7 +3235,7 @@ export const settlerSystem = {
         changed = reconcileAssignments() || changed;
         changed = reconcileMilitaryGuards(ctx.now) || changed;
 
-        const settlersToKill: Array<{ id: string; settlementId: string | null }> = [];
+        const starvationCandidates: StarvationCandidate[] = [];
 
         for (const settler of settlers) {
             const justArrived = updateMovement(settler, ctx.now);
@@ -3142,9 +3251,18 @@ export const settlerSystem = {
 
             applyNeeds(settler, ctx.dt);
 
-            if (getStarvationMs(settler) >= SETTLER_STARVATION_MS && !tryEatFromSettlementStorage(settler)) {
-                settlersToKill.push({ id: settler.id, settlementId: settler.settlementId });
-                continue;
+            const starvationMs = getStarvationMs(settler);
+            if (starvationMs >= SETTLER_STARVATION_MS) {
+                if (tryEatFromSettlementStorage(settler)) {
+                    changed = true;
+                } else {
+                    starvationCandidates.push({
+                        id: settler.id,
+                        settlementId: settler.settlementId,
+                        starvationMs,
+                        canProduceFood: canProduceFood(settler),
+                    });
+                }
             }
 
             if (settler.movement) {
@@ -3172,11 +3290,38 @@ export const settlerSystem = {
             scheduleNextSettlerPlanning(settler, ctx.now);
         }
 
+        const eligibleStarvationCandidates: StarvationCandidate[] = [];
+        for (const candidate of starvationCandidates) {
+            const settler = settlers.find((entry) => entry.id === candidate.id);
+            if (!settler) {
+                continue;
+            }
+
+            const starvationMs = getStarvationMs(settler);
+            if (starvationMs < SETTLER_STARVATION_MS) {
+                continue;
+            }
+
+            if (tryEatFromSettlementStorage(settler)) {
+                changed = true;
+                continue;
+            }
+
+            eligibleStarvationCandidates.push({
+                id: settler.id,
+                settlementId: settler.settlementId,
+                starvationMs,
+                canProduceFood: canProduceFood(settler),
+            });
+        }
+
         const starvationLossBySettlement = new Map<string | null, number>();
+        const settlersToKill = selectStarvationLosses(eligibleStarvationCandidates, ctx.now);
         for (const settler of settlersToKill) {
             if (removeSettler(settler.id)) {
                 changed = true;
                 killSettler(settler.settlementId);
+                recordStarvationLoss(settler.settlementId, ctx.now);
                 emitGameplayEvent({ type: 'population:changed', settlementId: settler.settlementId });
                 starvationLossBySettlement.set(
                     settler.settlementId,

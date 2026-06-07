@@ -18,6 +18,24 @@ const SCOUTED_TILE_STYLE = {
     foundStroke: 'rgba(125, 211, 252, 0.82)',
 };
 
+export function getBuildingHealthBar(tile: Tile | null | undefined): { percent: number } | null {
+    const maxDurability = tile?.towerDurabilityMax ?? 0;
+    if (maxDurability <= 0) {
+        return null;
+    }
+
+    const currentDurability = Math.max(0, Math.min(maxDurability, tile?.towerDurability ?? maxDurability));
+    const isDamaged = currentDurability < maxDurability;
+    const isUnderAttack = !!tile?.towerAttackerSettlementId || (tile?.towerCaptureProgress ?? 0) > 0;
+    if (!isDamaged && !isUnderAttack) {
+        return null;
+    }
+
+    return {
+        percent: Math.max(0, Math.min(100, Math.round((currentDurability / maxDurability) * 100))),
+    };
+}
+
 interface CameraCompositeStateLike {
     offsetX: number;
     offsetY: number;
@@ -142,6 +160,7 @@ interface TileTaskState {
 
 interface OverlayFrameSummary {
     activeTilesByEffectNow: Tile[];
+    buildingHealthTiles: Tile[];
     progressTilesByMovementNow: Tile[];
     taskIndicatorTiles: Tile[];
     storageIndicatorTiles: Tile[];
@@ -461,6 +480,7 @@ export class OverlayRenderer {
         }
 
         this.drawTaskProgressBars(overlay.ctx, summary.progressTilesByMovementNow, frame.movementNowMs, deps);
+        this.drawBuildingHealthBars(overlay.ctx, summary.buildingHealthTiles, deps);
         this.drawTaskIndicators(
             overlay.ctx,
             summary.taskIndicatorTiles,
@@ -481,6 +501,7 @@ export class OverlayRenderer {
         }
 
         return summary.progressTilesByMovementNow.length > 0
+            || summary.buildingHealthTiles.length > 0
             || summary.taskIndicatorTiles.length > 0
             || summary.storageIndicatorTiles.length > 0;
     }
@@ -491,7 +512,11 @@ export class OverlayRenderer {
         opts: DrawOptionsLike,
         summary: OverlayFrameSummary,
     ) {
-        if (summary.progressTilesByMovementNow.length > 0 || summary.storageIndicatorTiles.length > 0) {
+        if (
+            summary.progressTilesByMovementNow.length > 0
+            || summary.buildingHealthTiles.length > 0
+            || summary.storageIndicatorTiles.length > 0
+        ) {
             return '';
         }
 
@@ -768,6 +793,57 @@ export class OverlayRenderer {
         }
     }
 
+    private drawBuildingHealthBars(
+        ctx: CanvasRenderingContext2D,
+        tiles: Tile[],
+        deps: OverlayRendererDependencies,
+    ) {
+        for (const tile of tiles) {
+            const healthBar = getBuildingHealthBar(tile);
+            if (!healthBar) {
+                continue;
+            }
+
+            const dist = hexDistance(camera, tile);
+            const opacity = deps.getTileOpacity(dist, false);
+            this.drawBuildingHealthBar(ctx, tile, healthBar.percent / 100, opacity, deps);
+        }
+    }
+
+    private drawBuildingHealthBar(
+        ctx: CanvasRenderingContext2D,
+        tile: Tile,
+        healthRatio: number,
+        opacity: number,
+        deps: OverlayRendererDependencies,
+    ) {
+        const { x, y } = axialToPixel(tile.q, tile.r);
+        const barWidth = Math.round(deps.tileDrawSize * 0.52);
+        const barHeight = 5;
+        const barX = x - barWidth / 2;
+        const barY = y - deps.hexSize + 6;
+        const clampedRatio = Math.max(0, Math.min(1, healthRatio));
+        const fillWidth = Math.round(barWidth * clampedRatio);
+        const fillStyle = clampedRatio > 0.55
+            ? 'rgba(34,197,94,0.94)'
+            : clampedRatio > 0.25
+                ? 'rgba(245,158,11,0.94)'
+                : 'rgba(239,68,68,0.96)';
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = 'rgba(30,12,10,0.72)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        if (fillWidth > 0) {
+            ctx.fillStyle = fillStyle;
+            ctx.fillRect(barX, barY, fillWidth, barHeight);
+        }
+        ctx.strokeStyle = 'rgba(255,236,184,0.34)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        ctx.restore();
+    }
+
     private getTileOverlayActivity(tile: Tile, nowMs: number): TileOverlayActivity {
         const cacheKey = `${tile.id}:${nowMs}`;
         const cached = this.tileActivityCache.get(cacheKey);
@@ -881,11 +957,16 @@ export class OverlayRenderer {
         deps: OverlayRendererDependencies,
     ): OverlayFrameSummary {
         const activeTilesByEffectNow: Tile[] = [];
+        const buildingHealthTiles: Tile[] = [];
         const progressTilesByMovementNow: Tile[] = [];
         const taskIndicatorTiles: Tile[] = [];
         const storageIndicatorTiles: Tile[] = [];
 
         for (const tile of frame.visibleTiles) {
+            if (getBuildingHealthBar(tile)) {
+                buildingHealthTiles.push(tile);
+            }
+
             const taskState = this.getTileTaskState(tile);
             if (taskState.incompleteTasks.length > 0) {
                 taskIndicatorTiles.push(tile);
@@ -910,6 +991,7 @@ export class OverlayRenderer {
 
         return {
             activeTilesByEffectNow,
+            buildingHealthTiles,
             progressTilesByMovementNow,
             taskIndicatorTiles,
             storageIndicatorTiles,

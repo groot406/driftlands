@@ -132,6 +132,51 @@ test('move request can materialize an undiscovered explore tile before validatio
   assert.deepEqual(hero.pendingExploreTarget, { q: 8, r: 0 });
 });
 
+test('move request honors cached controlled tiles on long player paths', () => {
+  setIo({ emit() {} });
+
+  const worldTiles: Tile[] = [];
+  for (let q = 0; q <= 12; q++) {
+    worldTiles.push({
+      id: `${q},0`,
+      q,
+      r: 0,
+      biome: 'plains',
+      terrain: q === 0 ? 'towncenter' : 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: q === 0 ? '0,0' : undefined,
+      variant: null,
+    } satisfies Tile);
+  }
+  loadWorld(worldTiles);
+
+  const hero = createHero();
+  hero.playerId = 'player-1';
+  loadHeroes([hero]);
+  coopState.upsertPlayer({ id: 'player-1' } as any, 'Player');
+  playerSettlementState.registerPlayer('player-1', 'player-1', 'Player');
+  assert.equal(playerSettlementState.assignPlayerSettlement('player-1', '0,0'), true);
+  seasonState.initialize(42, 1_000);
+
+  const path = Array.from({ length: 12 }, (_, index) => ({ q: index + 1, r: 0 }));
+  const handler = ServerMovementHandler.getInstance();
+  (handler as any).handleMoveRequest({ id: 'player-1' }, {
+    type: 'hero:move_request',
+    id: 'long-controlled-path',
+    heroId: 'shore-scout',
+    origin: { q: 0, r: 0 },
+    target: { q: 12, r: 0 },
+    startAt: Date.now(),
+    path,
+  });
+
+  assert.equal(handler.activeMovements.size, 1);
+  assert.deepEqual(heroes[0]?.movement?.target, { q: 12, r: 0 });
+});
+
 test('move request lets a hero on enemy ground move back to own territory', () => {
   setIo({ emit() {} });
 

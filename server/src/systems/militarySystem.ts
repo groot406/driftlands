@@ -5,8 +5,12 @@ import {
   GUARD_TRAINING_DURATION_MS,
   GUARD_TRAINING_FOOD_COST,
   GUARD_TRAINING_WEAPON_COST,
+  RAIDER_COMBAT_HEALTH_MAX,
   TOWN_CENTER_MAX_DURABILITY,
+  WATCHTOWER_ARROW_DAMAGE_PER_GUARD_PER_SECOND,
+  WATCHTOWER_ARROW_RANGE,
   WATCHTOWER_MAX_DURABILITY,
+  WATCHTOWER_PALISADE_ARROW_DAMAGE_BONUS_PER_SECOND,
   ensureBarracksMilitaryState,
   ensureRaidTargetMilitaryState,
   ensureTownCenterMilitaryState,
@@ -35,6 +39,7 @@ import { FOOD_SOURCE_TYPES, getResourceRequirementStock } from '../../../src/sha
 import { seasonState } from '../state/seasonState';
 import { emitGameplayEvent } from '../../../src/shared/gameplay/events.ts';
 import { getTileSettlementId } from '../../../src/shared/game/settlement.ts';
+import { playerSettlementState } from '../state/playerSettlementState.ts';
 
 const TOWN_CENTER_RAID_CAPTURE_RATE_MULTIPLIER = 0.25;
 
@@ -149,6 +154,106 @@ function isSettlerAtTower(settler: typeof settlers[number], tower: Tile) {
   return axialDistanceCoords(settler.q, settler.r, tower.q, tower.r) <= 1 && !settler.movement;
 }
 
+function getSettlerCombatCoords(settler: typeof settlers[number], now: number) {
+  const movement = settler.movement;
+  if (!movement?.path.length || !movement.cumulative.length) {
+    return { q: settler.q, r: settler.r };
+  }
+
+  const elapsed = now - movement.startMs;
+  if (elapsed <= 0) {
+    return movement.origin;
+  }
+
+  const total = movement.cumulative[movement.cumulative.length - 1]!;
+  if (elapsed >= total) {
+    return movement.target;
+  }
+
+  const stepIndex = movement.cumulative.findIndex((endMs) => elapsed <= endMs);
+  const safeStepIndex = stepIndex < 0 ? movement.path.length - 1 : stepIndex;
+  const prevEnd = safeStepIndex === 0 ? 0 : movement.cumulative[safeStepIndex - 1]!;
+  const stepDuration = Math.max(1, movement.stepDurations[safeStepIndex] ?? 1);
+  const progress = Math.max(0, Math.min(1, (elapsed - prevEnd) / stepDuration));
+  const from = safeStepIndex === 0 ? movement.origin : movement.path[safeStepIndex - 1];
+  const to = movement.path[safeStepIndex];
+  if (!from || !to) {
+    return movement.target;
+  }
+
+  return {
+    q: from.q + ((to.q - from.q) * progress),
+    r: from.r + ((to.r - from.r) * progress),
+  };
+}
+
+function getSettlerDistanceToTile(settler: typeof settlers[number], tile: Tile, now: number) {
+  const coords = getSettlerCombatCoords(settler, now);
+  return axialDistanceCoords(coords.q, coords.r, tile.q, tile.r);
+}
+
+function ensureRaiderCombatHealth(settler: typeof settlers[number]) {
+  const maxHealth = Math.max(1, settler.combatHealthMax ?? RAIDER_COMBAT_HEALTH_MAX);
+  const currentHealth = settler.combatHealth ?? maxHealth;
+  settler.combatHealthMax = maxHealth;
+  settler.combatHealth = Math.max(0, Math.min(maxHealth, currentHealth));
+}
+
+function removeKilledRaidOrigins(townCenter: Tile, raidSettlers: typeof settlers[number][], killedIds: Set<string>) {
+  const origins = townCenter.raidGuardOriginTileIds ?? [];
+  townCenter.raidGuardOriginTileIds = origins.filter((_, index) => {
+    const raider = raidSettlers[index];
+    return !raider || !killedIds.has(raider.id);
+  });
+}
+
+function applyWatchtowerArrowDamage(
+  tower: Tile,
+  raidSettlers: typeof settlers[number][],
+  arrivedDefenders: typeof settlers[number][],
+  ctx: TickContext,
+) {
+  if (arrivedDefenders.length <= 0) {
+    return { changed: false, killedIds: [] as string[] };
+  }
+
+  const candidates = raidSettlers
+    .filter((settler) => getSettlerDistanceToTile(settler, tower, ctx.now) <= WATCHTOWER_ARROW_RANGE)
+    .sort((a, b) => {
+      const distanceDelta = getSettlerDistanceToTile(a, tower, ctx.now) - getSettlerDistanceToTile(b, tower, ctx.now);
+      return distanceDelta !== 0 ? distanceDelta : a.id.localeCompare(b.id);
+    });
+  if (candidates.length <= 0) {
+    return { changed: false, killedIds: [] as string[] };
+  }
+
+  const damagePerGuard = (
+    WATCHTOWER_ARROW_DAMAGE_PER_GUARD_PER_SECOND
+    + ((tower.towerWallLevel ?? 0) > 0 ? WATCHTOWER_PALISADE_ARROW_DAMAGE_BONUS_PER_SECOND : 0)
+  ) * (ctx.dt / 1000);
+  const livingCandidates = candidates.filter((settler) => {
+    ensureRaiderCombatHealth(settler);
+    return (settler.combatHealth ?? 0) > 0;
+  });
+  if (livingCandidates.length <= 0) {
+    return { changed: false, killedIds: [] as string[] };
+  }
+
+  const sharedDamage = (damagePerGuard * arrivedDefenders.length) / livingCandidates.length;
+  const killedIds: string[] = [];
+  let changed = false;
+
+  for (const target of livingCandidates) {
+    target.combatHealth = Math.max(0, (target.combatHealth ?? RAIDER_COMBAT_HEALTH_MAX) - sharedDamage);
+    changed = true;
+    if ((target.combatHealth ?? 0) <= 0) {
+      killedIds.push(target.id);
+    }
+  }
+
+  return { changed, killedIds };
+}
+
 function getRaidDefenseScore(tile: Tile, defenderGuardCount: number) {
   const guardScore = Math.max(0, defenderGuardCount) * 1.5;
   const wallScore = (tile.towerWallLevel ?? 0) * 2;
@@ -232,24 +337,72 @@ function applyTownCenterCaptureTransfer(townCenter: Tile, previousOwnerSettlemen
   return changedTileIds;
 }
 
-function settlementHasOtherTownCenter(settlementId: string | null | undefined, capturedTownCenterId: string) {
-  if (!settlementId) {
-    return false;
-  }
-
-  return Object.values(tileIndex).some((tile) => (
-    tile.id !== capturedTownCenterId
-    && isTownCenterTile(tile)
-    && getTileSettlementId(tile) === settlementId
-  ));
-}
-
 function settlementHasTownCenter(settlementId: string | null | undefined) {
   if (!settlementId) {
     return false;
   }
 
   return Object.values(tileIndex).some((tile) => isTownCenterTile(tile) && getTileSettlementId(tile) === settlementId);
+}
+
+function reconcileCapturedHomeTownCenterDefeats(ctx: TickContext) {
+  let changed = false;
+
+  for (const homeTownCenter of getTownCenters()) {
+    const defeatedSettlementId = homeTownCenter.id;
+    const attackerSettlementId = getTileSettlementId(homeTownCenter);
+    if (
+      !attackerSettlementId
+      || attackerSettlementId === defeatedSettlementId
+      || !playerSettlementState.isSettlementClaimed(defeatedSettlementId)
+      || seasonState.isSettlementDefeated(defeatedSettlementId)
+      || seasonState.isSettlementDefeated(attackerSettlementId)
+      || !getTownCenterTile(attackerSettlementId)
+    ) {
+      continue;
+    }
+
+    const clearedDefenderReserveTileIds = clearSettlementBarracksReserve(defeatedSettlementId);
+    const transferredTileIds = applyTownCenterCaptureTransfer(homeTownCenter, defeatedSettlementId, attackerSettlementId, true);
+    const defeatedTransferTileIds = [
+      homeTownCenter.id,
+      ...transferredTileIds.filter((tileId) => tileId !== homeTownCenter.id),
+    ];
+
+    homeTownCenter.towerCaptureProgress = 0;
+    homeTownCenter.towerAttackerSettlementId = null;
+    homeTownCenter.towerAttackerCasualtyProgress = 0;
+    homeTownCenter.towerDefenderCasualtyProgress = 0;
+    homeTownCenter.towerConflictState = resolveWatchtowerConflictState(homeTownCenter);
+    homeTownCenter.guardReserve = 0;
+    homeTownCenter.guardReserveOriginTileIds = [];
+    homeTownCenter.raidTargetTileId = null;
+    homeTownCenter.raidCommittedGuards = 0;
+    homeTownCenter.raidGuardOriginTileIds = [];
+    homeTownCenter.raidBlockedReason = null;
+
+    broadcastTile(homeTownCenter);
+    for (const tileId of transferredTileIds) {
+      const tile = tileIndex[tileId];
+      if (tile) {
+        broadcastTile(tile);
+      }
+    }
+    broadcastTileIds(clearedDefenderReserveTileIds);
+
+    emitGameplayEvent({
+      type: 'military:settlement_defeated',
+      defeatedSettlementId,
+      attackerSettlementId,
+      capturedTownCenterTileId: homeTownCenter.id,
+      transferredTileIds: defeatedTransferTileIds,
+      defeatedAt: ctx.now,
+    });
+
+    changed = true;
+  }
+
+  return changed;
 }
 
 function concludeRaid(
@@ -322,7 +475,7 @@ function processBarracksTraining(ctx: TickContext) {
 }
 
 function processRaids(ctx: TickContext) {
-  let territoryChanged = false;
+  let territoryChanged = reconcileCapturedHomeTownCenterDefeats(ctx);
   let settlersChanged = false;
 
   for (const attackerTownCenter of getTownCenters()) {
@@ -350,8 +503,8 @@ function processRaids(ctx: TickContext) {
 
     ensureRaidTargetMilitaryState(targetTile);
     const previousState = roundedMilitaryValue(targetTile);
-    const raidSettlers = getRaidSettlers(attackerTownCenter.id, targetTile.id);
-    const engagedRaiders = raidSettlers.filter((settler) => isSettlerAtTower(settler, targetTile));
+    let raidSettlers = getRaidSettlers(attackerTownCenter.id, targetTile.id);
+    let engagedRaiders = raidSettlers.filter((settler) => isSettlerAtTower(settler, targetTile));
     const defenderSettlers = getDefenderSettlers(targetTile);
     const engagedDefenders = defenderSettlers.filter((settler) => isSettlerAtTower(settler, targetTile));
     const townCenterReserveDefenders = isTownCenterTile(targetTile) ? getSettlementGuardReserve(getSettlementReserveTiles(), defenderSettlementId) : 0;
@@ -381,16 +534,39 @@ function processRaids(ctx: TickContext) {
       continue;
     }
 
+    if (!blocked && !isTownCenterTile(targetTile)) {
+      const arrowResult = applyWatchtowerArrowDamage(targetTile, raidSettlers, engagedDefenders, ctx);
+      if (arrowResult.changed) {
+        settlersChanged = true;
+        targetTile.towerAttackerCasualtyProgress = 0;
+      }
+      if (arrowResult.killedIds.length > 0) {
+        const killedIds = new Set(arrowResult.killedIds);
+        removeKilledRaidOrigins(attackerTownCenter, raidSettlers, killedIds);
+        settlersChanged = removeSettlersById(arrowResult.killedIds) || settlersChanged;
+        attackerTownCenter.raidCommittedGuards = Math.max(0, (attackerTownCenter.raidCommittedGuards ?? 0) - arrowResult.killedIds.length);
+        raidSettlers = getRaidSettlers(attackerTownCenter.id, targetTile.id);
+        engagedRaiders = raidSettlers.filter((settler) => isSettlerAtTower(settler, targetTile));
+        if ((attackerTownCenter.raidCommittedGuards ?? 0) > 0) {
+          broadcastTile(attackerTownCenter);
+        }
+      }
+    }
+
     if (!blocked && engagedRaiders.length > 0 && activeDefenderCount > 0) {
-      targetTile.towerAttackerCasualtyProgress = Math.max(0, targetTile.towerAttackerCasualtyProgress ?? 0)
-        + (((activeDefenderCount * 0.18) + ((targetTile.towerWallLevel ?? 0) * 0.08) + (getRaidDefenseScore(targetTile, activeDefenderCount) * 0.02)) * (ctx.dt / 1000));
+      if (isTownCenterTile(targetTile)) {
+        targetTile.towerAttackerCasualtyProgress = Math.max(0, targetTile.towerAttackerCasualtyProgress ?? 0)
+          + (((activeDefenderCount * 0.18) + ((targetTile.towerWallLevel ?? 0) * 0.08) + (getRaidDefenseScore(targetTile, activeDefenderCount) * 0.02)) * (ctx.dt / 1000));
+      }
       targetTile.towerDefenderCasualtyProgress = Math.max(0, targetTile.towerDefenderCasualtyProgress ?? 0)
         + (Math.max(0.1, (engagedRaiders.length * 0.22) - ((targetTile.towerWallLevel ?? 0) * 0.03)) * (ctx.dt / 1000));
 
-      const attackerLosses = Math.min(
-        engagedRaiders.length,
-        Math.floor(targetTile.towerAttackerCasualtyProgress ?? 0),
-      );
+      const attackerLosses = isTownCenterTile(targetTile)
+        ? Math.min(
+          engagedRaiders.length,
+          Math.floor(targetTile.towerAttackerCasualtyProgress ?? 0),
+        )
+        : 0;
       const defenderLosses = Math.min(
         activeDefenderCount,
         Math.floor(targetTile.towerDefenderCasualtyProgress ?? 0),
@@ -434,12 +610,10 @@ function processRaids(ctx: TickContext) {
       const survivingRaiders = Math.max(0, attackerTownCenter.raidCommittedGuards ?? 0);
       const previousOwnerSettlementId = defenderSettlementId;
       const defeatedByTownCenterCapture = isTownCenterTile(targetTile)
-        && !settlementHasOtherTownCenter(previousOwnerSettlementId, targetTile.id);
+        && targetTile.id === previousOwnerSettlementId;
       const clearedDefenderReserveTileIds = defeatedByTownCenterCapture
         ? clearSettlementBarracksReserve(previousOwnerSettlementId)
         : [];
-      targetTile.ownerSettlementId = attackerTownCenter.id;
-      targetTile.controlledBySettlementId = attackerTownCenter.id;
       const transferredTileIds = isTownCenterTile(targetTile)
         ? applyTownCenterCaptureTransfer(targetTile, previousOwnerSettlementId, attackerTownCenter.id, defeatedByTownCenterCapture)
         : applyWatchtowerCaptureTransfer(targetTile, attackerTownCenter.id);

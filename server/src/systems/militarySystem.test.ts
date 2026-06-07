@@ -14,6 +14,8 @@ import { resetSettlementSupportState } from '../../../src/shared/game/state/sett
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { resetStudyState } from '../../../src/store/studyStore';
 import { onGameplayEvent } from '../../../src/shared/gameplay/events.ts';
+import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime';
+import { playerSettlementState } from '../state/playerSettlementState.ts';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -96,10 +98,13 @@ function createGuardSettler(overrides: Partial<Settler> & Pick<Settler, 'id' | '
     workProgressMs: overrides.workProgressMs ?? 0,
     carryingKind: overrides.carryingKind ?? null,
     socialTileId: overrides.socialTileId ?? null,
+    combatHealth: overrides.combatHealth,
+    combatHealthMax: overrides.combatHealthMax,
   };
 }
 
 test.afterEach(() => {
+  resetGameRuntime();
   loadWorld([]);
   resetResourceState();
   resetTestModeSettings();
@@ -108,6 +113,281 @@ test.afterEach(() => {
   resetSettlementSupportState();
   resetWorkforceState();
   resetStudyState();
+  playerSettlementState.reset();
+});
+
+test('staffed watchtower arrow fire damages an in-range raider and broadcasts settler health', () => {
+  const messages: Array<{ type: string; settlers?: Settler[] }> = [];
+  configureGameRuntime({
+    broadcast: (message) => {
+      messages.push(message as { type: string; settlers?: Settler[] });
+    },
+  });
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '4,0',
+      raidCommittedGuards: 1,
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      towerAssignedGuards: 1,
+      towerDurability: 100,
+      towerDurabilityMax: 100,
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '9,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '3,0',
+      guardTowerTileId: '4,0',
+      combatHealth: 100,
+      combatHealthMax: 100,
+    }),
+    createGuardSettler({
+      id: 'defender-1',
+      q: 4,
+      r: 0,
+      settlementId: '9,0',
+      assignedWorkTileId: '4,0',
+      guardTowerTileId: '4,0',
+      activity: 'defending',
+    }),
+  ]);
+
+  tickAt(1_000, 1_000);
+
+  const raider = settlers.find((settler) => settler.id === 'raider-1');
+  assert.ok(raider);
+  assert.equal(raider.combatHealthMax, 100);
+  assert.equal(raider.combatHealth, 88);
+  const settlerUpdate = messages.find((message) => message.type === 'settlers:update');
+  assert.ok(settlerUpdate);
+  assert.equal(settlerUpdate.settlers?.find((settler) => settler.id === 'raider-1')?.combatHealth, 88);
+});
+
+test('watchtower arrow fire spreads volley damage across in-range raiders', () => {
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '4,0',
+      raidCommittedGuards: 2,
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      towerAssignedGuards: 1,
+      towerDurability: 100,
+      towerDurabilityMax: 100,
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '9,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 3,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '3,0',
+      guardTowerTileId: '4,0',
+      combatHealth: 100,
+      combatHealthMax: 100,
+    }),
+    createGuardSettler({
+      id: 'raider-2',
+      q: 4,
+      r: -1,
+      settlementId: '0,0',
+      assignedWorkTileId: '4,-1',
+      guardTowerTileId: '4,0',
+      combatHealth: 100,
+      combatHealthMax: 100,
+    }),
+    createGuardSettler({
+      id: 'defender-1',
+      q: 4,
+      r: 0,
+      settlementId: '9,0',
+      assignedWorkTileId: '4,0',
+      guardTowerTileId: '4,0',
+      activity: 'defending',
+    }),
+  ]);
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.find((settler) => settler.id === 'raider-1')?.combatHealth, 94);
+  assert.equal(settlers.find((settler) => settler.id === 'raider-2')?.combatHealth, 94);
+});
+
+test('watchtower arrow fire kills a low-health raider and clears an empty raid', () => {
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '4,0',
+      raidCommittedGuards: 1,
+      raidGuardOriginTileIds: ['1,0'],
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      towerAssignedGuards: 1,
+      towerDurability: 100,
+      towerDurabilityMax: 100,
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '9,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '3,0',
+      guardTowerTileId: '4,0',
+      combatHealth: 5,
+      combatHealthMax: 100,
+    }),
+    createGuardSettler({
+      id: 'defender-1',
+      q: 4,
+      r: 0,
+      settlementId: '9,0',
+      assignedWorkTileId: '4,0',
+      guardTowerTileId: '4,0',
+      activity: 'defending',
+    }),
+  ]);
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.some((settler) => settler.id === 'raider-1'), false);
+  assert.equal(tileIndex['0,0']?.raidCommittedGuards ?? 0, 0);
+  assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
+  assert.equal(tileIndex['4,0']?.ownerSettlementId, '9,0');
+});
+
+test('assigned watchtower guards do not fire until a defender has arrived', () => {
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      raidTargetTileId: '4,0',
+      raidCommittedGuards: 1,
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '4,0',
+      q: 4,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      towerAssignedGuards: 1,
+      towerDurability: 100,
+      towerDurabilityMax: 100,
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '9,0',
+      ownerSettlementId: '9,0',
+      borderMode: 'open',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '9,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 0,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '3,0',
+      guardTowerTileId: '4,0',
+      combatHealth: 100,
+      combatHealthMax: 100,
+    }),
+  ]);
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.find((settler) => settler.id === 'raider-1')?.combatHealth, 100);
 });
 
 test('fast guard training test mode completes barracks training in one tenth the normal time', () => {
@@ -480,6 +760,82 @@ test('capturing one of multiple town centers does not defeat the defender', () =
       controlledBySettlementId: '0,0',
       ownerSettlementId: '0,0',
       borderMode: 'open',
+      raidTargetTileId: '8,0',
+      raidCommittedGuards: 1,
+      raidGuardOriginTileIds: ['1,0'],
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '1,0',
+      q: 1,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_barracks',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      guardReserve: 0,
+    }),
+    createTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+      towerCaptureProgress: 99.95,
+      towerDurability: 120,
+      towerDurabilityMax: 300,
+    }),
+    createTile({
+      id: '8,0',
+      q: 8,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+      towerCaptureProgress: 99.95,
+      towerDurability: 120,
+      towerDurabilityMax: 300,
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '6,0']);
+  loadSettlers([
+    createGuardSettler({
+      id: 'raider-1',
+      q: 7,
+      r: 0,
+      settlementId: '0,0',
+      assignedWorkTileId: '7,0',
+      guardTowerTileId: '8,0',
+      workTileId: '8,0',
+    }),
+  ]);
+
+  try {
+    tickAt(1_000, 1_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.equal(tileIndex['6,0']?.ownerSettlementId, '6,0');
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '0,0');
+  assert.equal(events.some((event) => event.type === 'military:settlement_defeated'), false);
+});
+
+test('capturing the home town center defeats a defender with secondary captured town centers', () => {
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  const unsubscribe = onGameplayEvent((event) => events.push(event));
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
       raidTargetTileId: '6,0',
       raidCommittedGuards: 1,
       raidGuardOriginTileIds: ['1,0'],
@@ -516,6 +872,14 @@ test('capturing one of multiple town centers does not defeat the defender', () =
       ownerSettlementId: '6,0',
       borderMode: 'open',
     }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'plains',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+    }),
   ]);
   loadPopulationForSettlements(['0,0', '6,0']);
   loadSettlers([
@@ -537,8 +901,84 @@ test('capturing one of multiple town centers does not defeat the defender', () =
   }
 
   assert.equal(tileIndex['6,0']?.ownerSettlementId, '0,0');
-  assert.equal(tileIndex['8,0']?.ownerSettlementId, '6,0');
-  assert.equal(events.some((event) => event.type === 'military:settlement_defeated'), false);
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['9,0']?.ownerSettlementId, '0,0');
+  assert.deepEqual(events.find((event) => event.type === 'military:settlement_defeated'), {
+    type: 'military:settlement_defeated',
+    defeatedSettlementId: '6,0',
+    attackerSettlementId: '0,0',
+    capturedTownCenterTileId: '6,0',
+    transferredTileIds: ['6,0', '8,0', '9,0'],
+    defeatedAt: 1_000,
+  });
+});
+
+test('already captured home town centers are reconciled into settlement defeats', () => {
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  const unsubscribe = onGameplayEvent((event) => events.push(event));
+  playerSettlementState.registerPlayer('socket-attacker', 'attacker-player', 'Attacker');
+  playerSettlementState.registerPlayer('socket-defender', 'defender-player', 'Defender');
+  assert.equal(playerSettlementState.assignPlayerSettlement('attacker-player', '0,0'), true);
+  assert.equal(playerSettlementState.assignPlayerSettlement('defender-player', '6,0'), true);
+  loadWorld([
+    createTile({
+      id: '0,0',
+      q: 0,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+    }),
+    createTile({
+      id: '6,0',
+      q: 6,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      borderMode: 'open',
+      towerCaptureProgress: 0,
+      towerDurability: 90,
+      towerDurabilityMax: 300,
+    }),
+    createTile({
+      id: '8,0',
+      q: 8,
+      r: 0,
+      terrain: 'towncenter',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+      borderMode: 'open',
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'plains',
+      controlledBySettlementId: '6,0',
+      ownerSettlementId: '6,0',
+    }),
+  ]);
+  loadPopulationForSettlements(['0,0', '6,0']);
+  loadSettlers([]);
+
+  try {
+    tickAt(1_000, 1_000);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '0,0');
+  assert.equal(tileIndex['9,0']?.ownerSettlementId, '0,0');
+  assert.deepEqual(events.find((event) => event.type === 'military:settlement_defeated'), {
+    type: 'military:settlement_defeated',
+    defeatedSettlementId: '6,0',
+    attackerSettlementId: '0,0',
+    capturedTownCenterTileId: '6,0',
+    transferredTileIds: ['6,0', '8,0', '9,0'],
+    defeatedAt: 1_000,
+  });
 });
 
 test('raid orders stay active while raiders are still being deployed', () => {
@@ -793,7 +1233,9 @@ test('adjacent raiders and defenders fight until the raid resolves', () => {
 
   tickAt(5_000, 5_000);
   assert.equal(tileIndex['2,0']?.towerAssignedGuards ?? 0, 0);
-  assert.equal(tileIndex['0,0']?.raidCommittedGuards ?? 0, 1);
+  assert.equal(tileIndex['0,0']?.raidCommittedGuards ?? 0, 2);
+  assert.equal(settlers.find((settler) => settler.id === 'raider-1')?.combatHealth, 70);
+  assert.equal(settlers.find((settler) => settler.id === 'raider-2')?.combatHealth, 70);
 
   tickAt(250_000, 245_000);
   assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);

@@ -13,7 +13,7 @@ import { loadPopulationSnapshot, resetPopulationState } from '../../store/popula
 import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
 import { createInitialProgressionSnapshot, evaluateProgression } from '../story/progression.ts';
-import { getTaskDefinition } from './taskRegistry.ts';
+import { getTaskDefinition, registerTask } from './taskRegistry.ts';
 import { getAvailableTasks, handleHeroArrival } from './tasks.ts';
 import { loadWorld, tileIndex } from '../game/world.ts';
 
@@ -240,6 +240,93 @@ test('active tasks with no working participants are paused instead of removed', 
   assert.equal(taskStore.activeTaskIds.has('task-build'), false);
   assert.equal(messages.some((message) => message.type === 'task:removed'), false);
   assert.equal(messages.some((message) => message.type === 'task:progress' && message.taskId === 'task-build' && message.active === false), true);
+});
+
+test('task updates can skip paused-task cleanup on latency-sensitive command paths', () => {
+  let canStartCalls = 0;
+  registerTask({
+    key: 'latencyProbe',
+    label: 'Latency Probe',
+    canStart() {
+      canStartCalls += 1;
+      return true;
+    },
+    requiredXp() {
+      return 1_000;
+    },
+    heroRate() {
+      return 0;
+    },
+    canAutoChainTo() {
+      return false;
+    },
+  });
+
+  const worldTiles: Tile[] = [];
+  const tasks: TaskInstance[] = [];
+  for (let q = 0; q <= 80; q++) {
+    worldTiles.push({
+      id: `${q},0`,
+      q,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile);
+
+    tasks.push({
+      id: `paused-${q}`,
+      type: 'latencyProbe',
+      tileId: `${q},0`,
+      progressXp: 0,
+      requiredXp: 1_000,
+      createdMs: 0,
+      lastUpdateMs: 0,
+      participants: {},
+      active: false,
+      requiredResources: [{ type: 'wood', amount: 1 }],
+      collectedResources: [],
+    });
+  }
+
+  loadWorld(worldTiles);
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 0,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+    currentTaskId: 'active-task',
+  } satisfies Hero]);
+  loadTasks([
+    ...tasks,
+    {
+      id: 'active-task',
+      type: 'latencyProbe',
+      tileId: '0,0',
+      progressXp: 0,
+      requiredXp: 1_000,
+      createdMs: Date.now(),
+      lastUpdateMs: Date.now(),
+      participants: { h1: 0 },
+      active: true,
+    },
+  ]);
+
+  canStartCalls = 0;
+  updateActiveTasks(heroes, { cleanupOpenTasks: false });
+
+  assert.equal(canStartCalls, 0);
+  assert.equal(taskStore.tasks.length, 82);
+  assert.equal(taskStore.activeTaskIds.has('active-task'), true);
 });
 
 test('leaving a task with no dropped resources removes it instead of making it continuable', () => {

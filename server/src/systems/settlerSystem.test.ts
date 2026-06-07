@@ -1107,6 +1107,70 @@ test('raid orders spawn visible guard settlers for a foreign watchtower', () => 
   assert.deepEqual(settlers.map((settler) => settler.id), firstWaveIds);
 });
 
+test('watchtower raid settlers spread across reachable target access tiles', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0', raidTargetTileId: '2,0', raidCommittedGuards: 4 }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '1,1', q: 1, r: 1, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '2,-1', q: 2, r: -1, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'plains', variant: 'plains_watchtower', controlledBySettlementId: '9,0', ownerSettlementId: '9,0', towerAssignedGuards: 0 }),
+    createTile({ id: '2,1', q: 2, r: 1, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '3,-1', q: 3, r: -1, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '3,0', q: 3, r: 0, terrain: 'plains', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+    createTile({ id: '9,0', q: 9, r: 0, terrain: 'towncenter', controlledBySettlementId: '9,0', ownerSettlementId: '9,0' }),
+  ]);
+  loadPopulationSnapshot({
+    current: 0,
+    max: 10,
+    beds: 0,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 0,
+        max: 10,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '9,0',
+        current: 0,
+        max: 10,
+        beds: 0,
+        hungerMs: 0,
+        supportCapacity: 0,
+        ownedTileCount: 0,
+        activeTileCount: 0,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+  loadSettlers([]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 4);
+  assert.ok(new Set(settlers.map((settler) => settler.assignedWorkTileId)).size > 1);
+  assert.equal(settlers.some((settler) => settler.assignedWorkTileId === '2,0'), false);
+  assert.deepEqual(settlers.map((settler) => settler.combatHealth), [100, 100, 100, 100]);
+  assert.deepEqual(settlers.map((settler) => settler.combatHealthMax), [100, 100, 100, 100]);
+});
+
 test('raid orders spawn visible guard settlers for a foreign town center', () => {
   loadWorld([
     createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0', raidTargetTileId: '2,0', raidCommittedGuards: 2 }),
@@ -1167,8 +1231,9 @@ test('raid orders spawn visible guard settlers for a foreign town center', () =>
       assignedWorkTileId: settler.assignedWorkTileId,
     })),
     [
-      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '2,0' },
-      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '2,0' },
+      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '1,0' },
+      { assignedRole: 'guard', settlementId: '0,0', guardTowerTileId: '2,0', assignedWorkTileId: '1,0' },
     ],
   );
+  assert.deepEqual(settlers.map((settler) => settler.combatHealth), [100, 100]);
 });

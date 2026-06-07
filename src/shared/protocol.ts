@@ -25,6 +25,7 @@ import type { StoryHeroId } from './story/heroRoster.ts';
 import type { MarketActorType, MarketOverviewSnapshot, MarketResourceType } from './game/market.ts';
 import type { ShipOrderOverviewSnapshot, ShipOrderResourceType } from './game/shipOrders.ts';
 import type { SeasonConfig, SeasonSnapshot, SeasonStageKey } from './seasons/types.ts';
+import type { ReleaseChangelogEntry } from './changelog/changelog.ts';
 
 export interface BaseMessage {
     type: string;
@@ -101,6 +102,17 @@ export interface PlayerSnapshotMessage extends BaseMessage {
     type: 'player:snapshot';
     currentPlayerId: string | null;
     players: PlayerEntitySnapshot[];
+}
+
+export interface ChangelogSnapshotMessage extends BaseMessage {
+    type: 'changelog:snapshot';
+    entries: ReleaseChangelogEntry[];
+    lastSeenChangelogAt: number | null;
+}
+
+export interface ChangelogAckMessage extends BaseMessage {
+    type: 'changelog:ack';
+    seenAt: number;
 }
 
 export interface ChatMessage extends BaseMessage {
@@ -670,6 +682,7 @@ export interface SettlersUpdateMessage extends BaseMessage {
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
+    | ChangelogAckMessage
     | ChatMessage
     | CoopHeroClaimMessage
     | CoopHeroReleaseMessage
@@ -713,6 +726,7 @@ export type ServerMessage =
     | PlayerLeaveMessage
     | PlayerCountMessage
     | PlayerSnapshotMessage
+    | ChangelogSnapshotMessage
     | ChatMessage
     | CoopSnapshotMessage
     | CoopPingMessage

@@ -56,7 +56,7 @@ export class ServerTaskHandler {
         }
 
         // Kick task processing
-        updateActiveTasks(heroes);
+        updateActiveTasks(heroes, { cleanupOpenTasks: false });
     }
 }
 

@@ -53,6 +53,8 @@ function cloneSettler(
         drinkPreference: normalizeDrinkPreference(settler),
         socialTileId: settler.socialTileId ?? null,
         carryingPayload: settler.carryingPayload ? { ...settler.carryingPayload } : undefined,
+        combatHealth: settler.combatHealth ?? null,
+        combatHealthMax: settler.combatHealthMax ?? null,
     };
 }
 

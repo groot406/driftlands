@@ -11,6 +11,7 @@ import { settlementStartHandler } from './handlers/settlementStartHandler';
 import { marketHandler } from './handlers/marketHandler';
 import { shipOrderHandler } from './handlers/shipOrderHandler';
 import { seasonHandler } from './handlers/seasonHandler';
+import { changelogHandler } from './handlers/changelogHandler';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
@@ -29,4 +30,5 @@ export function initializeClientHandlers(): void {
   marketHandler.init();
   shipOrderHandler.init();
   seasonHandler.init();
+  changelogHandler.init();
 }

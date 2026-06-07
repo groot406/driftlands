@@ -173,6 +173,12 @@ Available variables:
 - `SERVER_REQUIRE_LOOPERLANDS_AUTH`: force wallet auth requirement when set to `1`
 - `DRIFTLANDS_ADMIN_WALLETS`: comma-separated wallet allowlist for production admin controls; casing does not matter
 - `DRIFTLANDS_ENV_FILE`: optional server-only env file path; when set in the shell, the server loads only that file
+- `DRIFTLANDS_DISCORD_BOT_TOKEN`: server-only Discord bot token for in-game chat logging; `DISCORD_TOKEN` is also accepted as a fallback
+- `DRIFTLANDS_DISCORD_CHANNEL_ID`: existing Discord text channel ID for chat logs; when set, Driftlands sends directly to this channel
+- `DRIFTLANDS_DISCORD_GUILD_ID`: Discord server/guild ID; when no channel ID is set, Driftlands uses this plus the bot token to find or create the chat log channel
+- `DRIFTLANDS_DISCORD_CHANNEL_NAME`: channel name to find/create when using `DRIFTLANDS_DISCORD_GUILD_ID`, default `driftlands-chat`
+- `DRIFTLANDS_DISCORD_CATEGORY_ID`: optional Discord category ID for the auto-created chat log channel
+- `DRIFTLANDS_DISCORD_WEBHOOK_URL`: optional webhook-only fallback; this can post chat logs but cannot create channels
 
 Helpful notes:
 
@@ -185,6 +191,8 @@ Helpful notes:
 - set `SERVER_SAVE_PATH` to keep the current world, settlements, resources, workers, tasks, ownership, market, ship orders, run state, and season state across server restarts; local non-production runs use `.driftlands/world-save.json` when this is empty
 - set `SERVER_DEBUG_MODE=0` to disable Tab helper panels, render/debug controls, test-mode controls, and debug restart handling for connected clients
 - `FRONTEND_ORIGIN` can be a comma-separated allowlist, or omitted to allow localhost, common LAN origins, and ngrok-free.app by default
+- put Discord credentials only in server env files such as `.env.local`, `.env.external`, backend service env vars, or `/config/driftlands/.env` on HAOS; do not use `VITE_*` for Discord secrets
+- to let Driftlands create `driftlands-chat`, invite the bot to the Discord server with `Manage Channels` and `Send Messages`; if you create the channel manually and set `DRIFTLANDS_DISCORD_CHANNEL_ID`, `Send Messages` is enough
 
 ## Backend Deployment
 
@@ -209,6 +217,9 @@ FRONTEND_ORIGIN=https://your-frontend-domain.example
 LOOPERLANDS_API_URL=https://api.looperlands.io/api
 SERVER_REQUIRE_LOOPERLANDS_AUTH=1
 DRIFTLANDS_ADMIN_WALLETS=0xfE49e5c384f5FddDFc52e9610BfAB3d49D86847D
+DRIFTLANDS_DISCORD_BOT_TOKEN=<discord-bot-token>
+DRIFTLANDS_DISCORD_GUILD_ID=<discord-server-id>
+DRIFTLANDS_DISCORD_CHANNEL_NAME=driftlands-chat
 ```
 
 The included `Procfile` starts the same non-debug server command for Node buildpack platforms. If you deploy with Docker, the `Dockerfile` also uses that command.

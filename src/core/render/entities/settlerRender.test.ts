@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { Settler } from '../../types/Settler';
 import { getSettlerRenderFacing } from './settlerFacing';
-import { isSettlerActiveWorkAnimation } from './settlerRender';
+import { getSettlerCombatHealthBar, getWatchtowerArrowStreak, isSettlerActiveWorkAnimation } from './settlerRender';
 
 function createMovingSettler(): Settler {
     return {
@@ -69,4 +69,39 @@ test('isSettlerActiveWorkAnimation treats defending and raiding as combat animat
 
     settler.activity = 'idle';
     assert.equal(isSettlerActiveWorkAnimation(settler), false);
+});
+
+test('getSettlerCombatHealthBar returns percent only for damaged combat settlers', () => {
+    const settler = createMovingSettler();
+
+    settler.combatHealth = 40;
+    settler.combatHealthMax = 100;
+    assert.deepEqual(getSettlerCombatHealthBar(settler), { percent: 40 });
+
+    settler.combatHealth = 100;
+    assert.equal(getSettlerCombatHealthBar(settler), null);
+
+    settler.combatHealth = null;
+    settler.combatHealthMax = null;
+    assert.equal(getSettlerCombatHealthBar(settler), null);
+});
+
+test('getWatchtowerArrowStreak returns a compact curved projectile segment', () => {
+    const streak = getWatchtowerArrowStreak({
+        source: { x: 0, y: 0 },
+        target: { x: 120, y: 0 },
+        now: 0,
+        seed: 1,
+    });
+
+    assert.ok(streak);
+    const fullDistance = Math.hypot(120, 0);
+    const segmentLength = Math.hypot(streak.head.x - streak.tail.x, streak.head.y - streak.tail.y);
+
+    assert.ok(segmentLength < fullDistance * 0.2);
+    assert.ok(segmentLength >= 10);
+    assert.ok(streak.head.x > streak.tail.x);
+    assert.notEqual(Math.round(streak.head.y), 0);
+    assert.ok(streak.alpha > 0);
+    assert.ok(streak.alpha <= 1);
 });

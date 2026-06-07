@@ -3,25 +3,31 @@ import test from 'node:test';
 
 import { getBaseRenderQualityProfile } from '../RenderConfig';
 import type { RenderPassContext } from '../RenderPassContext';
-import { OverlayRenderer } from './OverlayRenderer';
+import type { Tile } from '../../types/Tile';
+import { getBuildingHealthBar, OverlayRenderer } from './OverlayRenderer';
 import { heroes } from '../../../store/heroStore';
 
 type MockCanvasContext = CanvasRenderingContext2D & {
-    calls: Record<'clearRect' | 'restore' | 'save' | 'scale', number>;
+    calls: Record<'clearRect' | 'fillRect' | 'restore' | 'save' | 'scale' | 'strokeRect', number>;
 };
 
 function createMockContext(): MockCanvasContext {
-    const calls: Record<'clearRect' | 'restore' | 'save' | 'scale', number> = {
+    const calls: Record<'clearRect' | 'fillRect' | 'restore' | 'save' | 'scale' | 'strokeRect', number> = {
         clearRect: 0,
+        fillRect: 0,
         restore: 0,
         save: 0,
         scale: 0,
+        strokeRect: 0,
     };
 
     return {
         calls,
         clearRect() {
             calls.clearRect += 1;
+        },
+        fillRect() {
+            calls.fillRect += 1;
         },
         restore() {
             calls.restore += 1;
@@ -31,6 +37,9 @@ function createMockContext(): MockCanvasContext {
         },
         scale() {
             calls.scale += 1;
+        },
+        strokeRect() {
+            calls.strokeRect += 1;
         },
     } as unknown as MockCanvasContext;
 }
@@ -135,6 +144,109 @@ function createDeps() {
         isHeroWalking: () => false,
     };
 }
+
+test('getBuildingHealthBar returns durability percent for attacked or damaged combat buildings', () => {
+    assert.deepEqual(
+        getBuildingHealthBar({
+            id: '2,0',
+            q: 2,
+            r: 0,
+            towerDurability: 45,
+            towerDurabilityMax: 100,
+            towerAttackerSettlementId: '0,0',
+        } as Tile),
+        { percent: 45 },
+    );
+
+    assert.deepEqual(
+        getBuildingHealthBar({
+            id: '3,0',
+            q: 3,
+            r: 0,
+            towerDurability: 150,
+            towerDurabilityMax: 300,
+            towerCaptureProgress: 12,
+        } as Tile),
+        { percent: 50 },
+    );
+
+    assert.deepEqual(
+        getBuildingHealthBar({
+            id: '4,0',
+            q: 4,
+            r: 0,
+            towerDurability: 100,
+            towerDurabilityMax: 100,
+            towerAttackerSettlementId: '0,0',
+        } as Tile),
+        { percent: 100 },
+    );
+});
+
+test('getBuildingHealthBar skips full-health and non-combat tiles', () => {
+    assert.equal(
+        getBuildingHealthBar({
+            id: '2,0',
+            q: 2,
+            r: 0,
+            towerDurability: 100,
+            towerDurabilityMax: 100,
+        } as Tile),
+        null,
+    );
+
+    assert.equal(
+        getBuildingHealthBar({
+            id: 'grass',
+            q: 0,
+            r: 0,
+        } as Tile),
+        null,
+    );
+});
+
+test('OverlayRenderer draws building health bars for attacked structures', () => {
+    const renderer = new OverlayRenderer();
+    const underlayCtx = createMockContext();
+    const topCtx = createMockContext();
+    const surfaceContent = { overlayUnderlay: false, overlayTop: false };
+
+    renderer.renderLayers(
+        createContext(underlayCtx, topCtx),
+        {
+            cameraFx: {
+                offsetX: 0,
+                offsetY: 0,
+                roll: 0,
+                zoom: 1,
+            },
+            effectNowMs: 1000,
+            movementNowMs: 1000,
+            visibleTiles: [
+                {
+                    id: '2,0',
+                    q: 2,
+                    r: 0,
+                    towerDurability: 45,
+                    towerDurabilityMax: 100,
+                    towerAttackerSettlementId: '0,0',
+                } as Tile,
+            ],
+            surfaceContent,
+        },
+        {
+            hoveredTile: null,
+            taskMenuTile: null,
+            pathCoords: [],
+        },
+        createDeps(),
+    );
+
+    assert.equal(surfaceContent.overlayTop, true);
+    assert.equal(topCtx.calls.clearRect, 1);
+    assert.ok(topCtx.calls.fillRect >= 2);
+    assert.equal(topCtx.calls.strokeRect, 1);
+});
 
 test('OverlayRenderer skips empty overlay surfaces', () => {
     const renderer = new OverlayRenderer();

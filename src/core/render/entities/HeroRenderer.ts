@@ -6,17 +6,22 @@ import { heroAnimationSet, heroAnimName, resolveActivity, shouldFlip } from '../
 import { taskStore } from '../../../store/taskStore';
 import { isHeroWorkingTask } from '../../../shared/game/heroTaskState';
 import { isHeroScanningScoutResource } from '../../../shared/game/scoutResources';
-import { camera, hexDistance } from '../../camera';
+import { axialToPixel, camera, hexDistance } from '../../camera';
 import { SETTLER_FRAME_SIZE, getSettlerSpriteKey, settlerAnimationSet, settlerAnimName } from '../../settlerSprite';
 import type { Hero } from '../../types/Hero';
 import type { Settler } from '../../types/Settler';
 import { getSettlerDisplayName } from '../../../shared/game/settlerNames.ts';
+import { WATCHTOWER_ARROW_RANGE } from '../../../shared/game/military.ts';
+import { axialDistanceCoords } from '../../../shared/game/hex';
 import {
     computeTileSettlerOffsets,
+    getSettlerCombatHealthBar,
     isSettlerActiveWorkAnimation,
     getSettlerRenderCoords,
     getSettlerRenderFacing,
     getSettlerInterpolatedPixelPosition,
+    getSettlerVisibilityCoords,
+    getWatchtowerArrowStreak,
     isSettlerVisibleOnMap,
 } from './settlerRender';
 import type { TileAnimationFrameRect } from '../../tileAnimation';
@@ -206,7 +211,8 @@ export class HeroRenderer {
                 continue;
             }
 
-            const dist = hexDistance(camera, settler);
+            const visibilityCoords = getSettlerVisibilityCoords(settler, now);
+            const dist = hexDistance(camera, visibilityCoords);
             if (dist > radius) {
                 continue;
             }
@@ -487,6 +493,8 @@ export class HeroRenderer {
                     ? (deps.settlerImages[settlerSpriteKey] ?? deps.settlerImages.default)
                     : undefined;
 
+                this.drawWatchtowerArrowStreak(ctx, settler, interp, opacity, now);
+
                 if (settlerSprite) {
                     const activity = walking ? 'walk' : working ? 'attack' : 'idle';
                     const animName = settlerAnimName(activity, renderFacing);
@@ -568,6 +576,7 @@ export class HeroRenderer {
                         ctx.fillRect(groundX + (sideFacing && sideSign < 0 ? -11 : 8), groundY - 16, 4, 4);
                     }
                     ctx.restore();
+                    this.drawSettlerCombatHealthBar(ctx, settler, groundX, spriteY + 7, opacity);
                     continue;
                 }
 
@@ -676,6 +685,7 @@ export class HeroRenderer {
                     ctx.fillRect(toolX - 1, toolY, 3, 1);
                 }
                 ctx.restore();
+                this.drawSettlerCombatHealthBar(ctx, settler, groundX, bodyY - 6, opacity);
                 continue;
             }
 
@@ -774,6 +784,110 @@ export class HeroRenderer {
         }
 
         ctx.globalAlpha = 1;
+    }
+
+    private drawSettlerCombatHealthBar(
+        ctx: CanvasRenderingContext2D,
+        settler: Settler,
+        groundX: number,
+        y: number,
+        opacity: number,
+    ) {
+        const healthBar = getSettlerCombatHealthBar(settler);
+        if (!healthBar) {
+            return;
+        }
+
+        const width = 15;
+        const height = 2;
+        const x = Math.round(groundX - (width / 2));
+        const fillWidth = Math.max(0, Math.round(width * (healthBar.percent / 100)));
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = 'rgba(26, 8, 8, 0.72)';
+        ctx.fillRect(x - 1, y - 1, width + 2, height + 2);
+        ctx.fillStyle = 'rgba(49, 18, 14, 0.86)';
+        ctx.fillRect(x, y, width, height);
+        ctx.fillStyle = healthBar.percent <= 35 ? '#ef4444' : '#eab308';
+        ctx.fillRect(x, y, fillWidth, height);
+        ctx.restore();
+    }
+
+    private drawWatchtowerArrowStreak(
+        ctx: CanvasRenderingContext2D,
+        settler: Settler,
+        interp: { x: number; y: number },
+        opacity: number,
+        now: number,
+    ) {
+        if ((settler.combatHealth ?? 0) <= 0 || !settler.guardTowerTileId) {
+            return;
+        }
+
+        const tower = tileIndex[settler.guardTowerTileId] ?? null;
+        if (!tower || (tower.towerAssignedGuards ?? 0) <= 0 || tower.ownerSettlementId === settler.settlementId) {
+            return;
+        }
+
+        const settlerCoords = getSettlerVisibilityCoords(settler, now);
+        if (axialDistanceCoords(settlerCoords.q, settlerCoords.r, tower.q, tower.r) > WATCHTOWER_ARROW_RANGE) {
+            return;
+        }
+
+        const towerPx = axialToPixel(tower.q, tower.r);
+        const assignedGuards = tower.towerAssignedGuards ?? 1;
+        const salvoCount = Math.min(3, Math.max(1, assignedGuards));
+        const source = { x: towerPx.x, y: towerPx.y - 22 };
+        const target = { x: interp.x, y: interp.y - 18 };
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        for (let i = 0; i < salvoCount; i++) {
+            const sideOffset = (i - ((salvoCount - 1) / 2)) * 3;
+            const streak = getWatchtowerArrowStreak({
+                source: {
+                    x: source.x + sideOffset,
+                    y: source.y + (i % 2),
+                },
+                target: {
+                    x: target.x - sideOffset,
+                    y: target.y + (i % 2),
+                },
+                now: now + (i * 170),
+                seed: settler.appearanceSeed + (i * 23) + (assignedGuards * 13),
+            });
+            if (!streak) {
+                continue;
+            }
+
+            const dartLength = Math.max(10, Math.min(18, Math.hypot(streak.head.x - streak.tail.x, streak.head.y - streak.tail.y)));
+            ctx.save();
+            ctx.globalAlpha = opacity * streak.alpha;
+            ctx.translate(streak.head.x, streak.head.y);
+            ctx.rotate(streak.angle);
+
+            ctx.fillStyle = 'rgba(20, 13, 9, 0.94)';
+            ctx.fillRect(-dartLength, -1, dartLength, 2);
+            ctx.fillRect(-5, -2, 5, 1);
+            ctx.fillRect(-5, 1, 5, 1);
+            ctx.fillStyle = 'rgba(238, 184, 78, 0.78)';
+            ctx.fillRect(-dartLength + 2, -2, Math.max(4, dartLength - 7), 1);
+            ctx.fillStyle = 'rgba(255, 231, 150, 0.9)';
+            ctx.fillRect(-2, -1, 3, 2);
+            ctx.restore();
+
+            if (streak.sparkAlpha > 0.01) {
+                const spark = Math.min(1, streak.sparkAlpha);
+                ctx.globalAlpha = opacity * streak.alpha * spark;
+                ctx.fillStyle = 'rgba(255, 218, 92, 0.8)';
+                ctx.fillRect(streak.head.x - 1, streak.head.y - 4, 2, 2);
+                ctx.fillRect(streak.head.x + 3, streak.head.y - 1, 2, 2);
+                ctx.fillStyle = 'rgba(198, 48, 28, 0.7)';
+                ctx.fillRect(streak.head.x - 4, streak.head.y + 2, 2, 2);
+            }
+        }
+        ctx.restore();
     }
 
     private drawOverlayRecord(ctx: CanvasRenderingContext2D, ov: HeroOverlayRecord) {

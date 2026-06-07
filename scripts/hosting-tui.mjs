@@ -1058,12 +1058,28 @@ async function deployFrontend(options = {}) {
   return code;
 }
 
+async function generateReleaseChangelog(target, options = {}) {
+  printHeader(`Generate ${target} Changelog`);
+  printHint('Writes player-facing release notes from the current git changes before building release artifacts.');
+  const code = await run('node', ['scripts/generate-changelog.mjs', target]);
+  if (!options.skipPause) await pause();
+  return code;
+}
+
 async function fullFrontendPipeline(options = {}) {
   printHeader('Full Frontend Pipeline');
-  printHint('Pipeline: copy current Driftlands client -> install deps -> build platform -> commit -> push -> deploy hook.');
+  printHint('Pipeline: changelog -> copy current Driftlands client -> install deps -> build platform -> commit -> push -> deploy hook.');
   printHint(`Frontend repo: ${config.frontendRepoPath}`);
   if (!options.assumeConfirmed && !await confirm('Run the full frontend deployment pipeline?')) {
     return 0;
+  }
+
+  if (!options.skipChangelog) {
+    const changelogCode = await generateReleaseChangelog(options.changelogTarget || 'frontend', { skipPause: true });
+    if (changelogCode !== 0) {
+      if (!options.skipPause) await pause();
+      return changelogCode;
+    }
   }
 
   try {
@@ -1250,10 +1266,18 @@ async function deploySelected(targetArg, options = {}) {
   }
 
   if (deploysFrontend(target)) {
+    if (target === 'both') {
+      const changelogCode = await generateReleaseChangelog('both', { skipPause: true });
+      if (changelogCode !== 0) {
+        process.exitCode = changelogCode;
+        return;
+      }
+    }
     const code = await fullFrontendPipeline({
       assumeConfirmed: true,
       skipPause: true,
       message: config.frontendCommitMessage,
+      skipChangelog: target === 'both',
     });
     if (code !== 0) {
       process.exitCode = code;
@@ -1262,7 +1286,9 @@ async function deploySelected(targetArg, options = {}) {
   }
 
   if (deploysBackend(target)) {
-    const code = await deployHaosOverSsh();
+    const code = await deployHaosOverSsh({
+      skipChangelog: target === 'both',
+    });
     if (code !== 0) {
       process.exitCode = code;
       return;
@@ -1649,6 +1675,14 @@ async function prepareHaosBundle(options = {}) {
     return null;
   }
 
+  if (!options.skipChangelog) {
+    const changelogCode = await generateReleaseChangelog(options.changelogTarget || 'backend', { skipPause: true });
+    if (changelogCode !== 0) {
+      if (!options.skipPause) await pause();
+      return null;
+    }
+  }
+
   mkdirSync(config.haosBundleDir, { recursive: true });
 
   const buildArgs = ['build', '-t', config.image];
@@ -1725,7 +1759,7 @@ async function publishHaosBundle() {
   await serverHandle.close();
 }
 
-async function deployHaosOverSsh() {
+async function deployHaosOverSsh(options = {}) {
   printHeader('Deploy Backend To HAOS');
   printHint(`Builds locally, stages the bundle on ${config.haosSshHost}, then installs into ${config.haosRemoteDir} with sudo.`);
 
@@ -1733,6 +1767,7 @@ async function deployHaosOverSsh() {
     assumeConfirmed: true,
     assumeDefaults: true,
     skipPause: true,
+    skipChangelog: options.skipChangelog,
   });
   if (!prepared) return 1;
 

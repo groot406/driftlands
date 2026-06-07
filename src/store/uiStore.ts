@@ -7,6 +7,7 @@ import { openWindow, closeWindow, WINDOW_IDS } from '../core/windowManager';
 import type {Hero} from "../core/types/Hero.ts";
 import type { Settler } from '../core/types/Settler';
 import { resetNotifications } from './notificationStore';
+import { resetChangelogStore } from './changelogStore';
 import type { InventorySelectionKey } from '../shared/game/inventoryPresentation.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 import { currentPlayerId } from '../core/socket.ts';
@@ -172,6 +173,7 @@ export function returnToTitle() {
     closeResourceDetailModal();
     closeSettlerModal();
     resetNotifications();
+    resetChangelogStore();
 }
 
 export function isTitle() {

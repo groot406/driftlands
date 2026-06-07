@@ -82,4 +82,6 @@ export interface Settler {
     socialTileId?: string | null;
     movement?: HeroMovementState;
     carryingPayload?: ResourceAmount;
+    combatHealth?: number | null;
+    combatHealthMax?: number | null;
 }

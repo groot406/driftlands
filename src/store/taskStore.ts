@@ -860,11 +860,17 @@ export function resumeWaitingTasksForResource(resourceType: ResourceType, storag
     }
 }
 
+export interface UpdateActiveTasksOptions {
+    cleanupOpenTasks?: boolean;
+}
+
 // Time-based update; call frequently (e.g. each frame) with current hero roster
-export function updateActiveTasks(heroes: Hero[]) {
+export function updateActiveTasks(heroes: Hero[], options: UpdateActiveTasksOptions = {}) {
     const nowMs = Date.now();
-    removeInvalidOpenTasks();
-    removeUncontinuableOpenTasks();
+    if (options.cleanupOpenTasks ?? true) {
+        removeInvalidOpenTasks();
+        removeUncontinuableOpenTasks();
+    }
     const heroesById = new Map(heroes.map((hero) => [hero.id, hero]));
     const activeTaskIds = Array.from(taskStore.activeTaskIds);
     for (const taskId of activeTaskIds) {

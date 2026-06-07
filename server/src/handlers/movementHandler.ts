@@ -214,7 +214,7 @@ export class ServerMovementHandler {
                 if (stopsScouting && staysAtCurrentPosition) {
                     stopScoutResourceSearch(hero);
                     this.activeMovements.delete(heroId);
-                    updateActiveTasks(heroes);
+                    updateActiveTasks(heroes, { cleanupOpenTasks: false });
                     commandResult = 'scout_cancelled';
                 }
                 return;
@@ -267,7 +267,7 @@ export class ServerMovementHandler {
             };
             broadcast(update);
 
-            updateActiveTasks(heroes);
+            updateActiveTasks(heroes, { cleanupOpenTasks: false });
             commandResult = 'accepted';
         } finally {
             performanceMonitor.recordCommand('hero:move_request', Date.now() - commandStartedAt, {
@@ -327,7 +327,7 @@ export class ServerMovementHandler {
                 } else {
                     joinTask(existing.id, hero);
                 }
-                updateActiveTasks(heroes);
+                updateActiveTasks(heroes, { cleanupOpenTasks: false });
             }
             return;
         }
@@ -415,7 +415,7 @@ export class ServerMovementHandler {
             exploreTarget,
         } as PathUpdateMessage)
 
-        updateActiveTasks(heroes);
+        updateActiveTasks(heroes, { cleanupOpenTasks: false });
     }
 
     _service: PathService | null = null;
@@ -717,6 +717,11 @@ function canPlayerUsePosition(playerId: string | null | undefined, q: number, r:
     }
 
     const settlementId = playerSettlementState.getPlayerSettlement(playerId);
+    const tile = getTile({ q, r });
+    if (tile?.discovered) {
+        return isTileControlledBySettlement(tile, settlementId);
+    }
+
     return isPositionControlledBySettlement(q, r, settlementId);
 }
 

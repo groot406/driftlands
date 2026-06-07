@@ -14,6 +14,7 @@ import { ServerMarketHandler } from '../handlers/marketHandler';
 import { ServerSettlementStartHandler } from '../handlers/settlementStartHandler';
 import { ServerTestModeHandler } from '../handlers/testModeHandler';
 import { ServerSeasonAdminHandler } from '../handlers/seasonAdminHandler';
+import { ServerChangelogHandler } from '../handlers/changelogHandler';
 import { serverDebugModeEnabled } from '../config/serverMode';
 
 // Initialize all server handlers
@@ -57,6 +58,9 @@ export function initializeServerHandlers(io: Server) {
   const heroAbilityHandler = new ServerHeroAbilityHandler(io);
   heroAbilityHandler.init();
 
+  const changelogHandler = new ServerChangelogHandler();
+  changelogHandler.init();
+
   const coopHandler = new ServerCoopHandler(io);
   coopHandler.init();
 
@@ -77,6 +81,7 @@ export function initializeServerHandlers(io: Server) {
     testModeHandler,
     seasonAdminHandler,
     heroAbilityHandler,
+    changelogHandler,
     coopHandler,
     scoutHandler,
   };

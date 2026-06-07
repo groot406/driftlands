@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Tile } from '../../../src/shared/game/types/Tile';
+import type { Settler } from '../../../src/shared/game/types/Settler';
 import { loadWorld } from '../../../src/shared/game/world';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { loadSettlers, resetSettlerState, settlers } from '../../../src/shared/game/state/settlerStore';
@@ -55,6 +56,66 @@ function loadPopulation(current: number, beds: number) {
     pressureState: 'stable',
     settlements: [],
   });
+}
+
+function loadSettlementPopulation(current: number, beds: number, settlementId: string = '0,0') {
+  loadPopulationSnapshot({
+    current,
+    max: Math.max(10, current, beds),
+    beds,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId,
+      current,
+      max: Math.max(10, current, beds),
+      beds,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+}
+
+function createSettler(overrides: Partial<Settler> & Pick<Settler, 'id'>): Settler {
+  return {
+    id: overrides.id,
+    q: overrides.q ?? 0,
+    r: overrides.r ?? 0,
+    facing: overrides.facing ?? 'down',
+    appearanceSeed: overrides.appearanceSeed ?? 1,
+    homeTileId: overrides.homeTileId ?? '0,0',
+    homeAccessTileId: overrides.homeAccessTileId ?? '0,0',
+    settlementId: overrides.settlementId ?? '0,0',
+    assignedWorkTileId: overrides.assignedWorkTileId ?? null,
+    assignedRole: overrides.assignedRole ?? null,
+    guardTowerTileId: overrides.guardTowerTileId ?? null,
+    workTileId: overrides.workTileId ?? null,
+    hiddenWhileWorking: overrides.hiddenWhileWorking ?? null,
+    activity: overrides.activity ?? 'idle',
+    blockerReason: overrides.blockerReason ?? null,
+    stateSinceMs: overrides.stateSinceMs ?? 0,
+    hungerMs: overrides.hungerMs ?? 0,
+    fatigueMs: overrides.fatigueMs ?? 0,
+    happiness: overrides.happiness ?? 100,
+    traits: overrides.traits,
+    drinkPreference: overrides.drinkPreference,
+    workProgressMs: overrides.workProgressMs ?? 0,
+    carryingKind: overrides.carryingKind ?? null,
+    socialTileId: overrides.socialTileId ?? null,
+    movement: overrides.movement,
+    carryingPayload: overrides.carryingPayload,
+    combatHealth: overrides.combatHealth ?? null,
+    combatHealthMax: overrides.combatHealthMax ?? null,
+  };
 }
 
 function tickAt(now: number, dt: number = 1_000) {
@@ -910,6 +971,63 @@ test('settlers do not starve while their settlement still has edible meals in a 
   assert.equal(settlers.length, 1);
   assert.equal(resourceInventory.bread, 0);
   assert.ok((settlers[0]?.hungerMs ?? 0) < 240_000);
+});
+
+test('starvation deaths are paced per settlement so shortages shrink gradually', () => {
+  loadWorld([
+    createTowncenterTile(),
+  ]);
+  loadSettlementPopulation(6, 6);
+  loadSettlers(Array.from({ length: 6 }, (_, index) => createSettler({
+    id: `settler-${index + 1}`,
+    hungerMs: 240_000,
+  })));
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.length, 5);
+  assert.equal(settlers.filter((settler) => settler.settlementId === '0,0').length, 5);
+
+  tickAt(30_000, 29_000);
+  assert.equal(settlers.length, 5);
+
+  tickAt(61_000, 31_000);
+  assert.equal(settlers.length, 4);
+});
+
+test('starvation chooses non-food workers before food producers', () => {
+  loadWorld([
+    createTowncenterTile(),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'forest', variant: 'forest_hunters_hut' }),
+    createTile({ id: '2,0', q: 2, r: 0, terrain: 'forest', variant: 'forest_lumber_camp' }),
+  ]);
+  loadSettlementPopulation(2, 2);
+  loadSettlers([
+    createSettler({
+      id: 'hunter',
+      q: 1,
+      r: 0,
+      assignedWorkTileId: '1,0',
+      assignedRole: 'job',
+      activity: 'working',
+      hungerMs: 240_000,
+    }),
+    createSettler({
+      id: 'lumberjack',
+      q: 2,
+      r: 0,
+      assignedWorkTileId: '2,0',
+      assignedRole: 'job',
+      activity: 'working',
+      hungerMs: 240_000,
+    }),
+  ]);
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.deepEqual(settlers.map((settler) => settler.id), ['hunter']);
 });
 
 for (const resourceType of HUNGER_FOOD_TYPES) {
