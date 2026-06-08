@@ -3,7 +3,7 @@ import {moveCamera} from './camera.ts';
 import {ensureTileExists, getTilesInRadius} from './world.ts';
 import {handleHeroArrival} from '../shared/tasks/tasks';
 import {sendMessage} from "./socket.ts";
-import type {HeroAbilityUseMessage, HeroSkillSelectMessage, MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
+import type {CancelTaskRequestMessage, HeroAbilityUseMessage, HeroSkillSelectMessage, MoveRequestMessage, StartTaskRequestMessage} from '../shared/protocol';
 import {PathService} from "./PathService.ts";
 import type {Hero, HeroPendingTaskIntent, HeroStats} from "./types/Hero.ts";
 import type { ScoutTargetType } from './types/Scout.ts';
@@ -107,6 +107,15 @@ export function startTaskRequest(
         exploreTarget,
     } as any;
     sendMessage(msg as any);
+}
+
+export function cancelTaskRequest(heroId: string, taskId: string) {
+    const msg: CancelTaskRequestMessage = {
+        type: 'task:request_cancel',
+        heroId,
+        taskId,
+    };
+    sendMessage(msg);
 }
 
 export function startHeroMovement(

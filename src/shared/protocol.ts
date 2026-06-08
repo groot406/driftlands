@@ -556,6 +556,12 @@ export interface LeaveTaskRequestMessage {
     taskId: string;
 }
 
+export interface CancelTaskRequestMessage extends BaseMessage {
+    type: 'task:request_cancel';
+    heroId: string;
+    taskId: string;
+}
+
 export interface ResourceDepositMessage extends BaseMessage {
     type: 'resource:deposit';
     heroId: string;
@@ -679,6 +685,12 @@ export interface SettlersUpdateMessage extends BaseMessage {
     settlers: Settler[];
 }
 
+export interface SettlersPatchMessage extends BaseMessage {
+    type: 'settlers:patch';
+    updates: Settler[];
+    removedIds: string[];
+}
+
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
@@ -718,7 +730,8 @@ export type ClientMessage =
     | HeroSkillSelectMessage
     | StartTaskRequestMessage
     | JoinTaskRequestMessage
-    | LeaveTaskRequestMessage;
+    | LeaveTaskRequestMessage
+    | CancelTaskRequestMessage;
 
 export type ServerMessage =
     | PlayerJoinMessage
@@ -766,4 +779,5 @@ export type ServerMessage =
     | JobsUpdateMessage
     | StudiesUpdateMessage
     | TestUpdateMessage
-    | SettlersUpdateMessage;
+    | SettlersUpdateMessage
+    | SettlersPatchMessage;

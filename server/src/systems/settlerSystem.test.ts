@@ -134,8 +134,9 @@ test('settler and hunger population broadcasts are throttled while continuous hu
   tickAt(1_200, 100);
   tickAt(1_300, 100);
 
-  const settlerUpdates = messages.filter((message) => message.type === 'settlers:update');
-  assert.deepEqual(settlerUpdates.map((message) => message.timestamp), [1_000, 1_300]);
+  const settlerMessages = messages.filter((message) => message.type === 'settlers:update' || message.type === 'settlers:patch');
+  assert.deepEqual(settlerMessages.map((message) => message.timestamp), [1_000, 1_300]);
+  assert.deepEqual(settlerMessages.map((message) => message.type), ['settlers:update', 'settlers:patch']);
   const populationUpdates = messages.filter((message) => message.type === 'population:update');
   assert.equal(populationUpdates.length, 2);
 });
@@ -519,7 +520,7 @@ test('shop venue movement reuses the reachable access path', () => {
 
   assert.equal(settlers[0]?.activity, 'commuting_shop');
   assert.equal(pathEvents.filter((event) => event.source === 'settler_reachability').length, 1);
-  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 0);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement' && event.cacheHit).length, 1);
 });
 
 test('settlers visit the nearest reachable staffed shop with capacity', () => {
@@ -1263,8 +1264,66 @@ test('working settlers stagger non-urgent planning while preserving accumulated 
   assert.equal(settlers[0]?.workProgressMs, 1_200);
 });
 
-test('settlers reuse a cached fixed route for repeated home commutes', () => {
-  const pathEvents: Array<{ source?: string }> = [];
+test('settler planning cap defers excess idle settlers without dropping accumulated planning time', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter', controlledBySettlementId: '0,0', ownerSettlementId: '0,0' }),
+    ...Array.from({ length: 6 }, (_, index) => createTile({
+      id: `${index + 1},0`,
+      q: index + 1,
+      r: 0,
+      terrain: 'forest',
+      variant: 'forest_lumber_camp',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+    })),
+  ]);
+  loadPopulationSnapshot({
+    current: 6,
+    max: 15,
+    beds: 6,
+    hungerMs: 0,
+    supportCapacity: 0,
+    activeTileCount: 0,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [{
+      settlementId: '0,0',
+      current: 6,
+      max: 15,
+      beds: 6,
+      hungerMs: 0,
+      supportCapacity: 0,
+      ownedTileCount: 0,
+      activeTileCount: 0,
+      inactiveTileCount: 0,
+      fragileTileCount: 0,
+      uncontrolledTileCount: 0,
+      pressureState: 'stable',
+    }],
+  });
+  loadSettlers(Array.from({ length: 6 }, (_, index) => createSettler({
+    id: `settler-${index + 1}`,
+    q: 0,
+    r: 0,
+    settlementId: '0,0',
+    activity: 'idle',
+    hungerMs: 0,
+    fatigueMs: 0,
+  })));
+  settlerSystem.init();
+
+  tickAt(1_000, 1_000);
+
+  assert.equal(settlers.filter((settler) => settler.activity !== 'idle').length, 4);
+  assert.equal(settlers.filter((settler) => settler.activity === 'idle').length, 2);
+
+  tickAt(2_000, 1_000);
+
+  assert.equal(settlers.filter((settler) => settler.activity !== 'idle').length, 6);
+});
+
+test('settlers report cached fixed route hits for repeated home commutes', () => {
+  const pathEvents: Array<{ source?: string; cacheHit?: boolean }> = [];
   configurePathTelemetry((event) => {
     pathEvents.push(event);
   });
@@ -1323,11 +1382,12 @@ test('settlers reuse a cached fixed route for repeated home commutes', () => {
   tickAt(2_000, 100);
 
   assert.equal(settlers[0]?.activity, 'commuting_home');
-  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 1);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement' && !event.cacheHit).length, 1);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement' && event.cacheHit).length, 1);
 });
 
-test('settlers share cached fixed routes across matching commutes', () => {
-  const pathEvents: Array<{ source?: string }> = [];
+test('settlers report shared cached fixed route hits across matching commutes', () => {
+  const pathEvents: Array<{ source?: string; cacheHit?: boolean }> = [];
   configurePathTelemetry((event) => {
     pathEvents.push(event);
   });
@@ -1388,7 +1448,8 @@ test('settlers share cached fixed routes across matching commutes', () => {
 
   assert.equal(settlers[0]?.activity, 'commuting_home');
   assert.equal(settlers[1]?.activity, 'commuting_home');
-  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement').length, 1);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement' && !event.cacheHit).length, 1);
+  assert.equal(pathEvents.filter((event) => event.source === 'settler_movement' && event.cacheHit).length, 1);
 });
 
 test('upgraded houses slowly restore resident happiness from comfort', () => {

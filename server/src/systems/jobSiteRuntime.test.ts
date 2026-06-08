@@ -6,6 +6,7 @@ import { loadWorld } from '../../../src/shared/game/world';
 import { depositResourceToStorage, resetResourceState } from '../../../src/shared/game/state/resourceStore';
 import { listResolvedJobSites, resolveJobResources, resolveSiteStatus } from './jobSiteRuntime';
 import { resetStudyState } from '../../../src/store/studyStore';
+import { extractMineOre, getMineClusterReserve, resetMineReserveState } from '../state/mineReserveState';
 
 function createTile(overrides: Partial<Tile> & Pick<Tile, 'id' | 'q' | 'r' | 'terrain'>): Tile {
   return {
@@ -29,6 +30,7 @@ test.afterEach(() => {
   loadWorld([]);
   resetResourceState();
   resetStudyState();
+  resetMineReserveState();
 });
 
 test('quarry sites resolve into infinite stone-producing job sites', () => {
@@ -63,6 +65,55 @@ test('active adjacent volcanoes increase nearby job-site output', () => {
 
   const resources = quarrySite ? resolveJobResources(quarrySite, 1) : null;
   assert.deepEqual(resources?.produces, [{ type: 'stone', amount: 5 }]);
+});
+
+test('small mine clusters produce a useful baseline and last beyond the old ten-cycle reserve', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'mountain', biome: 'mountains', variant: 'mountains_with_mine' }),
+  ]);
+
+  const mineSite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+
+  assert.equal(mineSite?.building.key, 'mine');
+  assert.deepEqual(mineSite ? resolveJobResources(mineSite, 1).produces : null, [{ type: 'ore', amount: 3 }]);
+  assert.equal(mineSite ? getMineClusterReserve(mineSite.tile).totalCapacity : 0, 64);
+});
+
+test('large mine clusters use diminishing output instead of one ore per mountain tile', () => {
+  const mountainTiles = Array.from({ length: 20 }, (_, index) => createTile({
+    id: `${index + 1},0`,
+    q: index + 1,
+    r: 0,
+    terrain: 'mountain',
+    biome: 'mountains',
+    variant: index === 0 ? 'mountains_with_mine' : null,
+  }));
+
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    ...mountainTiles,
+  ]);
+
+  const mineSite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+
+  assert.deepEqual(mineSite ? resolveJobResources(mineSite, 1).produces : null, [{ type: 'ore', amount: 9 }]);
+  assert.equal(mineSite ? getMineClusterReserve(mineSite.tile).totalCapacity : 0, 368);
+});
+
+test('mine output caps to the remaining cluster reserve near depletion', () => {
+  loadWorld([
+    createTile({ id: '0,0', q: 0, r: 0, terrain: 'towncenter' }),
+    createTile({ id: '1,0', q: 1, r: 0, terrain: 'mountain', biome: 'mountains', variant: 'mountains_with_mine' }),
+  ]);
+
+  const mineSite = listResolvedJobSites().find((site) => site.tile.id === '1,0');
+
+  assert.ok(mineSite);
+  assert.equal(extractMineOre(mineSite.tile, 62), 62);
+  assert.deepEqual(resolveJobResources(mineSite, 1).produces, [{ type: 'ore', amount: 2 }]);
+  assert.equal(extractMineOre(mineSite.tile, 2), 2);
+  assert.equal(resolveSiteStatus(mineSite, 1), 'depleted');
 });
 
 test('field winery resolves into durable grape-to-wine production', () => {

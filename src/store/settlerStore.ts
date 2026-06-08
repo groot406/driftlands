@@ -61,6 +61,7 @@ function cloneSettler(
 
 export const settlers = reactive<Settler[]>([]);
 export const settlerVersion = ref(0);
+let lastBroadcastSnapshot: Settler[] | null = null;
 
 export function getSettler(id: string) {
     return settlers.find((settler) => settler.id === id) ?? null;
@@ -68,6 +69,7 @@ export function getSettler(id: string) {
 
 export function resetSettlerState() {
     settlers.length = 0;
+    lastBroadcastSnapshot = null;
     settlerVersion.value++;
 }
 
@@ -79,6 +81,7 @@ export function loadSettlers(nextSettlers: Settler[], serverTimestamp?: number) 
         settlers.push(cloneSettler(settler, previousById.get(settler.id), serverTimestamp));
     }
 
+    lastBroadcastSnapshot = null;
     settlerVersion.value++;
 }
 
@@ -86,14 +89,79 @@ export function updateSettlers(nextSettlers: Settler[], serverTimestamp?: number
     loadSettlers(nextSettlers, serverTimestamp);
 }
 
+export function applySettlersPatch(
+    patch: { updates?: Settler[]; removedIds?: string[]; timestamp?: number },
+) {
+    let changed = false;
+    const removedIds = new Set(patch.removedIds ?? []);
+    if (removedIds.size > 0) {
+        for (let index = settlers.length - 1; index >= 0; index--) {
+            if (removedIds.has(settlers[index]!.id)) {
+                settlers.splice(index, 1);
+                changed = true;
+            }
+        }
+    }
+
+    for (const update of patch.updates ?? []) {
+        const index = settlers.findIndex((settler) => settler.id === update.id);
+        if (index >= 0) {
+            settlers[index] = cloneSettler(update, settlers[index], patch.timestamp);
+        } else {
+            settlers.push(cloneSettler(update, undefined, patch.timestamp));
+        }
+        changed = true;
+    }
+
+    if (changed) {
+        settlerVersion.value++;
+    }
+}
+
 export function getSettlerSnapshot(): Settler[] {
     return settlers.map((settler) => cloneSettler(settler));
 }
 
 export function broadcastSettlersState(timestamp: number = Date.now()) {
+    const snapshot = getSettlerSnapshot();
+    lastBroadcastSnapshot = snapshot.map((settler) => cloneSettler(settler));
     broadcast({
         type: 'settlers:update',
-        settlers: getSettlerSnapshot(),
+        settlers: snapshot,
+        timestamp,
+    });
+}
+
+export function resetSettlerBroadcastBaseline() {
+    lastBroadcastSnapshot = null;
+}
+
+export function broadcastSettlersPatchState(timestamp: number = Date.now()) {
+    if (!lastBroadcastSnapshot) {
+        broadcastSettlersState(timestamp);
+        return;
+    }
+
+    const snapshot = getSettlerSnapshot();
+    const previousById = new Map(lastBroadcastSnapshot.map((settler) => [settler.id, settler]));
+    const currentIds = new Set(snapshot.map((settler) => settler.id));
+    const updates = snapshot.filter((settler) => {
+        const previous = previousById.get(settler.id);
+        return !previous || JSON.stringify(previous) !== JSON.stringify(settler);
+    });
+    const removedIds = lastBroadcastSnapshot
+        .filter((settler) => !currentIds.has(settler.id))
+        .map((settler) => settler.id);
+
+    lastBroadcastSnapshot = snapshot.map((settler) => cloneSettler(settler));
+    if (!updates.length && !removedIds.length) {
+        return;
+    }
+
+    broadcast({
+        type: 'settlers:patch',
+        updates,
+        removedIds,
         timestamp,
     });
 }

@@ -34,6 +34,16 @@
             <span class="quick-action-menu__label">{{ getQuickActionContinueLabel(quickActionMenu.continueTask) }}</span>
           </button>
           <button
+            v-if="quickActionMenu.continueTask"
+            type="button"
+            class="quick-action-menu__item quick-action-menu__item--cancel"
+            @click.stop="handleQuickActionCancelClick(quickActionMenu.continueTask)"
+            @pointerleave="handleQuickActionHover(null)"
+          >
+            <span class="quick-action-menu__glyph">×</span>
+            <span class="quick-action-menu__label">Cancel task</span>
+          </button>
+          <button
             v-for="task in quickActionMenu.tasks"
             :key="task.key"
             type="button"
@@ -155,7 +165,7 @@
 <script setup lang="ts">
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {ensureTileExists, tileIndex, worldVersion} from '../core/world';
-import {requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
+import {cancelTaskRequest, requestHeroMovement, startTaskRequest, updateHeroFacing, updateHeroMovements} from '../core/heroService';
 import { heroes } from '../store/heroStore';
 import TaskMenu from './TaskMenu.vue';
 import TownCenterPanel from './TownCenterPanel.vue';
@@ -1904,6 +1914,46 @@ function handleQuickActionContinueClick(task: TaskInstance) {
   handleQuickActionClick(definition);
 }
 
+function handleQuickActionCancelClick(task: TaskInstance) {
+  const tile = quickActionMenu.value.tile;
+  const hero = getSelectedHero();
+  if (!tile || !hero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Choose a hero before cancelling this order.',
+      duration: 2800,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  if (!canControlHero(hero.id, currentPlayerId.value)) {
+    addNotification({
+      type: 'coop_state',
+      title: `${hero.name} is occupied`,
+      message: `${getHeroOwnerName(hero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  if (!isTileInCurrentPlayerTerritory(tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Closed border',
+      message: 'This tile belongs outside your settlement reach.',
+      duration: 2500,
+    });
+    closeQuickActionMenu();
+    return;
+  }
+
+  cancelTaskRequest(hero.id, task.id);
+  closeQuickActionMenu();
+}
+
 function handleContextMenu(e: MouseEvent) {
   e.preventDefault();
   if (isPaused() || isKeyboardBlocked.value) {
@@ -2409,6 +2459,20 @@ onBeforeUnmount(() => {
   border-color: rgba(187, 247, 208, 0.82);
   background:
     linear-gradient(180deg, rgba(52, 132, 80, 0.68), rgba(101, 77, 34, 0.58));
+}
+
+.quick-action-menu__item--cancel {
+  border-color: rgba(248, 113, 113, 0.46);
+  background:
+    linear-gradient(180deg, rgba(88, 33, 33, 0.54), rgba(65, 38, 27, 0.48));
+  color: #fecaca;
+}
+
+.quick-action-menu__item--cancel:hover,
+.quick-action-menu__item--cancel:focus-visible {
+  border-color: rgba(252, 165, 165, 0.82);
+  background:
+    linear-gradient(180deg, rgba(127, 39, 39, 0.68), rgba(101, 52, 34, 0.58));
 }
 
 .quick-action-menu__glyph {

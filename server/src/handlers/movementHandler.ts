@@ -336,19 +336,25 @@ export class ServerMovementHandler {
         const isEscapingToOwnGround = canHeroEscapeToOwnGround(hero, targetTile);
         const isCrossingToOwnGround = canHeroCrossEnemyTerritoryToOwnGround(hero, targetTile);
         const allowsEnemyTerritory = isEscapingToOwnGround || isCrossingToOwnGround;
-        const path = this.getPathService().findWalkablePath(
-            hero.q,
-            hero.r,
-            target.q,
-            target.r,
-            getMovementPathOptions(
-                hero,
-                task,
-                allowsEnemyTerritory ? { ...options, ignoreTerritoryRestrictions: true } : options,
-                stopsScouting,
-                'runtime_move',
-            ),
-        );
+        const movementOptions = allowsEnemyTerritory ? { ...options, ignoreTerritoryRestrictions: true } : options;
+        const candidatePath = options?.path && isRuntimePathForTarget(options.path, hero, target)
+            ? sanitizePath(options.path, { q: hero.q, r: hero.r })
+            : [];
+        const path = candidatePath.length > 0
+            ? candidatePath
+            : this.getPathService().findWalkablePath(
+                hero.q,
+                hero.r,
+                target.q,
+                target.r,
+                getMovementPathOptions(
+                    hero,
+                    task,
+                    movementOptions,
+                    stopsScouting,
+                    'runtime_move',
+                ),
+            );
 
         if (!path || !path.length) {
             return;
@@ -358,13 +364,13 @@ export class ServerMovementHandler {
             hero,
             hero.playerId,
             path,
-            isEscapingToOwnGround || !!options?.ignoreTerritoryRestrictions,
+            isEscapingToOwnGround || !!movementOptions?.ignoreTerritoryRestrictions,
             isCrossingToOwnGround,
         )) {
             return;
         }
 
-        if (!allowsEnemyTerritory && !options?.ignoreTerritoryRestrictions && hero.playerId && path.some((step) => {
+        if (!allowsEnemyTerritory && !movementOptions?.ignoreTerritoryRestrictions && hero.playerId && path.some((step) => {
             const stepTile = getTile(step);
             return (hero.settlementId && isTileControlled(stepTile) && !isTileControlledBySettlement(stepTile, hero.settlementId))
                 || !canPlayerUsePosition(hero.playerId, step.q, step.r);
@@ -591,6 +597,31 @@ function normalizeExploreTarget(task: TaskType | undefined, target: { q: number;
         q: Math.trunc(target.q),
         r: Math.trunc(target.r),
     };
+}
+
+function isRuntimePathForTarget(
+    path: Array<{ q: number; r: number }> | undefined,
+    hero: Pick<Hero, 'q' | 'r'>,
+    target: { q: number; r: number },
+) {
+    if (!Array.isArray(path) || path.length === 0) {
+        return false;
+    }
+
+    const last = path[path.length - 1];
+    if (!last || last.q !== target.q || last.r !== target.r) {
+        return false;
+    }
+
+    let previous = { q: hero.q, r: hero.r };
+    for (const step of path) {
+        if (!isAxialNeighbor(previous, step)) {
+            return false;
+        }
+        previous = step;
+    }
+
+    return true;
 }
 
 function getMovementPathOptions(

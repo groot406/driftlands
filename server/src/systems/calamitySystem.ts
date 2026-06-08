@@ -137,10 +137,12 @@ function takeRandom<T>(rng: CalamityRng, values: T[], count: number) {
 }
 
 function getDiscoveredSettlementIds() {
-  return Array.from(terrainPositions.towncenter)
+  const settlementIds = Array.from(terrainPositions.towncenter)
     .map((tileId) => tileIndex[tileId])
     .filter((tile): tile is Tile => !!tile?.discovered && tile.terrain === 'towncenter')
-    .map((tile) => getTileSettlementId(tile) ?? tile.id)
+    .map((tile) => getTileSettlementId(tile) ?? tile.id);
+
+  return Array.from(new Set(settlementIds))
     .sort((left, right) => left.localeCompare(right));
 }
 

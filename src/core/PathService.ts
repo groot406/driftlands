@@ -20,6 +20,7 @@ export interface PathFindOptions {
 
 export interface PathTelemetryEvent {
     source?: string;
+    cacheLayer?: string;
     durationMs: number;
     start: PathCoord;
     goal: PathCoord;
@@ -134,6 +135,45 @@ export function invalidatePathCaches() {
     pathCacheWorldVersion = getWorldRenderVersion();
     pathCacheEpochSnapshot = pathCacheEpoch;
     pendingPathCacheResetReason = 'manual';
+}
+
+export function recordPathCacheTelemetry(event: {
+    source?: string;
+    cacheLayer: string;
+    start: PathCoord;
+    goal: PathCoord;
+    pathLength: number;
+    found?: boolean;
+    allowScouted?: boolean;
+    allowOpenBorders?: boolean;
+    settlementRestricted?: boolean;
+    cacheHit: boolean;
+}) {
+    if (!pathTelemetry) {
+        return;
+    }
+
+    pathTelemetry({
+        source: event.source,
+        cacheLayer: event.cacheLayer,
+        durationMs: 0,
+        start: { q: event.start.q, r: event.start.r },
+        goal: { q: event.goal.q, r: event.goal.r },
+        directDistance: axialDistanceCoords(event.start.q, event.start.r, event.goal.q, event.goal.r),
+        pathLength: event.pathLength,
+        iterations: 0,
+        maxNodes: 0,
+        maxRange: 0,
+        found: event.found ?? event.pathLength > 0,
+        allowScouted: event.allowScouted,
+        allowOpenBorders: event.allowOpenBorders,
+        settlementRestricted: event.settlementRestricted,
+        cacheHit: event.cacheHit,
+        cacheSize: pathCache.size,
+        cacheEpoch: pathCacheEpoch,
+        cacheWorldVersion: pathCacheWorldVersion,
+        cacheEvictions: 0,
+    });
 }
 
 export class PathService {
@@ -480,6 +520,7 @@ export class PathService {
         }
         pathTelemetry({
             source: options.telemetrySource,
+            cacheLayer: 'path_service',
             durationMs: Date.now() - startedAt,
             start: { q: startQ, r: startR },
             goal: { q: goalQ, r: goalR },

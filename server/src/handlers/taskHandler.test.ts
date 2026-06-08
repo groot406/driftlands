@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { Hero } from '../../../src/core/types/Hero.ts';
+import type { TaskInstance } from '../../../src/core/types/Task.ts';
 import type { Tile } from '../../../src/core/types/Tile.ts';
 import { discoverTile, ensureTileExists, loadWorld } from '../../../src/shared/game/world.ts';
 import { configureGameRuntime, resetGameRuntime } from '../../../src/shared/game/runtime.ts';
@@ -170,6 +171,43 @@ test('server rescue task starts on an active Distant Smoke signal with quest res
     { type: 'wood', amount: 10 },
     { type: 'tools', amount: 2 },
   ]);
+});
+
+test('server cancels a misplaced task for the controlling player', () => {
+  const messages: unknown[] = [];
+  setupDiscoveredDistantSmokeSignal(messages);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildRoad',
+    tileId: '1,0',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: Date.now(),
+    lastUpdateMs: Date.now(),
+    participants: { h1: 25 },
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 2 }],
+    collectedResources: [{ type: 'wood', amount: 1 }],
+  };
+  loadTasks([task]);
+  heroes[0]!.currentTaskId = task.id;
+
+  const handler = new ServerTaskHandler({} as any);
+  (handler as any).handleCancelRequest({ id: 'socket-1' }, {
+    type: 'task:request_cancel',
+    heroId: 'h1',
+    taskId: task.id,
+  });
+
+  assert.equal(getTaskByTile('1,0', 'buildRoad'), undefined);
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.equal(messages.some((message) => (
+    typeof message === 'object'
+    && message !== null
+    && (message as { type?: string; taskId?: string }).type === 'task:removed'
+    && (message as { taskId?: string }).taskId === task.id
+  )), true);
 });
 
 test('server completing the rescue objective grants Ren through the authoritative hero roster', () => {

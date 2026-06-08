@@ -8,7 +8,7 @@ import { loadHeroes } from '../../../src/shared/game/state/heroStore';
 import { resetWorkforceState } from '../../../src/shared/game/state/jobStore';
 import { loadPopulationSnapshot, resetPopulationState } from '../../../src/shared/game/state/populationStore';
 import { resetResourceState } from '../../../src/shared/game/state/resourceStore';
-import { loadWorld } from '../../../src/shared/game/world';
+import { ensureTileExists, loadWorld } from '../../../src/shared/game/world';
 import { resetStudyState } from '../../../src/store/studyStore';
 import { setIo } from '../messages/messageRouter';
 import { runState } from './runState';
@@ -124,4 +124,76 @@ test('run progress reuse cached landing reachability for non-terrain events', ()
   });
 
   assert.equal(landingReachabilityEvents(pathEvents).length, 1);
+});
+
+test('run progress keeps landing reachability cached for discoveries outside the landing profile radius', () => {
+  const pathEvents: PathTelemetryEvent[] = [];
+  setIo({ emit() {} });
+  configurePathTelemetry((event) => pathEvents.push(event));
+  loadLandingFixture();
+  runState.initialize(42);
+  runState.initializeSettlement('0,0');
+  assert.ok(landingReachabilityEvents(pathEvents).length > 0, 'settlement initialization should capture landing reachability once');
+
+  const farTile = ensureTileExists(20, 0);
+  Object.assign(farTile, {
+    biome: 'plains',
+    terrain: 'water',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    supportBand: 'stable',
+    jobSiteEnabled: null,
+  } satisfies Partial<Tile>);
+
+  pathEvents.length = 0;
+  runState.recordEvent({
+    type: 'tile:discovered',
+    tileId: farTile.id,
+    q: farTile.q,
+    r: farTile.r,
+    terrain: farTile.terrain,
+  });
+
+  assert.equal(landingReachabilityEvents(pathEvents).length, 0);
+});
+
+test('run progress reuses tile metrics for population events until discovery invalidates them', () => {
+  setIo({ emit() {} });
+  loadLandingFixture();
+  runState.initialize(42);
+  runState.initializeSettlement('0,0');
+  assert.equal(runState.getSnapshot()?.discoveredTiles, 2);
+
+  const newTile = ensureTileExists(3, 0);
+  Object.assign(newTile, {
+    biome: 'plains',
+    terrain: 'plains',
+    discovered: true,
+    isBaseTile: true,
+    activationState: 'active',
+    controlledBySettlementId: '0,0',
+    ownerSettlementId: '0,0',
+    supportBand: 'stable',
+    jobSiteEnabled: null,
+  } satisfies Partial<Tile>);
+
+  runState.recordEvent({
+    type: 'population:changed',
+    settlementId: '0,0',
+  });
+
+  assert.equal(runState.getSnapshot()?.discoveredTiles, 2);
+
+  runState.recordEvent({
+    type: 'tile:discovered',
+    tileId: newTile.id,
+    q: newTile.q,
+    r: newTile.r,
+    terrain: newTile.terrain,
+  });
+
+  assert.equal(runState.getSnapshot()?.discoveredTiles, 3);
 });

@@ -270,6 +270,39 @@ test('automatic calamity roll warns all discovered settlements for the same impa
   assert.equal(tileIndex['5,1']?.variant, null);
 });
 
+test('automatic calamity roll warns a settlement once when it has multiple town centers', () => {
+  const messages = captureBroadcasts();
+  resetCalamitySystem(0);
+  const firstAutomaticRollAt = 12 * 60_000;
+  loadWorld([
+    townCenter(),
+    tile({
+      id: '5,0',
+      q: 5,
+      r: 0,
+      terrain: 'towncenter',
+      ownerSettlementId: '0,0',
+      controlledBySettlementId: '0,0',
+    }),
+    tile({ id: '1,0', q: 1, r: 0, terrain: 'water' }),
+    tile({ id: '0,1', q: 0, r: 1, terrain: 'plains', variant: 'road', isBaseTile: false }),
+  ]);
+
+  calamitySystem.tick({
+    now: firstAutomaticRollAt,
+    dt: 1_000,
+    tick: 1,
+    rng: firstRng as never,
+  });
+
+  const warnings = messages.filter((message) => (
+    message.type === 'calamity:event'
+    && (message as any).phase === 'warning'
+  ));
+  assert.equal(warnings.length, 1);
+  assert.equal((warnings[0] as any).settlementId, '0,0');
+});
+
 test('flood control reduces road washout during impact', () => {
   loadWorld([
     townCenter(),

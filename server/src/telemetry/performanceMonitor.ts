@@ -29,6 +29,7 @@ export interface TickTiming {
 
 export interface PathfindingTiming {
   source?: string;
+  cacheLayer?: string;
   durationMs: number;
   start: { q: number; r: number };
   goal: { q: number; r: number };
@@ -174,10 +175,12 @@ class PerformanceMonitor {
   private tickTotalMs = 0;
   private tickMaxMs = 0;
   private systemAggregates: Record<string, { count: number; totalMs: number; maxMs: number }> = {};
+  private systemPhaseAggregates: Record<string, { count: number; totalMs: number; maxMs: number }> = {};
   private messageCounts = emptyCounters();
   private messageBytes = emptyCounters();
   private pathAggregates: Record<string, { count: number; totalMs: number; maxMs: number }> = {};
   private pathCacheCounts = emptyCounters();
+  private pathCacheLayerCounts = emptyCounters();
   private commandAggregates: Record<string, { count: number; totalMs: number; maxMs: number }> = {};
   private saveAggregates: Record<string, { count: number; totalMs: number; maxMs: number }> = {};
 
@@ -258,6 +261,12 @@ class PerformanceMonitor {
     }
   }
 
+  recordSystemPhase(system: string, phase: string, durationMs: number) {
+    if (!this.enabled) return;
+
+    addDurationAggregate(this.systemPhaseAggregates, `${system}:${phase}`, durationMs);
+  }
+
   recordInboundMessage(message: { type?: string } | null | undefined) {
     if (!this.enabled) return;
     increment(this.messageCounts, `in:${message?.type ?? 'unknown'}`);
@@ -291,8 +300,10 @@ class PerformanceMonitor {
     if (!this.enabled) return;
 
     const source = timing.source || 'unspecified';
+    const cacheLayer = timing.cacheLayer || 'path_service';
     addDurationAggregate(this.pathAggregates, source, timing.durationMs);
     increment(this.pathCacheCounts, `${source}:${timing.cacheHit ? 'hit' : 'miss'}`);
+    increment(this.pathCacheLayerCounts, `${source}:${cacheLayer}:${timing.cacheHit ? 'hit' : 'miss'}`);
     if (timing.durationMs >= this.slowPathMs) {
       const slowPath = {
         at: new Date().toISOString(),
@@ -352,10 +363,12 @@ class PerformanceMonitor {
     this.tickTotalMs = 0;
     this.tickMaxMs = 0;
     this.systemAggregates = {};
+    this.systemPhaseAggregates = {};
     this.messageCounts = emptyCounters();
     this.messageBytes = emptyCounters();
     this.pathAggregates = {};
     this.pathCacheCounts = emptyCounters();
+    this.pathCacheLayerCounts = emptyCounters();
     this.commandAggregates = {};
     this.saveAggregates = {};
     this.eventLoopDelay.reset();
@@ -391,9 +404,11 @@ class PerformanceMonitor {
         maxMs: this.tickMaxMs,
       },
       systems: cloneDurationAggregates(this.systemAggregates),
+      systemPhases: cloneDurationAggregates(this.systemPhaseAggregates),
       commands: cloneDurationAggregates(this.commandAggregates),
       pathfinding: cloneDurationAggregates(this.pathAggregates),
       pathfindingCache: cloneCounters(this.pathCacheCounts),
+      pathfindingCacheLayers: cloneCounters(this.pathCacheLayerCounts),
       persistence: cloneDurationAggregates(this.saveAggregates),
       messages: cloneCounters(this.messageCounts),
       messageBytes: cloneCounters(this.messageBytes),

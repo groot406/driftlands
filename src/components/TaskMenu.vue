@@ -43,25 +43,34 @@
 
           <div class="task-list-scroll">
             <div v-if="continueTask && continueTaskDefinition" class="task-section task-section--continue">
-              <button
-                type="button"
-                class="task-list-row task-list-row--continue"
-                :style="getContinueTaskRowStyle(continueTaskDefinition)"
-                @click="handleContinueTaskClick(continueTask)"
-                @pointerenter="hoverTask(continueTaskDefinition)"
-                @pointerleave="unHoverTask(continueTaskDefinition)"
-              >
-                <span class="task-list-row__glyph">↻</span>
-                <div class="task-list-row__info">
-                  <div class="task-list-row__headline">
-                    <p class="task-list-row__title">{{ getContinueTaskLabel(continueTask) }}</p>
+              <div class="task-section-actions">
+                <button
+                  type="button"
+                  class="task-list-row task-list-row--continue"
+                  :style="getContinueTaskRowStyle(continueTaskDefinition)"
+                  @click="handleContinueTaskClick(continueTask)"
+                  @pointerenter="hoverTask(continueTaskDefinition)"
+                  @pointerleave="unHoverTask(continueTaskDefinition)"
+                >
+                  <span class="task-list-row__glyph">↻</span>
+                  <div class="task-list-row__info">
+                    <div class="task-list-row__headline">
+                      <p class="task-list-row__title">{{ getContinueTaskLabel(continueTask) }}</p>
+                    </div>
+                    <p class="task-list-row__meta">{{ getContinueTaskMeta(continueTask) }}</p>
                   </div>
-                  <p class="task-list-row__meta">{{ getContinueTaskMeta(continueTask) }}</p>
-                </div>
-                <span class="task-list-row__state task-state--ready">
-                  {{ continueTask.active ? 'Working' : 'Paused' }}
-                </span>
-              </button>
+                  <span class="task-list-row__state task-state--ready">
+                    {{ continueTask.active ? 'Working' : 'Paused' }}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="task-cancel-btn"
+                  @click.stop="handleCancelTaskClick(continueTask)"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
 
             <div v-if="constructionTasks.length" class="task-section">
@@ -383,7 +392,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Tile } from '../core/types/Tile';
-import { requestHeroMovement, startTaskRequest } from '../core/heroService';
+import { cancelTaskRequest, requestHeroMovement, startTaskRequest } from '../core/heroService';
 import { canStartTaskWhileCarrying, detachHeroFromCurrentTask, taskStore } from '../store/taskStore';
 import { PathService } from '../core/PathService';
 import { isWindowActive, WINDOW_IDS } from '../core/windowManager';
@@ -1472,6 +1481,44 @@ function handleContinueTaskClick(task: TaskInstance) {
   hoveredTask.value = def;
   emit('hover', def);
   selectTask(def);
+}
+
+function handleCancelTaskClick(task: TaskInstance) {
+  if (!props.tile || !canManageTile(props.tile)) {
+    addNotification({
+      type: 'settlement',
+      title: 'Foreign tile',
+      message: 'Only the settlement owner can cancel orders here.',
+      duration: 2800,
+    });
+    close();
+    return;
+  }
+
+  const hero = getSelectedHero();
+  if (!hero) {
+    addNotification({
+      type: 'run_state',
+      title: 'Select a hero',
+      message: 'Choose a hero before cancelling this order.',
+      duration: 2800,
+    });
+    return;
+  }
+
+  if (!canControlHero(hero.id, currentPlayerId.value)) {
+    addNotification({
+      type: 'coop_state',
+      title: `${hero.name} is occupied`,
+      message: `${getHeroOwnerName(hero.id) ?? 'Another player'} has claimed this hero.`,
+      duration: 3000,
+    });
+    close();
+    return;
+  }
+
+  cancelTaskRequest(hero.id, task.id);
+  close();
 }
 
 /** Confirm the currently selected task (used by the confirm button) */
@@ -3004,6 +3051,13 @@ onUnmounted(() => {
   gap: 0.34rem;
 }
 
+.task-section-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
 .task-list-row {
   display: grid;
   grid-template-columns: 3.55rem minmax(0, 1fr) minmax(4.8rem, 6.25rem);
@@ -3023,6 +3077,27 @@ onUnmounted(() => {
 
 .task-list-row--action {
   min-height: 4.65rem;
+}
+
+.task-cancel-btn {
+  min-width: 5.25rem;
+  min-height: 4.72rem;
+  border: 1px solid rgba(248, 113, 113, 0.42);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(89, 33, 33, 0.62), rgba(32, 21, 18, 0.72));
+  color: #fecaca;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.task-cancel-btn:hover,
+.task-cancel-btn:focus-visible {
+  border-color: rgba(252, 165, 165, 0.78);
+  background:
+    linear-gradient(180deg, rgba(127, 39, 39, 0.72), rgba(52, 28, 24, 0.78));
+  outline: none;
 }
 
   .task-list-row::before {

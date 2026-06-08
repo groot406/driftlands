@@ -7,6 +7,7 @@ type TargetPosition = { q: number; r: number };
 export interface MoveHeroRuntimeOptions {
   allowScouted?: boolean;
   ignoreTerritoryRestrictions?: boolean;
+  path?: TargetPosition[];
 }
 
 export interface GameRuntime {

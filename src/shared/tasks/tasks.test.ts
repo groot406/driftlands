@@ -8,7 +8,7 @@ import { terrainPositions } from '../../core/terrainRegistry.ts';
 import { configureGameRuntime, resetGameRuntime } from '../game/runtime.ts';
 import { heroes, loadHeroes } from '../../store/heroStore.ts';
 import { depositResourceToStorage, resetResourceState, getStorageResourceAmount } from '../../store/resourceStore.ts';
-import { addResourcesToTask, canStartTaskWhileCarrying, detachHeroFromCurrentTask, joinTask, leaveTask, loadTasks, startTask, taskStore, updateActiveTasks } from '../../store/taskStore.ts';
+import { addResourcesToTask, canStartTaskWhileCarrying, cancelTask, detachHeroFromCurrentTask, joinTask, leaveTask, loadTasks, startTask, taskStore, updateActiveTasks } from '../../store/taskStore.ts';
 import { loadPopulationSnapshot, resetPopulationState } from '../../store/populationStore.ts';
 import { loadTestModeSettings, resetTestModeSettings } from '../game/testMode.ts';
 import { loadStoryProgression, setStoryProgressionForMission } from '../story/progressionState.ts';
@@ -374,6 +374,66 @@ test('leaving a task with no dropped resources removes it instead of making it c
   assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === task.id), true);
 });
 
+test('canceling a misplaced task clears participants and fetchers', () => {
+  const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
+  configureGameRuntime({
+    broadcast(message) {
+      messages.push(message);
+    },
+  });
+
+  loadHeroes([
+    {
+      id: 'h1',
+      name: 'Santa',
+      avatar: 'santa',
+      q: 0,
+      r: 1,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      currentTaskId: 'task-build',
+    } satisfies Hero,
+    {
+      id: 'h2',
+      name: 'Maya',
+      avatar: 'female_braid',
+      q: 0,
+      r: 0,
+      stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+      facing: 'down',
+      pendingTask: { tileId: '0,1', taskType: 'buildDock' },
+      carryingPayload: { type: 'wood', amount: -5 },
+      returnPos: { q: 0, r: 1 },
+    } satisfies Hero,
+  ]);
+
+  const task: TaskInstance = {
+    id: 'task-build',
+    type: 'buildDock',
+    tileId: '0,1',
+    progressXp: 25,
+    requiredXp: 100,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: { h1: 25 },
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [{ type: 'wood', amount: 3 }],
+  };
+  loadTasks([task]);
+
+  cancelTask(task);
+
+  assert.equal(taskStore.taskIndex['task-build'], undefined);
+  assert.equal(taskStore.tasksByTile['0,1']?.buildDock, undefined);
+  assert.equal(taskStore.tasksByRequiredResource.get('wood')?.has('task-build') ?? false, false);
+  assert.equal(heroes[0]?.currentTaskId, undefined);
+  assert.equal(heroes[1]?.pendingTask, undefined);
+  assert.equal(heroes[1]?.carryingPayload, undefined);
+  assert.equal(heroes[1]?.returnPos, undefined);
+  assert.equal(messages.some((message) => message.type === 'task:removed' && message.taskId === 'task-build'), true);
+});
+
 test('joining a paused resource-cost task without dropped resources keeps it continuable', () => {
   const messages: Array<{ type: string; taskId?: string; tileId?: string }> = [];
   configureGameRuntime({
@@ -687,6 +747,91 @@ test('heroes joining the same build task fetch material from unreserved warehous
   assert.deepEqual(fetchTargets.get('h2'), { q: 2, r: 0 });
   assert.deepEqual(heroes[0]?.carryingPayload, { type: 'wood', amount: -10 });
   assert.deepEqual(heroes[1]?.carryingPayload, { type: 'wood', amount: -10 });
+});
+
+test('resource fetch movement reuses the path computed for reachability', () => {
+  let movementOptions: unknown = null;
+  configureGameRuntime({
+    moveHero(_hero, _target, _task, _taskLocation, options) {
+      movementOptions = options ?? null;
+    },
+  });
+
+  registerTask({
+    key: 'buildFetchPathProbe',
+    label: 'Build Fetch Path Probe',
+    canStart() {
+      return true;
+    },
+    requiredXp() {
+      return 1_000;
+    },
+    heroRate() {
+      return 1;
+    },
+    requiredResources() {
+      return [{ type: 'wood', amount: 5 }];
+    },
+  });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+  loadHeroes([{
+    id: 'h1',
+    name: 'Santa',
+    avatar: 'santa',
+    q: 1,
+    r: 0,
+    stats: { xp: 10, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '0,0',
+  } satisfies Hero]);
+  depositResourceToStorage('0,0', 'wood', 10);
+
+  const task: TaskInstance = {
+    id: 'task-fetch-path',
+    type: 'buildFetchPathProbe',
+    tileId: '1,0',
+    progressXp: 0,
+    requiredXp: 1_000,
+    createdMs: 0,
+    lastUpdateMs: 0,
+    participants: {},
+    active: false,
+    requiredResources: [{ type: 'wood', amount: 5 }],
+    collectedResources: [],
+  };
+  loadTasks([task]);
+
+  joinTask(task.id, heroes[0]!);
+
+  assert.deepEqual((movementOptions as { path?: Array<{ q: number; r: number }> } | null)?.path, [{ q: 0, r: 0 }]);
 });
 
 test('starting a new task removes other open tasks on the same tile', () => {

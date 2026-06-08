@@ -3,6 +3,7 @@ import type {
     JobsUpdateMessage,
     PopulationUpdateMessage,
     PopulationIncidentMessage,
+    SettlersPatchMessage,
     SettlersUpdateMessage,
     StewardshipReportMessage,
     StudiesUpdateMessage,
@@ -21,7 +22,7 @@ import {replaceInventory, replaceStorageInventories} from "../../store/resourceS
 import {loadPopulation, updatePopulation} from "../../store/clientPopulationStore";
 import { loadWorkforce, updateWorkforce } from '../../store/clientJobStore';
 import { loadStudyState, updateStudyState } from '../../store/clientStudyStore';
-import { loadSettlers, updateSettlers } from '../../store/settlerStore';
+import { applySettlersPatch, loadSettlers, updateSettlers } from '../../store/settlerStore';
 import { clearScoutStoryHintsForTile } from '../../store/storyHintStore';
 import { loadTestModeSettings } from '../../shared/game/testMode.ts';
 import { setCurrentPlayerIsAdmin, setServerDebugModeEnabled } from '../../store/serverConfigStore.ts';
@@ -85,6 +86,7 @@ class WorldHandler {
         clientMessageRouter.on('jobs:update', this.handleJobsUpdate.bind(this));
         clientMessageRouter.on('studies:update', this.handleStudiesUpdate.bind(this));
         clientMessageRouter.on('settlers:update', this.handleSettlersUpdate.bind(this));
+        clientMessageRouter.on('settlers:patch', this.handleSettlersPatch.bind(this));
         clientMessageRouter.on('test:update', this.handleTestModeUpdate.bind(this));
         clientMessageRouter.on('tile:updated', this.handleTileUpdated.bind(this));
         clientMessageRouter.on('population:update', this.handlePopulationUpdate.bind(this));
@@ -387,6 +389,10 @@ class WorldHandler {
 
     private handleSettlersUpdate(message: SettlersUpdateMessage): void {
         updateSettlers(message.settlers, message.timestamp);
+    }
+
+    private handleSettlersPatch(message: SettlersPatchMessage): void {
+        applySettlersPatch(message);
     }
 
     private handleTestModeUpdate(message: TestUpdateMessage): void {

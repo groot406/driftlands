@@ -1,8 +1,8 @@
 import type {Server, Socket} from 'socket.io';
 import {serverMessageRouter} from '../messages/messageRouter';
-import type {StartTaskRequestMessage } from '../../../src/shared/protocol';
+import type {CancelTaskRequestMessage, StartTaskRequestMessage } from '../../../src/shared/protocol';
 import '../../../src/shared/tasks/taskDefinitions';
-import { updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../src/shared/game/state/taskStore';
+import { cancelTask, getTaskById, updateActiveTasks, startTask, joinTask, getTaskByTile } from '../../../src/shared/game/state/taskStore';
 import { heroes, getHero } from '../../../src/shared/game/state/heroStore';
 import { ensureTileExists, getTile } from '../../../src/shared/game/world';
 import { coopState } from '../state/coopState';
@@ -22,6 +22,7 @@ export class ServerTaskHandler {
     init(): void {
         // message handlers only;
         serverMessageRouter.on('task:request_start', this.handleStartRequest.bind(this));
+        serverMessageRouter.on('task:request_cancel', this.handleCancelRequest.bind(this));
     }
 
     private handleStartRequest(_socket: Socket, message: StartTaskRequestMessage): void {
@@ -61,6 +62,30 @@ export class ServerTaskHandler {
         // Kick task processing
         updateActiveTasks(heroes, { cleanupOpenTasks: false });
     }
+
+    private handleCancelRequest(_socket: Socket, message: CancelTaskRequestMessage): void {
+        if (playerSettlementState.isSocketSpectator(_socket.id)) {
+            return;
+        }
+
+        const { heroId, taskId } = message;
+        const hero = getHero(heroId);
+        const task = getTaskById(taskId);
+        if (!hero || !task || task.completedMs) return;
+        if (!coopState.canControlHero(_socket.id, heroId)) return;
+
+        const playerId = playerSettlementState.getSocketPlayerId(_socket.id);
+        if (!seasonState.canPlayerTakeNewActions(playerId)) return;
+        if (!playerSettlementState.canPlayerControlHero(playerId, hero)) return;
+
+        const settlementId = hero.settlementId ?? playerSettlementState.getPlayerSettlement(playerId ?? '');
+        const tile = getTaskTile(task.tileId);
+        if (!canSettlementUseTaskTile(tile, settlementId)) return;
+
+        coopState.touchHeroActivity(heroId);
+        cancelTask(task);
+        updateActiveTasks(heroes, { cleanupOpenTasks: false });
+    }
 }
 
 function normalizeExploreTarget(task: string, target: { q: number; r: number } | undefined) {
@@ -88,6 +113,17 @@ function getTileForTaskLocation(location: { q: number; r: number }, task: string
     }
 
     return getTile(location);
+}
+
+function getTaskTile(tileId: string): Tile | null {
+    const [qRaw, rRaw] = tileId.split(',');
+    const q = Number.parseInt(qRaw ?? '', 10);
+    const r = Number.parseInt(rRaw ?? '', 10);
+    if (!Number.isFinite(q) || !Number.isFinite(r)) {
+        return null;
+    }
+
+    return getTile({ q, r });
 }
 
 function canSettlementUseTaskTile(

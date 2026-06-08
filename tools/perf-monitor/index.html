@@ -578,6 +578,16 @@
         </div>
         <div id="chartGrid" class="panel-body chart-grid"></div>
       </article>
+
+      <article class="card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Diagnosis</h2>
+            <div class="panel-kicker">Retained sample rollups</div>
+          </div>
+        </div>
+        <div id="diagnosisPanel" class="panel-body"></div>
+      </article>
     </section>
 
     <section class="tables">
@@ -614,9 +624,9 @@
       </article>
     </section>
 
-    <details>
+    <details id="rawDetails">
       <summary>Raw snapshot</summary>
-      <pre id="rawJson">{}</pre>
+      <pre id="rawJson">Open Raw snapshot to render the latest JSON.</pre>
     </details>
   </main>
 
@@ -625,7 +635,7 @@
     const state = {
       target: normalizeTarget(new URLSearchParams(location.search).get('target') || defaultTarget),
       auto: true,
-      intervalSeconds: 3,
+      intervalSeconds: 10,
       timer: 0,
       inFlight: false,
       lastRequestStartedAt: 0,
@@ -647,10 +657,12 @@
       summaryGrid: document.getElementById('summaryGrid'),
       insights: document.getElementById('insights'),
       chartGrid: document.getElementById('chartGrid'),
+      diagnosisPanel: document.getElementById('diagnosisPanel'),
       systemsTable: document.getElementById('systemsTable'),
       commandTables: document.getElementById('commandTables'),
       messagesTable: document.getElementById('messagesTable'),
       slowEvents: document.getElementById('slowEvents'),
+      rawDetails: document.getElementById('rawDetails'),
       rawJson: document.getElementById('rawJson'),
     };
 
@@ -687,6 +699,10 @@
       window.setTimeout(() => {
         els.copyButton.textContent = 'Copy JSON';
       }, 1200);
+    });
+
+    els.rawDetails.addEventListener('toggle', () => {
+      renderRawJsonIfOpen();
     });
 
     function normalizeTarget(value) {
@@ -769,11 +785,12 @@
       els.lastUpdated.textContent = `Last update: ${formatDate(current.at)}`;
       els.sampleCount.textContent = `Samples: ${snapshot.samples?.length || 0}`;
       els.serverConfig.textContent = `Thresholds: tick ${config.slowTickMs ?? '?'} ms, command ${config.slowCommandMs ?? '?'} ms, path ${config.slowPathMs ?? '?'} ms`;
-      els.rawJson.textContent = JSON.stringify(snapshot, null, 2);
+      renderRawJsonIfOpen();
 
       renderSummary(current, snapshot);
       renderInsights(snapshot);
       renderCharts(samples, config);
+      renderDiagnosis(snapshot);
       renderTables(current);
       renderSlowEvents(snapshot);
     }
@@ -943,6 +960,130 @@
       `;
     }
 
+    function renderDiagnosis(snapshot) {
+      const samples = [...(snapshot.samples || []), snapshot.current].filter(Boolean);
+      const systemTotals = sumNestedDurations(samples, 'systems', 'totalMs');
+      const messageBytes = sumNestedCounters(samples, 'messageBytes');
+      const slowPathSources = countBy((snapshot.slowPathfinds || []), (entry) => entry.source || 'unknown');
+      const pathCache = summarizePathCache(samples);
+      const pathCacheLayers = summarizePathCacheLayers(samples);
+
+      els.diagnosisPanel.innerHTML = `
+        <h3 class="panel-kicker">Top Cumulative Systems</h3>
+        ${counterTable(systemTotals, 'System', 'Total', formatMs)}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Top Outbound Bytes</h3>
+        ${counterTable(messageBytes, 'Message', 'Bytes', formatBytes)}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Slow Paths by Source</h3>
+        ${counterTable(slowPathSources, 'Source', 'Events')}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Path Cache Health</h3>
+        ${pathCacheTable(pathCache)}
+        <h3 class="panel-kicker" style="margin-top: 16px;">Path Cache Layers</h3>
+        ${pathCacheTable(pathCacheLayers, true)}
+      `;
+    }
+
+    function sumNestedDurations(samples, key, field) {
+      const totals = {};
+      for (const sample of samples) {
+        for (const [name, item] of Object.entries(sample[key] || {})) {
+          totals[name] = (totals[name] || 0) + (Number(item?.[field]) || 0);
+        }
+      }
+      return totals;
+    }
+
+    function sumNestedCounters(samples, key) {
+      const totals = {};
+      for (const sample of samples) {
+        for (const [name, value] of Object.entries(sample[key] || {})) {
+          totals[name] = (totals[name] || 0) + (Number(value) || 0);
+        }
+      }
+      return totals;
+    }
+
+    function countBy(items, keyFor) {
+      const counts = {};
+      for (const item of items) {
+        const key = keyFor(item);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      return counts;
+    }
+
+    function summarizePathCache(samples) {
+      const bySource = {};
+      for (const sample of samples) {
+        for (const [name, count] of Object.entries(sample.pathfindingCache || {})) {
+          const splitAt = name.lastIndexOf(':');
+          const source = splitAt >= 0 ? name.slice(0, splitAt) : name;
+          const kind = splitAt >= 0 ? name.slice(splitAt + 1) : 'unknown';
+          const summary = bySource[source] || { hits: 0, misses: 0, other: 0 };
+          if (kind === 'hit') {
+            summary.hits += Number(count) || 0;
+          } else if (kind === 'miss') {
+            summary.misses += Number(count) || 0;
+          } else {
+            summary.other += Number(count) || 0;
+          }
+          bySource[source] = summary;
+        }
+      }
+      return bySource;
+    }
+
+    function summarizePathCacheLayers(samples) {
+      const bySourceLayer = {};
+      for (const sample of samples) {
+        for (const [name, count] of Object.entries(sample.pathfindingCacheLayers || {})) {
+          const parts = name.split(':');
+          const kind = parts.pop() || 'unknown';
+          const layer = parts.pop() || 'unknown';
+          const source = parts.join(':') || 'unknown';
+          const key = `${source}:${layer}`;
+          const summary = bySourceLayer[key] || { source, layer, hits: 0, misses: 0, other: 0 };
+          if (kind === 'hit') {
+            summary.hits += Number(count) || 0;
+          } else if (kind === 'miss') {
+            summary.misses += Number(count) || 0;
+          } else {
+            summary.other += Number(count) || 0;
+          }
+          bySourceLayer[key] = summary;
+        }
+      }
+      return bySourceLayer;
+    }
+
+    function pathCacheTable(map, includeLayer = false) {
+      const rows = Object.entries(map || {})
+        .map(([source, item]) => {
+          const total = item.hits + item.misses + item.other;
+          return { source: item.source || source, layer: item.layer || '', ...item, total, hitRate: total > 0 ? item.hits / total : 0 };
+        })
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 12);
+
+      if (!rows.length) return '<div class="empty">No path cache samples in this window.</div>';
+
+      return `
+        <table>
+          <thead><tr><th>Source</th>${includeLayer ? '<th>Layer</th>' : ''}<th>Hits</th><th>Misses</th><th>Hit rate</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.source)}</td>
+                ${includeLayer ? `<td>${escapeHtml(row.layer)}</td>` : ''}
+                <td>${formatNumber(row.hits)}</td>
+                <td>${formatNumber(row.misses)}</td>
+                <td>${formatPercent(row.hitRate * 100)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
     function sparkline(values, tone) {
       const width = 320;
       const height = 86;
@@ -1045,17 +1186,39 @@
         ['Slow saves', snapshot.slowSaves],
       ];
       const items = groups.flatMap(([label, entries]) => (entries || []).map((entry) => ({ label, entry })));
+      const summaries = groups
+        .filter(([, entries]) => (entries || []).length)
+        .map(([label, entries]) => `${label}: ${(entries || []).length}`);
 
       if (!items.length) {
         els.slowEvents.innerHTML = '<div class="empty">No slow events captured.</div>';
         return;
       }
 
-      els.slowEvents.innerHTML = `<div class="slow-list">${
-        items.slice(-24).reverse().map(({ label, entry }) => `
+      const recentItems = items.slice(-12).reverse();
+      els.slowEvents.innerHTML = `
+        <div class="meta-row" style="margin: 0 0 10px;">${summaries.map((summary) => `<span>${escapeHtml(summary)}</span>`).join('')}</div>
+        <div class="slow-list">${
+        recentItems.map(({ label, entry }) => `
           <div class="slow-item">${escapeHtml(label)}\n${escapeHtml(JSON.stringify(entry, null, 2))}</div>
         `).join('')
       }</div>`;
+    }
+
+    function renderRawJsonIfOpen() {
+      if (!state.lastSnapshot) {
+        els.rawJson.textContent = 'No snapshot loaded yet.';
+        return;
+      }
+
+      if (els.rawDetails.open) {
+        els.rawJson.textContent = JSON.stringify(state.lastSnapshot, null, 2);
+        return;
+      }
+
+      const sampleCount = state.lastSnapshot.samples?.length || 0;
+      const slowCount = countSlowEvents(state.lastSnapshot);
+      els.rawJson.textContent = `Raw snapshot is ready. Open this panel to render JSON for ${sampleCount} samples and ${slowCount} slow events.`;
     }
 
     function countSlowEvents(snapshot) {

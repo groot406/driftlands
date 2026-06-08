@@ -203,5 +203,44 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Updated job system with extensive test coverage and fixes."
     ],
     "gitHead": "abcf7f97420d"
+  },
+  {
+    "id": "both-1780839809437-03d64b514623",
+    "releasedAt": 1780839809437,
+    "target": "both",
+    "title": "Driftlands Update: Improved Documentation and Stability",
+    "bullets": [
+      "Added extensive in-game documentation for better player guidance.",
+      "Enhanced settler system and job site mechanics for smoother gameplay.",
+      "Improved side quest handling and population system stability.",
+      "Fixed various issues in fieldwork and forestry tasks."
+    ],
+    "gitHead": "03d64b514623"
+  },
+  {
+    "id": "both-1780953685479-03d64b514623",
+    "releasedAt": 1780953685479,
+    "target": "both",
+    "title": "Performance and Bug Fixes Update",
+    "bullets": [
+      "Improved overall performance and client-side efficiency",
+      "Fixed persistent notification issues affecting gameplay",
+      "Enhanced system stability and responsiveness",
+      "Various minor bug fixes and quality of life improvements"
+    ],
+    "gitHead": "03d64b514623"
+  },
+  {
+    "id": "both-1780956098949-03d64b514623",
+    "releasedAt": 1780956098949,
+    "target": "both",
+    "title": "Driftlands Update: Canelsk Improvements",
+    "bullets": [
+      "Enhanced settler and task systems for better gameplay flow.",
+      "Improved mine reserve and calamity systems for more balanced challenges.",
+      "Optimized pathfinding and movement handling for settlers.",
+      "Updated UI components including HexMap and TaskMenu for clarity."
+    ],
+    "gitHead": "03d64b514623"
   }
 ];

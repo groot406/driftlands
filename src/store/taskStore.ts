@@ -276,6 +276,10 @@ export function removeTask(inst: TaskInstance) {
     } as TaskRemovedMessage);
 }
 
+export function cancelTask(inst: TaskInstance) {
+    removeTask(inst);
+}
+
 export function detachHeroFromCurrentTask(hero: Hero) {
     if (hero.currentTaskId) {
         leaveTask(hero.currentTaskId, hero);
@@ -643,7 +647,7 @@ function checkAndInitiateResourceFetch(targetTile: Tile, requiredResources: Reso
                 // Store task info so hero can return after fetching
                 setHeroFetchIntent(hero, targetTile.id, taskType, { q: returnTile.q, r: returnTile.r }, resource);
 
-                moveHeroWithRuntime(hero, fetchLocation);
+                moveHeroWithRuntime(hero, fetchLocation, undefined, undefined, { path: pathToFetch });
                 return true; // Resource fetch initiated
             }
 

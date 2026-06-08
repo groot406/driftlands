@@ -1,12 +1,12 @@
 import type { TickContext } from '../tick';
-import { PathService, type PathCoord } from '../../../src/shared/game/PathService';
+import { PathService, recordPathCacheTelemetry, type PathCoord } from '../../../src/shared/game/PathService';
 import {
     canUseWarehouseAtTile,
     listUsableWarehousesWithCapacityForResource,
     listUsableWarehousesWithResource,
 } from '../../../src/shared/buildings/storage';
 import { HOUSE_VARIANT_KEYS, HUNGER_GRACE_MINUTES, FOOD_PER_SETTLER_PER_MINUTE, broadcastPopulationState, getPopulationState, growPopulation, killSettler, setHungerMs, setSettlementHungerMs } from '../../../src/shared/game/state/populationStore';
-import { broadcastSettlersState, settlers } from '../../../src/shared/game/state/settlerStore';
+import { broadcastSettlersPatchState, broadcastSettlersState, resetSettlerBroadcastBaseline, settlers } from '../../../src/shared/game/state/settlerStore';
 import { broadcastGameMessage as broadcast } from '../../../src/shared/game/runtime';
 import { resolveJobResources } from './jobSiteRuntime';
 import {
@@ -44,7 +44,7 @@ import {
 } from '../../../src/shared/game/state/resourceStore';
 import { resumeWaitingTasksForResource } from '../../../src/shared/game/state/taskStore';
 import type { ResourceAmount, ResourceType } from '../../../src/shared/game/types/Resource';
-import type { Settler, SettlerActivity, SettlerBlockerReason } from '../../../src/shared/game/types/Settler';
+import type { Settler, SettlerActivity, SettlerBlockerReason, SettlerFieldWorkPhase } from '../../../src/shared/game/types/Settler';
 import type { Tile, TileSide } from '../../../src/shared/game/types/Tile';
 import type { ResourceDepositMessage, ResourceWithdrawMessage, TileUpdatedMessage } from '../../../src/shared/protocol';
 import type { PopulationIncidentMessage } from '../../../src/shared/protocol';
@@ -90,6 +90,7 @@ import {
     getAgriculturalProcessOutput,
     isAgriculturalJobSite,
     type AgriculturalFieldAction,
+    type AgriculturalFieldPhase,
 } from './fieldWork';
 import {
     chooseForestryFieldAction,
@@ -98,6 +99,7 @@ import {
     isForestryJobSite,
     type ForestryFieldAction,
 } from './forestryWork';
+import { performanceMonitor } from '../telemetry/performanceMonitor';
 
 const pathService = new PathService();
 
@@ -124,6 +126,7 @@ const SETTLER_REACHABILITY_FAILURE_RETRY_MS = 10_000;
 const SETTLER_PLANNING_MIN_INTERVAL_MS = 750;
 const SETTLER_PLANNING_STAGGER_WINDOW_MS = 250;
 const SETTLER_BLOCKED_PLANNING_MIN_INTERVAL_MS = 5_000;
+const SETTLER_PLANNING_MAX_PER_TICK = 4;
 const SETTLER_ROUTE_SIDES: Array<{ dq: number; dr: number; side: TileSide }> = [
     { dq: 0, dr: -1, side: 'a' },
     { dq: 1, dr: -1, side: 'b' },
@@ -136,12 +139,14 @@ const SOCIAL_DRINKS = [
     { type: 'wine', happiness: 30 },
     { type: 'beer', happiness: 20 },
 ] as const;
+const AGRICULTURAL_FIELD_PHASES = new Set<string>(['prepare_land', 'irrigate', 'seed', 'harvest']);
 
 let nextSettlerId = 1;
 let lastGrowthCheckMsPerSettlement: Record<string, number> = {};
 let lastStarvationLossMsBySettlement = new Map<string, number>();
 let lastSettlerBroadcastMs = Number.NEGATIVE_INFINITY;
 let settlerBroadcastPending = false;
+let settlerBroadcastRequiresFull = false;
 let lastPopulationBroadcastMs = Number.NEGATIVE_INFINITY;
 let populationBroadcastPending = false;
 
@@ -222,6 +227,8 @@ function getEffectiveSettlerCycleIntervalMs(intervalMs: number) {
 function resetSettlerBroadcastThrottle() {
     lastSettlerBroadcastMs = Number.NEGATIVE_INFINITY;
     settlerBroadcastPending = false;
+    settlerBroadcastRequiresFull = false;
+    resetSettlerBroadcastBaseline();
 }
 
 function resetPopulationBroadcastThrottle() {
@@ -229,15 +236,21 @@ function resetPopulationBroadcastThrottle() {
     populationBroadcastPending = false;
 }
 
-function queueSettlerBroadcast(now: number) {
+function queueSettlerBroadcast(now: number, requireFull = false) {
     settlerBroadcastPending = true;
+    settlerBroadcastRequiresFull = settlerBroadcastRequiresFull || requireFull;
     if (now - lastSettlerBroadcastMs < SETTLER_BROADCAST_MIN_INTERVAL_MS) {
         return false;
     }
 
-    broadcastSettlersState(now);
+    if (settlerBroadcastRequiresFull) {
+        broadcastSettlersState(now);
+    } else {
+        broadcastSettlersPatchState(now);
+    }
     lastSettlerBroadcastMs = now;
     settlerBroadcastPending = false;
+    settlerBroadcastRequiresFull = false;
     return true;
 }
 
@@ -910,6 +923,7 @@ function getCachedSettlerRoutePath(
     settler: Settler,
     target: Tile,
     settlementId: string | null,
+    telemetrySource?: string,
 ) {
     const routeIdentity = getCurrentSettlerRouteIdentity(settler, target, settlementId);
     const sharedKey = getSettlerRouteKey(routeIdentity);
@@ -918,6 +932,7 @@ function getCachedSettlerRoutePath(
         if (isSettlerRouteStillUsable(shared)) {
             sharedSettlerRouteCache.delete(sharedKey);
             sharedSettlerRouteCache.set(sharedKey, shared);
+            recordSettlerRouteCacheHit(settler, target, shared.path, settlementId, telemetrySource);
             return clonePath(shared.path);
         }
         sharedSettlerRouteCache.delete(sharedKey);
@@ -944,7 +959,32 @@ function getCachedSettlerRoutePath(
 
     routes.splice(routeIndex, 1);
     routes.unshift(cached);
+    recordSettlerRouteCacheHit(settler, target, cached.path, settlementId, telemetrySource);
     return clonePath(cached.path);
+}
+
+function recordSettlerRouteCacheHit(
+    settler: Settler,
+    target: Tile,
+    path: PathCoord[],
+    settlementId: string | null,
+    telemetrySource?: string,
+) {
+    if (!telemetrySource) {
+        return;
+    }
+
+    recordPathCacheTelemetry({
+        source: telemetrySource,
+        cacheLayer: 'settler_route',
+        start: { q: settler.q, r: settler.r },
+        goal: { q: target.q, r: target.r },
+        pathLength: path.length,
+        found: path.length > 0,
+        allowOpenBorders: true,
+        settlementRestricted: !!settlementId,
+        cacheHit: true,
+    });
 }
 
 function clearReachabilityFailure(settler: Settler, target: Tile, settlementId: string | null) {
@@ -1099,7 +1139,7 @@ function startMovement(settler: Settler, target: Tile, activity: SettlerActivity
 
     const pathSettlementId = getSettlerPathSettlementId();
     const pathSettlementKey = pathSettlementId ?? null;
-    let path = getCachedSettlerRoutePath(settler, target, pathSettlementKey);
+    let path = getCachedSettlerRoutePath(settler, target, pathSettlementKey, 'settler_movement');
     if (!path) {
         const startTile = tileIndex[`${settler.q},${settler.r}`] ?? null;
         if (!areSettlerTilesConnected(startTile, target, pathSettlementKey)) {
@@ -1145,7 +1185,7 @@ function canSettlerReachTile(settler: Settler, target: Tile | null | undefined) 
 
     const pathSettlementId = getSettlerPathSettlementId();
     const pathSettlementKey = pathSettlementId ?? null;
-    if (getCachedSettlerRoutePath(settler, target, pathSettlementKey)) {
+    if (getCachedSettlerRoutePath(settler, target, pathSettlementKey, 'settler_reachability')) {
         clearReachabilityFailure(settler, target, pathSettlementKey);
         return true;
     }
@@ -3027,12 +3067,21 @@ function clearAgriculturalWork(settler: Settler) {
     settler.workProgressMs = 0;
 }
 
+function isAgriculturalFieldPhase(phase: SettlerFieldWorkPhase): phase is AgriculturalFieldPhase {
+    return AGRICULTURAL_FIELD_PHASES.has(phase);
+}
+
 function resolveAgriculturalFieldAction(
     settler: Settler,
     site: ResolvedJobSite,
 ): { action: AgriculturalFieldAction; targetTile: Tile } | null {
     const fieldWork = settler.fieldWork;
-    if (!fieldWork || fieldWork.siteTileId !== site.tile.id || fieldWork.phase === 'process' || !fieldWork.fieldTileId) {
+    if (
+        !fieldWork
+        || fieldWork.siteTileId !== site.tile.id
+        || !fieldWork.fieldTileId
+        || !isAgriculturalFieldPhase(fieldWork.phase)
+    ) {
         return null;
     }
 
@@ -3899,28 +3948,49 @@ export const settlerSystem = {
 
     tick: (ctx: TickContext) => {
         currentSettlerTickNow = ctx.now;
+        const recordPhaseTimings = performanceMonitor.isEnabled();
+        let phaseStartedAt = recordPhaseTimings ? Date.now() : 0;
+        const finishPhase = (phase: string) => {
+            if (!recordPhaseTimings) {
+                return;
+            }
+            const now = Date.now();
+            performanceMonitor.recordSystemPhase('settlers', phase, now - phaseStartedAt);
+            phaseStartedAt = now;
+        };
         refreshSettlerIdCounter();
         let changed = false;
-        changed = ensureSettlerNameSeeds(ctx.now) || changed;
-        changed = ensureSettlerProfiles() || changed;
+        let fullSettlerBroadcastRequired = false;
+        let planningBudget = SETTLER_PLANNING_MAX_PER_TICK;
+        const markPatchChange = (didChange: boolean) => {
+            changed = didChange || changed;
+        };
+        const markFullChange = (didChange: boolean) => {
+            changed = didChange || changed;
+            fullSettlerBroadcastRequired = didChange || fullSettlerBroadcastRequired;
+        };
 
-        changed = tryGrowPopulation(ctx.now) || changed;
-        changed = syncSettlerPopulation(ctx.now) || changed;
-        changed = reconcileHomes() || changed;
-        changed = reconcileAssignments() || changed;
-        changed = reconcileMilitaryGuards(ctx.now) || changed;
+        markPatchChange(ensureSettlerNameSeeds(ctx.now));
+        markPatchChange(ensureSettlerProfiles());
+
+        markFullChange(tryGrowPopulation(ctx.now));
+        markFullChange(syncSettlerPopulation(ctx.now));
+        markFullChange(reconcileHomes());
+        markFullChange(reconcileAssignments());
+        markFullChange(reconcileMilitaryGuards(ctx.now));
+        finishPhase('reconcile');
 
         const starvationCandidates: StarvationCandidate[] = [];
 
         for (const settler of settlers) {
             const justArrived = updateMovement(settler, ctx.now);
-            changed = justArrived || changed;
+            markPatchChange(justArrived);
 
             if (isGuardSettler(settler)) {
                 if (settler.movement) {
                     continue;
                 }
-                changed = planSettler(settler, ctx.now, ctx.dt) || changed;
+                markPatchChange(planSettler(settler, ctx.now, ctx.dt));
                 continue;
             }
 
@@ -3929,7 +3999,7 @@ export const settlerSystem = {
             const starvationMs = getStarvationMs(settler);
             if (starvationMs >= SETTLER_STARVATION_MS) {
                 if (tryEatFromSettlementStorage(settler)) {
-                    changed = true;
+                    markPatchChange(true);
                 } else {
                     starvationCandidates.push({
                         id: settler.id,
@@ -3961,9 +4031,19 @@ export const settlerSystem = {
                 continue;
             }
 
-            changed = planSettler(settler, ctx.now, consumeSettlerPlanningDt(settler, ctx.dt)) || changed;
+            if (!justArrived && planningBudget <= 0) {
+                deferSettlerPlanning(settler, ctx.dt);
+                continue;
+            }
+
+            if (!justArrived) {
+                planningBudget -= 1;
+            }
+
+            markPatchChange(planSettler(settler, ctx.now, consumeSettlerPlanningDt(settler, ctx.dt)));
             scheduleNextSettlerPlanning(settler, ctx.now);
         }
+        finishPhase('movement_and_planning');
 
         const eligibleStarvationCandidates: StarvationCandidate[] = [];
         for (const candidate of starvationCandidates) {
@@ -3978,7 +4058,7 @@ export const settlerSystem = {
             }
 
             if (tryEatFromSettlementStorage(settler)) {
-                changed = true;
+                markPatchChange(true);
                 continue;
             }
 
@@ -3994,7 +4074,7 @@ export const settlerSystem = {
         const settlersToKill = selectStarvationLosses(eligibleStarvationCandidates, ctx.now);
         for (const settler of settlersToKill) {
             if (removeSettler(settler.id)) {
-                changed = true;
+                markFullChange(true);
                 killSettler(settler.settlementId);
                 recordStarvationLoss(settler.settlementId, ctx.now);
                 emitGameplayEvent({ type: 'population:changed', settlementId: settler.settlementId });
@@ -4015,10 +4095,11 @@ export const settlerSystem = {
                 populationLoss,
             });
         }
+        finishPhase('starvation');
 
-        changed = syncSettlerPopulation(ctx.now) || changed;
+        markFullChange(syncSettlerPopulation(ctx.now));
 
-        changed = consumeHouseGoods(ctx.now) || changed;
+        markPatchChange(consumeHouseGoods(ctx.now));
 
         const population = getPopulationState();
         let hungerChanged = false;
@@ -4033,17 +4114,19 @@ export const settlerSystem = {
         }
         if (hungerChanged) {
             populationBroadcastPending = true;
-            changed = true;
+            markPatchChange(true);
         }
         if (populationBroadcastPending) {
             queuePopulationBroadcast(ctx.now);
         }
+        finishPhase('population_and_hunger');
 
         if (changed) {
             settlerBroadcastPending = true;
         }
         if (settlerBroadcastPending) {
-            queueSettlerBroadcast(ctx.now);
+            queueSettlerBroadcast(ctx.now, fullSettlerBroadcastRequired);
         }
+        finishPhase('broadcast');
     },
 };
