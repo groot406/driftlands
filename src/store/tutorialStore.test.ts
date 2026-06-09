@@ -5,7 +5,7 @@ import type { Hero } from '../core/types/Hero.ts';
 import type { Tile } from '../core/types/Tile.ts';
 import { loadWorld, tileIndex } from '../core/world.ts';
 import { heroes, loadHeroes } from './heroStore.ts';
-import { resourceInventory, resetResourceState } from './resourceStore.ts';
+import { replaceStorageInventories, resourceInventory, resetResourceState } from './resourceStore.ts';
 import { loadPopulation, resetClientPopulationState } from './clientPopulationStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 import { selectedHeroId } from './uiStore.ts';
@@ -313,6 +313,93 @@ test('study-and-upgrade hints build a workshop before a library when tools are m
   const hint = tutorialMapHints.value[0];
   assert.equal(hint?.taskKey, 'buildWorkshop');
   assert.equal(hint?.label, 'Build workshop');
+});
+
+test('tutorial progress uses the current settlement instead of aggregate world progress', () => {
+  currentPlayerSettlementId.value = '10,0';
+  selectedHeroId.value = 'own-hero';
+
+  loadPopulation({
+    current: 5,
+    beds: 6,
+    max: 20,
+    hungerMs: 0,
+    supportCapacity: 40,
+    activeTileCount: 30,
+    inactiveTileCount: 0,
+    pressureState: 'stable',
+    settlements: [
+      {
+        settlementId: '0,0',
+        current: 4,
+        beds: 4,
+        max: 10,
+        hungerMs: 0,
+        supportCapacity: 30,
+        ownedTileCount: 14,
+        activeTileCount: 14,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+      {
+        settlementId: '10,0',
+        current: 1,
+        beds: 0,
+        max: 10,
+        hungerMs: 0,
+        supportCapacity: 12,
+        ownedTileCount: 2,
+        activeTileCount: 2,
+        inactiveTileCount: 0,
+        fragileTileCount: 0,
+        uncontrolledTileCount: 0,
+        pressureState: 'stable',
+      },
+    ],
+  });
+
+  loadHeroes([{
+    id: 'own-hero',
+    name: 'Guide',
+    avatar: 'guide',
+    q: 10,
+    r: 0,
+    stats: { xp: 0, hp: 10, atk: 1, spd: 1 },
+    facing: 'down',
+    settlementId: '10,0',
+  }]);
+
+  loadWorld([
+    tile(0, 0, 'towncenter', { isBaseTile: false, ownerSettlementId: '0,0', controlledBySettlementId: '0,0' }),
+    tile(0, 1, 'plains', { isBaseTile: false, variant: 'road' }),
+    tile(1, 0, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(1, 1, 'plains', { isBaseTile: false, variant: 'plains_house' }),
+    tile(2, 0, 'water', { variant: 'water_dock_a' }),
+    tile(2, 1, 'plains', { variant: 'plains_watchtower' }),
+    tile(3, 0, 'grain', { variant: 'grain_granary' }),
+    tile(3, 1, 'plains', { variant: 'plains_well' }),
+    tile(4, 0, 'mountain', { variant: 'mountains_with_mine' }),
+    tile(4, 1, 'mountain', { variant: 'mountains_with_quarry' }),
+    tile(5, 0, 'plains', { variant: 'plains_workshop' }),
+    tile(5, 1, 'plains', { variant: 'plains_pub' }),
+    tile(6, 0, 'plains'),
+    tile(10, 0, 'towncenter', { isBaseTile: false, ownerSettlementId: '10,0', controlledBySettlementId: '10,0' }),
+    tile(10, 1, 'plains', { isBaseTile: false, ownerSettlementId: '10,0', controlledBySettlementId: '10,0' }),
+  ]);
+  replaceStorageInventories([
+    {
+      tileId: '0,0',
+      kind: 'towncenter',
+      capacity: 100,
+      resources: { wood: 40, fish: 8, grain: 4, ore: 6, tools: 2 },
+    },
+  ]);
+
+  assert.equal(tutorialSnapshot.value.currentStep?.id, 'scout-frontier');
+  assert.equal(tutorialSnapshot.value.currentStep?.progressLabel, '2/10 tiles found');
+  assert.equal(tutorialSnapshot.value.steps.find((step) => step.id === 'gather-wood')?.completed, false);
 });
 
 test('field guide completes founding a second hearth after two town centers exist', () => {

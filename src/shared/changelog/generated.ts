@@ -242,5 +242,31 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Updated UI components including HexMap and TaskMenu for clarity."
     ],
     "gitHead": "03d64b514623"
+  },
+  {
+    "id": "both-1780957770559-9f71d04d44d9",
+    "releasedAt": 1780957770559,
+    "target": "both",
+    "title": "Performance and Stability Improvements",
+    "bullets": [
+      "Improved movement and task handling for smoother gameplay.",
+      "Enhanced settler system to boost overall game stability.",
+      "Updated scout resources for better exploration mechanics.",
+      "Refined UI components including HexMap and TaskMenu."
+    ],
+    "gitHead": "9f71d04d44d9"
+  },
+  {
+    "id": "both-1780958788433-9f71d04d44d9",
+    "releasedAt": 1780958788433,
+    "target": "both",
+    "title": "Driftlands Patch Update",
+    "bullets": [
+      "Improved scout resource management for better game balance.",
+      "Enhanced military system reliability and performance.",
+      "Fixed multiple movement handler bugs for smoother gameplay.",
+      "Updated tutorial to assist new players more effectively."
+    ],
+    "gitHead": "9f71d04d44d9"
   }
 ];

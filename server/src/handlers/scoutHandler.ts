@@ -11,6 +11,7 @@ import {
 import { serverMessageRouter } from '../messages/messageRouter';
 import { coopState } from '../state/coopState';
 import { playerSettlementState } from '../state/playerSettlementState';
+import { ServerMovementHandler } from './movementHandler';
 
 export class ServerScoutHandler {
   constructor(_io: Server) {}
@@ -47,6 +48,7 @@ export class ServerScoutHandler {
 
     const player = coopState.getPlayer(socket.id);
     coopState.touchHeroActivity(hero.id);
+    ServerMovementHandler.getInstance().cancelHeroMovement(hero.id);
     detachHeroFromCurrentTask(hero);
     hero.pendingTask = undefined;
     hero.pendingExploreTarget = undefined;

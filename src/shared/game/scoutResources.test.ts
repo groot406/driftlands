@@ -235,6 +235,90 @@ test('scouted hidden tiles are only walkable for scout routing', () => {
   ]);
 });
 
+test('resource scouting prefers a nearby reachable frontier without scanning the entire world frontier', () => {
+  const tiles: Tile[] = [
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile,
+  ];
+
+  for (const [dq, dr] of Object.values(SIDE_DELTAS)) {
+    const q = dq;
+    const r = dr;
+    tiles.push({
+      id: `${q},${r}`,
+      q,
+      r,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      scoutedForResource: 'wood',
+      scoutedResourceTypes: ['wood'],
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile);
+  }
+
+  tiles.push({
+    id: '2,0',
+    q: 2,
+    r: 0,
+    biome: 'plains',
+    terrain: null,
+    discovered: false,
+    isBaseTile: true,
+    variant: null,
+  } satisfies Tile);
+
+  for (let i = 0; i < 40; i++) {
+    const q = 20 + i;
+    tiles.push({
+      id: `${q},10`,
+      q,
+      r: 10,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      scouted: true,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile);
+    tiles.push({
+      id: `${q + 1},10`,
+      q: q + 1,
+      r: 10,
+      biome: 'plains',
+      terrain: null,
+      discovered: false,
+      isBaseTile: true,
+      variant: null,
+    } satisfies Tile);
+  }
+
+  loadWorld(tiles);
+
+  const events: any[] = [];
+  configurePathTelemetry((event) => {
+    if (event.source === 'scout_resource') {
+      events.push(event);
+    }
+  });
+
+  const hero = createHero(0, 0, 'wood');
+  const nextTile = pickNextScoutTile(hero, 'wood');
+
+  assert.equal(nextTile?.id, '2,0');
+  assert.ok(events.length <= 4, `expected only nearby scout paths, got ${events.length}`);
+});
+
 test('settlement-restricted pathfinding can cross foreign open borders', () => {
   loadWorld([
     {

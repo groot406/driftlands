@@ -511,6 +511,24 @@ test('capturing a watchtower transfers nearby tower territory to the attacker', 
       ownerSettlementId: '12,0',
     }),
     createTile({
+      id: '8,0',
+      q: 8,
+      r: 0,
+      terrain: 'plains',
+      variant: 'plains_watchtower',
+      controlledBySettlementId: '12,0',
+      ownerSettlementId: '12,0',
+    }),
+    createTile({
+      id: '9,0',
+      q: 9,
+      r: 0,
+      terrain: 'water',
+      variant: 'water_beacon',
+      controlledBySettlementId: '12,0',
+      ownerSettlementId: '12,0',
+    }),
+    createTile({
       id: '12,0',
       q: 12,
       r: 0,
@@ -595,6 +613,10 @@ test('capturing a watchtower transfers nearby tower territory to the attacker', 
   assert.equal(tileIndex['6,0']?.controlledBySettlementId, '0,0');
   assert.equal(tileIndex['7,0']?.ownerSettlementId, '0,0');
   assert.equal(tileIndex['7,0']?.controlledBySettlementId, '0,0');
+  assert.equal(tileIndex['8,0']?.ownerSettlementId, '12,0');
+  assert.equal(tileIndex['8,0']?.controlledBySettlementId, '12,0');
+  assert.equal(tileIndex['9,0']?.ownerSettlementId, '12,0');
+  assert.equal(tileIndex['9,0']?.controlledBySettlementId, '12,0');
   assert.equal(tileIndex['0,0']?.raidTargetTileId ?? null, null);
   assert.equal(tileIndex['0,0']?.guardReserve ?? 0, 0);
   assert.equal(tileIndex['1,0']?.guardReserve ?? 0, 1);

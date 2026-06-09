@@ -716,3 +716,66 @@ test('internal return movement can cross scouted fog without assigning a task', 
   assert.equal(loadedHero.pendingTask, undefined);
   assert.deepEqual(loadedHero.movement?.target, { q: 0, r: 0 });
 });
+
+test('cancelHeroMovement clears an in-flight authoritative movement', () => {
+  setIo({ emit() {} });
+
+  loadWorld([
+    {
+      id: '0,0',
+      q: 0,
+      r: 0,
+      biome: 'plains',
+      terrain: 'towncenter',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+    {
+      id: '1,0',
+      q: 1,
+      r: 0,
+      biome: 'plains',
+      terrain: 'plains',
+      discovered: true,
+      isBaseTile: true,
+      activationState: 'active',
+      controlledBySettlementId: '0,0',
+      ownerSettlementId: '0,0',
+      variant: null,
+    } satisfies Tile,
+  ]);
+
+  loadHeroes([createHero()]);
+  const handler = ServerMovementHandler.getInstance();
+  const hero = heroes[0]!;
+  hero.movement = {
+    origin: { q: 0, r: 0 },
+    target: { q: 1, r: 0 },
+    path: [{ q: 1, r: 0 }],
+    startMs: Date.now(),
+    stepDurations: [1000],
+    cumulative: [1000],
+    authoritative: true,
+  };
+  handler.activeMovements.set(hero.id, {
+    heroId: hero.id,
+    origin: { q: 0, r: 0 },
+    startedAt: Date.now(),
+    target: { q: 1, r: 0 },
+    path: [{ q: 1, r: 0 }],
+    stepDurations: [1000],
+    totalDuration: 1000,
+  });
+
+  assert.equal(handler.activeMovements.size, 1);
+  assert.ok(hero.movement);
+
+  handler.cancelHeroMovement(hero.id);
+
+  assert.equal(handler.activeMovements.size, 0);
+  assert.equal(hero.movement, undefined);
+});

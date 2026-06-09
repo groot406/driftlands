@@ -369,18 +369,18 @@ export function pickNextScoutTile(hero: Hero, resourceType: ScoutTargetType) {
         return localTile;
     }
 
-    const candidates = listScoutingFrontierTiles()
-        .map((tile) => createReachableScoutCandidate(hero, tile, resourceType))
-        .filter((candidate): candidate is ScoutCandidate => !!candidate);
+    const frontierByTownDistance = groupScoutFrontierByTownDistance(resourceType);
+    for (const [_townDistance, tiles] of frontierByTownDistance) {
+        const candidates = tiles
+            .map((tile) => createReachableScoutCandidate(hero, tile, resourceType))
+            .filter((candidate): candidate is ScoutCandidate => !!candidate);
 
-    if (!candidates.length) {
-        return null;
+        if (candidates.length) {
+            return pickRandomScoutCandidate(candidates);
+        }
     }
 
-    const nearestTownDistance = Math.min(...candidates.map((candidate) => candidate.townDistance));
-    const closestRingCandidates = candidates.filter((candidate) => candidate.townDistance === nearestTownDistance);
-
-    return pickRandomScoutCandidate(closestRingCandidates);
+    return null;
 }
 
 interface ScoutCandidate {
@@ -426,6 +426,27 @@ function createReachableScoutCandidate(hero: Hero, tile: Tile, resourceType: Sco
         axialDistance: scoutPathService.axialDistance(hero.q, hero.r, tile.q, tile.r),
         townDistance: getDistanceToNearestTowncenter(tile.q, tile.r),
     };
+}
+
+function groupScoutFrontierByTownDistance(resourceType: ScoutTargetType) {
+    const groups = new Map<number, Tile[]>();
+
+    for (const tile of listScoutingFrontierTiles()) {
+        if (tile.discovered || hasTileBeenScoutedForResource(tile, resourceType)) {
+            continue;
+        }
+
+        const townDistance = getDistanceToNearestTowncenter(tile.q, tile.r);
+        const group = groups.get(townDistance);
+        if (group) {
+            group.push(tile);
+        } else {
+            groups.set(townDistance, [tile]);
+        }
+    }
+
+    return Array.from(groups.entries())
+        .sort(([a], [b]) => a - b);
 }
 
 function pickRandomScoutCandidate(candidates: ScoutCandidate[]) {

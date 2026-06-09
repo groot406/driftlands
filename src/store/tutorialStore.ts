@@ -3,7 +3,12 @@ import { tileIndex, tiles, worldVersion } from '../core/world.ts';
 import type { Hero } from '../core/types/Hero.ts';
 import type { TaskType } from '../core/types/Task.ts';
 import type { Tile } from '../core/types/Tile.ts';
-import { resourceInventory, resourceVersion } from './resourceStore.ts';
+import {
+  getSettlementResourceInventory,
+  resourceInventory,
+  resourceVersion,
+  settlementResourceInventories,
+} from './resourceStore.ts';
 import { populationState, populationVersion } from './clientPopulationStore.ts';
 import { heroes } from './heroStore.ts';
 import { selectedHeroId } from './uiStore.ts';
@@ -14,7 +19,7 @@ import {
 } from '../shared/buildings/registry.ts';
 import { axialDistanceCoords } from '../shared/game/hex.ts';
 import { listUndiscoveredFrontierTiles } from '../shared/game/explorationFrontier.ts';
-import { getSettlementTownCenterTile } from '../shared/game/settlement.ts';
+import { getSettlementTownCenterTile, getTileSettlementId } from '../shared/game/settlement.ts';
 import { getAvailableTasks } from '../shared/tasks/tasks.ts';
 import { findNearestTaskAccessTile } from '../shared/tasks/taskAccess.ts';
 import {
@@ -23,7 +28,7 @@ import {
   type TutorialStepId,
 } from '../shared/tutorial/tutorialGuide.ts';
 import { createLandingProfile, type LandingArchetype } from '../shared/story/landingProfile.ts';
-import { isPositionControlled } from './settlementSupportStore.ts';
+import { isPositionControlled, isPositionControlledBySettlement } from './settlementSupportStore.ts';
 import { currentPlayerSettlementId } from './settlementStartStore.ts';
 
 const TUTORIAL_PANEL_STORAGE_KEY = 'driftlands-tutorial-panel-v1';
@@ -117,14 +122,42 @@ const TUTORIAL_TASK_LABELS: Partial<Record<TaskType, string>> = {
 let anchoredTutorialMapHint: AnchoredTutorialMapHint | null = null;
 
 function getSelectedTutorialHero() {
-  return selectedHeroId.value
+  const selectedHero = selectedHeroId.value
     ? heroes.find((hero) => hero.id === selectedHeroId.value) ?? null
     : null;
+  const settlementId = currentPlayerSettlementId.value;
+  if (settlementId && selectedHero?.settlementId !== settlementId) {
+    return null;
+  }
+
+  return selectedHero;
 }
 
 function getCurrentSettlementOrigin() {
   const townCenter = getSettlementTownCenterTile(tiles, currentPlayerSettlementId.value);
   return townCenter ? { q: townCenter.q, r: townCenter.r } : { q: 0, r: 0 };
+}
+
+function isCurrentSettlementTile(tile: Tile) {
+  const settlementId = currentPlayerSettlementId.value;
+  return !settlementId || getTileSettlementId(tile) === settlementId;
+}
+
+function getCurrentSettlementTiles() {
+  return currentPlayerSettlementId.value
+    ? tiles.filter(isCurrentSettlementTile)
+    : tiles;
+}
+
+function getCurrentPlayerResourceInventory() {
+  const settlementId = currentPlayerSettlementId.value;
+  if (!settlementId) {
+    return resourceInventory;
+  }
+
+  return Object.keys(settlementResourceInventories).length > 0
+    ? getSettlementResourceInventory(settlementId)
+    : resourceInventory;
 }
 
 function buildTutorialMetrics(): TutorialMetrics {
@@ -136,8 +169,9 @@ function buildTutorialMetrics(): TutorialMetrics {
   const terrainCounts: TutorialMetrics['terrainCounts'] = {};
   const variantCounts: TutorialMetrics['variantCounts'] = {};
   const buildingCounts: TutorialMetrics['buildingCounts'] = {};
+  const settlementTiles = getCurrentSettlementTiles();
 
-  for (const tile of tiles) {
+  for (const tile of settlementTiles) {
     if (!tile.discovered) {
       continue;
     }
@@ -162,22 +196,24 @@ function buildTutorialMetrics(): TutorialMetrics {
 
   const selectedHero = getSelectedTutorialHero();
   const origin = getCurrentSettlementOrigin();
-  const landingProfile = createLandingProfile(tiles, origin);
+  const landingProfile = createLandingProfile(settlementTiles, origin);
+  const population = getCurrentPlayerPopulation();
+  const resourceStock = getCurrentPlayerResourceInventory();
 
   return {
     selectedHeroCount: selectedHero ? 1 : 0,
-    discoveredTiles: tiles.filter((tile) => tile.discovered).length,
+    discoveredTiles: settlementTiles.filter((tile) => tile.discovered).length,
     landingArchetype: landingProfile.archetype,
     terrainCounts,
     variantCounts,
     buildingCounts,
-    resourceStock: { ...resourceInventory },
+    resourceStock: { ...resourceStock },
     population: {
-      current: populationState.current,
-      beds: populationState.beds,
-      max: populationState.max,
-      hungerMs: populationState.hungerMs,
-      inactiveTileCount: populationState.inactiveTileCount,
+      current: population.current,
+      beds: population.beds,
+      max: population.max,
+      hungerMs: population.hungerMs,
+      inactiveTileCount: population.inactiveTileCount,
     },
   };
 }
@@ -235,9 +271,24 @@ function createTaskHint(taskKey: TaskType, tile: Tile): TutorialMapHint {
 
 function getCurrentPlayerPopulation() {
   const settlementId = currentPlayerSettlementId.value;
-  return settlementId
-    ? populationState.settlements.find((settlement) => settlement.settlementId === settlementId) ?? populationState
-    : populationState;
+  if (!settlementId) {
+    return populationState;
+  }
+
+  const settlement = populationState.settlements.find((entry) => entry.settlementId === settlementId);
+  if (settlement) {
+    return settlement;
+  }
+
+  return populationState.settlements.length <= 0
+    ? populationState
+    : {
+      current: 0,
+      beds: 0,
+      max: 0,
+      hungerMs: 0,
+      inactiveTileCount: 0,
+    };
 }
 
 function isTutorialTaskReadyForHint(taskKey: TaskType) {
@@ -255,6 +306,9 @@ function findTutorialTaskHint(taskKeys: TaskType[], hero: Hero): TutorialMapHint
 
   for (const tile of tiles) {
     if (!tile.discovered) {
+      continue;
+    }
+    if (!isCurrentSettlementTile(tile)) {
       continue;
     }
 
@@ -277,10 +331,13 @@ function findTutorialTaskHint(taskKeys: TaskType[], hero: Hero): TutorialMapHint
 }
 
 function findTutorialScoutHint(hero: Hero, label = 'Scout here'): TutorialMapHint | null {
+  const settlementId = currentPlayerSettlementId.value;
   const candidates = listUndiscoveredFrontierTiles()
     .filter((tile) => (
       !tile.discovered
-      && isPositionControlled(tile.q, tile.r)
+      && (settlementId
+        ? isPositionControlledBySettlement(tile.q, tile.r, settlementId)
+        : isPositionControlled(tile.q, tile.r))
       && !!findNearestTaskAccessTile('explore', tile, hero.q, hero.r, hero.settlementId ?? null)
     ))
     .sort((a, b) => compareTilesForHero(a, b, hero));

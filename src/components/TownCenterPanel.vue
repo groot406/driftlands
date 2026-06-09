@@ -738,6 +738,7 @@ import {
   getSettlementGuardReserve,
   getSettlementBorderMode,
   getWatchtowerDurabilityPercent,
+  hasUncapturedDefenderWatchtowerInTownCenterRaidRadius,
   isBarracksTile,
   isRaidableMilitaryTarget,
   isTownCenterTile,
@@ -1792,6 +1793,8 @@ const selectedJobSiteDetail = computed(() => {
                 ? 'This target is not linked to a valid defending settlement.'
                 : getEffectiveSettlementBorderMode(defenderTownCenter, seasonSnapshot.value) !== 'open'
                   ? 'The target settlement must also have open borders.'
+                  : isTownCenterTile(tile) && hasUncapturedDefenderWatchtowerInTownCenterRaidRadius(Object.values(tileIndex), tile, defenderSettlementId)
+                    ? 'Capture nearby defender watchtowers and beacons before raiding this town center.'
                   : currentReserveGuards <= 0
                     ? 'Train or free at least one reserve guard first.'
                     : null

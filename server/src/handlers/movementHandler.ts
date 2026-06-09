@@ -488,6 +488,18 @@ export class ServerMovementHandler {
         }
     }
 
+    public cancelHeroMovement(heroId: string): void {
+        this.activeMovements.delete(heroId);
+        const hero = getHero(heroId);
+        if (!hero) return;
+
+        hero.movement = undefined;
+        if (hero.delayedMovementTimer) {
+            clearTimeout(hero.delayedMovementTimer);
+            hero.delayedMovementTimer = undefined;
+        }
+    }
+
     public tick(now: number = Date.now()): void {
 
         // @ts-ignore

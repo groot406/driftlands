@@ -21,6 +21,7 @@ import {
   isBarracksTile,
   isRaidableMilitaryTarget,
   isTownCenterTile,
+  isWatchtowerTile,
   returnSettlementGuardReserve,
   resolveWatchtowerConflictState,
   withdrawSettlementGuardReserve,
@@ -287,6 +288,9 @@ function applyWatchtowerCaptureTransfer(tower: Tile, attackerSettlementId: strin
   const changedTileIds: string[] = [];
   for (const tile of Object.values(tileIndex)) {
     if (!tile.discovered || !tile.terrain || tile.terrain === 'towncenter') {
+      continue;
+    }
+    if (tile.id !== tower.id && isWatchtowerTile(tile)) {
       continue;
     }
     if (axialDistanceCoords(tile.q, tile.r, tower.q, tower.r) > 6) {
