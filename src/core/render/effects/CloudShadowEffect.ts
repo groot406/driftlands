@@ -1,5 +1,9 @@
 import type { RenderPassContext } from '../RenderPassContext';
 import type { RenderQualityProfile, TerrainTileRenderItem } from '../RenderTypes';
+import {
+    buildWorldAtmosphere,
+    type WorldAtmosphere,
+} from './WorldAtmosphere';
 import type { WorldEffect } from './WorldEffect';
 
 interface CameraCompositeStateLike {
@@ -44,6 +48,27 @@ interface CloudLayerMotion {
     blurPx: number;
 }
 
+interface CloudLayerProfile {
+    seedSalt: number;
+    detail: boolean;
+    opacityScale: number;
+    detailMoodScale: number;
+    scaleMultiplier: number;
+    speedMultiplier: number;
+    blurPx: number;
+    blurMultiplier: number;
+}
+
+interface CloudMoodProfile {
+    opacityScale: number;
+    detailOpacityScale: number;
+    scaleMultiplier: number;
+    detailScaleMultiplier: number;
+    speedMultiplier: number;
+    blurMultiplier: number;
+    windPush: number;
+}
+
 export class CloudShadowEffect implements WorldEffect {
     readonly name = 'CloudShadowEffect';
 
@@ -65,6 +90,9 @@ export class CloudShadowEffect implements WorldEffect {
 
     apply(context: RenderPassContext) {
         if (!context.effectSurface) {
+            return;
+        }
+        if (!this.isEnabled(context.quality)) {
             return;
         }
 
@@ -92,17 +120,10 @@ export class CloudShadowEffect implements WorldEffect {
 
         const cameraFx = this.deps.getCameraFx(context);
         const { cx, cy } = this.deps.getCanvasCenter();
-        const blurPx = context.quality.expensiveAtmosphere ? 3.1 : 2.2;
-        const detailLayerEnabled = context.quality.expensiveAtmosphere;
         const ctx = context.effectSurface.ctx;
-        const primaryMotion = this.getCloudLayerMotion(morph.primarySeed, false, blurPx);
-        const secondaryMotion = this.getCloudLayerMotion(morph.secondarySeed, false, blurPx);
-        const primaryDetailMotion = detailLayerEnabled
-            ? this.getCloudLayerMotion(morph.primarySeed ^ 0x6ad5c431, true, 0.8)
-            : null;
-        const secondaryDetailMotion = detailLayerEnabled
-            ? this.getCloudLayerMotion(morph.secondarySeed ^ 0x6ad5c431, true, 0.8)
-            : null;
+        const atmosphere = this.buildVisibleAtmosphere(context, discoveredTiles);
+        const mood = this.getCloudMoodProfile(atmosphere);
+        const layers = this.getCloudLayerProfiles(context.quality, atmosphere);
         const dpr = this.deps.getDpr();
 
         ctx.save();
@@ -117,73 +138,230 @@ export class CloudShadowEffect implements WorldEffect {
             context.viewport.cameraY,
             () => {
                 ctx.globalCompositeOperation = 'source-over';
-                this.drawCloudShadowLayer(
-                    ctx,
-                    primaryTexture,
-                    bounds,
-                    context.scene.frameInfo.effectNowMs,
-                    context.viewport.cameraX,
-                    context.viewport.cameraY,
-                    primaryMotion.opacity * (1 - morph.blend),
-                    primaryMotion.scale,
-                    primaryMotion.speedX,
-                    primaryMotion.speedY,
-                    primaryMotion.phaseX,
-                    primaryMotion.phaseY,
-                    primaryMotion.blurPx,
-                );
-                this.drawCloudShadowLayer(
-                    ctx,
-                    secondaryTexture,
-                    bounds,
-                    context.scene.frameInfo.effectNowMs,
-                    context.viewport.cameraX,
-                    context.viewport.cameraY,
-                    secondaryMotion.opacity * morph.blend,
-                    secondaryMotion.scale,
-                    secondaryMotion.speedX,
-                    secondaryMotion.speedY,
-                    secondaryMotion.phaseX,
-                    secondaryMotion.phaseY,
-                    secondaryMotion.blurPx,
-                );
-
-                if (primaryDetailMotion && secondaryDetailMotion) {
-                    this.drawCloudShadowLayer(
+                for (const layer of layers) {
+                    this.drawCloudShadowLayerPair(
                         ctx,
                         primaryTexture,
-                        bounds,
-                        context.scene.frameInfo.effectNowMs,
-                        context.viewport.cameraX,
-                        context.viewport.cameraY,
-                        primaryDetailMotion.opacity * (1 - morph.blend),
-                        primaryDetailMotion.scale,
-                        primaryDetailMotion.speedX,
-                        primaryDetailMotion.speedY,
-                        primaryDetailMotion.phaseX,
-                        primaryDetailMotion.phaseY,
-                        primaryDetailMotion.blurPx,
-                    );
-                    this.drawCloudShadowLayer(
-                        ctx,
                         secondaryTexture,
                         bounds,
                         context.scene.frameInfo.effectNowMs,
                         context.viewport.cameraX,
                         context.viewport.cameraY,
-                        secondaryDetailMotion.opacity * morph.blend,
-                        secondaryDetailMotion.scale,
-                        secondaryDetailMotion.speedX,
-                        secondaryDetailMotion.speedY,
-                        secondaryDetailMotion.phaseX,
-                        secondaryDetailMotion.phaseY,
-                        secondaryDetailMotion.blurPx,
+                        morph.blend,
+                        morph.primarySeed,
+                        morph.secondarySeed,
+                        layer,
+                        mood,
+                        atmosphere,
                     );
                 }
             },
         );
 
         ctx.restore();
+    }
+
+    private buildVisibleAtmosphere(
+        context: RenderPassContext,
+        discoveredTiles: readonly TerrainTileRenderItem[],
+    ): WorldAtmosphere {
+        return buildWorldAtmosphere({
+            tiles: discoveredTiles.map((tile) => ({
+                q: tile.q,
+                r: tile.r,
+                discovered: tile.flags.discovered,
+                terrain: tile.terrainType,
+            })),
+            nowMs: context.scene.frameInfo.effectNowMs,
+            cameraQ: context.viewport.cameraQ,
+            cameraR: context.viewport.cameraR,
+            quality: context.quality,
+        });
+    }
+
+    private getCloudLayerProfiles(
+        quality: RenderQualityProfile,
+        atmosphere: WorldAtmosphere,
+    ): CloudLayerProfile[] {
+        const ash = atmosphere.weatherFlavor === 'ash' ? 1 : 0;
+        const sand = atmosphere.weatherFlavor === 'sand' ? 1 : 0;
+        const mist = atmosphere.weatherFlavor === 'mist' || atmosphere.weatherFlavor === 'snow' ? 1 : 0;
+        const broadBlurPx = quality.expensiveAtmosphere
+            ? 4.1
+            : quality.name === 'medium'
+                ? 2.5
+                : 0.65;
+        const layers: CloudLayerProfile[] = [
+            {
+                seedSalt: 0,
+                detail: false,
+                opacityScale: quality.expensiveAtmosphere ? 1.08 : 0.92,
+                detailMoodScale: 0.45,
+                scaleMultiplier: quality.expensiveAtmosphere ? 1.18 : 1.08,
+                speedMultiplier: 0.62 + (sand * 0.08) + (ash * 0.06) - (mist * 0.05),
+                blurPx: broadBlurPx,
+                blurMultiplier: 1,
+            },
+        ];
+
+        if (quality.name === 'medium') {
+            layers.push({
+                seedSalt: 0x6ad5c431,
+                detail: true,
+                opacityScale: 0.28,
+                detailMoodScale: 0.78,
+                scaleMultiplier: 0.84,
+                speedMultiplier: 1.06 + (sand * 0.1) + (ash * 0.08),
+                blurPx: 0.55,
+                blurMultiplier: 0.94,
+            });
+        }
+
+        if (quality.expensiveAtmosphere) {
+            layers.push(
+                {
+                    seedSalt: 0x6ad5c431,
+                    detail: true,
+                    opacityScale: 0.44 + (mist * 0.05) - (sand * 0.06) + (ash * 0.04),
+                    detailMoodScale: 0.92,
+                    scaleMultiplier: 0.74 + (mist * 0.08) + (sand * 0.04) - (ash * 0.05),
+                    speedMultiplier: 1.08 + (sand * 0.1) + (ash * 0.12) - (mist * 0.05),
+                    blurPx: 0.82,
+                    blurMultiplier: 0.9,
+                },
+                {
+                    seedSalt: 0x4f1bbcdc,
+                    detail: true,
+                    opacityScale: 0.24 + (sand * 0.04) + (ash * 0.08),
+                    detailMoodScale: 1.08,
+                    scaleMultiplier: 0.42 + (sand * 0.09) - (ash * 0.04),
+                    speedMultiplier: 1.72 + (sand * 0.22) + (ash * 0.14),
+                    blurPx: 0.34,
+                    blurMultiplier: 0.82,
+                },
+            );
+        }
+
+        return layers;
+    }
+
+    private getCloudMoodProfile(atmosphere: WorldAtmosphere): CloudMoodProfile {
+        const depth = this.clamp01(atmosphere.cloudDepthIntensity);
+        const wetCold = this.clamp01((atmosphere.weights.water * 0.72) + (atmosphere.weights.cold * 0.62));
+        const sand = atmosphere.weatherFlavor === 'sand'
+            ? this.clamp01(0.62 + (atmosphere.weights.warm * 0.28))
+            : 0;
+        const ash = atmosphere.weatherFlavor === 'ash'
+            ? this.clamp01(0.66 + (atmosphere.weights.ember * 0.34))
+            : 0;
+
+        return {
+            opacityScale: this.clampRange(
+                0.62 + (depth * 0.92) + (wetCold * 0.14) + (ash * 0.12) - (sand * 0.24),
+                0.34,
+                1.26,
+            ),
+            detailOpacityScale: this.clampRange(
+                0.52 + (depth * 0.82) + (wetCold * 0.16) + (ash * 0.24) - (sand * 0.08),
+                0.28,
+                1.18,
+            ),
+            scaleMultiplier: this.clampRange(0.94 + (wetCold * 0.14) + (sand * 0.12) - (ash * 0.06), 0.84, 1.22),
+            detailScaleMultiplier: this.clampRange(0.98 + (wetCold * 0.08) + (sand * 0.04) - (ash * 0.12), 0.76, 1.16),
+            speedMultiplier: this.clampRange(
+                0.82 + (atmosphere.windStrength * 0.46) + (sand * 0.16) + (ash * 0.12) - (wetCold * 0.08),
+                0.76,
+                1.42,
+            ),
+            blurMultiplier: this.clampRange(0.86 + (wetCold * 0.32) + (sand * 0.04) - (ash * 0.08), 0.72, 1.34),
+            windPush: 1.8 + (atmosphere.windStrength * 4.4) + (sand * 1.4) + (ash * 1.1),
+        };
+    }
+
+    private drawCloudShadowLayerPair(
+        ctx: CanvasRenderingContext2D,
+        primaryTexture: HTMLCanvasElement,
+        secondaryTexture: HTMLCanvasElement,
+        bounds: { minX: number; minY: number; width: number; height: number },
+        now: number,
+        cameraX: number,
+        cameraY: number,
+        blend: number,
+        primarySeed: number,
+        secondarySeed: number,
+        layer: CloudLayerProfile,
+        mood: CloudMoodProfile,
+        atmosphere: WorldAtmosphere,
+    ) {
+        const primaryMotion = this.getCloudLayerMotion(primarySeed ^ layer.seedSalt, layer.detail, layer.blurPx);
+        const secondaryMotion = this.getCloudLayerMotion(secondarySeed ^ layer.seedSalt, layer.detail, layer.blurPx);
+
+        this.drawMoodAdjustedCloudLayer(
+            ctx,
+            primaryTexture,
+            bounds,
+            now,
+            cameraX,
+            cameraY,
+            primaryMotion,
+            layer,
+            mood,
+            atmosphere,
+            1 - blend,
+        );
+        this.drawMoodAdjustedCloudLayer(
+            ctx,
+            secondaryTexture,
+            bounds,
+            now,
+            cameraX,
+            cameraY,
+            secondaryMotion,
+            layer,
+            mood,
+            atmosphere,
+            blend,
+        );
+    }
+
+    private drawMoodAdjustedCloudLayer(
+        ctx: CanvasRenderingContext2D,
+        texture: HTMLCanvasElement,
+        bounds: { minX: number; minY: number; width: number; height: number },
+        now: number,
+        cameraX: number,
+        cameraY: number,
+        motion: CloudLayerMotion,
+        layer: CloudLayerProfile,
+        mood: CloudMoodProfile,
+        atmosphere: WorldAtmosphere,
+        morphOpacity: number,
+    ) {
+        const moodOpacityScale = layer.detail
+            ? mood.detailOpacityScale * layer.detailMoodScale
+            : mood.opacityScale;
+        const scaleMultiplier = layer.detail
+            ? mood.detailScaleMultiplier
+            : mood.scaleMultiplier;
+        const speedMultiplier = layer.speedMultiplier * mood.speedMultiplier;
+        const windX = atmosphere.windX * mood.windPush * (layer.detail ? 1.15 : 0.72);
+        const windY = atmosphere.windY * mood.windPush * (layer.detail ? 1.15 : 0.72);
+
+        this.drawCloudShadowLayer(
+            ctx,
+            texture,
+            bounds,
+            now,
+            cameraX,
+            cameraY,
+            motion.opacity * layer.opacityScale * moodOpacityScale * morphOpacity,
+            motion.scale * layer.scaleMultiplier * scaleMultiplier,
+            (motion.speedX * speedMultiplier) + windX,
+            (motion.speedY * speedMultiplier) + windY,
+            motion.phaseX,
+            motion.phaseY,
+            motion.blurPx * layer.blurMultiplier * mood.blurMultiplier,
+        );
     }
 
     private applyCameraRelativeWorldTransform(
@@ -519,6 +697,14 @@ export class CloudShadowEffect implements WorldEffect {
         }
         const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
         return t * t * (3 - (2 * t));
+    }
+
+    private clamp01(value: number) {
+        return this.clampRange(value, 0, 1);
+    }
+
+    private clampRange(value: number, min: number, max: number) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private wrapInt(value: number, period: number) {
