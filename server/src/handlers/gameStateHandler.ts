@@ -4,6 +4,8 @@ import { worldState } from '../worldState';
 import type { Socket } from 'socket.io';
 import type {
   CoopSnapshotMessage,
+  CompetitionRequestSnapshotMessage,
+  CompetitionSnapshotMessage,
   PersistenceLoadSavedMessage,
   PersistenceRemoveSavedMessage,
   PersistenceRequestStatusMessage,
@@ -26,6 +28,8 @@ import { testModeState } from '../state/testModeState';
 import { serverDebugModeEnabled, spawnSafetyEnabled } from '../config/serverMode';
 import { seasonState } from '../state/seasonState';
 import { isAdminSocket } from '../config/admin';
+import { gameAnalytics } from '../analytics/gameAnalytics';
+import { competitionState } from '../state/competitionState';
 
 const WORLD_SNAPSHOT_TILE_CHUNK_SIZE = 1000;
 
@@ -47,6 +51,7 @@ export class ServerGameStateHandler {
     serverMessageRouter.on('persistence:save_as', this.handlePersistenceSaveAs.bind(this));
     serverMessageRouter.on('persistence:load_saved', this.handlePersistenceLoadSaved.bind(this));
     serverMessageRouter.on('persistence:remove_saved', this.handlePersistenceRemoveSaved.bind(this));
+    serverMessageRouter.on('competition:request_snapshot', this.handleCompetitionSnapshotRequest.bind(this));
     serverMessageRouter.on('player:join', this.handlePlayerJoinSendWorld.bind(this));
   }
 
@@ -151,6 +156,14 @@ export class ServerGameStateHandler {
     };
   }
 
+  private buildCompetitionSnapshotMessage(): CompetitionSnapshotMessage {
+    return {
+      type: 'competition:snapshot',
+      competition: competitionState.getSnapshot(),
+      timestamp: Date.now(),
+    };
+  }
+
   private buildPersistenceStatusMessage(): PersistenceStatusMessage {
     return {
       type: 'persistence:status',
@@ -213,6 +226,10 @@ export class ServerGameStateHandler {
     sendToSocket(socket, this.buildPersistenceStatusMessage());
   }
 
+  private handleCompetitionSnapshotRequest(socket: Socket, _message: CompetitionRequestSnapshotMessage): void {
+    sendToSocket(socket, this.buildCompetitionSnapshotMessage());
+  }
+
   private handleWorldRequest(socket: Socket, _message: WorldRequestMessage): void {
     this.sendWorldSnapshotToSocket(socket);
     testModeState.sendUpdate(socket);
@@ -224,6 +241,7 @@ export class ServerGameStateHandler {
     if (seasonSnapshot) {
       sendToSocket(socket, seasonSnapshot);
     }
+    sendToSocket(socket, this.buildCompetitionSnapshotMessage());
     if (this.canUsePersistenceControls(socket)) {
       sendToSocket(socket, this.buildPersistenceStatusMessage());
     }
@@ -232,6 +250,7 @@ export class ServerGameStateHandler {
 
   private handleWorldRestart(_socket: Socket, message: WorldRestartMessage): void {
     worldState.init(message.seed, message.radius);
+    gameAnalytics.recordWorldRestart();
     testModeState.reapplyWorldState();
     coopState.resetHeroClaims();
     this.broadcastWorldSnapshot();

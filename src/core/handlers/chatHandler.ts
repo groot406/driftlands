@@ -3,6 +3,7 @@ import { clientMessageRouter } from '../messageRouter';
 import { addChatMessage, consumeOutgoingChatEcho, getIsPlayerModalOpen } from '../../store/chatStore';
 import { addNotification } from '../../store/notificationStore';
 import { playInterfaceSound } from '../../store/soundStore';
+import { triggerSelectionHaptic } from '../hapticsService';
 
 const INCOMING_CHAT_SOUND_COOLDOWN_MS = 800;
 const INCOMING_CHAT_SOUND_VOLUME = 0.85;
@@ -37,6 +38,7 @@ class ChatMessageHandler {
     // Show feedback for incoming chat even if the chat panel is currently open.
     if (isIncomingMessage) {
       this.playIncomingChatSound();
+      triggerSelectionHaptic(false);
       addNotification({
         type: 'chat',
         title: 'New chat message',

@@ -126,8 +126,14 @@ Socket.IO uses `/socket.io` on the same public `5173` origin and Vite forwards t
 - `npm run deploy` lets you choose frontend, backend, or both, prints a plan, then runs the selected deployment
 - `npm run haos:deploy` builds and serves a Home Assistant Docker install bundle for WebSSH
 - `npm run test:unit` runs the automated test suite
+- `npm run steam:demo:build` builds the Steam demo client and bundled server
+- `npm run steam:demo:package:mac` creates the macOS Electron demo app bundle
+- `npm run steam:demo:package:win` creates the Windows Electron demo app bundle
+- `npm run ipad:sync` builds the Capacitor iPad target and syncs the iOS project
 - `npm run build` builds the client for production
 - `npm run preview` previews the built client
+
+See `docs/publishing/steam-demo-and-ipad.md` for the standalone Steam demo and native iPad publishing workflow.
 
 ## Repo Overview
 

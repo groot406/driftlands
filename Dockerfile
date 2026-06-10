@@ -18,6 +18,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
     SERVER_DEBUG_MODE=0 \
-    SERVER_TPS=10
+    SERVER_TPS=10 \
+    DRIFTLANDS_ANALYTICS_PATH=/data/analytics \
+    DRIFTLANDS_ANALYTICS_RETENTION_DAYS=30
 
 CMD ["npm", "run", "start:server:no-debug"]

@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex bg-slate-900 text-slate-100 select-none">
+  <div class="game-scene flex bg-slate-900 text-slate-100 select-none">
     <TitleBackground :move="false" :background-image="gameBackgroundTexture" />
     <div class="flex-1 overflow-hidden w-full h-full">
       <HexMap @tile-doubleclick="moveToPosition" />
@@ -120,5 +120,10 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   overscroll-behavior: contain;
 }
 
+.game-scene {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+}
 
 </style>

@@ -121,7 +121,8 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.85rem;
-  min-width: min(32rem, 82vw);
+  min-width: 0;
+  min-height: 3.45rem;
   border: 1px solid rgba(245, 222, 168, 0.42);
   border-radius: 9px;
   background:
@@ -226,7 +227,9 @@ onBeforeUnmount(() => {
 @media (max-width: 580px) {
   .season-stage-hud {
     grid-template-columns: minmax(0, 1fr) auto;
-    min-width: min(25rem, 88vw);
+    gap: 0.55rem;
+    min-height: 3.2rem;
+    padding: 0.48rem 0.52rem 0.48rem 0.62rem;
   }
 
   .season-stage-hud__line {
@@ -243,5 +246,6 @@ onBeforeUnmount(() => {
   .season-stage-hud__action {
     display: none;
   }
+
 }
 </style>

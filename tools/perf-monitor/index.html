@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Driftlands Perf Monitor</title>
+  <title>Driftlands Observability</title>
   <style>
     :root {
       color-scheme: dark;
@@ -112,7 +112,7 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto auto auto;
+      grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
       gap: 10px;
       align-items: center;
       margin-bottom: 18px;
@@ -124,6 +124,7 @@
     }
 
     .target-input,
+    .range-input,
     .interval-input {
       width: 100%;
       height: 40px;
@@ -139,7 +140,12 @@
       width: 92px;
     }
 
+    .range-input {
+      width: 112px;
+    }
+
     .target-input:focus,
+    .range-input:focus,
     .interval-input:focus {
       border-color: var(--info);
       box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.14);
@@ -398,6 +404,13 @@
       margin-top: 14px;
     }
 
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -499,6 +512,7 @@
       }
 
       .main-grid,
+      .stats-grid,
       .tables {
         grid-template-columns: 1fr;
       }
@@ -529,8 +543,8 @@
   <main class="shell">
     <header class="topbar">
       <div>
-        <h1>Driftlands Perf Monitor</h1>
-        <p class="subtitle">Local dashboard for process CPU, server tick health, event loop stalls, commands, pathfinding, message sizes, saves, and entity counts.</p>
+        <h1>Driftlands Observability</h1>
+        <p class="subtitle">Local dashboard for server performance and aggregate game stats: players today, sessions, play time, actions, panels, CPU, ticks, messages, pathfinding, saves, and entity counts.</p>
       </div>
       <div id="statusPill" class="status-pill">
         <span class="status-dot"></span>
@@ -540,6 +554,11 @@
 
     <section class="toolbar" aria-label="Performance monitor controls">
       <input id="targetInput" class="target-input" aria-label="Perf endpoint" spellcheck="false">
+      <select id="statsRangeInput" class="range-input" aria-label="Stats range">
+        <option value="today">Today</option>
+        <option value="7d">7 days</option>
+        <option value="30d">30 days</option>
+      </select>
       <input id="intervalInput" class="interval-input" type="number" min="3" step="1" value="10" aria-label="Refresh interval seconds">
       <button id="refreshButton" class="button primary" type="button">Refresh</button>
       <button id="autoButton" class="button active" type="button">Auto on</button>
@@ -554,6 +573,32 @@
     </div>
 
     <section id="summaryGrid" class="grid summary-grid" aria-label="Summary metrics"></section>
+
+    <section class="card" aria-label="Aggregate game stats">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Game Stats</h2>
+          <div id="statsKicker" class="panel-kicker">Aggregate-only stats from /api/driftlands/admin/stats</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="statsSummaryGrid" class="stats-grid"></div>
+        <div class="tables" style="margin-top: 0;">
+          <article>
+            <h3 class="panel-kicker">Top Actions</h3>
+            <div id="topActionsTable"></div>
+          </article>
+          <article>
+            <h3 class="panel-kicker">Top Panels</h3>
+            <div id="topPanelsTable"></div>
+          </article>
+        </div>
+        <div style="margin-top: 14px;">
+          <h3 class="panel-kicker">Daily Breakdown</h3>
+          <div id="dailyStatsTable"></div>
+        </div>
+      </div>
+    </section>
 
     <section class="grid main-grid">
       <article class="card">
@@ -634,16 +679,19 @@
     const defaultTarget = 'https://driftlands.ddns.net/debug/perf';
     const state = {
       target: normalizeTarget(new URLSearchParams(location.search).get('target') || defaultTarget),
+      statsRange: new URLSearchParams(location.search).get('range') || 'today',
       auto: true,
       intervalSeconds: 10,
       timer: 0,
       inFlight: false,
       lastRequestStartedAt: 0,
       lastSnapshot: null,
+      lastStats: null,
     };
 
     const els = {
       targetInput: document.getElementById('targetInput'),
+      statsRangeInput: document.getElementById('statsRangeInput'),
       intervalInput: document.getElementById('intervalInput'),
       refreshButton: document.getElementById('refreshButton'),
       autoButton: document.getElementById('autoButton'),
@@ -655,6 +703,11 @@
       sampleCount: document.getElementById('sampleCount'),
       serverConfig: document.getElementById('serverConfig'),
       summaryGrid: document.getElementById('summaryGrid'),
+      statsKicker: document.getElementById('statsKicker'),
+      statsSummaryGrid: document.getElementById('statsSummaryGrid'),
+      topActionsTable: document.getElementById('topActionsTable'),
+      topPanelsTable: document.getElementById('topPanelsTable'),
+      dailyStatsTable: document.getElementById('dailyStatsTable'),
       insights: document.getElementById('insights'),
       chartGrid: document.getElementById('chartGrid'),
       diagnosisPanel: document.getElementById('diagnosisPanel'),
@@ -667,10 +720,12 @@
     };
 
     els.targetInput.value = state.target;
+    els.statsRangeInput.value = ['today', '7d', '30d'].includes(state.statsRange) ? state.statsRange : 'today';
 
     els.refreshButton.addEventListener('click', () => {
       state.target = normalizeTarget(els.targetInput.value.trim());
       els.targetInput.value = state.target;
+      state.statsRange = els.statsRangeInput.value;
       refresh({ manual: true });
     });
 
@@ -686,6 +741,11 @@
       scheduleNext();
     });
 
+    els.statsRangeInput.addEventListener('change', () => {
+      state.statsRange = els.statsRangeInput.value;
+      refresh({ manual: true });
+    });
+
     els.targetInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         els.refreshButton.click();
@@ -694,7 +754,7 @@
 
     els.copyButton.addEventListener('click', async () => {
       if (!state.lastSnapshot) return;
-      await navigator.clipboard.writeText(JSON.stringify(state.lastSnapshot, null, 2));
+      await navigator.clipboard.writeText(JSON.stringify({ performance: state.lastSnapshot, stats: state.lastStats }, null, 2));
       els.copyButton.textContent = 'Copied';
       window.setTimeout(() => {
         els.copyButton.textContent = 'Copy JSON';
@@ -756,6 +816,7 @@
 
         const snapshot = JSON.parse(text);
         state.lastSnapshot = snapshot;
+        await refreshStats();
         render(snapshot);
         setStatus('good', snapshot.enabled ? 'Live' : 'Disabled');
       } catch (error) {
@@ -765,6 +826,25 @@
         setRequestBusy(false);
         scheduleNext();
       }
+    }
+
+    async function refreshStats() {
+      const params = new URLSearchParams({
+        target: state.target,
+        range: state.statsRange,
+      });
+
+      const response = await fetch(`/api/stats?${params.toString()}`, {
+        cache: 'no-store',
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        state.lastStats = null;
+        renderGameStats(null, text || `Stats request failed with HTTP ${response.status}`);
+        return;
+      }
+
+      state.lastStats = JSON.parse(text);
     }
 
     function setStatus(tone, label) {
@@ -788,6 +868,7 @@
       renderRawJsonIfOpen();
 
       renderSummary(current, snapshot);
+      renderGameStats(state.lastStats);
       renderInsights(snapshot);
       renderCharts(samples, config);
       renderDiagnosis(snapshot);
@@ -830,6 +911,50 @@
           <div class="metric-note">${escapeHtml(note)}</div>
         </article>
       `;
+    }
+
+    function renderGameStats(stats, error = '') {
+      if (!stats) {
+        els.statsKicker.textContent = error
+          ? `Stats unavailable: ${error}`
+          : 'Stats unavailable. Check that the target server exposes /api/driftlands/admin/stats.';
+        els.statsSummaryGrid.innerHTML = [
+          metricCard('Players', '—', 'No aggregate stats loaded', 'warn'),
+          metricCard('Sessions', '—', 'No aggregate stats loaded', 'warn'),
+          metricCard('Play Time', '—', 'No aggregate stats loaded', 'warn'),
+          metricCard('Panel Opens', '—', 'No aggregate stats loaded', 'warn'),
+        ].join('');
+        els.topActionsTable.innerHTML = '<div class="empty">No action stats loaded.</div>';
+        els.topPanelsTable.innerHTML = '<div class="empty">No panel stats loaded.</div>';
+        els.dailyStatsTable.innerHTML = '<div class="empty">No daily stats loaded.</div>';
+        return;
+      }
+
+      const totals = stats.totals || {};
+      const panelOpenCount = Object.values(stats.panels || {}).reduce((sum, panel) => sum + (Number(panel?.opens) || 0), 0);
+      els.statsKicker.textContent = `${stats.range || 'today'} generated ${formatDate(stats.generatedAt)}; current ${stats.current?.connectedPlayers ?? 0} connected players`;
+      els.statsSummaryGrid.innerHTML = [
+        metricCard('Players', String(totals.uniquePlayers ?? 0), `${stats.current?.connectedPlayers ?? 0} connected players, ${stats.current?.connectedSockets ?? 0} sockets`, 'good'),
+        metricCard('Sessions', String(totals.sessionsStarted ?? 0), `${totals.settlementsFounded ?? 0} settlements founded`, 'good'),
+        metricCard('Play Time', formatDuration(totals.playMs), `${formatNumber(totals.worldRestarts ?? 0)} world restarts, ${formatNumber(totals.seasonRestarts ?? 0)} season restarts`, 'good'),
+        metricCard('Panel Opens', String(panelOpenCount), `${Object.keys(stats.panels || {}).length} tracked panels`, panelOpenCount > 0 ? 'good' : 'warn'),
+      ].join('');
+
+      els.topActionsTable.innerHTML = statsTable(
+        stats.topActions || Object.entries(stats.actions || {}).map(([name, count]) => ({ name, count })),
+        ['Action', 'Count'],
+        (row) => [row.name, formatNumber(row.count)],
+      );
+      els.topPanelsTable.innerHTML = statsTable(
+        stats.topPanels || Object.entries(stats.panels || {}).map(([name, panel]) => ({ name, ...panel })),
+        ['Panel', 'Opens', 'Open time'],
+        (row) => [row.name, formatNumber(row.opens), formatDuration(row.totalOpenMs)],
+      );
+      els.dailyStatsTable.innerHTML = statsTable(
+        stats.daily || [],
+        ['Date', 'Players', 'Sessions', 'Play time', 'Settlements'],
+        (row) => [row.date, formatNumber(row.uniquePlayers), formatNumber(row.sessionsStarted), formatDuration(row.playMs), formatNumber(row.settlementsFounded)],
+      );
     }
 
     function renderInsights(snapshot) {
@@ -1177,6 +1302,22 @@
       `;
     }
 
+    function statsTable(rows, headings, cellsFor) {
+      const visibleRows = (rows || []).slice(0, 14);
+      if (!visibleRows.length) return '<div class="empty">No stats in this range.</div>';
+
+      return `
+        <table>
+          <thead><tr>${headings.map((heading) => `<th>${escapeHtml(heading)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${visibleRows.map((row) => `
+              <tr>${cellsFor(row).map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
     function renderSlowEvents(snapshot) {
       const groups = [
         ['Slow ticks', snapshot.slowTicks],
@@ -1212,7 +1353,7 @@
       }
 
       if (els.rawDetails.open) {
-        els.rawJson.textContent = JSON.stringify(state.lastSnapshot, null, 2);
+        els.rawJson.textContent = JSON.stringify({ performance: state.lastSnapshot, stats: state.lastStats }, null, 2);
         return;
       }
 
@@ -1267,6 +1408,14 @@
     function formatPercent(value) {
       if (!Number.isFinite(Number(value))) return '0%';
       return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+    }
+
+    function formatDuration(value) {
+      const ms = Math.max(0, Number(value) || 0);
+      const hours = Math.floor(ms / 3_600_000);
+      const minutes = Math.floor((ms % 3_600_000) / 60_000);
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
     }
 
     function formatDate(value) {

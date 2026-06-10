@@ -33,6 +33,8 @@ import { runState } from '../state/runState';
 import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from '../config/serverMode';
 import { seasonState } from '../state/seasonState';
 import { isAdminSocket } from '../config/admin';
+import { gameAnalytics } from '../analytics/gameAnalytics';
+import { competitionState } from '../state/competitionState';
 
 export class ServerSettlementStartHandler {
   private static activeInstance: ServerSettlementStartHandler | null = null;
@@ -347,6 +349,13 @@ export class ServerSettlementStartHandler {
     founded: { settlementId: string; q: number; r: number; founderHeroId?: string; founderHeroIds?: string[] },
   ): void {
     const owner = playerSettlementState.getSettlementOwner(founded.settlementId);
+    gameAnalytics.recordSettlementFounded();
+    competitionState.recordSettlementFounded({
+      playerId,
+      playerName: owner?.playerName ?? playerSettlementState.getPlayerName(playerId) ?? 'Pioneer',
+      playerColor: owner?.playerColor ?? playerSettlementState.getPlayerColor(playerId),
+      settlementId: founded.settlementId,
+    });
     coopState.updatePlayerSettlement(playerId, founded.settlementId);
     const starterHeroIds = founded.founderHeroIds ?? (founded.founderHeroId ? [founded.founderHeroId] : []);
     let claimedStarterHero = false;

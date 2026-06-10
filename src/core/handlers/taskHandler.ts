@@ -18,6 +18,7 @@ import type { Hero } from "../types/Hero.ts";
 import { currentPlayerId } from "../socket.ts";
 import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
 import { emitGameplayEvent } from "../../shared/gameplay/events.ts";
+import { triggerImpactHaptic, triggerSuccessHaptic } from "../hapticsService.ts";
 
 const rewardDeliveryPathService = new PathService();
 
@@ -153,6 +154,9 @@ class ClientTaskHandler {
                         if (addedAmount <= 0) continue;
 
                         addTextIndicator(tile, `+${addedAmount}`, '#fff1a8', 1250);
+                        if (this.isLocalTaskParticipant(message.participants)) {
+                            triggerImpactHaptic('light', false);
+                        }
                     }
 
                     triggerCameraShake({
@@ -231,6 +235,7 @@ class ClientTaskHandler {
                     terrain: tile.terrain,
                     heroIds: message.rewards.map((reward) => reward.heroId),
                 });
+                triggerSuccessHaptic(true);
                 triggerCameraShake({
                     q: tile.q,
                     r: tile.r,
@@ -373,6 +378,13 @@ class ClientTaskHandler {
         }
 
         return null;
+    }
+
+    private isLocalTaskParticipant(participants: Record<string, number>): boolean {
+        return Object.keys(participants).some((heroId) => {
+            const hero = getHero(heroId);
+            return isLocalHero(hero);
+        });
     }
 
     private startLocalRewardDelivery(hero: Hero): void {

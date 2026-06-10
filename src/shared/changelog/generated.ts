@@ -268,5 +268,43 @@ export const generatedChangelogEntries: ReleaseChangelogEntry[] = [
       "Updated tutorial to assist new players more effectively."
     ],
     "gitHead": "9f71d04d44d9"
+  },
+  {
+    "id": "both-1781027682284-94f6b6fc038a",
+    "releasedAt": 1781027682284,
+    "target": "both",
+    "title": "Driftlands Update: dddoa aerard",
+    "bullets": [
+      "Improved scout and military systems for better gameplay balance.",
+      "Multiple backend and handler fixes for smoother multiplayer experience.",
+      "Enhanced performance monitoring tools with updated UI.",
+      "Updated tutorials and town center panel for clearer player guidance."
+    ],
+    "gitHead": "94f6b6fc038a"
+  },
+  {
+    "id": "backend-1781035216892-94f6b6fc038a",
+    "releasedAt": 1781035216892,
+    "target": "backend",
+    "title": "Backend Update: Mac & iOS Client Connectivity",
+    "bullets": [
+      "Enabled packaged Mac and iOS clients to connect to shared Driftlands hosts",
+      "Improved backend handling for cross-platform client support",
+      "Updated environment and docker setup to support new client connections"
+    ],
+    "gitHead": "94f6b6fc038a"
+  },
+  {
+    "id": "both-1781038974138-94f6b6fc038a",
+    "releasedAt": 1781038974138,
+    "target": "both",
+    "title": "Driftlands Update",
+    "bullets": [
+      "No gameplay changes or new features in this release.",
+      "Various internal improvements and codebase cleanup completed.",
+      "Updated environment and configuration examples to latest standards.",
+      "Enhanced performance monitoring and stability fixes applied."
+    ],
+    "gitHead": "94f6b6fc038a"
   }
 ];

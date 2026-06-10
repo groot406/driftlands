@@ -9,6 +9,7 @@ import {addTextIndicator} from "../textIndicators.ts";
 import {tileIndex} from "../world.ts";
 import { currentPlayerSettlementId } from "../../store/settlementStartStore.ts";
 import { currentPlayerId } from "../socket.ts";
+import { triggerImpactHaptic } from "../hapticsService.ts";
 
 function isLocalHeroEvent(hero: { playerId?: string | null; settlementId?: string | null } | null | undefined) {
     if (!hero) {
@@ -53,6 +54,7 @@ class ClientResourceHandler {
 
         if (localEvent) {
             playPositionalSound(hero.id + ':resource_deposit', 'drop.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            triggerImpactHaptic('medium', false);
             triggerGameplayImpact({
                 q: hero.q,
                 r: hero.r,
@@ -86,6 +88,7 @@ class ClientResourceHandler {
 
         if (isLocalHeroEvent(hero)) {
             playPositionalSound(hero.id + ':resource_fetch', 'take.mp3', hero.q, hero.r, { baseVolume: 0.5, maxDistance: 10, loop: false } );
+            triggerImpactHaptic('light', false);
         }
     }
 }

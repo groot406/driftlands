@@ -108,6 +108,7 @@ import { BackdropRenderer } from './render/effects/BackdropRenderer';
 import { CompositeRenderer } from './render/effects/CompositeRenderer';
 import { MotionBlurEffect } from './render/effects/MotionBlurEffect';
 import { ResourceFlightEffect } from './render/effects/ResourceFlightEffect';
+import { nativeMetalRenderService } from './render/NativeMetalRenderService';
 import { DebugRenderer } from './render/debug/DebugRenderer';
 import { DEFAULT_DEBUG_FLAGS } from './render/debug/DebugFlags';
 import { GROWTH_HYBRID_STYLE, type TerrainToneFamily } from './render/visualStyle';
@@ -1214,6 +1215,14 @@ export class HexMapService {
                 execute: (context) => {
                     const frame = this.getLegacyFrameFromPassContext(context);
                     context.runtime.effectSurfaceHasContent = true;
+                    const hasResourceFlights = getActiveResourceFlights(context.scene.frameInfo.effectNowMs).length > 0;
+                    context.runtime.effectSurfaceHasCloudsOnly = (
+                        !context.quality.enableMotionBlur
+                        && !context.quality.enableManualShadowComposite
+                        && context.quality.enableClouds
+                        && context.quality.cloudsEnabled
+                        && !hasResourceFlights
+                    );
                     context.runtime.motionBlur = this._compositeRenderer.renderEffects(context, frame, {
                         applyEffectPipeline: (ctx) => this._effectPipeline.apply(ctx),
                     });
@@ -1231,7 +1240,18 @@ export class HexMapService {
                 isEnabled: () => true,
                 execute: (context) => {
                     const frame = this.getLegacyFrameFromPassContext(context);
-                    this._compositeRenderer.compositeToFinal(frame, context.runtime.effectSurfaceHasContent === true);
+                    const includeEffectSurface = context.runtime.effectSurfaceHasContent === true;
+                    const placeCloudsBelowEntities = context.runtime.effectSurfaceHasCloudsOnly === true;
+                    const nativeCompositeDispatched = nativeMetalRenderService.tryCompositeFrame(
+                        frame,
+                        includeEffectSurface,
+                    );
+                    context.runtime.nativeMetalCompositeDispatched = nativeCompositeDispatched;
+                    this._compositeRenderer.compositeToFinal(
+                        frame,
+                        includeEffectSurface,
+                        placeCloudsBelowEntities,
+                    );
                 },
             },
             {
@@ -1414,6 +1434,7 @@ export class HexMapService {
             fogShimmerEnabled: frame.quality.enableFogShimmer,
             tileReliefEnabled: frame.quality.enableTileRelief,
             manualShadowComposite: frame.quality.enableManualShadowComposite,
+            nativeMetalCompositeDispatched: context.runtime.nativeMetalCompositeDispatched === true,
             particleCount: particleCounts.total,
             birdParticleCount: particleCounts.birds,
             visibleChunkCount: terrainMetrics.visibleChunkCount,

@@ -8,9 +8,16 @@ export interface WindowConfig {
   blocksKeyboard: boolean; // Whether this window should block keyboard events to lower priority windows
 }
 
+export type WindowAnalyticsEvent = {
+  event: 'panel:open' | 'panel:close';
+  name: WindowId;
+  at: number;
+};
+
 // Window state management
 const windows = ref<Map<WindowId, WindowConfig>>(new Map());
 const windowStack = ref<WindowId[]>([]);
+let analyticsReporter: ((event: WindowAnalyticsEvent) => void) | null = null;
 
 // Computed values
 export const getActiveWindow = computed(() => {
@@ -40,6 +47,10 @@ export function unregisterWindow(windowId: WindowId): void {
   closeWindow(windowId); // Ensure it's removed from stack if open
 }
 
+export function configureWindowAnalytics(reporter: ((event: WindowAnalyticsEvent) => void) | null): void {
+  analyticsReporter = reporter;
+}
+
 export function openWindow(windowId: WindowId): void {
   const config = windows.value.get(windowId);
   if (!config) {
@@ -49,6 +60,7 @@ export function openWindow(windowId: WindowId): void {
 
   // Remove from stack if already present
   const existingIndex = windowStack.value.indexOf(windowId);
+  const wasOpen = existingIndex !== -1;
   if (existingIndex !== -1) {
     windowStack.value.splice(existingIndex, 1);
   }
@@ -64,12 +76,17 @@ export function openWindow(windowId: WindowId): void {
   } else {
     windowStack.value.splice(insertIndex, 0, windowId);
   }
+
+  if (!wasOpen) {
+    analyticsReporter?.({ event: 'panel:open', name: windowId, at: Date.now() });
+  }
 }
 
 export function closeWindow(windowId: WindowId): void {
   const index = windowStack.value.indexOf(windowId);
   if (index !== -1) {
     windowStack.value.splice(index, 1);
+    analyticsReporter?.({ event: 'panel:close', name: windowId, at: Date.now() });
   }
 }
 

@@ -12,6 +12,7 @@ import { playPositionalSound } from '../../store/soundStore';
 import { addNotification } from '../../store/notificationStore';
 import { ensureHeroSelected } from '../../store/uiStore';
 import { currentPlayerId } from '../socket';
+import { triggerSuccessHaptic } from '../hapticsService';
 
 class ClientHeroHandler {
     private initialized = false;
@@ -71,6 +72,7 @@ class ClientHeroHandler {
     private announceSkillPointReady(hero: NonNullable<ReturnType<typeof getHero>>, amount: number): void {
         const plural = amount === 1 ? '' : 's';
         addTextIndicator(hero, amount === 1 ? 'Skill point ready' : `+${amount} skill points`, '#fde047', 2400);
+        triggerSuccessHaptic(true);
         void playPositionalSound(
             `${hero.id}:skill_point:${hero.skillPointsEarned ?? amount}`,
             'success.mp3',

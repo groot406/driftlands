@@ -11,6 +11,7 @@
                :data-hero-id="hero.id"
                :aria-current="selectedHeroId === hero.id ? 'true' : undefined"
                @click="select(hero)"
+               @dblclick.stop="centerHero(hero)"
                :style="cardStyle(index)">
             <div class="hero-card-shine" aria-hidden="true"></div>
             <div class="hero-card-crest" aria-hidden="true"></div>
@@ -195,7 +196,7 @@ import { requestHeroClaim, requestHeroRelease } from '../core/coopService';
 import { currentPlayerId } from '../core/socket';
 import type { Hero } from '../core/types/Hero.ts';
 import type { ScoutTargetType } from '../core/types/Scout.ts';
-import { requestHeroScoutResource, requestHeroSkillSelect } from '../core/heroService.ts';
+import { focusHero, requestHeroScoutResource, requestHeroSkillSelect } from '../core/heroService.ts';
 import { SCOUT_TARGET_DEFINITIONS } from '../shared/game/scoutResources.ts';
 import {
   HERO_SKILL_DEFINITIONS,
@@ -354,6 +355,11 @@ function select(hero: Hero) {
   }
 
   selectHero(hero, false);
+}
+
+function centerHero(hero: Hero) {
+  select(hero);
+  focusHero(hero);
 }
 
 function claim(heroId: string) {
@@ -803,12 +809,12 @@ watch(() => {
 
 <style scoped>
 .heroes-bar {
-  position: absolute;
+  position: fixed;
   left: 0;
   bottom: 0;
   z-index: 30;
   width: 100%;
-  height: 14.1rem;
+  height: calc(14.1rem + var(--driftlands-safe-bottom, 0px));
   pointer-events: none;
   overflow: visible;
 }
@@ -819,12 +825,12 @@ watch(() => {
   right: auto;
   bottom: 0;
   width: 100%;
-  height: 13.75rem;
+  height: calc(13.75rem + var(--driftlands-safe-bottom, 0px));
   display: flex;
   align-items: flex-end;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 1.15rem 0.9rem 0.7rem;
+  padding: 1.15rem 0.9rem calc(0.7rem + var(--driftlands-safe-bottom, 0px));
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   scrollbar-width: none; /* Firefox */
@@ -1768,8 +1774,8 @@ watch(() => {
 
 @media (max-width: 640px) {
   .heroes-bar {
-    bottom: 3.3rem;
-    height: 13.55rem;
+    bottom: 0;
+    height: calc(13.55rem + var(--driftlands-safe-bottom, 0px));
   }
 
   .heroes-avatar-strip {
@@ -1778,7 +1784,7 @@ watch(() => {
     right: 0;
     bottom: 0;
     width: 100%;
-    height: 13.4rem;
+    height: calc(13.4rem + var(--driftlands-safe-bottom, 0px));
     pointer-events: auto;
     align-items: flex-end;
     gap: 0;
@@ -1786,7 +1792,10 @@ watch(() => {
     overflow-y: visible;
     scroll-snap-type: x mandatory;
     scroll-padding-inline: calc((100vw - var(--mobile-card-width)) / 2);
-    padding: 1rem calc((100vw - var(--mobile-card-width)) / 2) 0.55rem;
+    padding:
+      1rem
+      calc((100vw - var(--mobile-card-width)) / 2)
+      calc(0.55rem + var(--driftlands-safe-bottom, 0px));
     touch-action: pan-x;
     overscroll-behavior-x: contain;
     background:

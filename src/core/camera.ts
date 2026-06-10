@@ -4,8 +4,10 @@ import {isPaused} from '../store/uiStore';
 import {isKeyboardBlocked} from './windowManager';
 import { axialDistance } from '../shared/game/hex';
 import {isHitStopActive} from './gameFeel';
+import {triggerImpactHaptic} from './hapticsService';
 import { DEFAULT_RENDER_CONFIG } from './render/RenderConfig';
 import { HexProjection } from './render/math/HexProjection';
+import { graphicsStore } from '../store/graphicsStore';
 
 export const CAMERA_RADIUS = 16;
 export const CAMERA_INNER_RADIUS = 5;
@@ -93,9 +95,20 @@ export function hexDistance(a: { q: number; r: number }, b: { q: number; r: numb
 }
 
 export function triggerCameraShake(options: CameraShakeOptions = {}) {
+    if (!graphicsStore.screenShake) {
+        return;
+    }
+
     const intensity = Math.max(0, options.intensity ?? 5);
     const durationMs = Math.max(80, options.durationMs ?? 180);
     if (intensity <= 0 || durationMs <= 0) return;
+
+    const hapticLevel = intensity >= 7.2
+        ? 'heavy'
+        : intensity >= 4.5
+            ? 'medium'
+            : 'light';
+    triggerImpactHaptic(hapticLevel, false);
 
     let biasX = 0;
     let biasY = 0;

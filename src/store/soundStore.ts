@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import { soundService, soundState } from '../core/soundService';
 import { isPlaying } from './uiStore';
+import { triggerSelectionHaptic } from '../core/hapticsService';
 
 interface SoundSettings {
     masterVolume: number;
@@ -137,6 +138,7 @@ export async function playInterfaceSound(
     }
 ) {
     if (!soundStore.soundEnabled) return;
+    triggerSelectionHaptic(true);
     await soundService.playInterfaceSound(soundPath, options);
 }
 

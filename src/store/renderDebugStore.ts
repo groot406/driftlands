@@ -40,6 +40,7 @@ export interface RenderDebugState {
     fogShimmerEnabled: boolean;
     tileReliefEnabled: boolean;
     manualShadowComposite: boolean;
+    nativeMetalCompositeDispatched: boolean;
     particleCount: number;
     birdParticleCount: number;
     visibleChunkCount: number;
@@ -89,6 +90,7 @@ export const renderDebugState = reactive<RenderDebugState>({
     fogShimmerEnabled: false,
     tileReliefEnabled: false,
     manualShadowComposite: false,
+    nativeMetalCompositeDispatched: false,
     particleCount: 0,
     birdParticleCount: 0,
     visibleChunkCount: 0,

@@ -26,6 +26,7 @@ import type { MarketActorType, MarketOverviewSnapshot, MarketResourceType } from
 import type { ShipOrderOverviewSnapshot, ShipOrderResourceType } from './game/shipOrders.ts';
 import type { SeasonConfig, SeasonSnapshot, SeasonStageKey } from './seasons/types.ts';
 import type { ReleaseChangelogEntry } from './changelog/changelog.ts';
+import type { CompetitionSnapshot } from './competition/types.ts';
 
 export interface BaseMessage {
     type: string;
@@ -113,6 +114,14 @@ export interface ChangelogSnapshotMessage extends BaseMessage {
 export interface ChangelogAckMessage extends BaseMessage {
     type: 'changelog:ack';
     seenAt: number;
+}
+
+export interface AnalyticsClientEventMessage extends BaseMessage {
+    type: 'analytics:client_event';
+    event: 'panel:open' | 'panel:close' | 'ui:action';
+    name: string;
+    at: number;
+    metadata?: Record<string, string | number | boolean | null>;
 }
 
 export interface ChatMessage extends BaseMessage {
@@ -639,6 +648,20 @@ export interface SeasonCompletedMessage extends BaseMessage {
     season: SeasonSnapshot;
 }
 
+export interface CompetitionRequestSnapshotMessage extends BaseMessage {
+    type: 'competition:request_snapshot';
+}
+
+export interface CompetitionSnapshotMessage extends BaseMessage {
+    type: 'competition:snapshot';
+    competition: CompetitionSnapshot;
+}
+
+export interface CompetitionUpdateMessage extends BaseMessage {
+    type: 'competition:update';
+    competition: CompetitionSnapshot;
+}
+
 export interface PopulationUpdateMessage extends BaseMessage {
     type: 'population:update';
     current: number;
@@ -694,6 +717,7 @@ export interface SettlersPatchMessage extends BaseMessage {
 export type ClientMessage =
     | PlayerJoinMessage
     | PlayerLeaveMessage
+    | AnalyticsClientEventMessage
     | ChangelogAckMessage
     | ChatMessage
     | CoopHeroClaimMessage
@@ -706,6 +730,7 @@ export type ClientMessage =
     | PersistenceSaveAsMessage
     | PersistenceLoadSavedMessage
     | PersistenceRemoveSavedMessage
+    | CompetitionRequestSnapshotMessage
     | SettlementStartRequestOptionsMessage
     | SettlementFoundRequestMessage
     | SetJobSiteEnabledMessage
@@ -772,6 +797,8 @@ export type ServerMessage =
     | SeasonSnapshotMessage
     | SeasonUpdateMessage
     | SeasonCompletedMessage
+    | CompetitionSnapshotMessage
+    | CompetitionUpdateMessage
     | CalamityEventMessage
     | StewardshipReportMessage
     | PopulationUpdateMessage

@@ -20,6 +20,8 @@ import { buildLooperlandsPlayerId } from '../../../src/shared/looperlands';
 import { noteActivePlayerCount, noteFirstActivePlayer } from '../state/attendanceState';
 import { resolveStewardshipAfterAbsence } from '../systems/stewardshipSystem';
 import { discordChatLogger, type DiscordChatLoggerLike } from '../discord/discordChatLogger';
+import { gameAnalytics } from '../analytics/gameAnalytics';
+import { competitionState } from '../state/competitionState';
 
 export class ServerPlayerHandler {
   private connectedPlayers = new Map<string, { id: string, name: string, color: string, socket: Socket, spectator: boolean }>();
@@ -128,6 +130,13 @@ export class ServerPlayerHandler {
     const activePlayerCountBeforeJoin = this.countActivePlayers();
     const player = playerSettlementState.registerPlayer(socket.id, message.playerId, message.playerName, spectator);
     const playerId = player.id;
+    gameAnalytics.recordPlayerJoin(socket.id, playerId);
+    competitionState.recordPlayerConnected(socket.id, {
+      playerId,
+      playerName: player.nickname,
+      playerColor: player.color,
+      spectator,
+    });
 
     // Store player info
     this.connectedPlayers.set(socket.id, {
@@ -215,6 +224,8 @@ export class ServerPlayerHandler {
 
   private handlePlayerLeave(socket: Socket, message: PlayerLeaveMessage): void {
     const player = this.connectedPlayers.get(socket.id);
+    gameAnalytics.recordPlayerDisconnect(socket.id);
+    competitionState.recordPlayerDisconnected(socket.id);
 
     // Remove player from our tracking
     this.connectedPlayers.delete(socket.id);
@@ -272,6 +283,8 @@ export class ServerPlayerHandler {
   // Handle socket disconnection
   handleDisconnection(socket: Socket): void {
     const player = this.connectedPlayers.get(socket.id);
+    gameAnalytics.recordPlayerDisconnect(socket.id);
+    competitionState.recordPlayerDisconnected(socket.id);
     if (player) {
       // Remove from our tracking
       this.connectedPlayers.delete(socket.id);

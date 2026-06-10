@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { isNativeAppBuild } from '../core/buildTarget';
 
 export interface GraphicsSettingsData {
     screenShake: boolean;
@@ -44,13 +45,89 @@ function loadGraphicsSettings(): GraphicsSettingsData {
 export const graphicsStore = reactive<GraphicsSettingsData>(loadGraphicsSettings());
 
 export type GraphicsDiagnosticOverrideMode = 'auto' | 'off' | 'on';
+export type GraphicsNativeMetalMode = 'auto' | 'off' | 'on';
 export type CanvasDprOverrideMode = 'auto' | 'low' | '1x' | 'native';
 export type GraphicsDiagnosticTechniqueKey =
     | 'windowsPresentationSafeMode'
     | 'browserLightRendering'
     | 'desynchronizedCanvas'
     | 'rescueTimer'
-    | 'canvasDpr';
+    | 'canvasDpr'
+    | 'nativeMetalPath';
+
+type NativeMetalPlugin = {
+    submitMapFrame?: (payload: Record<string, unknown>) => Promise<unknown> | void;
+    compositeMapFrame?: (payload: Record<string, unknown>) => Promise<unknown> | void;
+    renderMapFrame?: (payload: Record<string, unknown>) => Promise<unknown> | void;
+};
+
+type CapacitorHost = {
+    Plugins?: Record<string, NativeMetalPlugin>;
+    Plugin?: Record<string, NativeMetalPlugin>;
+};
+
+function getCapacitorHost(): CapacitorHost | null {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+    return (window as unknown as { Capacitor?: CapacitorHost }).Capacitor ?? null;
+}
+
+function getNativeMetalRenderPlugin(): NativeMetalPlugin | null {
+    const host = getCapacitorHost();
+    if (!host) {
+        return null;
+    }
+
+    const pluginNameCandidates = [
+        'DriftlandsNativeRender',
+        'NativeMetalRenderer',
+        'NativeMapRenderer',
+        'MetalRenderBridge',
+    ];
+    const pluginContainer = host.Plugins ?? host.Plugin;
+    if (!pluginContainer) {
+        return null;
+    }
+
+    for (const name of pluginNameCandidates) {
+        const candidate = pluginContainer[name];
+        if (candidate) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
+export function isNativeMetalBridgeAvailable(): boolean {
+    if (!isNativeAppBuild()) {
+        return false;
+    }
+
+    const plugin = getNativeMetalRenderPlugin();
+    if (!plugin) {
+        return false;
+    }
+    return typeof plugin.submitMapFrame === 'function'
+        || typeof plugin.compositeMapFrame === 'function'
+        || typeof plugin.renderMapFrame === 'function';
+}
+
+export function getNativeMetalBridgePlugin(): NativeMetalPlugin | null {
+    return getNativeMetalRenderPlugin();
+}
+
+export function shouldUseNativeMetalPath() {
+    const mode = graphicsDiagnosticOverrideStore.nativeMetalPath;
+    if (mode === 'off') {
+        return false;
+    }
+    if (mode === 'on') {
+        return isNativeMetalBridgeAvailable();
+    }
+    return isNativeMetalBridgeAvailable();
+}
 
 export const graphicsDiagnosticOverrideStore = reactive<{
     windowsPresentationSafeMode: GraphicsDiagnosticOverrideMode;
@@ -58,12 +135,14 @@ export const graphicsDiagnosticOverrideStore = reactive<{
     desynchronizedCanvas: GraphicsDiagnosticOverrideMode;
     rescueTimer: GraphicsDiagnosticOverrideMode;
     canvasDpr: CanvasDprOverrideMode;
+    nativeMetalPath: GraphicsNativeMetalMode;
 }>({
     windowsPresentationSafeMode: 'auto',
     browserLightRendering: 'auto',
     desynchronizedCanvas: 'auto',
     rescueTimer: 'auto',
     canvasDpr: 'auto',
+    nativeMetalPath: 'auto',
 });
 
 function resolveDiagnosticBooleanOverride(

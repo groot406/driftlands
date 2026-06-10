@@ -11,7 +11,10 @@ import { settlementStartHandler } from './handlers/settlementStartHandler';
 import { marketHandler } from './handlers/marketHandler';
 import { shipOrderHandler } from './handlers/shipOrderHandler';
 import { seasonHandler } from './handlers/seasonHandler';
+import { competitionHandler } from './handlers/competitionHandler';
 import { changelogHandler } from './handlers/changelogHandler';
+import { gameCenterHandler } from './handlers/gameCenterHandler';
+import { pushNotificationHandler } from './handlers/pushNotificationHandler';
 
 // Initialize all handlers
 export function initializeClientHandlers(): void {
@@ -30,5 +33,8 @@ export function initializeClientHandlers(): void {
   marketHandler.init();
   shipOrderHandler.init();
   seasonHandler.init();
+  competitionHandler.init();
   changelogHandler.init();
+  gameCenterHandler.init();
+  pushNotificationHandler.init();
 }

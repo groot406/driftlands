@@ -29,7 +29,7 @@ The main menu is grouped by task:
 - `Overview`: check Docker containers, server image, and platform frontend git status.
 - `Server hosting`: build the image and manage the Driftlands/Caddy Docker stack.
 - `Home Assistant Docker`: build an image bundle locally and install it from Home Assistant WebSSH.
-- `Server config`: edit server env values such as `SERVER_DEBUG_MODE`, `SERVER_PERF_DEBUG`, `SERVER_TPS`, `SERVER_SETTLEMENT_START_MODE`, `SERVER_SPAWN_SAFETY`, `SERVER_REQUIRE_LOOPERLANDS_AUTH`, `SERVER_SEED`, `LOOPERLANDS_API_URL`, `FRONTEND_ORIGIN`, `HOST`, and `PORT`.
+- `Server config`: edit server env values such as `SERVER_DEBUG_MODE`, `SERVER_PERF_DEBUG`, `SERVER_TPS`, `SERVER_SETTLEMENT_START_MODE`, `SERVER_SPAWN_SAFETY`, `SERVER_REQUIRE_LOOPERLANDS_AUTH`, `DRIFTLANDS_ANALYTICS_PATH`, `DRIFTLANDS_ANALYTICS_RETENTION_DAYS`, `SERVER_SEED`, `LOOPERLANDS_API_URL`, `FRONTEND_ORIGIN`, `HOST`, and `PORT`.
 - `Frontend deployment`: copy the current Driftlands client into the platform repo, install dependencies, build, commit, push, and run an optional deploy hook.
 - `Diagnostics`: tail logs and check `/health`.
 - `Commands and env snippets`: print copy/paste Docker commands and frontend env vars.
@@ -125,6 +125,11 @@ SERVER_SPAWN_SAFETY=0
 SERVER_REQUIRE_LOOPERLANDS_AUTH=0
 SERVER_SEED=
 
+SERVER_SAVE_PATH=/data/world-save.json
+SERVER_SAVE_INTERVAL_MS=5000
+DRIFTLANDS_ANALYTICS_PATH=/data/analytics
+DRIFTLANDS_ANALYTICS_RETENTION_DAYS=30
+
 LOOPERLANDS_API_URL=https://api.looperlands.io/api
 FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>
 ```
@@ -132,6 +137,16 @@ FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>
 Leave `SERVER_SEED` empty unless you want the same world after every restart.
 
 HAOS deployments enable the performance monitor by default with `SERVER_PERF_DEBUG=1`. Check `https://driftlands.example.com/debug/perf` or the container logs for `[perf:sample]` lines while reproducing late-game lag.
+
+The aggregate game stats endpoint is `https://driftlands.example.com/api/driftlands/admin/stats?range=today`, with `range` also supporting `7d` and `30d`.
+
+For a combined local inspector, run:
+
+```bash
+npm run perf:monitor -- --target=https://driftlands.example.com/debug/perf
+```
+
+The monitor opens a local "Driftlands Observability" page that shows both performance data and aggregate game stats.
 
 ## 3. Run the Driftlands Server
 

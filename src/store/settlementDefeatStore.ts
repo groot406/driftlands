@@ -2,6 +2,7 @@ import { computed, ref } from 'vue';
 import type { LeaderboardEntry, SeasonSnapshot } from '../shared/seasons/types.ts';
 import { addNotification } from './notificationStore.ts';
 import { playInterfaceSound } from './soundStore.ts';
+import { triggerWarningHaptic } from '../core/hapticsService.ts';
 
 export interface SettlementDefeatAnnouncement {
   id: string;
@@ -59,6 +60,7 @@ function emitDefeatEffects(announcement: SettlementDefeatAnnouncement) {
     message: `${announcement.defeatedByPlayerName ?? 'A rival'} captured the last town center.`,
     duration: 8_000,
   });
+  triggerWarningHaptic(true);
   void playInterfaceSound('success.mp3', { baseVolume: 0.58 });
 }
 

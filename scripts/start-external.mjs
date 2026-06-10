@@ -23,6 +23,8 @@ const defaults = {
   SERVER_SEED: '',
   SERVER_SAVE_PATH: '.driftlands/world-save.json',
   SERVER_SAVE_INTERVAL_MS: '5000',
+  DRIFTLANDS_ANALYTICS_PATH: '.driftlands/analytics',
+  DRIFTLANDS_ANALYTICS_RETENTION_DAYS: '30',
   LOOPERLANDS_API_URL: 'https://api.looperlands.io/api',
   FRONTEND_ORIGIN: '',
 };

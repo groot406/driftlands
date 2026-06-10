@@ -43,6 +43,10 @@
       <strong>{{ renderDebugState.motionBlurActive ? `${renderDebugState.motionBlurSamples} taps` : (renderDebugState.motionBlurEnabled ? 'armed' : 'off') }}</strong>
     </div>
     <div class="fps-row">
+      <span>Metal Dispatch</span>
+      <strong>{{ renderDebugState.nativeMetalCompositeDispatched ? 'dispatched' : 'idle' }}</strong>
+    </div>
+    <div class="fps-row">
       <span>World Ver</span>
       <strong>{{ renderDebugState.worldRenderVersion }}</strong>
     </div>
@@ -128,6 +132,7 @@ import {
   graphicsDiagnosticOverrideStore,
   getEffectiveMapTargetFps,
   type GraphicsDiagnosticTechniqueKey,
+  shouldUseNativeMetalPath,
   shouldUseBrowserLightRendering,
   shouldUseDesynchronizedCanvas,
   shouldUseWindowsRescueTimer,
@@ -276,11 +281,11 @@ const surfaceTitle = computed(() => (
 ));
 
 const modeSummary = computed(() => (
-  `safe:${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'} light:${shouldUseBrowserLightRendering() ? 'on' : 'off'} desync:${shouldUseDesynchronizedCanvas() ? 'on' : 'off'} rescue:${shouldUseWindowsRescueTimer() ? 'on' : 'off'} target:${getEffectiveMapTargetFps()}`
+  `safe:${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'} light:${shouldUseBrowserLightRendering() ? 'on' : 'off'} desync:${shouldUseDesynchronizedCanvas() ? 'on' : 'off'} rescue:${shouldUseWindowsRescueTimer() ? 'on' : 'off'} target:${getEffectiveMapTargetFps()} metal:${shouldUseNativeMetalPath() ? 'on' : 'off'}`
 ));
 
 const modeTitle = computed(() => (
-  `Windows presentation safe mode: ${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'}; browser-light effects: ${shouldUseBrowserLightRendering() ? 'on' : 'off'}; desynchronized canvas: ${shouldUseDesynchronizedCanvas() ? 'on' : 'off'}; rescue timer: ${shouldUseWindowsRescueTimer() ? 'on' : 'off'}; map target FPS: ${getEffectiveMapTargetFps()}`
+  `Windows presentation safe mode: ${shouldUseWindowsPresentationSafeMode() ? 'on' : 'off'}; browser-light effects: ${shouldUseBrowserLightRendering() ? 'on' : 'off'}; desynchronized canvas: ${shouldUseDesynchronizedCanvas() ? 'on' : 'off'}; rescue timer: ${shouldUseWindowsRescueTimer() ? 'on' : 'off'}; native-metal path: ${shouldUseNativeMetalPath() ? 'on' : 'off'}; map target FPS: ${getEffectiveMapTargetFps()}`
 ));
 
 const techniques = computed(() => [
@@ -318,6 +323,13 @@ const techniques = computed(() => [
     mode: graphicsDiagnosticOverrideStore.canvasDpr,
     active: graphicsDiagnosticOverrideStore.canvasDpr !== 'auto',
     title: 'Cycle canvas backing-store DPR: auto, low, 1x, native. Low reduces pixels sent to the compositor.',
+  },
+  {
+    key: 'nativeMetalPath' as GraphicsDiagnosticTechniqueKey,
+    label: 'metal',
+    mode: graphicsDiagnosticOverrideStore.nativeMetalPath,
+    active: shouldUseNativeMetalPath(),
+    title: 'Cycle native Metal bridge path override. Auto uses native plugin when available.',
   },
 ]);
 

@@ -202,9 +202,12 @@ export interface SeasonPersistenceSnapshot {
   scoreBaselinesBySettlementId: Array<[string, SeasonScoreBaseline]>;
 }
 
+type SeasonCompletedListener = (season: SeasonSnapshot) => void;
+
 class SeasonState {
   private snapshot: SeasonSnapshot | null = null;
   private archive: SeasonArchiveEntry[] = [];
+  private completedListeners = new Set<SeasonCompletedListener>();
   private configuredConfigOverride: SeasonConfig | null = null;
   private shipOrdersCompletedBySettlementId = new Map<string, number>();
   private shipOrderValueBySettlementId = new Map<string, number>();
@@ -255,6 +258,13 @@ class SeasonState {
 
   getSnapshot() {
     return this.snapshot ? cloneSnapshot(this.snapshot) : null;
+  }
+
+  onSeasonCompleted(listener: SeasonCompletedListener) {
+    this.completedListeners.add(listener);
+    return () => {
+      this.completedListeners.delete(listener);
+    };
   }
 
   getPersistenceSnapshot(): SeasonPersistenceSnapshot {
@@ -544,6 +554,7 @@ class SeasonState {
     this.snapshot.leaderboard = this.applyRewardTitles(this.snapshot.leaderboard, rewards);
     this.archiveCompletedSeason();
     this.snapshot.archive = this.cloneArchive();
+    this.notifyCompleted();
     this.broadcastCompleted();
   }
 
@@ -867,6 +878,21 @@ class SeasonState {
       season: this.getSnapshot()!,
       timestamp: Date.now(),
     } satisfies SeasonCompletedMessage);
+  }
+
+  private notifyCompleted() {
+    const season = this.getSnapshot();
+    if (!season) {
+      return;
+    }
+
+    for (const listener of this.completedListeners) {
+      try {
+        listener(season);
+      } catch (error) {
+        console.error('[season] completed listener failed', error);
+      }
+    }
   }
 }
 

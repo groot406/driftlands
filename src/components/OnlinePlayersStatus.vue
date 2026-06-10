@@ -15,7 +15,7 @@ const playerCount = computed(() => Math.max(1, getOnlinePlayersCount.value));
 .online-players-status {
   position: fixed;
   left: 50%;
-  bottom: 1rem;
+  bottom: calc(1rem + var(--driftlands-safe-bottom, 0px));
   z-index: 30;
   transform: translateX(-50%);
   color: rgba(226, 232, 240, 0.72);
@@ -31,7 +31,7 @@ const playerCount = computed(() => Math.max(1, getOnlinePlayersCount.value));
 
 @media (max-width: 640px) {
   .online-players-status {
-    bottom: 4.35rem;
+    bottom: calc(4.35rem + var(--driftlands-safe-bottom, 0px));
     font-size: 0.68rem;
   }
 }

@@ -21,7 +21,126 @@
             maxlength="24"
             autocomplete="nickname"
           />
-          <div class="title-start-mode" role="group" aria-label="Start mode">
+
+          <section v-if="desktopWorldAvailable" class="title-world" aria-label="World connection">
+            <div class="title-world__header">
+              <div>
+                <p>World</p>
+                <strong>{{ desktopWorldStatus }}</strong>
+              </div>
+              <button type="button" :disabled="desktopWorldLoading" @click="refreshLanWorlds">
+                {{ desktopWorldLoading ? 'Scanning' : 'Scan LAN' }}
+              </button>
+            </div>
+
+            <div class="title-world__modes" role="group" aria-label="World mode">
+              <button
+                type="button"
+                :class="{ 'title-world__mode--active': desktopWorldDisplayMode === 'solo' }"
+                :disabled="desktopWorldLoading"
+                @click="setDesktopWorldMode('solo')"
+              >
+                Solo
+              </button>
+              <button
+                type="button"
+                :class="{ 'title-world__mode--active': desktopWorldDisplayMode === 'lan-host' }"
+                :disabled="desktopWorldLoading"
+                @click="setDesktopWorldMode('lan-host')"
+              >
+                Host LAN
+              </button>
+              <button
+                type="button"
+                :class="{ 'title-world__mode--active': desktopWorldDisplayMode === 'lan-join' }"
+                :disabled="desktopWorldLoading"
+                @click="focusLanJoin"
+              >
+                Join LAN
+              </button>
+              <button
+                type="button"
+                :class="{ 'title-world__mode--active': desktopWorldDisplayMode === 'shared' }"
+                :disabled="desktopWorldLoading"
+                @click="useSharedWorld"
+              >
+                Shared
+              </button>
+            </div>
+
+            <div v-if="desktopWorldDisplayMode === 'lan-host'" class="title-world__details">
+              <p>Friends on your Wi-Fi can join this world.</p>
+              <button
+                v-for="url in desktopLanUrls"
+                :key="url"
+                type="button"
+                class="title-world__url"
+                @click="copyDesktopWorldUrl(url)"
+              >
+                {{ url }}
+              </button>
+              <p v-if="!desktopLanUrls.length">No LAN address found yet. Check that Wi-Fi or Ethernet is active.</p>
+            </div>
+
+            <div v-else-if="desktopWorldDisplayMode === 'lan-join'" class="title-world__details">
+              <div v-if="desktopDiscoveredWorlds.length" class="title-world__list">
+                <button
+                  v-for="world in desktopDiscoveredWorlds"
+                  :key="world.serverUrl"
+                  type="button"
+                  @click="joinLanWorld(world.serverUrl)"
+                >
+                  <span>{{ world.name }}</span>
+                  <small>{{ world.serverUrl }}</small>
+                </button>
+              </div>
+              <p v-else>No LAN worlds found yet. Ask the host to choose Host LAN, then scan again.</p>
+              <div class="title-world__inline">
+                <input
+                  v-model="desktopManualJoinUrl"
+                  type="url"
+                  placeholder="http://192.168.1.42:3695"
+                  autocomplete="off"
+                />
+                <button type="button" :disabled="desktopWorldLoading" @click="joinLanWorld(desktopManualJoinUrl)">
+                  Join
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="desktopWorldDisplayMode === 'shared'" class="title-world__details">
+              <p>Using the hosted shared world.</p>
+            </div>
+
+            <p v-if="desktopWorldError" class="title-world__error">{{ desktopWorldError }}</p>
+          </section>
+
+          <section v-else-if="nativeWorldAvailable" class="title-world" aria-label="World connection">
+            <div class="title-world__header">
+              <div>
+                <p>World</p>
+                <strong>Hosted shared world</strong>
+              </div>
+            </div>
+
+            <div class="title-world__modes" role="group" aria-label="World mode">
+              <button
+                type="button"
+                class="title-world__mode--active"
+                disabled
+              >
+                Shared
+              </button>
+            </div>
+
+            <div class="title-world__details">
+              <p>Play on the hosted Driftlands world server.</p>
+            </div>
+
+            <p v-if="nativeWorldError" class="title-world__error">{{ nativeWorldError }}</p>
+          </section>
+
+          <div v-if="startModeSelectorVisible" class="title-start-mode" role="group" aria-label="Start mode">
             <button
               type="button"
               :class="{ 'title-start-mode__button--active': startMode === 'wallet' }"
@@ -38,7 +157,7 @@
             </button>
           </div>
 
-          <div v-if="startMode === 'wallet'" class="title-wallet">
+          <div v-if="walletExtrasVisible && walletExtrasOpen && startMode === 'wallet'" class="title-wallet">
             <button
               v-if="!walletSession"
               class="title-menu__button title-menu__button--wallet"
@@ -46,7 +165,7 @@
               :disabled="walletLoading"
               @click="connectWallet"
             >
-              {{ walletLoading ? 'Connecting Wallet' : 'Connect Wallet' }}
+              {{ walletLoading ? 'Connecting Wallet' : 'Connect wallet to load Looperlands assets' }}
             </button>
             <div v-else class="title-wallet__connected">
               <span>{{ shortWallet }}</span>
@@ -89,7 +208,7 @@
             <p class="title-wallet__notice">This browser already founded a colony. Continue to rejoin it.</p>
           </div>
 
-          <div v-else-if="startMode === 'default'" class="title-loopers" aria-label="Choose two default heroes">
+          <div v-else-if="startMode === 'default' && !hasExistingSettlement" class="title-loopers" aria-label="Choose two default heroes">
             <p v-if="defaultSettlementLoading" class="title-wallet__notice">Checking existing colony...</p>
             <p class="title-loopers__label">{{ defaultPickerLabel }}</p>
             <div class="title-loopers__grid title-loopers__grid--default">
@@ -121,6 +240,7 @@
           <div class="title-actions" aria-label="Game actions">
             <button class="title-menu__button title-menu__button--primary" type="submit" :disabled="!canStart">{{ primaryActionLabel }}</button>
             <button
+              v-if="!steamDemoBuild"
               class="title-menu__button title-menu__button--spectator"
               type="button"
               :disabled="startMode === 'wallet' && (!walletSession || walletLoading)"
@@ -128,17 +248,30 @@
             >
               Spectate World
             </button>
-            <p class="title-wallet__notice title-actions__hint">Watch seasons and scoreboards without founding a settlement.</p>
+            <button
+              v-if="!steamDemoBuild"
+              class="title-menu__button title-menu__button--leaderboard"
+              type="button"
+              @click="viewLeaderboard"
+            >
+              View Leaderboard
+            </button>
+            <p v-if="!steamDemoBuild" class="title-wallet__notice title-actions__hint">Watch seasons and scoreboards without founding a settlement.</p>
+            <div v-if="walletExtrasVisible && !walletExtrasOpen && !hasExistingSettlement" class="title-wallet-extras">
+              <button
+                class="title-wallet-extras__link"
+                type="button"
+                @click="openWalletExtras"
+              >
+                Connect your wallet to load and play with your Looperlands assets
+              </button>
+            </div>
           </div>
         </form>
 
-        <div class="title-menu__story">
-          <p class="title-menu__eyebrow">Current Story</p>
-          <h1>{{ previewStory.title }}</h1>
-          <p>{{ currentRun ? previewStory.guidance : previewStory.briefing }}</p>
-        </div>
       </section>
 
+      <GlobalCompetitionHall v-if="!steamDemoBuild" :show-trigger="false" />
     </main>
   </div>
 </template>
@@ -149,11 +282,22 @@ import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from '@
 import type { ProviderType } from '@reown/appkit-adapter-ethers';
 import TitleBackground from './TitleBackground.vue';
 import Sprite from './Sprite.vue';
+import GlobalCompetitionHall from './GlobalCompetitionHall.vue';
 import { resumeGame } from '../store/uiStore.ts';
 import { runSnapshot } from '../store/runStore.ts';
 import { musicManager } from '../core/musicManager.ts';
-import { connectWithNickname, getStoredPlayerId, getStoredPlayerName } from '../core/socket.ts';
-import { getDriftlandsServerUrl } from '../core/driftlandsServerUrl.ts';
+import {
+  configureSocketServerUrl,
+  connectForCompetitionSnapshot,
+  connectWithNickname,
+  getStoredPlayerId,
+  getStoredPlayerName,
+} from '../core/socket.ts';
+import {
+  DEFAULT_DRIFTLANDS_SERVER_URL,
+  getDriftlandsServerUrl,
+  setStoredDriftlandsServerUrl,
+} from '../core/driftlandsServerUrl.ts';
 import {
   buildLooperlandsContinueAuth,
   buildLooperlandsJoinAuth,
@@ -169,15 +313,49 @@ import {
   type LooperlandsWalletSession,
 } from '../core/looperlandsClient.ts';
 import { getWalletConnectAppKitClient, getWalletConnectDebugInfo, initializeWalletConnectAppKit } from '../core/walletConnect.ts';
+import { isNativeAppBuild, isSteamDemoBuild, shouldPreferNoWalletStart, shouldShowWalletExtras } from '../core/buildTarget.ts';
 import { describeWalletError, maskDebugValue, walletLog, walletWarn } from '../core/walletDebug.ts';
 import { listStoryHeroTemplates, type StoryHeroId } from '../shared/story/heroRoster.ts';
 import type { LooperlandsHeroSelection } from '../shared/looperlands.ts';
+import { getDesktopWorldDisplayMode, type DesktopWorldMode } from './titleScreenWorldState.ts';
+import { getPrimaryActionLabel } from './titleScreenLabels.ts';
 import logoArt from '../assets/ui/logo.png';
 import boyAvatar from '../assets/heroes/boy.png';
 import girlAvatar from '../assets/heroes/girl.png';
 import loopheadAvatar from '../assets/heroes/loophead.png';
 import mosslingAvatar from '../assets/heroes/mossling.png';
 import santaAvatar from '../assets/heroes/santa.png';
+
+type DesktopDiscoveredWorld = {
+  name: string;
+  serverUrl: string;
+  lastSeenAt: number;
+};
+type DesktopWorldOptions = {
+  settings?: {
+    mode?: DesktopWorldMode;
+    sharedServerUrl?: string;
+    joinServerUrl?: string;
+  };
+  activeWorld?: {
+    mode?: DesktopWorldMode;
+    serverUrl?: string;
+    lanUrls?: string[];
+  } | null;
+  lanUrls?: string[];
+  discoveredWorlds?: DesktopDiscoveredWorld[];
+};
+type DesktopWorldApi = {
+  getWorldOptions(): Promise<DesktopWorldOptions>;
+  listLanWorlds(): Promise<DesktopDiscoveredWorld[]>;
+  refreshLanWorlds(): Promise<DesktopDiscoveredWorld[]>;
+  setWorldMode(options: {
+    mode: DesktopWorldMode;
+    joinServerUrl?: string;
+    sharedServerUrl?: string;
+  }): Promise<DesktopWorldOptions>;
+  onWorldsChanged(callback: () => void): () => void;
+};
 
 const openingStory = {
   chapterId: 'landfall',
@@ -218,7 +396,25 @@ walletLog('title wallet setup', {
 const currentRun = computed(() => runSnapshot.value);
 const nickname = ref(getStoredPlayerName());
 const walletSession = ref<LooperlandsWalletSession | null>(getStoredLooperlandsSession());
-const startMode = ref<'wallet' | 'default'>(walletSession.value ? 'wallet' : 'default');
+const steamDemoBuild = isSteamDemoBuild();
+const nativeAppBuild = isNativeAppBuild();
+const walletExtrasVisible = shouldShowWalletExtras();
+const walletExtrasOpen = ref(!shouldPreferNoWalletStart());
+const startMode = ref<'wallet' | 'default'>(walletExtrasOpen.value && walletSession.value ? 'wallet' : 'default');
+const desktopWorldApi = getDesktopWorldApi();
+const desktopWorldAvailable = !!desktopWorldApi;
+const nativeWorldAvailable = nativeAppBuild && !desktopWorldAvailable;
+const desktopWorldMode = ref<DesktopWorldMode>('solo');
+const desktopWorldLoading = ref(false);
+const desktopWorldError = ref('');
+const desktopLanUrls = ref<string[]>([]);
+const desktopDiscoveredWorlds = ref<DesktopDiscoveredWorld[]>([]);
+const desktopManualJoinUrl = ref('');
+const desktopSharedWorldUrl = ref('');
+const desktopJoinPanelOpen = ref(false);
+const desktopSharedPanelOpen = ref(false);
+const nativeWorldServerUrl = ref(getDriftlandsServerUrl() || DEFAULT_DRIFTLANDS_SERVER_URL);
+const nativeWorldError = ref('');
 const walletLoading = ref(false);
 const walletError = ref('');
 const walletSettlementLoading = ref(false);
@@ -226,6 +422,7 @@ const existingWalletSettlementId = ref<string | null>(null);
 const walletSettlementLookupUncertain = ref(false);
 const defaultSettlementLoading = ref(false);
 const existingDefaultSettlementId = ref<string | null>(null);
+const hasExistingSettlement = computed(() => !!existingDefaultSettlementId.value || !!existingWalletSettlementId.value);
 const looperLoading = ref(false);
 const loopers = ref<LooperlandsHeroSelection[]>([]);
 const selectedLooperIds = ref<string[]>([]);
@@ -241,12 +438,12 @@ const existingSettlementId = computed(() => (
     ? existingWalletSettlementId.value
     : existingDefaultSettlementId.value
 ));
+const startModeSelectorVisible = computed(() => walletExtrasVisible && walletExtrasOpen.value && !hasExistingSettlement.value);
 const primaryActionLabel = computed(() => {
-  if (existingSettlementId.value || (startMode.value === 'wallet' && walletSettlementLookupUncertain.value)) {
-    return 'Continue Colony';
-  }
-
-  return currentRun.value ? 'Continue Colony' : 'Start Colony';
+  return getPrimaryActionLabel({
+    hasCurrentRun: !!currentRun.value,
+    hasExistingSettlement: !!existingSettlementId.value || (startMode.value === 'wallet' && walletSettlementLookupUncertain.value),
+  });
 });
 const selectedLoopers = computed(() => selectedLooperIds.value
   .map((id) => loopers.value.find((looper) => looper.id === id))
@@ -255,8 +452,14 @@ const selectedDefaultHeroes = computed(() => selectedDefaultHeroIds.value
   .map((id) => defaultHeroes.value.find((hero) => hero.id === id))
   .filter((hero): hero is NonNullable<typeof hero> => !!hero));
 const canStart = computed(() => {
+  if (hasExistingSettlement.value) {
+    return startMode.value === 'wallet'
+      ? !!existingWalletSettlementId.value
+      : !!existingDefaultSettlementId.value;
+  }
+
   if (startMode.value === 'default') {
-    return !!existingDefaultSettlementId.value || selectedDefaultHeroes.value.length === 2;
+    return selectedDefaultHeroes.value.length === 2;
   }
 
   if (!walletSession.value || walletLoading.value || walletSettlementLoading.value || looperLoading.value) {
@@ -270,7 +473,11 @@ const canStart = computed(() => {
   return selectedLoopers.value.length === 2;
 });
 const walletReadyForLooperSelection = computed(() => (
+  walletExtrasVisible
+  && walletExtrasOpen.value
+  &&
   startMode.value === 'wallet'
+  && !hasExistingSettlement.value
   && !!walletSession.value
   && !walletLoading.value
   && !walletSettlementLoading.value
@@ -288,12 +495,37 @@ const defaultPickerLabel = computed(() => {
   const count = selectedDefaultHeroes.value.length;
   return count === 2 ? 'Two default heroes selected' : `Choose ${2 - count} more default hero${2 - count === 1 ? '' : 'es'}`;
 });
+const desktopWorldDisplayMode = computed(() => getDesktopWorldDisplayMode(desktopWorldMode.value, {
+  joinPanelOpen: desktopJoinPanelOpen.value,
+  sharedPanelOpen: desktopSharedPanelOpen.value,
+}));
+const desktopWorldStatus = computed(() => {
+  switch (desktopWorldMode.value) {
+    case 'lan-host':
+      return 'Hosting on local network';
+    case 'lan-join':
+      return 'Joined LAN world';
+    case 'shared':
+      return 'Playing shared world';
+    default:
+      return 'Private solo world';
+  }
+});
+let stopDesktopWorldListener: (() => void) | null = null;
+
 onMounted(() => {
   musicManager.initialize();
   void refreshExistingDefaultSettlement();
+  void loadDesktopWorldOptions();
 
-  if (walletSession.value) {
+  if (walletExtrasOpen.value && walletSession.value) {
     void prepareWalletStart();
+  }
+
+  if (desktopWorldApi) {
+    stopDesktopWorldListener = desktopWorldApi.onWorldsChanged(() => {
+      void refreshLanWorlds();
+    });
   }
 
   window.addEventListener('pointerdown', retryTitleMusic, { once: true });
@@ -306,10 +538,170 @@ watch(startMode, (mode) => {
   }
 });
 
+function openWalletExtras() {
+  walletExtrasOpen.value = true;
+  startMode.value = 'wallet';
+  if (walletSession.value) {
+    void prepareWalletStart();
+  }
+}
+
 onBeforeUnmount(() => {
+  stopDesktopWorldListener?.();
+  stopDesktopWorldListener = null;
   window.removeEventListener('pointerdown', retryTitleMusic);
   window.removeEventListener('keydown', retryTitleMusic);
 });
+
+function getDesktopWorldApi(): DesktopWorldApi | null {
+  const maybeWindow = window as Window & { __DRIFTLANDS_DESKTOP__?: DesktopWorldApi };
+  return maybeWindow.__DRIFTLANDS_DESKTOP__ ?? null;
+}
+
+function normalizeDesktopUrl(value: string) {
+  return value.trim().replace(/\/$/, '');
+}
+
+function isUsableDesktopUrl(value: string) {
+  try {
+    const url = new URL(normalizeDesktopUrl(value));
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function applyDesktopWorldOptions(options: DesktopWorldOptions) {
+  const mode = options.activeWorld?.mode ?? options.settings?.mode ?? 'solo';
+  desktopWorldMode.value = mode;
+  desktopLanUrls.value = options.activeWorld?.lanUrls ?? options.lanUrls ?? [];
+  desktopDiscoveredWorlds.value = options.discoveredWorlds ?? [];
+  desktopManualJoinUrl.value = options.settings?.joinServerUrl ?? desktopManualJoinUrl.value;
+  desktopSharedWorldUrl.value = options.settings?.sharedServerUrl ?? desktopSharedWorldUrl.value;
+  desktopJoinPanelOpen.value = mode === 'lan-join';
+  desktopSharedPanelOpen.value = mode === 'shared';
+
+  if (options.activeWorld?.serverUrl) {
+    const previousServerUrl = getDriftlandsServerUrl();
+    const nextServerUrl = configureSocketServerUrl(options.activeWorld.serverUrl);
+    if (nextServerUrl !== previousServerUrl) {
+      existingDefaultSettlementId.value = null;
+      existingWalletSettlementId.value = null;
+      walletSettlementLookupUncertain.value = false;
+      if (startMode.value === 'default') {
+        void refreshExistingDefaultSettlement();
+      } else if (walletSession.value) {
+        void prepareWalletStart();
+      }
+    }
+  }
+}
+
+async function loadDesktopWorldOptions() {
+  if (!desktopWorldApi) {
+    return;
+  }
+
+  desktopWorldLoading.value = true;
+  desktopWorldError.value = '';
+  try {
+    applyDesktopWorldOptions(await desktopWorldApi.getWorldOptions());
+  } catch (error) {
+    desktopWorldError.value = error instanceof Error ? error.message : 'Could not load world settings.';
+  } finally {
+    desktopWorldLoading.value = false;
+  }
+}
+
+async function refreshLanWorlds() {
+  if (!desktopWorldApi) {
+    return;
+  }
+
+  desktopWorldLoading.value = true;
+  desktopWorldError.value = '';
+  try {
+    desktopDiscoveredWorlds.value = await desktopWorldApi.refreshLanWorlds();
+  } catch (error) {
+    desktopWorldError.value = error instanceof Error ? error.message : 'Could not scan the local network.';
+  } finally {
+    desktopWorldLoading.value = false;
+  }
+}
+
+async function setDesktopWorldMode(mode: DesktopWorldMode, options: { joinServerUrl?: string; sharedServerUrl?: string } = {}) {
+  if (!desktopWorldApi) {
+    return;
+  }
+
+  desktopWorldLoading.value = true;
+  desktopWorldError.value = '';
+  try {
+    applyDesktopWorldOptions(await desktopWorldApi.setWorldMode({
+      mode,
+      joinServerUrl: options.joinServerUrl ?? desktopManualJoinUrl.value,
+      sharedServerUrl: options.sharedServerUrl ?? (desktopSharedWorldUrl.value || undefined),
+    }));
+  } catch (error) {
+    desktopWorldError.value = error instanceof Error ? error.message : 'Could not switch worlds.';
+  } finally {
+    desktopWorldLoading.value = false;
+  }
+}
+
+function focusLanJoin() {
+  desktopJoinPanelOpen.value = true;
+  desktopSharedPanelOpen.value = false;
+  void refreshLanWorlds();
+}
+
+function useSharedWorld() {
+  desktopSharedPanelOpen.value = true;
+  desktopJoinPanelOpen.value = false;
+  void setDesktopWorldMode('shared');
+}
+
+function joinLanWorld(rawUrl: string) {
+  const joinServerUrl = normalizeDesktopUrl(rawUrl);
+  if (!isUsableDesktopUrl(joinServerUrl)) {
+    desktopWorldError.value = 'Enter a LAN address like http://192.168.1.42:3695.';
+    return;
+  }
+
+  desktopManualJoinUrl.value = joinServerUrl;
+  void setDesktopWorldMode('lan-join', { joinServerUrl });
+}
+
+function applyNativeWorldServerUrl(options: { reloadOnChange?: boolean } = { reloadOnChange: true }) {
+  const serverUrl = normalizeDesktopUrl(nativeWorldServerUrl.value);
+  if (!isUsableDesktopUrl(serverUrl)) {
+    nativeWorldError.value = 'Enter a server URL starting with http:// or https://.';
+    return false;
+  }
+
+  nativeWorldServerUrl.value = serverUrl;
+  nativeWorldError.value = '';
+
+  const currentServerUrl = getDriftlandsServerUrl() || DEFAULT_DRIFTLANDS_SERVER_URL;
+  setStoredDriftlandsServerUrl(serverUrl);
+  configureSocketServerUrl(serverUrl);
+
+  if (options.reloadOnChange !== false && serverUrl !== currentServerUrl) {
+    window.location.reload();
+    return false;
+  }
+
+  return true;
+}
+
+async function copyDesktopWorldUrl(url: string) {
+  try {
+    await navigator.clipboard?.writeText(url);
+    desktopWorldError.value = '';
+  } catch {
+    desktopWorldError.value = 'Could not copy the address, but you can select it manually.';
+  }
+}
 
 function delay(ms: number) {
   return new Promise((resolve) => {
@@ -625,6 +1017,9 @@ async function refreshExistingWalletSettlement(session = walletSession.value, ru
     }
 
     existingWalletSettlementId.value = settlementId;
+    if (settlementId) {
+      startMode.value = 'wallet';
+    }
     walletSettlementLookupUncertain.value = false;
     walletLog('wallet settlement lookup complete', {
       runId,
@@ -716,6 +1111,9 @@ async function refreshExistingDefaultSettlement() {
 
     const body = await response.json() as { settlementId?: string | null };
     existingDefaultSettlementId.value = body.settlementId ?? null;
+    if (existingDefaultSettlementId.value && !existingWalletSettlementId.value) {
+      startMode.value = 'default';
+    }
     return existingDefaultSettlementId.value;
   } catch (error) {
     console.warn('[driftlands] default settlement lookup failed:', error);
@@ -755,6 +1153,10 @@ function toggleDefaultHero(id: StoryHeroId) {
 }
 
 function joinGame() {
+  if (nativeWorldAvailable && !applyNativeWorldServerUrl({ reloadOnChange: false })) {
+    return;
+  }
+
   if (startMode.value === 'default') {
     if (existingDefaultSettlementId.value) {
       connectWithNickname(nickname.value, null);
@@ -811,6 +1213,10 @@ function spectateGame() {
     { spectator: true },
   );
   resumeGame();
+}
+
+function viewLeaderboard() {
+  connectForCompetitionSnapshot();
 }
 
 function retryTitleMusic() {
@@ -943,36 +1349,201 @@ function retryTitleMusic() {
   transform: translateY(2px);
 }
 
-.title-menu__story {
-  margin-top: 1rem;
-}
-
-.title-menu__eyebrow {
-  margin: 0;
-  color: #f8e7a0;
-  font-size: 0.64rem;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.title-menu__story h1 {
-  margin: 0.36rem 0 0;
-  color: #ffffff;
-  font-size: 1.15rem;
-  font-weight: 800;
-  line-height: 1.4;
-}
-
-.title-menu__story > p:not(.title-menu__eyebrow) {
-  margin: 0.55rem 0 0;
-  color: rgba(255, 248, 222, 0.78);
-  font-size: 0.86rem;
-  line-height: 1.55;
-}
-
 .title-wallet {
   display: grid;
   gap: 0.45rem;
+}
+
+.title-wallet-extras {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+
+.title-wallet-extras__link {
+  background: none;
+  border: 0;
+  color: rgba(255, 248, 222, 0.66);
+  cursor: pointer;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  padding: 0.2rem 0.15rem;
+  text-align: center;
+  text-decoration: underline;
+  text-decoration-color: rgba(248, 231, 160, 0.34);
+  text-underline-offset: 0.2rem;
+  transition: color 140ms ease, text-decoration-color 140ms ease;
+}
+
+.title-wallet-extras__link:hover {
+  color: #fff7df;
+  text-decoration-color: rgba(248, 231, 160, 0.78);
+}
+
+.title-world {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(255, 248, 222, 0.14);
+  border-radius: 0.65rem;
+  background: rgba(8, 18, 22, 0.42);
+}
+
+.title-world__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.title-world__header p {
+  margin: 0 0 0.15rem;
+  font-size: 0.66rem;
+  color: #f6d485;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.title-world__header strong {
+  display: block;
+  font-size: 0.86rem;
+  color: #fff7df;
+}
+
+.title-world__header button,
+.title-world__modes button,
+.title-world__inline button,
+.title-world__url,
+.title-world__list button {
+  border: 1px solid rgba(255, 248, 222, 0.18);
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.66);
+  color: #fff7df;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.title-world__header button {
+  min-height: 2rem;
+  padding: 0 0.7rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.title-world__modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.title-world__modes button {
+  min-height: 2.35rem;
+  padding: 0.35rem 0.2rem;
+  font-size: 0.75rem;
+}
+
+.title-world__header button:hover,
+.title-world__modes button:hover,
+.title-world__inline button:hover,
+.title-world__url:hover,
+.title-world__list button:hover {
+  border-color: rgba(252, 211, 77, 0.55);
+  background: rgba(39, 48, 64, 0.72);
+  transform: translateY(-1px);
+}
+
+.title-world__mode--active {
+  border-color: rgba(16, 185, 129, 0.72) !important;
+  background: rgba(20, 83, 45, 0.52) !important;
+  color: #dcfce7 !important;
+}
+
+.title-world__details {
+  display: grid;
+  gap: 0.45rem;
+  color: #f8e7bc;
+  font-size: 0.78rem;
+}
+
+.title-world__details p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.title-world__url {
+  min-height: 2.1rem;
+  padding: 0.35rem 0.55rem;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-world__list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.title-world__list button {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 2.65rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.title-world__list span {
+  font-weight: 700;
+}
+
+.title-world__list small {
+  overflow: hidden;
+  color: #d6c39f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-world__inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+
+.title-world__inline input {
+  min-width: 0;
+  min-height: 2.25rem;
+  border: 1px solid rgba(255, 248, 222, 0.16);
+  border-radius: 0.5rem;
+  background: rgba(5, 12, 16, 0.58);
+  color: #fff7df;
+  padding: 0 0.6rem;
+  font-size: 0.76rem;
+}
+
+.title-world__inline button {
+  min-width: 4.5rem;
+  min-height: 2.25rem;
+  padding: 0 0.7rem;
+}
+
+.title-world__error {
+  margin: 0;
+  color: #fecaca;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 640px) {
+  .title-world__modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .title-world__inline {
+    grid-template-columns: 1fr;
+  }
 }
 
 .title-start-mode {

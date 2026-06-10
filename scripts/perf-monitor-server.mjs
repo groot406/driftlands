@@ -54,6 +54,14 @@ function normalizeTarget(value) {
   return url.toString();
 }
 
+function statsTargetFromPerfTarget(value, range = 'today') {
+  const url = new URL(normalizeTarget(value));
+  url.pathname = '/api/driftlands/admin/stats';
+  url.search = '';
+  url.searchParams.set('range', ['today', '7d', '30d'].includes(range) ? range : 'today');
+  return url.toString();
+}
+
 function json(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
@@ -67,6 +75,56 @@ async function proxyPerf(req, res, requestUrl) {
   let target;
   try {
     target = normalizeTarget(requestUrl.searchParams.get('target') || defaultTarget);
+  } catch (error) {
+    json(res, 400, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
+  try {
+    const upstream = await fetch(target, {
+      headers: {
+        accept: 'application/json',
+        'user-agent': 'driftlands-local-perf-monitor',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const body = await upstream.text();
+    clearTimeout(timeout);
+
+    res.writeHead(upstream.status, {
+      'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+      'x-perf-monitor-target': target,
+      'x-perf-monitor-upstream-ms': String(Date.now() - startedAt),
+    });
+    res.end(body);
+  } catch (error) {
+    clearTimeout(timeout);
+    const timedOut = error instanceof Error && error.name === 'AbortError';
+    json(res, timedOut ? 504 : 502, {
+      ok: false,
+      target,
+      timeoutMs: timedOut ? upstreamTimeoutMs : undefined,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function proxyStats(req, res, requestUrl) {
+  let target;
+  try {
+    target = statsTargetFromPerfTarget(
+      requestUrl.searchParams.get('target') || defaultTarget,
+      requestUrl.searchParams.get('range') || 'today',
+    );
   } catch (error) {
     json(res, 400, {
       ok: false,
@@ -136,6 +194,11 @@ const server = createServer((req, res) => {
 
   if (requestUrl.pathname === '/api/perf') {
     void proxyPerf(req, res, requestUrl);
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/stats') {
+    void proxyStats(req, res, requestUrl);
     return;
   }
 

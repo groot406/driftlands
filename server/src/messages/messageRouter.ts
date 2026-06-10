@@ -1,6 +1,7 @@
 import type { Socket } from 'socket.io';
 import { type BaseMessage} from "../../../src/shared/protocol";
 import { performanceMonitor } from '../telemetry/performanceMonitor';
+import { gameAnalytics, type AnalyticsClientEventMessage } from '../analytics/gameAnalytics';
 
 export type ServerMessageHandler<T extends BaseMessage = BaseMessage> = (socket: Socket, message: T) => void | Promise<void>;
 
@@ -31,6 +32,12 @@ export class ServerMessageRouter {
   // Route an incoming message to appropriate handlers
   async route(socket: Socket, message: BaseMessage): Promise<void> {
     performanceMonitor.recordInboundMessage(message);
+    if (message.type === 'analytics:client_event') {
+      gameAnalytics.recordClientEvent(socket.id, message as AnalyticsClientEventMessage);
+      return;
+    }
+
+    gameAnalytics.recordInboundMessage(socket.id, message);
     const typeHandlers = this.handlers.get(message.type);
     if (typeHandlers) {
       for (const handler of typeHandlers) {

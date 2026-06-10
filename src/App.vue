@@ -5,7 +5,7 @@
     <div
       v-else
       key="game"
-      class="w-full h-screen relative"
+      class="app-game-shell w-full h-screen relative"
       :class="{ 'browser-light-rendering': browserLightRendering }"
     >
       <Game />
@@ -40,6 +40,12 @@ body, html {
 
 .pixel-font {
   font-family: 'Press Start 2P', 'VT323', 'Courier New', monospace;
+}
+
+.app-game-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
 .browser-light-rendering *,

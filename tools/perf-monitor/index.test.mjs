@@ -34,3 +34,15 @@ test('perf monitor defaults to the displayed ten second interval and lazy raw JS
   assert.match(html, /renderRawJsonIfOpen/);
   assert.match(html, /toggle/);
 });
+
+test('perf monitor includes aggregate game stats controls and rendering', async () => {
+  const html = await readFile(htmlPath, 'utf8');
+
+  assert.match(html, /Driftlands Observability/);
+  assert.match(html, /statsRangeInput/);
+  assert.match(html, /\/api\/stats/);
+  assert.match(html, /renderGameStats/);
+  assert.match(html, /topActions/);
+  assert.match(html, /topPanels/);
+  assert.doesNotMatch(html, /statsTokenInput/);
+});

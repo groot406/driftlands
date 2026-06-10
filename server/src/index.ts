@@ -28,8 +28,10 @@ import { militarySystem } from './systems/militarySystem';
 import { calamitySystem } from './systems/calamitySystem';
 import { shipOrderSystem } from './systems/shipOrderSystem';
 import { seasonSystem } from './systems/seasonSystem';
+import { competitionSystem, broadcastCompetitionSnapshot } from './systems/competitionSystem';
 import { marketSystem } from './systems/marketSystem';
 import { seasonState } from './state/seasonState';
+import { competitionState } from './state/competitionState';
 import { serverSideQuestState } from './state/sideQuestState';
 import { serverDebugModeEnabled, settlementStartMode, spawnSafetyEnabled } from './config/serverMode';
 import { setWorldGenerationSpawnSafetyEnabled } from '../../src/core/worldGeneration';
@@ -38,44 +40,18 @@ import { playerSettlementState } from './state/playerSettlementState';
 import { registerMarketRoutes } from './market/marketRoutes';
 import { worldState } from './worldState';
 import { performanceMonitor } from './telemetry/performanceMonitor';
+import { gameAnalytics } from './analytics/gameAnalytics';
+import { registerAnalyticsRoutes } from './analytics/analyticsRoutes';
 import { configurePathTelemetry } from '../../src/core/PathService';
 import { heroes } from '../../src/shared/game/state/heroStore';
 import { settlers } from '../../src/shared/game/state/settlerStore';
 import { taskStore } from '../../src/shared/game/state/taskStore';
+import { isAllowedFrontendOrigin, parseConfiguredFrontendOrigins } from './config/frontendOrigin';
 
 setWorldGenerationSpawnSafetyEnabled(spawnSafetyEnabled);
 configurePathTelemetry((event) => performanceMonitor.recordPathfinding(event));
 
-const configuredFrontendOrigins = (process.env.FRONTEND_ORIGIN ?? '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
-
-const defaultLanOriginPatterns = [
-  /^https?:\/\/localhost(?::\d+)?$/i,
-  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i,
-  /^https?:\/\/10(?:\.\d{1,3}){3}(?::\d+)?$/i,
-  /^https?:\/\/192\.168(?:\.\d{1,3}){2}(?::\d+)?$/i,
-  /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}(?::\d+)?$/i,
-  /^https?:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?::\d+)?$/i,
-  /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/i,
-];
-
-function isAllowedFrontendOrigin(origin?: string): boolean {
-  if (!origin) {
-    return true;
-  }
-
-  if (configuredFrontendOrigins.includes('*')) {
-    return true;
-  }
-
-  if (configuredFrontendOrigins.length > 0) {
-    return configuredFrontendOrigins.includes(origin);
-  }
-
-  return defaultLanOriginPatterns.some((pattern) => pattern.test(origin));
-}
+const configuredFrontendOrigins = parseConfiguredFrontendOrigins();
 
 const app = express();
 app.use((req: any, _res: any, next: any) => {
@@ -133,6 +109,13 @@ app.use(['/api/looperlands', '/api/driftlands'], (req: any, res: any, next: any)
 app.use(express.json({ limit: '1mb' }));
 registerLooperlandsProxy(app);
 registerMarketRoutes(app);
+registerAnalyticsRoutes(app, {
+  debugMode: serverDebugModeEnabled,
+  currentStats: () => ({
+    connectedSockets: io.sockets.sockets.size,
+    connectedPlayers: playerSettlementState.listPlayers().filter((player) => player.connected).length,
+  }),
+});
 app.get('/api/driftlands/player/:playerId/settlement', (req: any, res: any) => {
   const playerId = String(req.params.playerId ?? '');
   const settlementId = playerSettlementState.getPlayerSettlement(playerId);
@@ -164,7 +147,13 @@ io.engine.on('connection_error', (error) => {
   console.warn(`[socket.io:error] code=${error.code} message=${error.message} origin=${error.req?.headers.origin ?? '-'} ip=${error.req?.socket.remoteAddress ?? '-'}`);
 });
 setIo(io);
-performanceMonitor.setStatsProvider(() => {
+competitionState.loadFromDisk();
+seasonState.onSeasonCompleted((season) => {
+  competitionState.processCompletedSeason(season);
+  competitionState.saveNow('season-completed');
+  broadcastCompetitionSnapshot();
+});
+const getServerPerfStats = () => {
   const players = playerSettlementState.listPlayers();
   return {
     connectedSockets: io.sockets.sockets.size,
@@ -176,7 +165,8 @@ performanceMonitor.setStatsProvider(() => {
     activeTasks: taskStore.activeTaskIds.size,
     activeMovements: ServerMovementHandler.getInstance().activeMovements.size,
   };
-});
+};
+performanceMonitor.setStatsProvider(getServerPerfStats);
 performanceMonitor.start();
 configureGameRuntime({
   broadcast,
@@ -185,6 +175,7 @@ configureGameRuntime({
   }
 });
 configureGameplayEventRuntime((event) => {
+  gameAnalytics.recordGameplayEvent(event);
   serverSideQuestState.recordEvent(event);
   runState.recordEvent(event);
   seasonState.recordEvent(event);
@@ -209,6 +200,7 @@ tickEngine.register(calamitySystem);
 tickEngine.register(marketSystem);
 tickEngine.register(shipOrderSystem);
 tickEngine.register(seasonSystem);
+tickEngine.register(competitionSystem);
 tickEngine.register(supportSystem);
 tickEngine.register(jobSystem);
 tickEngine.register(coopSystem);
@@ -259,6 +251,9 @@ httpServer.listen(PORT, HOST, () => {
 function shutdown(signal: NodeJS.Signals) {
   console.log(`[server] received ${signal}; saving world and shutting down`);
   worldState.stopAutosave();
+  gameAnalytics.flushActiveSessions();
+  competitionState.flushActiveSessions();
+  competitionState.saveNow('shutdown');
   worldState.saveNow('shutdown');
   performanceMonitor.stop();
   tickEngine.stop();

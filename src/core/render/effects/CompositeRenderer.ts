@@ -55,14 +55,19 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
         return context.runtime.motionBlur ?? null;
     }
 
-    compositeToFinal(frame: TFrame, includeEffectSurface = true) {
+    compositeToFinal(
+        frame: TFrame,
+        includeEffectSurface = true,
+        placeCloudsBelowEntities = false,
+    ) {
         const ctx = frame.finalCtx;
         ctx.globalAlpha = 1;
         ctx.filter = 'none';
         ctx.imageSmoothingEnabled = false;
+        const shouldDrawCloudsBelowEntities = includeEffectSurface && placeCloudsBelowEntities;
 
         if (!frame.quality.enableManualShadowComposite && !frame.quality.enableMotionBlur) {
-            this.drawWorldLayers(ctx, frame);
+            this.drawWorldLayers(ctx, frame, shouldDrawCloudsBelowEntities);
         } else if (frame.quality.enableManualShadowComposite) {
             this.ensureScratchWorldComposite(frame);
             ctx.shadowOffsetX = 0;
@@ -92,7 +97,7 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
             this.drawCanvasIfReady(ctx, frame.worldCanvas);
         }
 
-        if (includeEffectSurface) {
+        if (includeEffectSurface && !shouldDrawCloudsBelowEntities) {
             this.drawCanvasIfReady(ctx, frame.effectSurface.canvas);
         }
     }
@@ -114,13 +119,20 @@ export class CompositeRenderer<TFrame extends CompositeFrameLike> {
         this.drawWorldLayers(frame.worldCtx, frame);
     }
 
-    private drawWorldLayers(ctx: CanvasRenderingContext2D, frame: TFrame) {
+    private drawWorldLayers(
+        ctx: CanvasRenderingContext2D,
+        frame: TFrame,
+        includeCloudsBelowEntities = false,
+    ) {
         this.drawCanvasIfReady(ctx, frame.terrainSurface.canvas);
         if (frame.surfaceContent?.overlayUnderlay !== false) {
             this.drawCanvasIfReady(ctx, frame.overlayUnderlaySurface.canvas);
         }
         if (frame.surfaceContent?.particleUnderlay !== false) {
             this.drawCanvasIfReady(ctx, frame.particleUnderlaySurface.canvas);
+        }
+        if (includeCloudsBelowEntities) {
+            this.drawCanvasIfReady(ctx, frame.effectSurface.canvas);
         }
         this.drawCanvasIfReady(ctx, frame.entitySurface.canvas);
         if (frame.surfaceContent?.overlayTop !== false) {

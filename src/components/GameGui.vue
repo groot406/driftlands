@@ -6,6 +6,7 @@
       </div>
       <div class="season-hud-stack">
         <SeasonStageHud />
+        <GlobalCompetitionHall />
         <Transition name="calamity-countdown">
           <button
             v-if="calamityCountdown"
@@ -28,7 +29,9 @@
         </Transition>
       </div>
       <div class="game-gui-menu pointer-events-auto gap-2 md:gap-3 flex shrink-0 flex-row md:flex-col items-end">
-        <NineSliceButton class="menu-shortcut-btn pixel-font" @click="pauseGame">Menu</NineSliceButton>
+        <button class="menu-shortcut-btn" type="button" aria-label="Open menu" title="Open menu" @click="pauseGame">
+          <span class="menu-shortcut-btn__glyph" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
     <DefeatedObserverBanner />
@@ -36,7 +39,7 @@
   </div>
   <OnlinePlayersStatus />
   <!-- Bottom-right toolbar -->
-  <div class="fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
+  <div class="game-gui-toolbar fixed bottom-4 right-4 z-30 flex items-center gap-2 pointer-events-auto">
     <MaintenanceAlert />
     <button
       v-if="canUseDebugTools"
@@ -138,6 +141,7 @@
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import ResourceBar from './ResourceBar.vue';
 import SeasonStageHud from './SeasonStageHud.vue';
+import GlobalCompetitionHall from './GlobalCompetitionHall.vue';
 import MaintenanceAlert from './MaintenanceAlert.vue';
 import ChronicleBar from './ChronicleBar.vue';
 import SettlementStartPicker from './SettlementStartPicker.vue';
@@ -165,7 +169,6 @@ import SeasonStageAnnouncementModal from './SeasonStageAnnouncementModal.vue';
 import SettlementDefeatModal from './SettlementDefeatModal.vue';
 import SeasonCompletedOverlay from './SeasonCompletedOverlay.vue';
 import InGameDocumentationModal from './InGameDocumentationModal.vue';
-import NineSliceButton from './ui/NineSliceButton.vue';
 import { isPlaying, pauseGame } from '../store/uiStore';
 import { chronicleHasEntries, requestChronicleReopen, openGoalsPanel, closeGoalsPanel, isGoalsPanelOpen } from '../store/chronicleStore';
 import { runSnapshot } from '../store/runStore';
@@ -355,43 +358,66 @@ watch(activeToolbarPanel, (panel) => {
   display: none; /* Chrome, Safari, Opera */
 }
 
-.menu-shortcut-btn {
-  @apply self-end uppercase shadow-md;
-  min-width: 5.9rem;
-  min-height: 3.05rem;
-  border-radius: 4px;
-  background:
-    radial-gradient(circle at 50% 12%, rgba(255, 226, 161, 0.14), transparent 58%),
-    linear-gradient(180deg, rgba(45, 27, 13, 0.9), rgba(17, 12, 8, 0.96));
-  color: #fff1c5;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-shadow:
-    0 2px 0 rgba(5, 3, 2, 0.92),
-    0 0 10px rgba(255, 210, 118, 0.26);
-  box-shadow:
-    0 8px 18px rgba(7, 6, 4, 0.34),
-    inset 0 1px 0 rgba(255, 226, 161, 0.16);
+.game-gui-shell {
+  padding:
+    calc(0.5rem + var(--driftlands-safe-top, 0px))
+    calc(0.5rem + var(--driftlands-safe-right, 0px))
+    calc(0.5rem + var(--driftlands-safe-bottom, 0px))
+    calc(0.5rem + var(--driftlands-safe-left, 0px));
 }
 
-.menu-shortcut-btn .ui-nine-slice-button__content {
-  min-width: 100%;
-  padding: 0.35rem 0.92rem 0.3rem;
+.game-gui-toolbar {
+  right: calc(1rem + var(--driftlands-safe-right, 0px));
+  bottom: calc(1rem + var(--driftlands-safe-bottom, 0px));
+}
+
+.menu-shortcut-btn {
+  --menu-accent: #c7a15b;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  min-width: 3rem;
+  min-height: 3rem;
+  appearance: none;
+  border: 0;
+  border-radius: 0.4rem;
+  background:
+    linear-gradient(180deg, rgba(255, 232, 179, 0.12), rgba(0, 0, 0, 0.05) 48%, rgba(0, 0, 0, 0.24)),
+    radial-gradient(ellipse at 38% 4%, color-mix(in srgb, var(--menu-accent) 14%, transparent), transparent 66%),
+    linear-gradient(180deg, rgba(45, 32, 19, 0.45), rgba(13, 11, 9, 0.46));
   color: #fff1c5;
-  line-height: 1;
-  text-transform: uppercase;
+  cursor: pointer;
+  image-rendering: pixelated;
+  backdrop-filter: blur(0.5rem);
+  box-shadow:
+    0 1px 0 rgba(255, 235, 183, 0.11) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.27) inset,
+    0 5px 5px rgba(0, 0, 0, 0.3);
+  transition: transform 140ms ease, filter 140ms ease, border-color 140ms ease;
 }
 
 .menu-shortcut-btn:hover {
   filter: brightness(1.1);
-  color: #fff8dc;
   transform: translateY(-1px);
 }
 
-.menu-shortcut-btn:hover .ui-nine-slice-button__content {
-  color: #fff8dc;
+.menu-shortcut-btn__glyph {
+  display: block;
+  width: 0.24rem;
+  height: 0.24rem;
+  border-radius: 0.08rem;
+  background: currentColor;
+  box-shadow:
+    0.48rem 0 0 currentColor,
+    0 0.48rem 0 currentColor,
+    0.48rem 0.48rem 0 currentColor,
+    0 1px 0 rgba(0, 0, 0, 0.72),
+    0.48rem 1px 0 rgba(0, 0, 0, 0.72),
+    0 calc(0.48rem + 1px) 0 rgba(0, 0, 0, 0.72),
+    0.48rem calc(0.48rem + 1px) 0 rgba(0, 0, 0, 0.72);
+  transform: translate(-0.24rem, -0.24rem);
 }
 
 .menu-shortcut-btn:focus-visible {
@@ -412,16 +438,27 @@ watch(activeToolbarPanel, (panel) => {
 
 .season-hud-stack {
   justify-self: end;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
-  gap: 0.35rem;
+  gap: 0;
   width: min(32rem, 100%);
   pointer-events: none;
 }
 
 .season-hud-stack .season-stage-hud {
   width: 100%;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.season-hud-stack .global-competition-button {
+  width: 6.8rem;
+  min-width: 6.8rem;
+  min-height: 100%;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .game-gui-menu {
@@ -431,6 +468,8 @@ watch(activeToolbarPanel, (panel) => {
 .calamity-countdown-hud {
   position: relative;
   z-index: 34;
+  grid-column: 1 / -1;
+  margin-top: 0.35rem;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -565,7 +604,11 @@ watch(activeToolbarPanel, (panel) => {
 
 @media (max-width: 640px) {
   .game-gui-shell {
-    padding: 0.35rem;
+    padding:
+      calc(0.35rem + var(--driftlands-safe-top, 0px))
+      calc(0.35rem + var(--driftlands-safe-right, 0px))
+      calc(0.35rem + var(--driftlands-safe-bottom, 0px))
+      calc(0.35rem + var(--driftlands-safe-left, 0px));
     gap: 0.75rem;
   }
 
@@ -576,7 +619,7 @@ watch(activeToolbarPanel, (panel) => {
 
   .game-gui-resources {
     width: 100%;
-    padding-right: 4.2rem;
+    padding-right: 5.35rem;
   }
 
   .game-gui-menu {
@@ -587,16 +630,73 @@ watch(activeToolbarPanel, (panel) => {
   }
 
   .menu-shortcut-btn {
-    min-width: 3.55rem;
-    min-height: 2.35rem;
-    padding-inline: 0.55rem;
-    font-size: 8px;
+    width: 2.45rem;
+    height: 2.45rem;
+    min-width: 2.45rem;
+    min-height: 2.45rem;
   }
 
   .calamity-countdown-hud {
     gap: 0.45rem;
     min-height: 2.35rem;
     padding: 0.4rem 0.5rem 0.52rem;
+  }
+
+  .season-hud-stack .global-competition-button {
+    width: 3.65rem;
+    min-width: 3.65rem;
+    min-height: 2.45rem;
+    padding: 0.32rem 0.38rem;
+    border-radius: 0 7px 7px 0;
+  }
+
+  .season-hud-stack .global-competition-button__mark {
+    display: none;
+  }
+
+  .season-hud-stack {
+    width: auto;
+    max-width: min(14.5rem, calc(100vw - 0.7rem));
+    margin-top: 0.4rem;
+  }
+
+  .season-hud-stack .season-stage-hud {
+    min-height: 2.45rem;
+    max-width: 10.6rem;
+    padding: 0.35rem 0.45rem;
+    border-radius: 7px 0 0 7px;
+  }
+
+  .season-hud-stack .season-stage-hud__kicker,
+  .season-hud-stack .season-stage-hud__rank,
+  .season-hud-stack .season-stage-hud__action,
+  .season-hud-stack .season-stage-hud__time {
+    display: none;
+  }
+
+  .season-hud-stack .season-stage-hud__line {
+    display: block;
+  }
+
+  .season-hud-stack .season-stage-hud strong {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .season-hud-stack .global-competition-button span:not(.global-competition-button__mark) {
+    gap: 0;
+  }
+
+  .season-hud-stack .global-competition-button span:not(.global-competition-button__mark) span {
+    display: none;
+  }
+
+  .season-hud-stack .global-competition-button strong {
+    font-size: 0.82rem;
   }
 
   .calamity-countdown-kicker {

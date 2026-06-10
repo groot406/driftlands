@@ -133,6 +133,20 @@ const serverEnvFields = [
     detail: 'Comma-separated wallet allowlist for production admin controls. Casing does not matter.',
   },
   {
+    key: 'DRIFTLANDS_ANALYTICS_PATH',
+    label: 'Analytics path',
+    type: 'text',
+    defaultValue: '/data/analytics',
+    detail: 'Directory for aggregate daily game stats JSON files.',
+  },
+  {
+    key: 'DRIFTLANDS_ANALYTICS_RETENTION_DAYS',
+    label: 'Analytics retention',
+    type: 'number',
+    defaultValue: '30',
+    detail: 'Number of aggregate stats days to keep.',
+  },
+  {
     key: 'SERVER_SEED',
     label: 'World seed',
     type: 'text',
@@ -616,7 +630,10 @@ function starterEnvContents() {
   return setEnvValue(contents, 'DRIFTLANDS_ADMIN_WALLETS', config.adminWallets);
 }
 
-function starterHaosEnvContents(frontendOrigin = config.haosFrontendOrigin, adminWallets = config.adminWallets) {
+function starterHaosEnvContents(
+  frontendOrigin = config.haosFrontendOrigin,
+  adminWallets = config.adminWallets,
+) {
   const contents = readFileSync(resolve(rootDir, '.env.hassio.example'), 'utf8')
     .replace('FRONTEND_ORIGIN=https://<looperlands-platform-frontend-domain>', `FRONTEND_ORIGIN=${frontendOrigin}`);
   return setEnvValue(contents, 'DRIFTLANDS_ADMIN_WALLETS', adminWallets);

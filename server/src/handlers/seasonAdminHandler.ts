@@ -7,6 +7,7 @@ import { playerSettlementState } from '../state/playerSettlementState';
 import { coopState } from '../state/coopState';
 import { serverDebugModeEnabled, spawnSafetyEnabled } from '../config/serverMode';
 import { ServerSettlementStartHandler } from './settlementStartHandler';
+import { gameAnalytics } from '../analytics/gameAnalytics';
 import type {
   SeasonAdminCompleteNowMessage,
   SeasonAdminRestartNowMessage,
@@ -61,6 +62,7 @@ export class ServerSeasonAdminHandler {
       playerSettlementState.clearAssignments();
       coopState.resetHeroClaims();
       await worldState.initFresh(message.seed ?? undefined);
+      gameAnalytics.recordSeasonRestart();
       this.broadcastWorldSnapshot();
       this.broadcastSeasonSnapshot();
       this.broadcastPlayerSnapshot();
