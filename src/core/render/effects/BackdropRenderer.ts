@@ -1,6 +1,7 @@
+import { getClimateProfile } from '../../worldVariation';
 import type { RenderQualityProfile, ViewportSnapshot } from '../RenderTypes';
-import { drawGlow, toRgba } from './EffectUtils';
-import { buildWorldAtmosphere, type WorldAtmosphere } from './WorldAtmosphere';
+import { GROWTH_HYBRID_STYLE } from '../visualStyle';
+import { drawGlow, type GlowColor, toRgba } from './EffectUtils';
 
 interface BackdropTileLike {
     q: number;
@@ -14,6 +15,21 @@ interface BackdropCameraFxLike {
     vignetteBiasY: number;
 }
 
+interface BackdropPaletteWeights {
+    lush: number;
+    water: number;
+    cold: number;
+    warm: number;
+    stone: number;
+    ember: number;
+}
+
+interface BackdropPaletteCache {
+    key: string;
+    expiresAtMs: number;
+    weights: BackdropPaletteWeights;
+}
+
 interface BackdropFrameLike<TTile extends BackdropTileLike, TCameraFx extends BackdropCameraFxLike> {
     finalCtx: CanvasRenderingContext2D;
     visibleTiles: readonly TTile[];
@@ -24,128 +40,125 @@ interface BackdropFrameLike<TTile extends BackdropTileLike, TCameraFx extends Ba
 }
 
 export class BackdropRenderer<TTile extends BackdropTileLike, TCameraFx extends BackdropCameraFxLike> {
+    private paletteCache: BackdropPaletteCache | null = null;
+
     render(frame: BackdropFrameLike<TTile, TCameraFx>) {
-        const width = Math.round(frame.viewport.width * frame.viewport.dpr);
-        const height = Math.round(frame.viewport.height * frame.viewport.dpr);
-        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-            return;
-        }
 
-        const mood = buildWorldAtmosphere({
-            tiles: frame.visibleTiles,
-            nowMs: frame.effectNowMs,
-            cameraQ: frame.viewport.cameraQ,
-            cameraR: frame.viewport.cameraR,
-            quality: frame.quality,
-        });
-
-        const ctx = frame.finalCtx;
-        ctx.save();
-        try {
-            this.drawSkyDepth(ctx, mood, width, height);
-            this.drawHorizonWash(ctx, mood, width, height);
-            this.drawMoodGlows(ctx, mood, frame.quality, width, height);
-            this.drawCameraVignette(ctx, mood, frame.cameraFx, width, height);
-        } finally {
-            ctx.restore();
-        }
     }
 
-    private drawSkyDepth(ctx: CanvasRenderingContext2D, mood: WorldAtmosphere, width: number, height: number) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, toRgba(mood.skyColor, 1));
-        gradient.addColorStop(0.46, toRgba(mood.hazeColor, 0.96));
-        gradient.addColorStop(1, toRgba(mood.shadowColor, 0.94));
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-    }
-
-    private drawHorizonWash(ctx: CanvasRenderingContext2D, mood: WorldAtmosphere, width: number, height: number) {
-        const horizonY = height * (0.44 + ((mood.timePulse - 0.5) * 0.04));
-        const gradient = ctx.createLinearGradient(0, horizonY - (height * 0.22), 0, height);
-        gradient.addColorStop(0, toRgba(mood.hazeColor, 0));
-        gradient.addColorStop(0.36, toRgba(mood.hazeColor, 0.2 + (mood.cloudDepthIntensity * 0.12)));
-        gradient.addColorStop(1, toRgba(mood.shadowColor, 0.3));
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, Math.max(0, horizonY - (height * 0.32)), width, height);
-    }
-
-    private drawMoodGlows(
-        ctx: CanvasRenderingContext2D,
-        mood: WorldAtmosphere,
-        quality: RenderQualityProfile,
-        width: number,
-        height: number,
-    ) {
-        if (!quality.enableBackdropGlows) {
-            return;
+    private getBackdropPaletteWeights(visibleTiles: readonly TTile[], nowMs: number, cameraQ: number, cameraR: number) {
+        const cacheDurationMs = 240;
+        const key = `${Math.round(cameraQ / 2)},${Math.round(cameraR / 2)}:${visibleTiles.length}`;
+        if (
+            this.paletteCache
+            && this.paletteCache.key === key
+            && this.paletteCache.expiresAtMs >= nowMs
+        ) {
+            return this.paletteCache.weights;
         }
 
-        const glowCount = quality.expensiveAtmosphere ? 4 : 2;
-        const largestSide = Math.max(width, height);
-        const windDriftX = mood.windX * width * 0.05;
-        const windDriftY = mood.windY * height * 0.035;
-        const warmthShift = (mood.lightTemperature - 0.5) * 0.12;
-        const baseOpacity = quality.expensiveAtmosphere ? 0.13 : 0.08;
-        const glowOpacity = baseOpacity * (0.65 + (mood.cloudDepthIntensity * 0.35));
-
-        drawGlow(
-            ctx,
-            width * (0.2 + warmthShift) + windDriftX,
-            height * 0.26 + windDriftY,
-            largestSide * 0.48,
-            mood.hazeColor,
-            glowOpacity,
-        );
-        drawGlow(
-            ctx,
-            width * (0.76 - warmthShift) - windDriftX,
-            height * 0.38 - windDriftY,
-            largestSide * 0.42,
-            mood.glowColor,
-            glowOpacity * 0.78,
-        );
-
-        if (glowCount < 4) {
-            return;
-        }
-
-        drawGlow(
-            ctx,
-            width * 0.5 + (mood.windX * width * 0.08),
-            height * 0.66 + (mood.weights.water * height * 0.06),
-            largestSide * 0.5,
-            mood.glowColor,
-            glowOpacity * (0.48 + (mood.weights.lush * 0.22)),
-        );
-        drawGlow(
-            ctx,
-            width * (0.08 + (mood.weights.ember * 0.1)),
-            height * (0.78 - (mood.weights.cold * 0.08)),
-            largestSide * 0.36,
-            mood.hazeColor,
-            glowOpacity * (0.35 + (mood.timePulse * 0.2)),
-        );
+        const weights = this.sampleBackdropPalette(visibleTiles);
+        this.paletteCache = {
+            key,
+            expiresAtMs: nowMs + cacheDurationMs,
+            weights,
+        };
+        return weights;
     }
 
-    private drawCameraVignette(
-        ctx: CanvasRenderingContext2D,
-        mood: WorldAtmosphere,
-        cameraFx: BackdropCameraFxLike,
-        width: number,
-        height: number,
-    ) {
-        const biasX = Math.max(-1, Math.min(1, cameraFx.vignetteBiasX));
-        const biasY = Math.max(-1, Math.min(1, cameraFx.vignetteBiasY));
-        const centerX = width * (0.5 + (biasX * 0.12));
-        const centerY = height * (0.5 + (biasY * 0.12));
-        const innerRadius = Math.min(width, height) * 0.28;
-        const outerRadius = Math.max(width, height) * 0.78;
-        const gradient = ctx.createRadialGradient(centerX, centerY, innerRadius, centerX, centerY, outerRadius);
-        gradient.addColorStop(0, toRgba(mood.shadowColor, 0));
-        gradient.addColorStop(0.62, toRgba(mood.shadowColor, 0.08));
-        gradient.addColorStop(1, toRgba(mood.shadowColor, 0.34));
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
+    private clampColor(color: GlowColor): GlowColor {
+        return [
+            Math.max(0, Math.min(255, color[0])),
+            Math.max(0, Math.min(255, color[1])),
+            Math.max(0, Math.min(255, color[2])),
+        ];
+    }
+
+    private sampleBackdropPalette(tiles: readonly TTile[]): BackdropPaletteWeights {
+        const weights: BackdropPaletteWeights = {
+            lush: 0,
+            water: 0,
+            cold: 0,
+            warm: 0,
+            stone: 0,
+            ember: 0,
+        };
+
+        if (!tiles.length) {
+            return weights;
+        }
+
+        const sampleCap = 120;
+        const step = Math.max(1, Math.floor(tiles.length / sampleCap));
+        let samples = 0;
+
+        for (let i = 0; i < tiles.length; i += step) {
+            const tile = tiles[i];
+            if (!tile?.discovered || !tile.terrain) continue;
+
+            const climate = getClimateProfile(tile.q, tile.r);
+            const fertilityBoost = 0.82 + (climate.fertility * 0.45);
+
+            switch (tile.terrain) {
+                case 'forest':
+                    weights.lush += 1.15 * fertilityBoost;
+                    weights.cold += Math.max(0, 0.45 - climate.temperature) * 0.18;
+                    break;
+                case 'plains':
+                    weights.lush += 0.92 * fertilityBoost;
+                    weights.warm += climate.temperature * 0.12;
+                    break;
+                case 'grain':
+                    weights.lush += 0.74 * fertilityBoost;
+                    weights.warm += 0.34 + (climate.temperature * 0.16);
+                    break;
+                case 'water':
+                    weights.water += 1.2 + (climate.moisture * 0.28);
+                    weights.cold += Math.max(0, 0.58 - climate.temperature) * 0.26;
+                    weights.warm += Math.max(0, climate.temperature - 0.58) * 0.18;
+                    break;
+                case 'snow':
+                    weights.cold += 1.28;
+                    weights.stone += 0.18 + (climate.ruggedness * 0.14);
+                    break;
+                case 'mountain':
+                    weights.stone += 1.14 + (climate.ruggedness * 0.24);
+                    weights.cold += Math.max(0, 0.5 - climate.temperature) * 0.18;
+                    break;
+                case 'dirt':
+                    weights.warm += 0.48 + (climate.temperature * 0.12);
+                    weights.stone += 0.34;
+                    break;
+                case 'dessert':
+                    weights.warm += 1.18;
+                    weights.stone += 0.2;
+                    break;
+                case 'vulcano':
+                    weights.ember += 1.38;
+                    weights.stone += 0.48;
+                    weights.warm += 0.36;
+                    break;
+                case 'towncenter':
+                    weights.warm += 0.82;
+                    weights.lush += 0.22;
+                    weights.water += 0.12;
+                    break;
+            }
+
+            samples++;
+        }
+
+        if (!samples) {
+            return weights;
+        }
+
+        return {
+            lush: Math.min(1.2, weights.lush / samples),
+            water: Math.min(1.2, weights.water / samples),
+            cold: Math.min(1.2, weights.cold / samples),
+            warm: Math.min(1.2, weights.warm / samples),
+            stone: Math.min(1.2, weights.stone / samples),
+            ember: Math.min(1.2, weights.ember / samples),
+        };
     }
 }
