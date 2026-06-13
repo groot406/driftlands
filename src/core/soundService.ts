@@ -231,9 +231,11 @@ class SoundService {
     }
 
     public checkForMissingTaskSounds() {
+        const activeLoopingTaskSoundIds = new Set<string>();
+
         // Get all active tasks
         for (const task of taskStore.tasks) {
-            if (!task.active) continue;
+            if (!task.active || task.completedMs) continue;
 
             // Get the tile for this task
             const tile = tileIndex[task.tileId];
@@ -248,12 +250,14 @@ class SoundService {
 
             if (!soundConfig || !soundConfig.loop) continue; // Only auto-start looping sounds
 
+            const soundId = `${task.type}-${tile.q}-${tile.r}`;
+            activeLoopingTaskSoundIds.add(soundId);
+
             // Check if task is within the effective audio range
             const distance = hexDistance(camera, { q: tile.q, r: tile.r });
             if (distance > this.getEffectiveMaxDistance(soundConfig.maxDistance)) continue;
 
             // Check if sound is already playing for this task
-            const soundId = `${task.type}-${tile.q}-${tile.r}`;
             const existingSound = soundState.positionalSounds.get(soundId);
             if (existingSound) {
                 existingSound.isPlaying = true;
@@ -263,6 +267,28 @@ class SoundService {
             // Start the task sound
             this.startTaskSoundForTile(tile, task.type, soundConfig);
         }
+
+        this.removeStaleTaskSounds(activeLoopingTaskSoundIds);
+    }
+
+    private removeStaleTaskSounds(activeLoopingTaskSoundIds: Set<string>) {
+        for (const sound of Array.from(soundState.positionalSounds.values())) {
+            if (!sound.loop || !this.isLoopingTaskSoundId(sound.id)) continue;
+            if (activeLoopingTaskSoundIds.has(sound.id)) continue;
+
+            this.removePositionalSound(sound.id);
+        }
+    }
+
+    private isLoopingTaskSoundId(soundId: string) {
+        const match = /^(.+)-(-?\d+)-(-?\d+)$/.exec(soundId);
+        if (!match) return false;
+
+        const taskType = match[1];
+        if (!taskType) return false;
+
+        const taskDef = getTaskDefinition(taskType);
+        return !!taskDef?.getSoundOnStart;
     }
 
     private startTaskSoundForTile(tile: { q: number; r: number }, taskType: string, soundConfig: TaskSoundConfig) {

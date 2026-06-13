@@ -85,22 +85,35 @@ class ClientTaskHandler {
 
     private handleTaskCreated(message: TaskCreatedMessage): void {
         const tile = tileIndex[message.tileId];
-        addTask({
-            id: message.taskId,
-            type: message.taskType,
-            tileId: message.tileId,
-            active: true,
-            progressXp: 0,
-            requiredXp: message.requiredXp,
-            createdMs: Date.now(),
-            lastUpdateMs: Date.now(),
-            participants: message.participantIds.reduce((acc, heroId) => {
-                acc[heroId] = 0;
+        const existingTask = taskStore.taskIndex[message.taskId];
+        if (existingTask) {
+            existingTask.type = message.taskType;
+            existingTask.tileId = message.tileId;
+            existingTask.active = true;
+            existingTask.requiredXp = message.requiredXp;
+            existingTask.requiredResources = message.requiredResources;
+            existingTask.participants = message.participantIds.reduce((acc, heroId) => {
+                acc[heroId] = existingTask.participants[heroId] ?? 0;
                 return acc;
-            }, {} as Record<string, number>),
-            requiredResources: message.requiredResources,
-            collectedResources: [],
-        } as TaskInstance);
+            }, {} as Record<string, number>);
+        } else {
+            addTask({
+                id: message.taskId,
+                type: message.taskType,
+                tileId: message.tileId,
+                active: true,
+                progressXp: 0,
+                requiredXp: message.requiredXp,
+                createdMs: Date.now(),
+                lastUpdateMs: Date.now(),
+                participants: message.participantIds.reduce((acc, heroId) => {
+                    acc[heroId] = 0;
+                    return acc;
+                }, {} as Record<string, number>),
+                requiredResources: message.requiredResources,
+                collectedResources: [],
+            } as TaskInstance);
+        }
 
         for (const heroId of message.participantIds) {
             const hero = getHero(heroId);

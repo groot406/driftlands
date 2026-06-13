@@ -246,14 +246,7 @@ const seasonBorderLabel = computed(() => {
   }
 });
 const settlementStartLocked = computed(() => {
-  const snapshot = season.value;
-  if (!snapshot) {
-    return false;
-  }
-  if (snapshot.status === 'completed' || snapshot.currentStage === 'completed') {
-    return true;
-  }
-  return currentSeasonStageConfig.value?.allowSettlementStarts === false;
+  return false;
 });
 const settlementStartsLabel = computed(() => settlementStartLocked.value ? 'Locked' : 'Open');
 const settlementStartLockTitle = computed(() => {

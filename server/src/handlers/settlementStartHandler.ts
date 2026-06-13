@@ -4,9 +4,7 @@ import { resolveWorldTile } from '../../../src/core/worldGeneration';
 import { tileIndex } from '../../../src/shared/game/world';
 import { computeControlledTileIdsForSettlement } from '../../../src/shared/game/state/settlementSupportStore';
 import {
-  generateSettlementStartCandidates,
   generateSettlementStartTerrainTiles,
-  getSettlementIdFromStartCandidateId,
   MIN_SETTLEMENT_START_CONNECTED_LAND,
   validateSettlementStartSite,
   type SettlementStartValidation,
@@ -90,32 +88,25 @@ export class ServerSettlementStartHandler {
 
   private buildOptionsMessage(playerId: string): SettlementStartOptionsMessage {
     const settlements = this.listSettlementMarkers();
-    const startOptions = {
-      settlements,
-      resolveTerrain: (q: number, r: number, origin?: { q: number; r: number }) => this.resolveTerrain(q, r, origin),
-      isSettlementClaimed: (settlementId: string) => playerSettlementState.isSettlementClaimed(settlementId),
-      getSettlementOwner: (settlementId: string) => playerSettlementState.getSettlementOwner(settlementId),
-    };
-    const candidates = settlementStartMode === 'free' ? [] : generateSettlementStartCandidates(startOptions);
+    const resolveTerrain = (q: number, r: number, origin?: { q: number; r: number }) => this.resolveTerrain(q, r, origin);
+    const candidates: [] = [];
 
     const terrainTiles = generateSettlementStartTerrainTiles({
       settlements,
       candidates,
-      resolveTerrain: startOptions.resolveTerrain,
-      freeStart: settlementStartMode === 'free',
+      resolveTerrain,
+      freeStart: true,
     });
-    if (settlementStartMode === 'free') {
-      const blockedTileOwners = this.getOtherPlayerReachTileOwners(playerId);
-      for (const tile of terrainTiles) {
-        const owner = blockedTileOwners.get(tile.id);
-        if (owner) {
-          tile.blocked = true;
-          tile.blockedReason = 'player_reach';
-        }
-        tile.blockedByPlayerId = owner?.playerId ?? null;
-        tile.blockedByPlayerName = owner?.playerName ?? null;
-        tile.blockedByPlayerColor = owner?.playerColor ?? null;
+    const blockedTileOwners = this.getOtherPlayerReachTileOwners(playerId);
+    for (const tile of terrainTiles) {
+      const owner = blockedTileOwners.get(tile.id);
+      if (owner) {
+        tile.blocked = true;
+        tile.blockedReason = 'player_reach';
       }
+      tile.blockedByPlayerId = owner?.playerId ?? null;
+      tile.blockedByPlayerName = owner?.playerName ?? null;
+      tile.blockedByPlayerColor = owner?.playerColor ?? null;
     }
 
     return {
@@ -240,11 +231,6 @@ export class ServerSettlementStartHandler {
       return;
     }
 
-    if (!seasonState.allowsSettlementStarts()) {
-      this.rejectFoundRequest(socket, 'Settlement founding is locked during this season stage.');
-      return;
-    }
-
     const playerId = playerSettlementState.getSocketPlayerId(socket.id) ?? socket.id;
     const existingSettlementId = playerSettlementState.getPlayerSettlement(playerId);
     if (existingSettlementId) {
@@ -262,7 +248,7 @@ export class ServerSettlementStartHandler {
       return;
     }
 
-    const requestedSite = this.resolveFoundRequestSite(playerId, message);
+    const requestedSite = this.resolveFoundRequestSite(message);
     if (!requestedSite) {
       this.rejectFoundRequest(socket, 'That settlement claim is no longer valid.');
       return;
@@ -273,20 +259,18 @@ export class ServerSettlementStartHandler {
       this.rejectFoundRequest(socket, 'That settlement site has already been taken.');
       return;
     }
-    if (settlementStartMode === 'free' && this.getOtherPlayerReachTileOwners(playerId).has(settlementId)) {
+    if (this.getOtherPlayerReachTileOwners(playerId).has(settlementId)) {
       this.rejectFoundRequest(socket, 'That site is already inside another player\'s reach.');
       return;
     }
-    if (settlementStartMode === 'free') {
-      const validation = validateSettlementStartSite(
-        requestedSite.q,
-        requestedSite.r,
-        (q, r) => this.resolveTerrain(q, r),
-      );
-      if (!validation.valid) {
-        this.rejectFoundRequest(socket, this.getStartValidationMessage(validation));
-        return;
-      }
+    const validation = validateSettlementStartSite(
+      requestedSite.q,
+      requestedSite.r,
+      (q, r) => this.resolveTerrain(q, r),
+    );
+    if (!validation.valid) {
+      this.rejectFoundRequest(socket, this.getStartValidationMessage(validation));
+      return;
     }
 
     const founded = worldState.foundSettlementAt(requestedSite.q, requestedSite.r, {
@@ -307,40 +291,22 @@ export class ServerSettlementStartHandler {
     this.finishFoundingSettlement(socket, playerId, founded);
   }
 
-  private resolveFoundRequestSite(playerId: string, message: SettlementFoundRequestMessage) {
-    if (settlementStartMode === 'free') {
-      if (typeof message.q !== 'number' || typeof message.r !== 'number') {
-        return null;
-      }
-
-      if (!Number.isFinite(message.q) || !Number.isFinite(message.r)) {
-        return null;
-      }
-
-      const q = Math.trunc(message.q);
-      const r = Math.trunc(message.r);
-      return {
-        q,
-        r,
-        settlementId: `${q},${r}`,
-      };
-    }
-
-    if (!message.candidateId) {
+  private resolveFoundRequestSite(message: SettlementFoundRequestMessage) {
+    if (typeof message.q !== 'number' || typeof message.r !== 'number') {
       return null;
     }
 
-    const settlementId = getSettlementIdFromStartCandidateId(message.candidateId);
-    if (!settlementId) {
+    if (!Number.isFinite(message.q) || !Number.isFinite(message.r)) {
       return null;
     }
 
-    const candidate = this.buildOptionsMessage(playerId).candidates.find((entry) => entry.id === message.candidateId);
-    if (!candidate?.available) {
-      return null;
-    }
-
-    return { q: candidate.q, r: candidate.r, settlementId };
+    const q = Math.trunc(message.q);
+    const r = Math.trunc(message.r);
+    return {
+      q,
+      r,
+      settlementId: `${q},${r}`,
+    };
   }
 
   private finishFoundingSettlement(
